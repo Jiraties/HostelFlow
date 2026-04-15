@@ -1,11 +1,11 @@
 import mongoose from "mongoose";
 
 type PlatformId = "BOOK" | "HOST" | "TRAV" | "AGOD" | "WALK";
-type PaymentMethod = "OTA" | "Cash" | "Card" | "Transfer" | "Unpaid";
+export type PaymentMethod = "OTA" | "Cash" | "Card" | "Transfer" | "Unpaid";
 type Status = "booked" | "checkedIn" | "checkedOut";
 
 interface EncryptedField {
-  ciphertext: string;
+  cipherText: string;
   iv: string;
   authTag: string;
 }
@@ -120,12 +120,12 @@ const bookingSchema = new mongoose.Schema({
     passportHash: String,
     nationality: { type: String },
     passportNo: {
-      ciphertext: { type: String },
+      cipherText: { type: String },
       iv: { type: String },
       authTag: { type: String },
     },
     passportName: {
-      ciphertext: { type: String },
+      cipherText: { type: String },
       iv: { type: String },
       authTag: { type: String },
     },

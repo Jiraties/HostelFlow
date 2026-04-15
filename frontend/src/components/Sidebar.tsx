@@ -14,7 +14,7 @@ const Sidebar = () => {
       link: "/departures",
       icon: "bx-arrow-from-left",
     },
-    { id: 4, label: "การจัดห้อง", link: "/allotment", icon: "bx-hotel" },
+    { id: 4, label: "ตารางการจอง", link: "/calendar", icon: "bx-calendar" },
     { id: 5, label: "ตั้งค่า และ ประวัติ", link: "/settings", icon: "bx-cog" },
   ];
 

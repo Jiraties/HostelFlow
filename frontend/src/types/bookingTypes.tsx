@@ -3,7 +3,7 @@ type PaymentMethod = "OTA" | "Cash" | "Card" | "Transfer" | "Unpaid";
 type Status = "booked" | "checkedIn" | "checkedOut";
 
 interface EncryptedField {
-  ciphertext: string;
+  ciphertText: string;
   iv: string;
   authTag: string;
 }

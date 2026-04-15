@@ -36,10 +36,7 @@ const CheckIn = ({
   const [nationality, setNationality] = useState<string>("");
   const [passportName, setPassportName] = useState<string>("");
   const [passportNo, setPassportNo] = useState<string>("");
-  const [
-    receivesCashAtDifferentAmountToRoomPrice,
-    setReceivesCashAtDifferentAmountToRoomPrice,
-  ] = useState(false);
+  const [roundingAdjustment, setRoundingAdjustment] = useState(false);
   const [receivedCash, setReceivedCash] = useState<string>(
     String(roomChargeTransaction(booking).amount),
   );
@@ -66,21 +63,35 @@ const CheckIn = ({
     try {
       const response = await axios.put(
         "http://localhost:3000/bookings/checkIn/" + booking?.bookingId,
-        {
-          deposit,
-          // roundingAdjustment:
-          //   Number(receivedCash) - roomChargeTransaction(booking).amount,
-          passportData: {
-            passportNo: nationality,
-            passportName: "asdasd",
-            nationality: "asdasd",
-          },
-        },
+        roundingAdjustment
+          ? {
+              deposit,
+              unpaidPayment: {
+                paymentMethod: "Cash",
+                roundingAdjustment:
+                  Number(receivedCash) - roomChargeTransaction(booking).amount,
+              },
+              passportData: {
+                passportNo: nationality,
+                passportName: "asdasd",
+                nationality: "asdasd",
+              },
+            }
+          : {
+              deposit,
+              passportData: {
+                passportNo: nationality,
+                passportName: "asdasd",
+                nationality: "asdasd",
+              },
+            },
         { withCredentials: true },
       );
 
       if (response.status === 200) {
-        toast.success(`Check-In สำหรับ ${response.data} สำเร็จ`);
+        toast.success(`Check-In สำหรับ ${response.data.name} สำเร็จ`, {
+          duration: 5000,
+        });
         handleCheckInSuccess(response.data);
         console.log(response);
       }
@@ -165,7 +176,7 @@ const CheckIn = ({
               }}
             />
           </div>
-          {receivesCashAtDifferentAmountToRoomPrice && (
+          {roundingAdjustment && (
             <div>
               <p className="checkIn__label">รับเงินสดค่าห้องมา (บาท)</p>
               <input
@@ -190,7 +201,7 @@ const CheckIn = ({
                     ค่าห้อง:{" "}
                     {formatCurrency(roomChargeTransaction(booking).amount)}
                     <span className="checkIn__extraAmountReceived">
-                      {receivesCashAtDifferentAmountToRoomPrice &&
+                      {roundingAdjustment &&
                         ` + เกิน ${formatCurrency(Number(receivedCash) - roomChargeTransaction(booking).amount)}`}
                     </span>
                   </p>
@@ -203,7 +214,7 @@ const CheckIn = ({
                     {roomChargeTransaction(booking).paymentMethod === "Unpaid"
                       ? formatCurrency(
                           deposit +
-                            (receivesCashAtDifferentAmountToRoomPrice
+                            (roundingAdjustment
                               ? Number(receivedCash)
                               : roomChargeTransaction(booking).amount),
                         )
@@ -230,16 +241,10 @@ const CheckIn = ({
           <ActionButton
             text="รับเงินสดไม่ตรงค่าห้อง"
             onClick={() => {
-              setReceivesCashAtDifferentAmountToRoomPrice(
-                !receivesCashAtDifferentAmountToRoomPrice,
-              );
+              setRoundingAdjustment(!roundingAdjustment);
             }}
-            icon={
-              receivesCashAtDifferentAmountToRoomPrice
-                ? "bx-check"
-                : "bx-currency-notes"
-            }
-            highlight={receivesCashAtDifferentAmountToRoomPrice}
+            icon={roundingAdjustment ? "bx-check" : "bx-currency-notes"}
+            highlight={roundingAdjustment}
           />
         )}
         <ActionButton

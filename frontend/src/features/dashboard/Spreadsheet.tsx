@@ -92,6 +92,7 @@ const Spreadsheet = ({
     },
     {
       headerName: "ค่าห้อง",
+      maxWidth: 130,
       valueGetter: (params: any) =>
         params.data.transactions.find(
           (transaction) => transaction.type === "roomCharge",
@@ -113,17 +114,31 @@ const Spreadsheet = ({
       filter: true,
       cellClassRules: { red: (param: any) => param.value === "Unpaid" },
     },
-    {
-      field: "status",
-      headerName: "สถานะ Check-In",
-      pinned: "right",
-    },
     { field: "bookingId", headerName: "Booking ID", sortable: false },
     {
       field: "checkedInByStaffUsername",
       headerName: "เช็คอินโดย",
     },
     { field: "note", sortable: false },
+    {
+      field: "status",
+      headerName: "สถานะ Check-In",
+      pinned: "right",
+      maxWidth: 130,
+      cellClassRules: {
+        notCheckedIn: (param: any) => {
+          return param.value === "booked";
+        },
+        checkedIn: (param: any) => {
+          return param.value === "checkedIn";
+        },
+      },
+      valueFormatter: (params: any) => {
+        if (params.value === "booked") return "ยังไม่ Check-In";
+        if (params.value === "checkedIn") return "Check-In แล้ว";
+      },
+      sort: "asc",
+    },
   ]);
 
   const onRowDoubleClicked = (event: any) => {
@@ -143,9 +158,7 @@ const Spreadsheet = ({
           rowData={bookings}
           columnDefs={colDefs}
           theme={myTheme}
-          autoSizeStrategy={{
-            type: "fitCellContents",
-          }}
+          autoSizeStrategy={{ type: "fitCellContents" }}
           onRowDoubleClicked={onRowDoubleClicked}
         />
       </div>

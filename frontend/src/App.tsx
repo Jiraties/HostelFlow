@@ -10,6 +10,7 @@ import "./App.css";
 import Sidebar from "./components/Sidebar";
 import NotFound from "./pages/NotFound";
 import Settings from "./pages/Settings";
+import Calendar from "./pages/Calendar";
 
 function App() {
   const { isAuthenticated, login } = useAuth();
@@ -58,6 +59,7 @@ function App() {
           <Routes>
             <Route path="/arrivals" element={<Home status="arrivals" />} />
             <Route path="/departures" element={<Home status="departures" />} />
+            <Route path="/calendar" element={<Calendar />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

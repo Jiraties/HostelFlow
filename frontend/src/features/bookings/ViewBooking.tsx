@@ -145,6 +145,12 @@ const ViewBooking = ({
               }).format(booking.checkOut)}
             </p>
           </div>
+
+          <div className="viewBooking__item">
+            <span className="viewBooking__label">ห้อง: </span>
+            <p className="viewBooking__infoText">{roomsName}</p>
+          </div>
+
           <div className="viewBooking__item">
             <span className="viewBooking__label">Booking No: </span>
             <p className="viewBooking__infoText">{booking.bookingId}</p>
@@ -158,8 +164,16 @@ const ViewBooking = ({
         <div className="viewBooking__mainRight">
           {/* <p>ค่าใช้จ่าย</p> */}
           <div className="viewBooking__priceList">
-            {booking.transactions.map((transaction) => (
-              <div className="viewBooking__price" key={transaction.amount}>
+            {booking.transactions.map((transaction, index) => (
+              <div
+                className="viewBooking__price"
+                style={
+                  index === booking.transactions.length - 1
+                    ? {}
+                    : { borderBottom: "1px solid #eee" }
+                }
+                key={transaction.amount}
+              >
                 <div
                   style={{ display: "flex", gap: "1rem", alignItems: "center" }}
                 >
@@ -203,30 +217,29 @@ const ViewBooking = ({
                 </div>
               </div>
             ))}
-
-            <div className="viewBooking__addTransaction">
-              <i className="bx bx-dollar" />
-              <p>เพิ่มรายการใช้จ่าย</p>
-            </div>
-
-            {booking.note && (
-              <div className="viewBooking__note">
-                <p
-                  style={{
-                    color: "#ffbf00",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: ".5rem",
-                    marginBottom: ".5rem",
-                  }}
-                >
-                  <i className="bx bx-note" style={{ fontSize: "1.3rem" }} />
-                  Note:{" "}
-                </p>
-                <p>{booking.note}</p>
-              </div>
-            )}
           </div>
+          <div className="viewBooking__addTransaction">
+            <i className="bx bx-dollar" />
+            <p>เพิ่มรายการใช้จ่าย</p>
+          </div>
+
+          {booking.note && (
+            <div className="viewBooking__note">
+              <p
+                style={{
+                  color: "#ffbf00",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: ".5rem",
+                  marginBottom: ".5rem",
+                }}
+              >
+                <i className="bx bx-note" style={{ fontSize: "1.3rem" }} />
+                Note:{" "}
+              </p>
+              <p>{booking.note}</p>
+            </div>
+          )}
         </div>
       </div>
       <div className="viewBooking__actions">

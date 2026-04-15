@@ -1,0 +1,54 @@
+.calendar__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  padding: 2.5rem;
+  width: auto;
+}
+
+.timeline__wrapper {
+  width: 100%;
+  overflow-x: auto;
+  box-shadow: var(--main-shadow);
+  border-radius: 2rem;
+  min-width: 0;
+}
+
+.timeline {
+  display: grid;
+  min-width: max-content;
+  border-radius: 2rem;
+}
+
+.timeline__item {
+  padding: 1rem;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+}
+
+.timeline__roomIdItem {
+  position: sticky;
+  left: 0;
+  box-shadow: rgba(0, 0, 0, 0.08) 4px 0px 8px;
+
+  z-index: 2; /* stay above other cells */
+  background: white; /* prevent overlap glitch */
+}
+
+.timeline__bookedRoomItem {
+  background-color: var(--primary-color);
+  color: #fff;
+  box-shadow: var(--main-shadow);
+  transition-duration: 0.1s;
+}
+
+.timeline__bookedRoomItem:hover {
+  background-color: #51d1dc90;
+}
+
+.timeline__bookedRoomItem p {
+  font-weight: 500;
+}

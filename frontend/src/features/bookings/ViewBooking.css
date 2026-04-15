@@ -103,6 +103,7 @@
   flex-direction: column;
 
   border-radius: 1rem;
+  gap: 1.5rem;
 }
 
 .viewBooking__infoText {
@@ -128,16 +129,16 @@
 .viewBooking__priceList {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  /* gap: 1.5rem; */
+  box-shadow: var(--main-shadow);
+  border-radius: 1rem;
 }
 
 .viewBooking__price {
   display: flex;
+  padding: 1rem;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem;
-  box-shadow: var(--main-shadow);
-  border-radius: 1rem;
 }
 
 .viewBooking__addTransaction {

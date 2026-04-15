@@ -1,4 +1,4 @@
-import Booking from "../models/booking";
+import Booking, { PaymentMethod } from "../models/booking";
 import dotenv from "dotenv";
 import crypto from "crypto";
 
@@ -37,7 +37,7 @@ export const newBooking = async (
         {
           roomId: booking.roomId,
           from: booking.checkIn,
-          to: booking.checkedOut,
+          to: booking.checkOut,
         },
       ],
       note: booking.note || "",
@@ -160,6 +160,10 @@ export const removeBooking = async (req: Request, res: Response) => {
 
 type checkInData = {
   deposit: number;
+  unpaidPayment?: {
+    paymentMethod: PaymentMethod;
+    roundingAdjustment?: number;
+  };
   passportData: {
     passportNo: string;
     passportName: string;
@@ -168,8 +172,6 @@ type checkInData = {
 };
 
 export const checkIn = async (req: Request, res: Response) => {
-  console.log("here");
-
   try {
     const { bookingId } = req.params;
     const checkInData: checkInData = req.body;
@@ -202,12 +204,14 @@ export const checkIn = async (req: Request, res: Response) => {
       let cipherText = cipher.update(text, "utf8", "hex");
       cipherText += cipher.final("hex");
 
+      console.log("Storing passportData", cipherText);
+
       const authTag = cipher.getAuthTag();
 
       return {
         iv: iv.toString("hex"),
         cipherText,
-        authTag,
+        authTag: authTag.toString("hex"),
       };
     };
 
@@ -218,14 +222,27 @@ export const checkIn = async (req: Request, res: Response) => {
       passportName: encrypt(checkInData.passportData.passportName),
     };
 
+    const newTransactions = [
+      {
+        type: "deposit",
+        paymentMethod: "Cash",
+        amount: checkInData.deposit,
+      },
+    ];
+
+    if (checkInData.unpaidPayment?.roundingAdjustment)
+      newTransactions.push({
+        type: "adjustment",
+        paymentMethod: "Cash",
+        amount: checkInData.unpaidPayment.roundingAdjustment,
+      });
+
     const updatedBooking = await Booking.findOneAndUpdate(
       { bookingId },
       {
         $push: {
           transactions: {
-            type: "deposit",
-            paymentMethod: "Cash",
-            amount: checkInData.deposit,
+            $each: newTransactions,
           },
         },
         $set: {
