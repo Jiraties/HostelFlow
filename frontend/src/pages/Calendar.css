@@ -4,6 +4,7 @@
   gap: 2rem;
   padding: 2.5rem;
   width: auto;
+  overflow-y: scroll;
 }
 
 .timeline__wrapper {
@@ -29,10 +30,26 @@
   gap: 0.2rem;
 }
 
+.timeline__item p {
+  font-size: 14px;
+}
+
 .timeline__roomIdItem {
   position: sticky;
   left: 0;
-  box-shadow: rgba(0, 0, 0, 0.08) 4px 0px 8px;
+  /* box-shadow: rgba(0, 0, 0, 0.08) 4px 0px 8px; */
+  border-right: 1px solid #eee;
+  border-bottom: 1px solid #eee;
+
+  z-index: 2; /* stay above other cells */
+  background: white; /* prevent overlap glitch */
+}
+
+.timeline__dateItem {
+  position: sticky;
+  top: 0;
+  border-bottom: 1px solid #eee;
+  border-right: 1px solid #eee;
 
   z-index: 2; /* stay above other cells */
   background: white; /* prevent overlap glitch */
@@ -43,6 +60,7 @@
   color: #fff;
   box-shadow: var(--main-shadow);
   transition-duration: 0.1s;
+  border-radius: 1rem;
 }
 
 .timeline__bookedRoomItem:hover {

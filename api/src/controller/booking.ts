@@ -268,3 +268,19 @@ export const checkIn = async (req: Request, res: Response) => {
     res.status(400).json({ error: err });
   }
 };
+
+const getMonthCalendar = async (req: Request, res: Response) => {
+  const { year, month } = req.body;
+
+  // req.month, req.year
+  const startingDate = new Date(year, month, 1); // 1st day of the month
+  const endingDate = new Date(year, month + 1, 1); // 1st day of next month
+
+  // const todayDateString = new Date(today + "T00:00:00");
+
+  const monthOfBookings = Booking.find({
+    checkIn: { $gte: startingDate, $lt: endingDate },
+  });
+
+  console.log(monthOfBookings);
+};

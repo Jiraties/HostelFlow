@@ -5,9 +5,61 @@ import { useMemo, useState } from "react";
 import type { booking } from "../types/bookingTypes";
 import ViewBooking from "../features/bookings/ViewBooking";
 import { Modal } from "@mui/material";
+import {
+  calculateNights,
+  populateDummyBookings,
+} from "../helpers/bookingHelpers";
 // import { dummyBooking } from "./test.tsx";
 
 import "./Calendar.css";
+
+type roomId =
+  | "Balcony"
+  | "Window"
+  | "Pottery 1"
+  | "Pottery 2"
+  | "Siesta 1"
+  | "Siesta 2"
+  | "Siesta 3"
+  | "Siesta 4"
+  | "Siesta 5"
+  | "Siesta 6"
+  | "Siesta 7"
+  | "Siesta 8"
+  | "Siesta 9"
+  | "Siesta 10"
+  | "Siesta 11"
+  | "Siesta 12"
+  | "Siesta 13"
+  | "Siesta 14"
+  | "Marquisette 1"
+  | "Marquisette 2"
+  | "Marquisette 3"
+  | "Marquisette 4"
+  | "Marquisette 5"
+  | "Marquisette 6"
+  | "Marquisette 7"
+  | "Marquisette 8"
+  | "Homespan 1"
+  | "Homespan 2"
+  | "Homespan 3"
+  | "Homespan 4"
+  | "Homespan 5"
+  | "Homespan 6"
+  | "Homespan 7"
+  | "Homespan 8"
+  | "Veranda 1"
+  | "Veranda 2"
+  | "Veranda 3"
+  | "Veranda 4"
+  | "Veranda 5"
+  | "Veranda 6"
+  | "Wicker 1"
+  | "Wicker 2"
+  | "Wicker 3"
+  | "Wicker 4"
+  | "Wicker 5"
+  | "Wicker 6";
 
 const Reservations = () => {
   const today = new Date();
@@ -30,109 +82,152 @@ const Reservations = () => {
     );
   }, [month, year]); // [new Date(1,1,1), new Date(1,1,1), ...]
 
-  const rooms = [
+  const [rooms, setRooms] = useState([
     {
       roomId: "Balcony",
       bookings: [
         {
-          name: "Nuntawan Wangsantiporn",
-          status: "checkedIn",
-          bookingId: "8860311561",
+          name: "Ananya P.",
           from: new Date("2026-04-15T00:00:00.000+00:00"),
           to: new Date("2026-04-18T00:00:00.000+00:00"),
         },
         {
           name: "Somchai K.",
-          status: "reserved",
-          bookingId: "8860311562",
           from: new Date("2026-04-20T00:00:00.000+00:00"),
           to: new Date("2026-04-23T00:00:00.000+00:00"),
         },
       ],
     },
-
     {
       roomId: "Window",
       bookings: [
         {
-          name: "Ananya P.",
-          status: "checkedIn",
-          bookingId: "8860311563",
+          name: "Krit S.",
           from: new Date("2026-04-10T00:00:00.000+00:00"),
           to: new Date("2026-04-13T00:00:00.000+00:00"),
         },
-        {
-          name: "Krit S.",
-          status: "reserved",
-          bookingId: "8860311564",
-          from: new Date("2026-04-18T00:00:00.000+00:00"),
-          to: new Date("2026-04-21T00:00:00.000+00:00"),
-        },
       ],
     },
-
     {
       roomId: "Pottery 1",
       bookings: [
         {
           name: "Mali C.",
-          status: "checkedIn",
-          bookingId: "8860311565",
           from: new Date("2026-04-05T00:00:00.000+00:00"),
           to: new Date("2026-04-09T00:00:00.000+00:00"),
         },
-        {
-          name: "Thanawat R.",
-          status: "reserved",
-          bookingId: "8860311566",
-          from: new Date("2026-04-12T00:00:00.000+00:00"),
-          to: new Date("2026-04-16T00:00:00.000+00:00"),
-        },
       ],
     },
-
     {
       roomId: "Pottery 2",
       bookings: [
         {
-          name: "Pimchanok L.",
-          status: "checkedIn",
-          bookingId: "8860311567",
-          from: new Date("2026-04-01T00:00:00.000+00:00"),
-          to: new Date("2026-04-04T00:00:00.000+00:00"),
-        },
-        {
           name: "Arthit W.",
-          status: "reserved",
-          bookingId: "8860311568",
           from: new Date("2026-04-22T00:00:00.000+00:00"),
           to: new Date("2026-04-26T00:00:00.000+00:00"),
         },
       ],
     },
 
-    {
-      roomId: "S 1",
-      bookings: [
-        {
-          name: "Chalida N.",
-          status: "checkedIn",
-          bookingId: "8860311569",
-          from: new Date("2026-04-08T00:00:00.000+00:00"),
-          to: new Date("2026-04-11T00:00:00.000+00:00"),
-        },
-        {
-          name: "Peerawat T.",
-          status: "reserved",
-          bookingId: "8860311570",
-          from: new Date("2026-04-14T00:00:00.000+00:00"),
-          to: new Date("2026-04-17T00:00:00.000+00:00"),
-        },
-      ],
-    },
-  ];
+    ...Array.from({ length: 14 }, (_, i) => ({
+      roomId: `Siesta ${i + 1}`,
+      bookings:
+        i % 3 === 0
+          ? [
+              {
+                name: `Guest S${i + 1}`,
+                from: new Date(
+                  `2026-04-${String(3 + i).padStart(2, "0")}T00:00:00.000+00:00`,
+                ),
+                to: new Date(
+                  `2026-04-${String(6 + i).padStart(2, "0")}T00:00:00.000+00:00`,
+                ),
+              },
+            ]
+          : [],
+    })),
+
+    ...Array.from({ length: 8 }, (_, i) => ({
+      roomId: `Marquisette ${i + 1}`,
+      bookings:
+        i % 2 === 0
+          ? [
+              {
+                name: `Guest M${i + 1}`,
+                from: new Date(
+                  `2026-04-${String(8 + i).padStart(2, "0")}T00:00:00.000+00:00`,
+                ),
+                to: new Date(
+                  `2026-04-${String(11 + i).padStart(2, "0")}T00:00:00.000+00:00`,
+                ),
+              },
+            ]
+          : [],
+    })),
+
+    ...Array.from({ length: 8 }, (_, i) => ({
+      roomId: `Homespan ${i + 1}`,
+      bookings:
+        i % 2 !== 0
+          ? [
+              {
+                name: `Guest H${i + 1}`,
+                from: new Date(
+                  `2026-04-${String(12 + i).padStart(2, "0")}T00:00:00.000+00:00`,
+                ),
+                to: new Date(
+                  `2026-04-${String(15 + i).padStart(2, "0")}T00:00:00.000+00:00`,
+                ),
+              },
+            ]
+          : [],
+    })),
+
+    ...Array.from({ length: 6 }, (_, i) => ({
+      roomId: `Veranda ${i + 1}`,
+      bookings:
+        i < 3
+          ? [
+              {
+                name: `Guest V${i + 1}`,
+                from: new Date(
+                  `2026-04-${String(18 + i).padStart(2, "0")}T00:00:00.000+00:00`,
+                ),
+                to: new Date(
+                  `2026-04-${String(21 + i).padStart(2, "0")}T00:00:00.000+00:00`,
+                ),
+              },
+            ]
+          : [],
+    })),
+
+    ...Array.from({ length: 6 }, (_, i) => ({
+      roomId: `Wicker ${i + 1}`,
+      bookings:
+        i % 2 === 0
+          ? [
+              {
+                name: `Guest W${i + 1}`,
+                from: new Date(
+                  `2026-04-${String(22 + i).padStart(2, "0")}T00:00:00.000+00:00`,
+                ),
+                to: new Date(
+                  `2026-04-${String(25 + i).padStart(2, "0")}T00:00:00.000+00:00`,
+                ),
+              },
+            ]
+          : [],
+    })),
+  ]);
 
   let roomRows: any = [];
+
+  const nextMonth = () => {
+    if (month + 1 < 11) return setMonth(month + 1);
+
+    setYear(year + 1);
+    setMonth(0);
+  };
 
   const renderedDayHeaders = calendarDays.map((day, i) => {
     const monthAndDate = new Intl.DateTimeFormat("th-TH", {
@@ -142,20 +237,12 @@ const Reservations = () => {
     }).format(day);
 
     return (
-      <div className="timeline__item" key={i}>
+      <div className="timeline__item timeline__dateItem" key={i}>
         <p>{monthAndDate.split(" ")[0]}</p>
         <p>{monthAndDate.split(" ")[1]}</p>
       </div>
     );
   });
-
-  const isWithinDateRange = (from: Date, to: Date, day: Date) => {
-    const f = new Date(from.getFullYear(), from.getMonth(), from.getDate());
-    const t = new Date(to.getFullYear(), to.getMonth(), to.getDate());
-    const d = new Date(day.getFullYear(), day.getMonth(), day.getDate());
-
-    return d >= f && d < t;
-  };
 
   rooms.forEach((room) => {
     const roomRow = [];
@@ -164,73 +251,102 @@ const Reservations = () => {
     const thisYear = today.getFullYear();
 
     roomRow.push(
-      <div className="timeline__item timeline__roomIdItem" key={room.roomId}>
+      <div
+        className="timeline__item timeline__roomIdItem"
+        style={{ gridColumn: "1" }}
+        key={room.roomId}
+      >
         <p>{room.roomId}</p>
       </div>,
     );
 
-    calendarDays.forEach((day, i) => {
-      const bookingWithMatchingDay = room.bookings?.find((booking) =>
-        isWithinDateRange(booking.from, booking.to, day),
+    room.bookings.forEach((booking, index) => {
+      const startingDate = calendarDays.findIndex(
+        (day) =>
+          day.getFullYear() === booking.from.getFullYear() &&
+          day.getMonth() === booking.from.getMonth() &&
+          day.getDate() === booking.from.getDate(),
       );
-
-      if (!bookingWithMatchingDay) {
-        roomRow.push(
-          <div className="timeline__item" key={i}>
-            <p></p>
-          </div>,
-        );
-        return;
-      }
+      console.log(
+        `${startingDate} / span ${calculateNights(booking.from, booking.to)}`,
+      );
 
       roomRow.push(
         <div
           className="timeline__item timeline__bookedRoomItem"
-          key={i}
-          onDoubleClick={() =>
-            setViewBookingBooking({
-              name: "Ananya Prasert",
-              bookingId: "BK20260415001",
-
-              platformId: "AGOD",
-              status: "checkedIn",
-
-              checkIn: new Date("2026-04-15T00:00:00.000+00:00"),
-              checkOut: new Date("2026-04-18T00:00:00.000+00:00"),
-              nights: 3,
-
-              roomStays: [
-                {
-                  roomId: "Balcony",
-                  from: new Date("2026-04-15T00:00:00.000+00:00"),
-                  to: new Date("2026-04-18T00:00:00.000+00:00"),
-                },
-              ],
-
-              transactions: [
-                {
-                  type: "roomCharge",
-                  paymentMethod: "OTA",
-                  amount: 4500,
-                },
-                {
-                  type: "deposit",
-                  paymentMethod: "Cash",
-                  amount: 1000,
-                },
-              ],
-
-              staffUsername: "admin01",
-              checkInByStaffUsername: "admin01",
-
-              note: "Late check-in, arriving around 9 PM",
-            })
-          }
+          style={{
+            gridColumn: `${startingDate + 2} / span ${calculateNights(booking.from, booking.to)}`,
+          }}
+          key={index}
+          onDoubleClick={() => {}}
         >
-          <p>{bookingWithMatchingDay.name}</p>
+          <p>{booking.name}</p>
         </div>,
       );
     });
+
+    // calendarDays.forEach((day, i) => {
+    //   const bookingWithMatchingDay = room.bookings?.find((booking) =>
+    //     isWithinDateRange(booking.from, booking.to, day),
+    //   );
+
+    //   if (!bookingWithMatchingDay) {
+    //     roomRow.push(
+    //       <div className="timeline__item" key={i}>
+    //         <p></p>
+    //       </div>,
+    //     );
+    //     return;
+    //   }
+
+    //   roomRow.push(
+    //     <div
+    //       className="timeline__item timeline__bookedRoomItem"
+    //       key={i}
+    //       onDoubleClick={() =>
+    //         setViewBookingBooking({
+    //           name: "Ananya Prasert",
+    //           bookingId: "BK20260415001",
+
+    //           platformId: "AGOD",
+    //           status: "checkedIn",
+
+    //           checkIn: new Date("2026-04-15T00:00:00.000+00:00"),
+    //           checkOut: new Date("2026-04-18T00:00:00.000+00:00"),
+    //           nights: 3,
+
+    //           roomStays: [
+    //             {
+    //               roomId: "Balcony",
+    //               from: new Date("2026-04-15T00:00:00.000+00:00"),
+    //               to: new Date("2026-04-18T00:00:00.000+00:00"),
+    //             },
+    //           ],
+
+    //           transactions: [
+    //             {
+    //               type: "roomCharge",
+    //               paymentMethod: "OTA",
+    //               amount: 4500,
+    //             },
+    //             {
+    //               type: "deposit",
+    //               paymentMethod: "Cash",
+    //               amount: 1000,
+    //             },
+    //           ],
+
+    //           staffUsername: "admin01",
+    //           checkInByStaffUsername: "admin01",
+
+    //           note: "Late check-in, arriving around 9 PM",
+    //         })
+    //       }
+    //     >
+    //       <p>{bookingWithMatchingDay.name}</p>
+    //     </div>,
+    //   );
+    // });
 
     roomRows.push(roomRow);
   });
@@ -296,6 +412,7 @@ const Reservations = () => {
           className="timeline"
           style={{
             gridTemplateColumns: `10rem repeat(${getDateInMonth(2026, month)}, 7.5rem)`,
+            gridTemplateRows: `repeat(${rooms.length}, 3.5rem)`,
           }}
         >
           <div className="timeline__item timeline__roomIdItem">ห้อง / วัน</div>
