@@ -5,6 +5,7 @@ import { themeQuartz } from "ag-grid-community";
 import type { booking } from "../../types/bookingTypes";
 import "./Spreadsheet.css";
 import { useLocation } from "react-router";
+import { platformMap } from "../../helpers/maps.ts";
 
 const myTheme = themeQuartz.withParams({
   fontFamily: "IBM Plex Sans Thai",
@@ -19,14 +20,6 @@ const myTheme = themeQuartz.withParams({
 });
 
 const platformCell = (params: any) => {
-  const platformMap = {
-    BOOK: { label: "Booking.com", color: "#003580" },
-    AGOD: { label: "Agoda", color: "#19AC5B" },
-    TRAV: { label: "Traveloka", color: "#00ADEF" },
-    HOST: { label: "Hostelworld", color: "#F15A24" },
-    WALK: { label: "Walk-In", color: "#f12424" },
-  };
-
   const platform = platformMap[params.value as keyof typeof platformMap];
 
   return (

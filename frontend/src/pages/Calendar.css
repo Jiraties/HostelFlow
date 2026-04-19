@@ -34,39 +34,79 @@
   font-size: 14px;
 }
 
+.timeline__itemNights {
+  background-color: #ffffff40;
+  margin-left: 0.2rem;
+  border-radius: 1rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
 .timeline__roomIdItem {
   position: sticky;
   left: 0;
-  /* box-shadow: rgba(0, 0, 0, 0.08) 4px 0px 8px; */
   border-right: 1px solid #eee;
   border-bottom: 1px solid #eee;
 
-  z-index: 2; /* stay above other cells */
-  background: white; /* prevent overlap glitch */
+  z-index: 4;
+  background: white;
 }
 
 .timeline__dateItem {
   position: sticky;
   top: 0;
+  scroll-margin-left: 12.5rem;
   border-bottom: 1px solid #eee;
   border-right: 1px solid #eee;
 
-  z-index: 2; /* stay above other cells */
-  background: white; /* prevent overlap glitch */
+  z-index: 3;
+  background: white;
 }
 
 .timeline__bookedRoomItem {
   background-color: var(--primary-color);
   color: #fff;
   box-shadow: var(--main-shadow);
-  transition-duration: 0.1s;
-  border-radius: 1rem;
+  border-radius: 0.5rem;
+  z-index: 2;
+
+  text-align: start;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
 }
 
 .timeline__bookedRoomItem:hover {
-  background-color: #51d1dc90;
+  opacity: 0.9;
 }
 
 .timeline__bookedRoomItem p {
   font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+  max-width: 100%;
+}
+
+.calendar__monthSelector {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.calendar__monthSelector i {
+  padding: 0.5rem;
+  box-shadow: var(--main-shadow);
+  border-radius: 1rem;
+  color: var(--primary-color);
+  transition-duration: 0.1s;
+}
+
+.calendar__monthSelector i:hover {
+  transform: scale(1.1);
+}
+
+.timeline__emptyCell {
+  position: relative;
+  z-index: 1;
 }

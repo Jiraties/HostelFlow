@@ -1,36 +1,8 @@
 import { useState } from "react";
 import ActionButton from "../../components/ActionButton";
-import type { booking, transcation } from "../../types/bookingTypes";
+import type { booking } from "../../types/bookingTypes";
 import "./ViewBooking.css";
-
-const platformMap = {
-  BOOK: {
-    label: "Booking.com",
-    color: "#003580",
-    logo: "../../../assets/images/booking.jpeg",
-  },
-  AGOD: {
-    label: "Agoda",
-    color: "#19AC5B",
-
-    logo: "../../../assets/images/agoda.png",
-  },
-  TRAV: {
-    label: "Traveloka",
-    color: "#00ADEF",
-    logo: "../../../assets/images/traveloka.jpg",
-  },
-  HOST: {
-    label: "Hostelworld",
-    color: "#F15A24",
-    logo: "../../../assets/images/hostelworld.png",
-  },
-  WALK: {
-    label: "Walk-In",
-    color: "#f12424",
-    logo: "../../../assets/images/walkIn.png",
-  },
-};
+import { platformMap } from "../../helpers/maps.ts";
 
 const paymentMethodIconMap = {
   OTA: "bx-bank",

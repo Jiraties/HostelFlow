@@ -1,6 +1,8 @@
 import express from "express";
 import {
   checkIn,
+  getBookingById,
+  getMonthCalendar,
   getTodayArrivalBookings,
   getTodayDepartureBookings,
   newBooking,
@@ -14,5 +16,7 @@ bookingsRouter.get("/todayArrivals", getTodayArrivalBookings);
 bookingsRouter.get("/todayDepartures", getTodayDepartureBookings);
 bookingsRouter.delete("/removeBooking/:bookingId", removeBooking);
 bookingsRouter.put("/checkIn/:bookingId", checkIn);
+bookingsRouter.get("/getMonthCalendar", getMonthCalendar);
+bookingsRouter.get("/getBookingById/:bookingId", getBookingById);
 
 export default bookingsRouter;

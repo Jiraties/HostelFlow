@@ -4,6 +4,7 @@ import crypto from "crypto";
 
 import { NextFunction, Request, Response } from "express";
 import { logActivity } from "../services/activityServices";
+import type { PlatformId } from "../models/booking";
 
 dotenv.config();
 
@@ -269,18 +270,108 @@ export const checkIn = async (req: Request, res: Response) => {
   }
 };
 
-const getMonthCalendar = async (req: Request, res: Response) => {
-  const { year, month } = req.body;
+type CalendarBooking = {
+  name: string;
+  from: Date;
+  to: Date;
+  bookingId: string;
+  platformId: PlatformId;
+};
 
-  // req.month, req.year
-  const startingDate = new Date(year, month, 1); // 1st day of the month
-  const endingDate = new Date(year, month + 1, 1); // 1st day of next month
+type Room = {
+  roomId: string;
+  bookings: CalendarBooking[];
+};
 
-  // const todayDateString = new Date(today + "T00:00:00");
+export const getMonthCalendar = async (req: Request, res: Response) => {
+  try {
+    let { year, month } = req.query;
+    const today = new Date();
 
-  const monthOfBookings = Booking.find({
-    checkIn: { $gte: startingDate, $lt: endingDate },
-  });
+    const parsedYear = year ? parseInt(year as string) : today.getFullYear();
+    const parsedMonth = month ? parseInt(month as string) : today.getMonth();
 
-  console.log(monthOfBookings);
+    const startingDate = new Date(parsedYear, parsedMonth, 1); // 1st day of the month
+    const endingDate = new Date(parsedYear, parsedMonth + 1, 1); // 1st day of next month
+
+    const monthOfBookings = await Booking.find({
+      checkIn: { $lt: endingDate },
+      checkOut: { $gt: startingDate },
+    });
+
+    const rooms: Room[] = [
+      {
+        roomId: "Balcony",
+        bookings: [],
+      },
+      {
+        roomId: "Window",
+        bookings: [],
+      },
+      {
+        roomId: "Pottery 1",
+        bookings: [],
+      },
+      {
+        roomId: "Pottery 2",
+        bookings: [],
+      },
+
+      ...Array.from({ length: 14 }, (_, i) => ({
+        roomId: `Siesta ${i + 1}`,
+        bookings: i % 3 === 0 ? [] : [],
+      })),
+
+      ...Array.from({ length: 8 }, (_, i) => ({
+        roomId: `Marquisette ${i + 1}`,
+        bookings: i % 2 === 0 ? [] : [],
+      })),
+
+      ...Array.from({ length: 8 }, (_, i) => ({
+        roomId: `Homespan ${i + 1}`,
+        bookings: i % 2 !== 0 ? [] : [],
+      })),
+
+      ...Array.from({ length: 6 }, (_, i) => ({
+        roomId: `Veranda ${i + 1}`,
+        bookings: i < 3 ? [] : [],
+      })),
+
+      ...Array.from({ length: 6 }, (_, i) => ({
+        roomId: `Wicker ${i + 1}`,
+        bookings: i % 2 === 0 ? [] : [],
+      })),
+    ];
+
+    monthOfBookings.forEach((booking) => {
+      booking.roomStays.forEach((roomStay) => {
+        const roomWithMatchingId = rooms.find(
+          (room) => room.roomId === roomStay.roomId,
+        );
+        roomWithMatchingId?.bookings.push({
+          name: booking.name,
+          platformId: booking.platformId,
+          bookingId: booking.bookingId,
+          from: roomStay.from,
+          to: roomStay.to,
+        });
+      });
+    });
+
+    res.status(200).json(rooms);
+  } catch (err) {
+    res.status(400).json({ error: err });
+  }
+};
+
+export const getBookingById = async (req: Request, res: Response) => {
+  try {
+    const { bookingId } = req.params;
+
+    const booking = await Booking.findOne({ bookingId });
+
+    res.status(200).json(booking);
+  } catch (err) {
+    res.status(400).json({ error: err });
+  }
 };

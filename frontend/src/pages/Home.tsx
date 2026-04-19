@@ -13,6 +13,7 @@ import { useEffect, useState } from "react";
 import { Modal } from "@mui/material";
 import { useAuth } from "../context/AuthContext";
 import { Link, useLocation } from "react-router";
+import { formatBookingsDates } from "../helpers/bookingHelpers";
 
 import type { booking } from "../types/bookingTypes";
 
@@ -117,12 +118,12 @@ const Home = ({ status }: { status: "arrivals" | "departures" }) => {
         ];
 
   // ----------- IMPORTANT FUNCTION: every booking sent from backend needs to be formated here ------------
-  const formatBookingsDates = (bookings: booking[]) =>
-    bookings.map((booking: booking) => {
-      booking.checkIn = new Date(booking.checkIn);
-      booking.checkOut = new Date(booking.checkOut);
-      return booking;
-    });
+  // const formatBookingsDates = (bookings: booking[]) =>
+  //   bookings.map((booking: booking) => {
+  //     booking.checkIn = new Date(booking.checkIn);
+  //     booking.checkOut = new Date(booking.checkOut);
+  //     return booking;
+  //   });
 
   const appendToBookings = (booking: booking) => {
     const formattedBooking = formatBookingsDates([booking])[0];

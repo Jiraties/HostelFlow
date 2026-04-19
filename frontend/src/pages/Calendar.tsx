@@ -1,75 +1,55 @@
+import ConfirmationModal from "../components/ConfirmationModal.tsx";
+import ViewBooking from "../features/bookings/ViewBooking";
+import axios from "axios";
+import toast from "react-hot-toast";
+
+import type { booking } from "../types/bookingTypes";
+import { platformMap } from "../helpers/maps.ts";
+
+import { useEffect, useMemo, useState, useRef } from "react";
 import { Link } from "react-router";
 import { useAuth } from "../context/AuthContext";
-import moment from "moment";
-import { useMemo, useState } from "react";
-import type { booking } from "../types/bookingTypes";
-import ViewBooking from "../features/bookings/ViewBooking";
 import { Modal } from "@mui/material";
-import {
-  calculateNights,
-  populateDummyBookings,
-} from "../helpers/bookingHelpers";
+import { calculateNights } from "../helpers/bookingHelpers";
+import { useLocation } from "react-router";
+import { formatBookingDates } from "../helpers/bookingHelpers";
 // import { dummyBooking } from "./test.tsx";
 
 import "./Calendar.css";
 
-type roomId =
-  | "Balcony"
-  | "Window"
-  | "Pottery 1"
-  | "Pottery 2"
-  | "Siesta 1"
-  | "Siesta 2"
-  | "Siesta 3"
-  | "Siesta 4"
-  | "Siesta 5"
-  | "Siesta 6"
-  | "Siesta 7"
-  | "Siesta 8"
-  | "Siesta 9"
-  | "Siesta 10"
-  | "Siesta 11"
-  | "Siesta 12"
-  | "Siesta 13"
-  | "Siesta 14"
-  | "Marquisette 1"
-  | "Marquisette 2"
-  | "Marquisette 3"
-  | "Marquisette 4"
-  | "Marquisette 5"
-  | "Marquisette 6"
-  | "Marquisette 7"
-  | "Marquisette 8"
-  | "Homespan 1"
-  | "Homespan 2"
-  | "Homespan 3"
-  | "Homespan 4"
-  | "Homespan 5"
-  | "Homespan 6"
-  | "Homespan 7"
-  | "Homespan 8"
-  | "Veranda 1"
-  | "Veranda 2"
-  | "Veranda 3"
-  | "Veranda 4"
-  | "Veranda 5"
-  | "Veranda 6"
-  | "Wicker 1"
-  | "Wicker 2"
-  | "Wicker 3"
-  | "Wicker 4"
-  | "Wicker 5"
-  | "Wicker 6";
+type CalendarBooking = {
+  name: string;
+  from: Date;
+  to: Date;
+  bookingId: string;
+  platformId: string;
+};
 
-const Reservations = () => {
+type Room = {
+  roomId: string;
+  bookings: CalendarBooking[];
+};
+
+const Calendar = () => {
   const today = new Date();
 
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
+  const timelineRef = useRef<HTMLDivElement>(null);
+  const location = useLocation();
   const [month, setMonth] = useState(today.getMonth()); // JS MONTH 0=Jan 1=Feb 4=May
   const [year, setYear] = useState(today.getFullYear());
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [loading, setLoading] = useState(false);
   const [viewBookingBooking, setViewBookingBooking] = useState<booking | null>(
     null,
   );
+  const [confirmationModalIsOpen, setConfirmationModalIsOpen] = useState<{
+    isOpen: boolean;
+    booking: booking | null;
+  }>({
+    isOpen: false,
+    booking: null,
+  });
 
   const getDateInMonth = (year: number, month: number) => {
     return new Date(year, month + 1, 0).getDate();
@@ -82,145 +62,170 @@ const Reservations = () => {
     );
   }, [month, year]); // [new Date(1,1,1), new Date(1,1,1), ...]
 
-  const [rooms, setRooms] = useState([
+  const todayIndex = calendarDays.findIndex(
+    (day) =>
+      day.getFullYear() === today.getFullYear() &&
+      day.getMonth() === today.getMonth() &&
+      day.getDate() === today.getDate(),
+  );
+
+  const [rooms, setRooms] = useState<Room[]>([
     {
       roomId: "Balcony",
-      bookings: [
-        {
-          name: "Ananya P.",
-          from: new Date("2026-04-15T00:00:00.000+00:00"),
-          to: new Date("2026-04-18T00:00:00.000+00:00"),
-        },
-        {
-          name: "Somchai K.",
-          from: new Date("2026-04-20T00:00:00.000+00:00"),
-          to: new Date("2026-04-23T00:00:00.000+00:00"),
-        },
-      ],
+      bookings: [],
     },
     {
       roomId: "Window",
-      bookings: [
-        {
-          name: "Krit S.",
-          from: new Date("2026-04-10T00:00:00.000+00:00"),
-          to: new Date("2026-04-13T00:00:00.000+00:00"),
-        },
-      ],
+      bookings: [],
     },
     {
       roomId: "Pottery 1",
-      bookings: [
-        {
-          name: "Mali C.",
-          from: new Date("2026-04-05T00:00:00.000+00:00"),
-          to: new Date("2026-04-09T00:00:00.000+00:00"),
-        },
-      ],
+      bookings: [],
     },
     {
       roomId: "Pottery 2",
-      bookings: [
-        {
-          name: "Arthit W.",
-          from: new Date("2026-04-22T00:00:00.000+00:00"),
-          to: new Date("2026-04-26T00:00:00.000+00:00"),
-        },
-      ],
+      bookings: [],
     },
 
     ...Array.from({ length: 14 }, (_, i) => ({
       roomId: `Siesta ${i + 1}`,
-      bookings:
-        i % 3 === 0
-          ? [
-              {
-                name: `Guest S${i + 1}`,
-                from: new Date(
-                  `2026-04-${String(3 + i).padStart(2, "0")}T00:00:00.000+00:00`,
-                ),
-                to: new Date(
-                  `2026-04-${String(6 + i).padStart(2, "0")}T00:00:00.000+00:00`,
-                ),
-              },
-            ]
-          : [],
+      bookings: i % 3 === 0 ? [] : [],
     })),
 
     ...Array.from({ length: 8 }, (_, i) => ({
       roomId: `Marquisette ${i + 1}`,
-      bookings:
-        i % 2 === 0
-          ? [
-              {
-                name: `Guest M${i + 1}`,
-                from: new Date(
-                  `2026-04-${String(8 + i).padStart(2, "0")}T00:00:00.000+00:00`,
-                ),
-                to: new Date(
-                  `2026-04-${String(11 + i).padStart(2, "0")}T00:00:00.000+00:00`,
-                ),
-              },
-            ]
-          : [],
+      bookings: i % 2 === 0 ? [] : [],
     })),
 
     ...Array.from({ length: 8 }, (_, i) => ({
       roomId: `Homespan ${i + 1}`,
-      bookings:
-        i % 2 !== 0
-          ? [
-              {
-                name: `Guest H${i + 1}`,
-                from: new Date(
-                  `2026-04-${String(12 + i).padStart(2, "0")}T00:00:00.000+00:00`,
-                ),
-                to: new Date(
-                  `2026-04-${String(15 + i).padStart(2, "0")}T00:00:00.000+00:00`,
-                ),
-              },
-            ]
-          : [],
+      bookings: i % 2 !== 0 ? [] : [],
     })),
 
     ...Array.from({ length: 6 }, (_, i) => ({
       roomId: `Veranda ${i + 1}`,
-      bookings:
-        i < 3
-          ? [
-              {
-                name: `Guest V${i + 1}`,
-                from: new Date(
-                  `2026-04-${String(18 + i).padStart(2, "0")}T00:00:00.000+00:00`,
-                ),
-                to: new Date(
-                  `2026-04-${String(21 + i).padStart(2, "0")}T00:00:00.000+00:00`,
-                ),
-              },
-            ]
-          : [],
+      bookings: i < 3 ? [] : [],
     })),
 
     ...Array.from({ length: 6 }, (_, i) => ({
       roomId: `Wicker ${i + 1}`,
-      bookings:
-        i % 2 === 0
-          ? [
-              {
-                name: `Guest W${i + 1}`,
-                from: new Date(
-                  `2026-04-${String(22 + i).padStart(2, "0")}T00:00:00.000+00:00`,
-                ),
-                to: new Date(
-                  `2026-04-${String(25 + i).padStart(2, "0")}T00:00:00.000+00:00`,
-                ),
-              },
-            ]
-          : [],
+      bookings: i % 2 === 0 ? [] : [],
     })),
   ]);
 
   let roomRows: any = [];
+
+  const renderedDayHeaders = calendarDays.map((day, i) => {
+    const monthAndDate = new Intl.DateTimeFormat("en-US", {
+      day: "numeric",
+      weekday: "short",
+      calendar: "gregory",
+    }).format(day);
+
+    return (
+      <div className="timeline__item timeline__dateItem" key={i} data-day={i}>
+        <p style={i === todayIndex ? { color: "red" } : {}}>
+          {monthAndDate.split(" ")[1]}
+        </p>
+        <p
+          style={
+            i === todayIndex
+              ? { color: "red", fontWeight: 600 }
+              : { fontWeight: 600 }
+          }
+        >
+          {monthAndDate.split(" ")[0]}
+        </p>
+      </div>
+    );
+  });
+
+  const handleAddBooking = (roomId: string, day: Date) => {};
+
+  const monthStart = new Date(year, month, 1);
+  const monthEnd = new Date(year, month + 1, 1);
+
+  rooms.forEach((room) => {
+    const roomRow = [];
+
+    roomRow.push(
+      <div
+        className="timeline__item timeline__roomIdItem"
+        style={{
+          gridColumn: "1",
+        }}
+        key={room.roomId}
+      >
+        <p>{room.roomId}</p>
+      </div>,
+    );
+
+    room.bookings.forEach((booking, index) => {
+      const from = new Date(booking.from);
+      const to = new Date(booking.to);
+
+      const overlaps = to > monthStart && from < monthEnd;
+      if (!overlaps) return;
+
+      const visibleStart = from < monthStart ? monthStart : from;
+      const visibleEnd = to > monthEnd ? monthEnd : to;
+
+      const startingDate = calendarDays.findIndex(
+        (day) =>
+          day.getFullYear() === visibleStart.getFullYear() &&
+          day.getMonth() === visibleStart.getMonth() &&
+          day.getDate() === visibleStart.getDate(),
+      );
+
+      if (startingDate === -1) return;
+
+      const span = calculateNights(visibleStart, visibleEnd);
+
+      const continuesBefore = from < monthStart;
+      const continuesAfter = to > monthEnd;
+
+      roomRow.push(
+        <div
+          className="timeline__item timeline__bookedRoomItem"
+          style={{
+            gridColumn: `${startingDate + 2} / span ${span}`,
+            backgroundColor: platformMap[booking.platformId].color,
+            borderTopLeftRadius: continuesBefore ? 0 : "0.5rem",
+            borderBottomLeftRadius: continuesBefore ? 0 : "0.5rem",
+            borderTopRightRadius: continuesAfter ? 0 : "0.5rem",
+            borderBottomRightRadius: continuesAfter ? 0 : "0.5rem",
+            // color: platformMap[booking.platformId].color,
+          }}
+          key={index}
+          onDoubleClick={() => getBookingByIdAndUpdate(booking.bookingId)}
+        >
+          <p className="timeline__itemText">
+            {booking.name}{" "}
+            <span className="timeline__itemNights">
+              {calculateNights(from, to)} คืน
+            </span>
+          </p>
+        </div>,
+      );
+    });
+
+    roomRows.push(roomRow);
+  });
+
+  const getBookingByIdAndUpdate = async (bookingId: string) => {
+    if (loading) return;
+    setLoading(true);
+
+    const booking = await axios.get(
+      "http://localhost:3000/bookings/getBookingById/" + bookingId,
+      {
+        withCredentials: true,
+      },
+    );
+
+    setLoading(false);
+    setViewBookingBooking(formatBookingDates(booking.data));
+  };
 
   const nextMonth = () => {
     if (month + 1 < 11) return setMonth(month + 1);
@@ -229,127 +234,55 @@ const Reservations = () => {
     setMonth(0);
   };
 
-  const renderedDayHeaders = calendarDays.map((day, i) => {
-    const monthAndDate = new Intl.DateTimeFormat("th-TH", {
-      day: "numeric",
-      month: "short",
-      calendar: "gregory",
-    }).format(day);
+  const previousMonth = () => {
+    if (month - 1 > -1) return setMonth(month - 1);
 
-    return (
-      <div className="timeline__item timeline__dateItem" key={i}>
-        <p>{monthAndDate.split(" ")[0]}</p>
-        <p>{monthAndDate.split(" ")[1]}</p>
-      </div>
-    );
-  });
+    setYear(year - 1);
+    setMonth(11);
+  };
 
-  rooms.forEach((room) => {
-    const roomRow = [];
-
-    const today = new Date();
-    const thisYear = today.getFullYear();
-
-    roomRow.push(
-      <div
-        className="timeline__item timeline__roomIdItem"
-        style={{ gridColumn: "1" }}
-        key={room.roomId}
-      >
-        <p>{room.roomId}</p>
-      </div>,
+  const getRooms = async () => {
+    const fetchedRooms = await axios.get(
+      `http://localhost:3000/bookings/getMonthCalendar?month=${month}&year=${year}`,
+      {
+        withCredentials: true,
+      },
     );
 
-    room.bookings.forEach((booking, index) => {
-      const startingDate = calendarDays.findIndex(
-        (day) =>
-          day.getFullYear() === booking.from.getFullYear() &&
-          day.getMonth() === booking.from.getMonth() &&
-          day.getDate() === booking.from.getDate(),
-      );
-      console.log(
-        `${startingDate} / span ${calculateNights(booking.from, booking.to)}`,
-      );
+    setRooms(fetchedRooms.data);
+    setLastUpdated(new Date());
+  };
 
-      roomRow.push(
-        <div
-          className="timeline__item timeline__bookedRoomItem"
-          style={{
-            gridColumn: `${startingDate + 2} / span ${calculateNights(booking.from, booking.to)}`,
-          }}
-          key={index}
-          onDoubleClick={() => {}}
-        >
-          <p>{booking.name}</p>
-        </div>,
-      );
+  useEffect(() => {
+    getRooms();
+  }, [month, year, location]);
+
+  const isfirstRun = useRef(true);
+  useEffect(() => {
+    const el = timelineRef.current;
+    if (!el) return;
+
+    const todayEl = el.querySelector(`[data-day="${todayIndex}"]`);
+    if (!todayEl) return;
+
+    console.log(todayIndex);
+
+    todayEl.scrollIntoView({
+      behavior: isfirstRun.current ? "instant" : "smooth",
+      inline: "start",
     });
+    isfirstRun.current = false;
+  }, [month, year]);
 
-    // calendarDays.forEach((day, i) => {
-    //   const bookingWithMatchingDay = room.bookings?.find((booking) =>
-    //     isWithinDateRange(booking.from, booking.to, day),
-    //   );
+  const closeAllModals = () => {
+    setViewBookingBooking(null);
+    setConfirmationModalIsOpen({ isOpen: false, booking: null });
+    getRooms();
+  };
 
-    //   if (!bookingWithMatchingDay) {
-    //     roomRow.push(
-    //       <div className="timeline__item" key={i}>
-    //         <p></p>
-    //       </div>,
-    //     );
-    //     return;
-    //   }
-
-    //   roomRow.push(
-    //     <div
-    //       className="timeline__item timeline__bookedRoomItem"
-    //       key={i}
-    //       onDoubleClick={() =>
-    //         setViewBookingBooking({
-    //           name: "Ananya Prasert",
-    //           bookingId: "BK20260415001",
-
-    //           platformId: "AGOD",
-    //           status: "checkedIn",
-
-    //           checkIn: new Date("2026-04-15T00:00:00.000+00:00"),
-    //           checkOut: new Date("2026-04-18T00:00:00.000+00:00"),
-    //           nights: 3,
-
-    //           roomStays: [
-    //             {
-    //               roomId: "Balcony",
-    //               from: new Date("2026-04-15T00:00:00.000+00:00"),
-    //               to: new Date("2026-04-18T00:00:00.000+00:00"),
-    //             },
-    //           ],
-
-    //           transactions: [
-    //             {
-    //               type: "roomCharge",
-    //               paymentMethod: "OTA",
-    //               amount: 4500,
-    //             },
-    //             {
-    //               type: "deposit",
-    //               paymentMethod: "Cash",
-    //               amount: 1000,
-    //             },
-    //           ],
-
-    //           staffUsername: "admin01",
-    //           checkInByStaffUsername: "admin01",
-
-    //           note: "Late check-in, arriving around 9 PM",
-    //         })
-    //       }
-    //     >
-    //       <p>{bookingWithMatchingDay.name}</p>
-    //     </div>,
-    //   );
-    // });
-
-    roomRows.push(roomRow);
-  });
+  const removeBookingHandler = (booking: booking) => {
+    setConfirmationModalIsOpen({ isOpen: true, booking });
+  };
 
   return (
     <main className="calendar__main">
@@ -361,34 +294,47 @@ const Reservations = () => {
         <ViewBooking
           booking={viewBookingBooking as booking}
           setCheckInIsOpen={() => {}}
-          removeBookingHandler={() => {}}
+          removeBookingHandler={removeBookingHandler}
+        />
+      </Modal>
+      <Modal
+        open={confirmationModalIsOpen.isOpen}
+        onClose={() =>
+          setConfirmationModalIsOpen((prev) => ({ ...prev, isOpen: false }))
+        }
+        className="home__modalCenter"
+      >
+        <ConfirmationModal
+          booking={confirmationModalIsOpen.booking}
+          closeAllModals={closeAllModals}
         />
       </Modal>
       <header className="home__header">
         <div>
-          <h1>
-            ตารางการจอง |{" "}
+          <h1 className="calendar__monthSelector">
+            <i className="bx bx-caret-left" onClick={() => previousMonth()} />
             {new Intl.DateTimeFormat("th-TH", {
               day: undefined,
               month: "long",
               year: "numeric",
               calendar: "gregory",
-            }).format(new Date(2026, month, 1))}
+            }).format(new Date(year, month, 1))}
+            <i className="bx bx-caret-right" onClick={() => nextMonth()} />
           </h1>
-          <div style={{ display: "flex", gap: "0.3rem" }}>
+          <div style={{ display: "flex", gap: "0.3rem", marginTop: "0.5rem" }}>
             <p>
-              {/* ข้อมูลอัปเดตล่าสุดเมื่อ {lastUpdated?.getHours()}:
-              {lastUpdated?.getMinutes().toString().padStart(2, "0")} */}
+              ข้อมูลอัปเดตล่าสุดเมื่อ {lastUpdated?.getHours()}:
+              {lastUpdated?.getMinutes().toString().padStart(2, "0")}
             </p>
             <i
               className="bx bx-refresh home__refreshIcon"
-              // onClick={() => {
-              //   toast.promise(fetchBookings, {
-              //     loading: "กำลังอัปเดตข้อมูล...",
-              //     success: "อัปเดตข้อมูลสำเร็จ",
-              //     error: "เกิดข้อผิดพลาดในการอัปเดตข้อมูล",
-              //   });
-              // }}
+              onClick={() => {
+                toast.promise(getRooms, {
+                  loading: "กำลังอัปเดตข้อมูล...",
+                  success: "อัปเดตข้อมูลสำเร็จ",
+                  error: "เกิดข้อผิดพลาดในการอัปเดตข้อมูล",
+                });
+              }}
             />
           </div>
         </div>
@@ -407,12 +353,12 @@ const Reservations = () => {
         </div>
       </header>
 
-      <div className="timeline__wrapper">
+      <div className="timeline__wrapper" ref={timelineRef}>
         <div
           className="timeline"
           style={{
-            gridTemplateColumns: `10rem repeat(${getDateInMonth(2026, month)}, 7.5rem)`,
-            gridTemplateRows: `repeat(${rooms.length}, 3.5rem)`,
+            gridTemplateColumns: `10rem repeat(${getDateInMonth(2026, month)}, 4rem)`,
+            gridTemplateRows: `repeat(${rooms.length}, 3rem)`,
           }}
         >
           <div className="timeline__item timeline__roomIdItem">ห้อง / วัน</div>
@@ -425,4 +371,4 @@ const Reservations = () => {
   );
 };
 
-export default Reservations;
+export default Calendar;

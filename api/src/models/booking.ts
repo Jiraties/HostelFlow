@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-type PlatformId = "BOOK" | "HOST" | "TRAV" | "AGOD" | "WALK";
+export type PlatformId = "BOOK" | "HOST" | "TRAV" | "AGOD" | "WALK";
 export type PaymentMethod = "OTA" | "Cash" | "Card" | "Transfer" | "Unpaid";
 type Status = "booked" | "checkedIn" | "checkedOut";
 

@@ -80,3 +80,16 @@ export const populateDummyBookings = (
     };
   });
 };
+
+export const formatBookingsDates = (bookings: booking[]) =>
+  bookings.map((booking: booking) => {
+    booking.checkIn = new Date(booking.checkIn);
+    booking.checkOut = new Date(booking.checkOut);
+    return booking;
+  });
+
+export const formatBookingDates = (booking: booking) => {
+  booking.checkIn = new Date(booking.checkIn);
+  booking.checkOut = new Date(booking.checkOut);
+  return booking;
+};

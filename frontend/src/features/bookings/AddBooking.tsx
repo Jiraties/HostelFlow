@@ -5,18 +5,19 @@ import Select from "react-select";
 import { useAuth } from "../../context/AuthContext";
 import toast from "react-hot-toast";
 import axios from "axios";
-import type { booking } from "../../types/bookingTypes";
+import type { booking, roomId } from "../../types/bookingTypes";
 import type { StylesConfig } from "react-select";
 
 type OptionType = {
   value: string;
   label: string;
+  color?: string;
 };
 
-export const customStyles: StylesConfig<OptionType, false> = {
+export const customStyles: StylesConfig<OptionType | string, false> = {
   control: (provided) => ({
     ...provided,
-    fontSize: "inherit",
+
     fontFamily: '"IBM Plex Sans Thai", sans-serif',
     padding: "0.6rem",
     borderRadius: "0.5rem",
@@ -36,13 +37,12 @@ export const customStyles: StylesConfig<OptionType, false> = {
 
   singleValue: (provided) => ({
     ...provided,
-    fontSize: "inherit",
+
     color: "var(--text)",
   }),
 
   menu: (provided) => ({
     ...provided,
-    fontSize: "inherit",
     borderRadius: "0.5rem",
     overflow: "hidden",
     fontFamily: '"IBM Plex Sans Thai", sans-serif',
@@ -50,7 +50,6 @@ export const customStyles: StylesConfig<OptionType, false> = {
 
   option: (provided, state: any) => ({
     ...provided,
-    fontSize: "1rem",
     fontFamily: '"IBM Plex Sans Thai", sans-serif',
     backgroundColor: state.isFocused ? "#f3f3f3" : "#fff",
     color: "var(--text)",
@@ -103,6 +102,60 @@ const AddBooking = ({
     { value: "Transfer", label: "Transfer" },
   ];
 
+  const roomIdOptions: OptionType[] = [
+    { value: "Balcony", label: "Balcony" },
+    { value: "Window", label: "Window" },
+    { value: "Pottery 1", label: "Pottery 1" },
+    { value: "Pottery 2", label: "Pottery 2" },
+
+    { value: "Siesta 1", label: "Siesta 1" },
+    { value: "Siesta 2", label: "Siesta 2" },
+    { value: "Siesta 3", label: "Siesta 3" },
+    { value: "Siesta 4", label: "Siesta 4" },
+    { value: "Siesta 5", label: "Siesta 5" },
+    { value: "Siesta 6", label: "Siesta 6" },
+    { value: "Siesta 7", label: "Siesta 7" },
+    { value: "Siesta 8", label: "Siesta 8" },
+    { value: "Siesta 9", label: "Siesta 9" },
+    { value: "Siesta 10", label: "Siesta 10" },
+    { value: "Siesta 11", label: "Siesta 11" },
+    { value: "Siesta 12", label: "Siesta 12" },
+    { value: "Siesta 13", label: "Siesta 13" },
+    { value: "Siesta 14", label: "Siesta 14" },
+
+    { value: "Marquisette 1", label: "Marquisette 1" },
+    { value: "Marquisette 2", label: "Marquisette 2" },
+    { value: "Marquisette 3", label: "Marquisette 3" },
+    { value: "Marquisette 4", label: "Marquisette 4" },
+    { value: "Marquisette 5", label: "Marquisette 5" },
+    { value: "Marquisette 6", label: "Marquisette 6" },
+    { value: "Marquisette 7", label: "Marquisette 7" },
+    { value: "Marquisette 8", label: "Marquisette 8" },
+
+    { value: "Homespan 1", label: "Homespan 1" },
+    { value: "Homespan 2", label: "Homespan 2" },
+    { value: "Homespan 3", label: "Homespan 3" },
+    { value: "Homespan 4", label: "Homespan 4" },
+    { value: "Homespan 5", label: "Homespan 5" },
+    { value: "Homespan 6", label: "Homespan 6" },
+    { value: "Homespan 7", label: "Homespan 7" },
+    { value: "Homespan 8", label: "Homespan 8" },
+
+    { value: "Veranda 1", label: "Veranda 1" },
+    { value: "Veranda 2", label: "Veranda 2" },
+    { value: "Veranda 3", label: "Veranda 3" },
+    { value: "Veranda 4", label: "Veranda 4" },
+    { value: "Veranda 5", label: "Veranda 5" },
+    { value: "Veranda 6", label: "Veranda 6" },
+
+    { value: "Wicker 1", label: "Wicker 1" },
+    { value: "Wicker 2", label: "Wicker 2" },
+    { value: "Wicker 3", label: "Wicker 3" },
+    { value: "Wicker 4", label: "Wicker 4" },
+    { value: "Wicker 5", label: "Wicker 5" },
+    { value: "Wicker 6", label: "Wicker 6" },
+  ];
+
   const fillDummyData = () => {
     if (submitting) return;
 
@@ -115,7 +168,54 @@ const AddBooking = ({
       "Sophia Martinez",
     ];
 
-    const rooms = ["Pottery 1", "Loft 2", "Garden 3", "Dorm A1", "Suite 5"];
+    const rooms = [
+      "Balcony",
+      "Window",
+      "Pottery 1",
+      "Pottery 2",
+      "Siesta 1",
+      "Siesta 2",
+      "Siesta 3",
+      "Siesta 4",
+      "Siesta 5",
+      "Siesta 6",
+      "Siesta 7",
+      "Siesta 8",
+      "Siesta 9",
+      "Siesta 10",
+      "Siesta 11",
+      "Siesta 12",
+      "Siesta 13",
+      "Siesta 14",
+      "Marquisette 1",
+      "Marquisette 2",
+      "Marquisette 3",
+      "Marquisette 4",
+      "Marquisette 5",
+      "Marquisette 6",
+      "Marquisette 7",
+      "Marquisette 8",
+      "Homespan 1",
+      "Homespan 2",
+      "Homespan 3",
+      "Homespan 4",
+      "Homespan 5",
+      "Homespan 6",
+      "Homespan 7",
+      "Homespan 8",
+      "Veranda 1",
+      "Veranda 2",
+      "Veranda 3",
+      "Veranda 4",
+      "Veranda 5",
+      "Veranda 6",
+      "Wicker 1",
+      "Wicker 2",
+      "Wicker 3",
+      "Wicker 4",
+      "Wicker 5",
+      "Wicker 6",
+    ];
 
     const platforms = platformOptions.map((p) => p.value);
     const payments = paymentMethodOptions.map((p) => p.value);
@@ -297,12 +397,24 @@ const AddBooking = ({
         </div>
         <div>
           <p className="addBooking__label">ห้อง</p>
-          <input
+          {/* <input
             className="boxInput"
             type="text"
             value={formData.roomId}
             placeholder="เช่น Pottery 1"
             onChange={(e) => formDataChangeHandler("roomId", e.target.value)}
+          /> */}
+          <Select
+            classNamePrefix="rs"
+            styles={customStyles}
+            placeholder="เช่น Veranda 1"
+            options={roomIdOptions}
+            value={roomIdOptions.find(
+              (option) => option.value === formData.roomId,
+            )}
+            onChange={(option: any) =>
+              formDataChangeHandler("roomId", option?.value || "")
+            }
           />
         </div>
         <div>
@@ -318,7 +430,7 @@ const AddBooking = ({
               ) || null
             }
             formatOptionLabel={formatOptionLabel}
-            onChange={(option) =>
+            onChange={(option: any) =>
               formDataChangeHandler("platformId", option?.value || "BOOK")
             }
           />
@@ -347,7 +459,7 @@ const AddBooking = ({
                 (option) => option.value === formData.paymentMethod,
               ) || null
             }
-            onChange={(option) =>
+            onChange={(option: any) =>
               formDataChangeHandler("paymentMethod", option?.value || "")
             }
           />
