@@ -13,6 +13,7 @@ import { Modal } from "@mui/material";
 import { calculateNights } from "../helpers/bookingHelpers";
 import { useLocation } from "react-router";
 import { formatBookingDates } from "../helpers/bookingHelpers";
+import { API_URL } from "../config/api.ts";
 // import { dummyBooking } from "./test.tsx";
 
 import "./Calendar.css";
@@ -218,7 +219,7 @@ const Calendar = () => {
     setLoading(true);
 
     const booking = await axios.get(
-      "http://localhost:3000/bookings/getBookingById/" + bookingId,
+      `${API_URL}/bookings/getBookingById/` + bookingId,
       {
         withCredentials: true,
       },
@@ -244,7 +245,7 @@ const Calendar = () => {
 
   const getRooms = async () => {
     const fetchedRooms = await axios.get(
-      `http://localhost:3000/bookings/getMonthCalendar?month=${month}&year=${year}`,
+      `${API_URL}/bookings/getMonthCalendar?month=${month}&year=${year}`,
       {
         withCredentials: true,
       },

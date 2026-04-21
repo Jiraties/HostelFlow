@@ -3,6 +3,7 @@ import "./ConfirmationModal.css";
 import type { booking } from "../types/bookingTypes";
 import axios from "axios";
 import toast from "react-hot-toast";
+import { API_URL } from "../config/api";
 
 const ConfirmationModal = ({
   booking,
@@ -19,7 +20,7 @@ const ConfirmationModal = ({
 
     try {
       await axios.delete(
-        "http://localhost:3000/bookings/removeBooking/" + booking?.bookingId,
+        `${API_URL}/bookings/removeBooking/` + booking?.bookingId,
         {
           withCredentials: true,
         },

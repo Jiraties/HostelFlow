@@ -9,6 +9,7 @@ import ActionButton from "../../components/ActionButton";
 import { roomChargeTransaction } from "../../helpers/bookingHelpers";
 import axios from "axios";
 import toast from "react-hot-toast";
+import { API_URL } from "../../config/api";
 
 countries.registerLocale(en);
 
@@ -62,7 +63,7 @@ const CheckIn = ({
 
     try {
       const response = await axios.put(
-        "http://localhost:3000/bookings/checkIn/" + booking?.bookingId,
+        `${API_URL}/bookings/checkIn/` + booking?.bookingId,
         roundingAdjustment
           ? {
               deposit,

@@ -2,6 +2,7 @@ import Logo from "../components/Logo";
 
 import { useAuth } from "../context/AuthContext";
 import { useState } from "react";
+import { API_URL } from "../config/api";
 import axios from "axios";
 
 import "./Login.css";
@@ -29,7 +30,7 @@ const Login = () => {
 
     try {
       const response = await axios.post(
-        "http://localhost:3000/auth/login",
+        `${API_URL}/auth/login`,
         {
           username: username,
           password,

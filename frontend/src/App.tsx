@@ -5,6 +5,7 @@ import { Toaster } from "react-hot-toast";
 import { useEffect, useState } from "react";
 import { Routes, Route } from "react-router";
 import { useAuth } from "./context/AuthContext";
+import { API_URL } from "./config/api";
 
 import "./App.css";
 import Sidebar from "./components/Sidebar";
@@ -19,7 +20,7 @@ function App() {
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        const response = await axios.get("http://localhost:3000/auth/me", {
+        const response = await axios.get(`${API_URL}/auth/me`, {
           withCredentials: true,
         });
 

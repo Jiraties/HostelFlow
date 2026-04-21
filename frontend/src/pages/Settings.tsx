@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { useLocation, useNavigate } from "react-router";
 import { useEffect, useState } from "react";
 import type { activity } from "../types/activitiesTypes";
+import { API_URL } from "../config/api";
 
 const Settings = () => {
   const [activities, setActivities] = useState<activity[]>([]);
@@ -14,7 +15,7 @@ const Settings = () => {
 
   const fetchActivities = async () => {
     const fetchedActivities = await axios.get(
-      "http://localhost:3000/activities/recentActivities",
+      `${API_URL}/activities/recentActivities`,
       { withCredentials: true },
     );
 
@@ -23,7 +24,7 @@ const Settings = () => {
 
   const logoutHandler = async () => {
     await axios.post(
-      "http://localhost:3000/auth/logout",
+      `${API_URL}/auth/logout`,
       {},
       {
         withCredentials: true,

@@ -14,6 +14,7 @@ import { Modal } from "@mui/material";
 import { useAuth } from "../context/AuthContext";
 import { Link, useLocation } from "react-router";
 import { formatBookingsDates } from "../helpers/bookingHelpers";
+import { API_URL } from "../config/api";
 
 import type { booking } from "../types/bookingTypes";
 
@@ -146,8 +147,8 @@ const Home = ({ status }: { status: "arrivals" | "departures" }) => {
   const fetchBookings = async () => {
     const response = await axios.get(
       status === "arrivals"
-        ? "http://localhost:3000/bookings/todayArrivals"
-        : "http://localhost:3000/bookings/todayDepartures",
+        ? `${API_URL}/bookings/todayArrivals`
+        : `${API_URL}/bookings/todayDepartures`,
       {
         withCredentials: true,
       },

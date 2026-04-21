@@ -7,6 +7,7 @@ import toast from "react-hot-toast";
 import axios from "axios";
 import type { booking, roomId } from "../../types/bookingTypes";
 import type { StylesConfig } from "react-select";
+import { API_URL } from "../../config/api";
 
 type OptionType = {
   value: string;
@@ -320,7 +321,7 @@ const AddBooking = ({
 
     try {
       const response = await axios.post(
-        "http://localhost:3000/bookings/newBooking",
+        `${API_URL}/bookings/newBooking`,
         { booking: formData },
         { withCredentials: true },
       );
