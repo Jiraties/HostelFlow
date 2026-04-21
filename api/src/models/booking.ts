@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 export type PlatformId = "BOOK" | "HOST" | "TRAV" | "AGOD" | "WALK";
 export type PaymentMethod = "OTA" | "Cash" | "Card" | "Transfer" | "Unpaid";
-type Status = "booked" | "checkedIn" | "checkedOut";
+export type Status = "booked" | "checkedIn" | "checkedOut";
 
 interface EncryptedField {
   cipherText: string;

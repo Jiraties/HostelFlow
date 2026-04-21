@@ -69,6 +69,7 @@
   box-shadow: var(--main-shadow);
   border-radius: 0.5rem;
   z-index: 2;
+  cursor: pointer;
 
   text-align: start;
   display: flex;
@@ -96,6 +97,7 @@
 
 .calendar__monthSelector i {
   padding: 0.5rem;
+  cursor: pointer;
   box-shadow: var(--main-shadow);
   border-radius: 1rem;
   color: var(--primary-color);
@@ -109,4 +111,10 @@
 .timeline__emptyCell {
   position: relative;
   z-index: 1;
+}
+
+.timeline__booked {
+  /* font-size: 1.25rem; */
+  background-color: #ffffff40;
+  border-radius: 50%;
 }

@@ -187,6 +187,7 @@ const Calendar = () => {
       roomRow.push(
         <div
           className="timeline__item timeline__bookedRoomItem"
+          title={booking.name + " (" + calculateNights(from, to) + " คืน)"}
           style={{
             gridColumn: `${startingDate + 2} / span ${span}`,
             backgroundColor: platformMap[booking.platformId].color,

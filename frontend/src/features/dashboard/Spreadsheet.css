@@ -29,3 +29,7 @@
   padding: 0.6rem;
   border-radius: 2rem;
 }
+
+.ag-row {
+  cursor: pointer;
+}

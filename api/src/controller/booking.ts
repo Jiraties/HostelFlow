@@ -4,7 +4,7 @@ import crypto from "crypto";
 
 import { NextFunction, Request, Response } from "express";
 import { logActivity } from "../services/activityServices";
-import type { PlatformId } from "../models/booking";
+import type { PlatformId, Status } from "../models/booking";
 
 dotenv.config();
 
@@ -323,6 +323,7 @@ type CalendarBooking = {
   to: Date;
   bookingId: string;
   platformId: PlatformId;
+  status: Status;
 };
 
 type Room = {
@@ -401,6 +402,7 @@ export const getMonthCalendar = async (req: Request, res: Response) => {
           bookingId: booking.bookingId,
           from: roomStay.from,
           to: roomStay.to,
+          status: booking.status,
         });
       });
     });
