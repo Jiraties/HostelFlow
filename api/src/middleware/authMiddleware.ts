@@ -8,6 +8,10 @@ export interface MyJwtPayload {
 }
 
 const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
+  if (req.method === "OPTIONS") {
+    return next();
+  }
+
   try {
     const token = req.cookies.token;
 
