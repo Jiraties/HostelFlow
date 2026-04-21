@@ -326,7 +326,7 @@ const AddBooking = ({
       );
 
       toast.success(`การจองของ ${formData.name} ถูกเพิ่มเรียบร้อยแล้ว`, {
-        duration: 5000,
+        duration: 10000,
       });
 
       appendToBookings(response.data.booking);
@@ -343,7 +343,15 @@ const AddBooking = ({
         note: "",
       });
     } catch (err: any) {
-      toast.error(err.message || "เกิดข้อผิดพลาดในการเพิ่มการจอง");
+      if (err.response?.status === 409) {
+        toast.error(err.response.data.message, {
+          duration: 5000,
+        });
+      } else {
+        toast.error(
+          err.response?.data?.message || "เกิดข้อผิดพลาดในการเพิ่มการจอง",
+        );
+      }
     }
 
     setSubmitting(false);

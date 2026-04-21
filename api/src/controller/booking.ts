@@ -14,11 +14,17 @@ export const newBooking = async (
   next: NextFunction,
 ) => {
   try {
+    if (!req.body.booking)
+      return res.status(400).json({ message: "ไม่พบข้อมูล booking" });
+
     const { booking } = req.body;
+    const newCheckIn = new Date(booking.checkIn + "T00:00:00");
+    const newCheckOut = new Date(booking.checkOut + "T00:00:00");
 
-    console.log(booking);
-
-    if (!booking) throw new Error("Please provide booking details");
+    if (newCheckIn >= newCheckOut)
+      return res.status(400).json({
+        message: "วันที่เช็คอินต้องไม่อยู่หลังวันที่เช็คเอาท์",
+      });
 
     const calculateNights = (checkIn: string, checkOut: string) => {
       const checkInDate = new Date(checkIn + "T00:00:00");
@@ -28,17 +34,48 @@ export const newBooking = async (
       return diff / 86400000;
     };
 
+    // find bookings that have same room && checkout greater than new checkin && checkin less than new checkout
+    const overlappingBooking = await Booking.findOne({
+      roomStays: {
+        $elemMatch: {
+          roomId: booking.roomId,
+          from: { $lt: newCheckOut },
+          to: { $gt: newCheckIn },
+        },
+      },
+    });
+
+    if (overlappingBooking) {
+      const from = new Date(overlappingBooking.roomStays[0].from);
+      const to = new Date(overlappingBooking.roomStays[0].to);
+
+      const formatDay = (date: Date) =>
+        new Intl.DateTimeFormat("th-TH", { day: "numeric" }).format(date);
+
+      const formatMonth = (date: Date) =>
+        new Intl.DateTimeFormat("th-TH", { month: "short" }).format(date);
+
+      const sameMonth = from.getMonth() === to.getMonth();
+
+      const dateText = sameMonth
+        ? `${formatDay(from)}-${formatDay(to)} ${formatMonth(to)}`
+        : `${formatDay(from)} ${formatMonth(from)} - ${formatDay(to)} ${formatMonth(to)}`;
+      return res.status(409).json({
+        message: `ห้องนี้ถูกจองแล้วระหว่างวันที่ ${dateText} กรุณาเลือกช่วงเวลาอื่น`,
+      });
+    }
+
     const savedBooking = new Booking({
       name: booking.name,
-      checkIn: booking.checkIn,
-      checkOut: booking.checkOut,
+      checkIn: newCheckIn,
+      checkOut: newCheckOut,
       nights: calculateNights(booking.checkIn, booking.checkOut),
       platformId: booking.platformId,
       roomStays: [
         {
           roomId: booking.roomId,
-          from: booking.checkIn,
-          to: booking.checkOut,
+          from: newCheckIn,
+          to: newCheckOut,
         },
       ],
       note: booking.note || "",
@@ -72,8 +109,8 @@ export const newBooking = async (
     logActivity(req.user?.username, "NEW_BOOKING", {
       snapshot: {
         name: booking.name,
-        checkIn: booking.checkIn,
-        checkOut: booking.checkOut,
+        checkIn: newCheckIn,
+        checkOut: newCheckOut,
         platformId: booking.platformId,
         roomId: booking.roomId,
         price: booking.price,
@@ -96,10 +133,14 @@ export const getTodayArrivalBookings = async (req: Request, res: Response) => {
   const today = new Date().toISOString().split("T")[0];
   const todayDateString = new Date(today + "T00:00:00");
 
+  const tomorrow = new Date(todayDateString);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
   try {
-    const bookings = await Booking.find({ checkIn: { $gte: todayDateString } });
+    const bookings = await Booking.find({
+      checkIn: { $gte: todayDateString, $lt: tomorrow },
+    });
     res.status(200).json({ bookings });
-    console.log(bookings);
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch bookings" });
   }
@@ -121,7 +162,6 @@ export const getTodayDepartureBookings = async (
       checkOut: { $gte: startOfToday, $lt: startOfTomorrow },
     });
     res.status(200).json({ bookings });
-    console.log(bookings);
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch bookings" });
   }
@@ -130,15 +170,16 @@ export const getTodayDepartureBookings = async (
 export const removeBooking = async (req: Request, res: Response) => {
   const { bookingId } = req.params;
 
-  console.log("deleteing, " + bookingId);
-
   try {
     const deletedBooking = await Booking.findOneAndDelete({ bookingId });
 
-    if (!deletedBooking) throw new Error("Deletion Unsuccessfull");
+    if (!deletedBooking)
+      return res.status(400).json({
+        message: "Deletion Unsuccessfull",
+      });
 
     res.status(200).json({
-      user: deletedBooking,
+      removedBooking: deletedBooking,
       message: `Successfully deleted bookingId: ${bookingId}`,
     });
 
@@ -148,9 +189,9 @@ export const removeBooking = async (req: Request, res: Response) => {
         checkIn: deletedBooking.checkIn,
         checkOut: deletedBooking.checkOut,
         platformId: deletedBooking.platformId,
-        roomId: deletedBooking.roomStays[0].roomId,
-        price: deletedBooking.transactions[0].amount,
-        paymentMethod: deletedBooking.transactions[0].paymentMethod,
+        roomId: deletedBooking.roomStays?.[0]?.roomId,
+        price: deletedBooking.transactions?.[0]?.amount,
+        paymentMethod: deletedBooking.transactions?.[0]?.paymentMethod,
         bookingId: deletedBooking.bookingId,
       },
     });
@@ -177,17 +218,20 @@ export const checkIn = async (req: Request, res: Response) => {
     const { bookingId } = req.params;
     const checkInData: checkInData = req.body;
 
-    console.log(bookingId, checkInData);
-
-    if (!bookingId) throw new Error("");
+    if (!bookingId)
+      return res.status(400).json({
+        message: "กรุณาแนบข้อมูล bookingId เพื่อดำเนินการ check-in",
+      });
 
     if (
       !checkInData.passportData.nationality ||
       !checkInData.passportData.passportNo ||
       !checkInData.passportData.passportName ||
-      !checkInData.deposit
+      checkInData.deposit == null
     ) {
-      throw new Error("กรุณากรอกข้อมูลให้ครบทุกช่อง");
+      return res.status(400).json({
+        message: "กรุณากรอกข้อมูลให้ครบทุกช่อง",
+      });
     }
 
     const hashPassport = (passportNo: string) => {
@@ -204,8 +248,6 @@ export const checkIn = async (req: Request, res: Response) => {
 
       let cipherText = cipher.update(text, "utf8", "hex");
       cipherText += cipher.final("hex");
-
-      console.log("Storing passportData", cipherText);
 
       const authTag = cipher.getAuthTag();
 
@@ -255,6 +297,12 @@ export const checkIn = async (req: Request, res: Response) => {
       { new: true },
     );
 
+    if (!updatedBooking) {
+      return res.status(404).json({
+        message: "ไม่พบ booking นี้",
+      });
+    }
+
     const sanitizedBooking = updatedBooking?.toObject();
 
     if (sanitizedBooking?.passport) {
@@ -263,10 +311,9 @@ export const checkIn = async (req: Request, res: Response) => {
       delete sanitizedBooking.passport.passportName;
     }
 
-    console.log(sanitizedBooking);
     res.status(200).json(sanitizedBooking);
   } catch (err) {
-    res.status(400).json({ error: err });
+    res.status(400).json({ error: (err as Error).message });
   }
 };
 
@@ -319,27 +366,27 @@ export const getMonthCalendar = async (req: Request, res: Response) => {
 
       ...Array.from({ length: 14 }, (_, i) => ({
         roomId: `Siesta ${i + 1}`,
-        bookings: i % 3 === 0 ? [] : [],
+        bookings: [],
       })),
 
       ...Array.from({ length: 8 }, (_, i) => ({
         roomId: `Marquisette ${i + 1}`,
-        bookings: i % 2 === 0 ? [] : [],
+        bookings: [],
       })),
 
       ...Array.from({ length: 8 }, (_, i) => ({
         roomId: `Homespan ${i + 1}`,
-        bookings: i % 2 !== 0 ? [] : [],
+        bookings: [],
       })),
 
       ...Array.from({ length: 6 }, (_, i) => ({
         roomId: `Veranda ${i + 1}`,
-        bookings: i < 3 ? [] : [],
+        bookings: [],
       })),
 
       ...Array.from({ length: 6 }, (_, i) => ({
         roomId: `Wicker ${i + 1}`,
-        bookings: i % 2 === 0 ? [] : [],
+        bookings: [],
       })),
     ];
 
@@ -360,7 +407,7 @@ export const getMonthCalendar = async (req: Request, res: Response) => {
 
     res.status(200).json(rooms);
   } catch (err) {
-    res.status(400).json({ error: err });
+    res.status(400).json({ error: (err as Error).message });
   }
 };
 
@@ -372,6 +419,6 @@ export const getBookingById = async (req: Request, res: Response) => {
 
     res.status(200).json(booking);
   } catch (err) {
-    res.status(400).json({ error: err });
+    res.status(400).json({ error: (err as Error).message });
   }
 };
