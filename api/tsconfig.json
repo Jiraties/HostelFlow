@@ -7,11 +7,12 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "types": ["node"],
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src"],
+  "include": [
+    "src"
+  ],
   "ts-node": {
-  "files": true
+    "files": true
   }
 }
