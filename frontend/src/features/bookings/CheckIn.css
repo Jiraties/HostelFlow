@@ -102,45 +102,40 @@
   gap: 10px;
   cursor: pointer;
   position: relative;
+  white-space: nowrap;
 }
 
-/* Hide native checkbox but keep it functional */
 .checkbox input {
   position: absolute;
   opacity: 0;
   cursor: pointer;
 }
 
-/* Your custom box */
 .box {
   width: 20px;
   height: 20px;
   border: 2px solid #d1d5db;
-  border-radius: 6px; /* 🔥 YOU control shape now */
+  border-radius: 6px;
   display: inline-block;
   position: relative;
   transition: all 0.2s ease;
 }
 
-/* Checked state */
 .checkbox input:checked + .box {
   background-color: var(--primary-color);
   border-color: var(--primary-color);
 }
 
-/* Checkmark */
 .box::after {
   content: "";
   position: absolute;
   display: none;
 }
 
-/* Show checkmark when checked */
 .checkbox input:checked + .box::after {
   display: block;
 }
 
-/* Checkmark design */
 .box::after {
   left: 6px;
   top: 2px;
@@ -158,4 +153,74 @@
 .checkIn__extraAmountReceived {
   color: var(--primary-color);
   font-weight: 600;
+}
+
+.checkIn__confirmAction {
+  margin-left: auto;
+}
+
+.checkIn__extraAmountReceived {
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+.checkIn__paymentRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.checkIn__paymentTag {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 1rem;
+  margin-left: 0.5rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.checkIn__paymentTag.cash {
+  background-color: #e6f4ea;
+  color: #1e8e3e;
+}
+
+.checkIn__paymentTag.transfer {
+  background-color: #e8f0fe;
+  color: #1a73e8;
+}
+
+.checkIn__paymentTag.card {
+  background-color: #fce8e6;
+  color: #d93025;
+}
+
+.checkIn__paymentTag.ota {
+  background-color: #fef7e0;
+  color: #f9ab00;
+}
+
+.checkIn__paymentConfirmationTotal {
+  padding-top: 1rem;
+  border-top: 1px solid #d2d2d2;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.checkIn__totalsBreakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.checkIn__totalRow {
+  display: flex;
+  flex-direction: column;
+  padding-right: 1rem;
+}
+
+.other-total {
+  color: #555; /* Mutes the non-cash total slightly to keep focus on drawer cash */
 }

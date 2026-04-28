@@ -276,7 +276,7 @@ const AddBooking = ({
   );
 
   const formDataChangeHandler = (field: string, value: string) => {
-    if (submitting) return;
+    if (submitting) throw new Error("Already Submitting");
 
     setFormData((prev) => {
       const updated = { ...prev, [field]: value };
@@ -298,37 +298,33 @@ const AddBooking = ({
     if (submitting) return;
     setSubmitting(true);
 
-    if (
-      !formData.name ||
-      !formData.checkIn ||
-      !formData.checkOut ||
-      !formData.platformId ||
-      !formData.roomId ||
-      !formData.price ||
-      !formData.paymentMethod ||
-      !formData.bookingId
-    ) {
-      toast.error("กรุณากรอกข้อมูลให้ครบทุกช่อง");
-      setSubmitting(false);
-      return;
-    }
-
-    if (new Date(formData.checkIn) >= new Date(formData.checkOut)) {
-      toast.error("วันที่เช็คอินต้องไม่อยู่หลังวันที่เช็คเอาท์");
-      setSubmitting(false);
-      return;
-    }
-
     try {
+      if (
+        !formData.name ||
+        !formData.checkIn ||
+        !formData.checkOut ||
+        !formData.platformId ||
+        !formData.roomId ||
+        !formData.price ||
+        !formData.paymentMethod ||
+        !formData.bookingId
+      ) {
+        throw new Error("กรุณากรอกข้อมูลให้ครบทุกช่อง");
+        setSubmitting(false);
+        return;
+      }
+
+      if (new Date(formData.checkIn) >= new Date(formData.checkOut)) {
+        throw new Error("วันที่เช็คอินต้องไม่อยู่หลังวันที่เช็คเอาท์");
+        setSubmitting(false);
+        return;
+      }
+
       const response = await axios.post(
         `${API_URL}/bookings/newBooking`,
         { booking: formData },
         { withCredentials: true },
       );
-
-      toast.success(`การจองของ ${formData.name} ถูกเพิ่มเรียบร้อยแล้ว`, {
-        duration: 10000,
-      });
 
       appendToBookings(response.data.booking);
       setFormData({
@@ -343,19 +339,9 @@ const AddBooking = ({
         staffUsername: user?.username || "",
         note: "",
       });
-    } catch (err: any) {
-      if (err.response?.status === 409) {
-        toast.error(err.response.data.message, {
-          duration: 5000,
-        });
-      } else {
-        toast.error(
-          err.response?.data?.message || "เกิดข้อผิดพลาดในการเพิ่มการจอง",
-        );
-      }
+    } finally {
+      setSubmitting(false);
     }
-
-    setSubmitting(false);
   };
 
   return (
@@ -504,7 +490,19 @@ const AddBooking = ({
         text="เพิ่มการจอง"
         icon="bx-plus"
         highlight
-        onClick={submitHandler}
+        disabled={submitting}
+        onClick={() =>
+          toast.promise(submitHandler(), {
+            loading: `กำลังบันทึกการจองของ ${formData.name}`,
+            success: `การจองของ ${formData.name} ถูกเพิ่มเรียบร้อยแล้ว`,
+            error: (err) => {
+              if (err.response?.status === 409) {
+                return err.response.data.message;
+              }
+              return "เกิดข้อผิดพลาดในการเพิ่มการจอง";
+            },
+          })
+        }
         className="addBooking__submit"
       />
     </form>

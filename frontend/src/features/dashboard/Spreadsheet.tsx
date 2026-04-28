@@ -1,5 +1,5 @@
 import { AgGridProvider, AgGridReact } from "ag-grid-react";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { AllCommunityModule } from "ag-grid-community";
 import { themeQuartz } from "ag-grid-community";
 import type { booking } from "../../types/bookingTypes";
@@ -41,9 +41,11 @@ const platformCell = (params: any) => {
 const Spreadsheet = ({
   bookings,
   setViewBookingBooking,
+  loading,
 }: {
   bookings: booking[];
   setViewBookingBooking: (booking: booking) => void;
+  loading: boolean;
 }) => {
   const modules = [AllCommunityModule];
   const location = useLocation();
@@ -138,6 +140,12 @@ const Spreadsheet = ({
     setViewBookingBooking(event.data);
   };
 
+  const onGridReady = (params) => {
+    const api = params.api;
+
+    if (loading) api.showLoadingOverlay();
+  };
+
   return (
     <AgGridProvider modules={modules}>
       <div
@@ -151,6 +159,7 @@ const Spreadsheet = ({
           rowData={bookings}
           columnDefs={colDefs}
           theme={myTheme}
+          onGridReady={onGridReady}
           autoSizeStrategy={{ type: "fitCellContents" }}
           onRowDoubleClicked={onRowDoubleClicked}
         />

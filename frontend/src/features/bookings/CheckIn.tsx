@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { booking } from "../../types/bookingTypes";
 import "./CheckIn.css";
 import Select from "react-select";
@@ -25,6 +25,12 @@ const nationalityOptions = Object.entries(countries.getNames("en")).map(
   }),
 );
 
+const paymentMethodOptions = [
+  { value: "Cash", label: "Cash" },
+  { value: "Card", label: "Card" },
+  { value: "Transfer", label: "Transfer" },
+];
+
 const CheckIn = ({
   booking,
   handleCheckInSuccess,
@@ -32,15 +38,24 @@ const CheckIn = ({
   booking: booking;
   handleCheckInSuccess: (booking: booking) => void;
 }) => {
-  const [deposit, setDeposit] = useState<number>(200);
+  const roomCharge = roomChargeTransaction(booking);
+
+  const [deposit, setDeposit] = useState<number | "">(200);
+  const [unpaidPaymentPaymentMethod, setUnpaidPaymentPaymentMethod] =
+    useState<string>("Cash");
   const [confirmedPayment, setConfirmedPayment] = useState<boolean>(false);
   const [nationality, setNationality] = useState<string>("");
   const [passportName, setPassportName] = useState<string>("");
   const [passportNo, setPassportNo] = useState<string>("");
   const [roundingAdjustment, setRoundingAdjustment] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [receivedCash, setReceivedCash] = useState<string>(
-    String(roomChargeTransaction(booking).amount),
+    String(roomCharge.amount),
   );
+
+  useEffect(() => {
+    setReceivedCash(String(roomCharge.amount));
+  }, [roomCharge.amount]);
 
   const formatCurrency = (num: number) =>
     new Intl.NumberFormat("en-US", {
@@ -50,54 +65,71 @@ const CheckIn = ({
       currency: "THB",
     }).format(num);
 
+  // --- CLEAN MATH FOR THE UI TOTALS ---
+  let cashTotal = Number(deposit) || 0;
+  if (roomCharge.paymentMethod === "Unpaid") {
+    if (unpaidPaymentPaymentMethod === "Cash") {
+      cashTotal += roundingAdjustment
+        ? Number(receivedCash)
+        : roomCharge.amount;
+    } else if (roundingAdjustment) {
+      // If paying by card/transfer, but they handed over extra cash for convenience
+      cashTotal += Number(receivedCash) - roomCharge.amount;
+    }
+  }
+
   const checkInHandler = async () => {
-    if (!nationality || !passportName || !passportNo || !deposit) {
-      toast.error("กรุณากรอกข้อมูลให้ครบทุกช่อง");
-      return;
+    if (
+      !nationality ||
+      !passportName ||
+      !passportNo ||
+      deposit === "" ||
+      Number.isNaN(deposit)
+    ) {
+      throw new Error("กรุณากรอกข้อมูลให้ครบทุกช่อง");
     }
 
     if (!confirmedPayment) {
-      toast.error("กรุณายืนยันการรับเงินสดจากลูกค้า");
-      return;
+      throw new Error("กรุณายืนยันการรับเงินสดจากลูกค้า");
     }
 
     try {
+      setSubmitting(true);
+
+      // Dynamically build payload to preserve the selected payment method!
+      const payload: any = {
+        deposit: Number(deposit),
+        passportData: {
+          passportNo,
+          passportName,
+          nationality,
+        },
+      };
+
+      if (roomCharge.paymentMethod === "Unpaid") {
+        payload.unpaidPayment = {
+          paymentMethod: unpaidPaymentPaymentMethod,
+          roundingAdjustment: roundingAdjustment
+            ? Number(receivedCash) - roomCharge.amount
+            : 0,
+        };
+      }
+
       const response = await axios.put(
-        `${API_URL}/bookings/checkIn/` + booking?.bookingId,
-        roundingAdjustment
-          ? {
-              deposit,
-              unpaidPayment: {
-                paymentMethod: "Cash",
-                roundingAdjustment:
-                  Number(receivedCash) - roomChargeTransaction(booking).amount,
-              },
-              passportData: {
-                passportNo: nationality,
-                passportName: "asdasd",
-                nationality: "asdasd",
-              },
-            }
-          : {
-              deposit,
-              passportData: {
-                passportNo: nationality,
-                passportName: "asdasd",
-                nationality: "asdasd",
-              },
-            },
+        `${API_URL}/bookings/checkIn/${booking?.bookingId}`,
+        payload,
         { withCredentials: true },
       );
 
       if (response.status === 200) {
-        toast.success(`Check-In สำหรับ ${response.data.name} สำเร็จ`, {
-          duration: 5000,
-        });
         handleCheckInSuccess(response.data);
-        console.log(response);
       }
-    } catch (err: any) {
-      toast.error(err);
+
+      return response;
+    } catch (error) {
+      throw error;
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -106,14 +138,14 @@ const CheckIn = ({
       <div>
         <div className="checkIn__header">
           <h1 className="checkIn__title">เช็คอิน {booking.name}</h1>
-          {roomChargeTransaction(booking).paymentMethod === "Unpaid" && (
+          {roomCharge.paymentMethod === "Unpaid" && (
             <div className="checkIn__reminder">
               <i className="bx bx-message-bubble-exclamation" />
               <p>
                 ลูกค้าดังกล่าว
                 <strong>
                   ยังไม่ชำระเงินค่าห้อง
-                  {" " + formatCurrency(roomChargeTransaction(booking).amount)}
+                  {" " + formatCurrency(roomCharge.amount)}
                 </strong>
               </p>
             </div>
@@ -142,10 +174,9 @@ const CheckIn = ({
             <input
               type="text"
               value={passportName}
-              onChange={(e) => setPassportName(e.target.value)}
+              onChange={(e) => setPassportName(e.target.value.toUpperCase())}
               className="boxInput"
-              style={{ textTransform: "uppercase" }}
-              placeholder="เช่น Robert Brown"
+              placeholder="เช่น ROBERT BROWN"
             />
           </div>
           <div>
@@ -169,15 +200,35 @@ const CheckIn = ({
               max={1000}
               min={0}
               value={deposit}
-              // value={formData.roomId}
               placeholder="200"
               onChange={(e) => {
-                setDeposit(Number(e.target.value));
+                setDeposit(e.target.value === "" ? "" : Number(e.target.value));
                 setConfirmedPayment(false);
               }}
             />
           </div>
-          {roundingAdjustment && (
+
+          {roomCharge.paymentMethod === "Unpaid" && (
+            <div>
+              <p className="checkIn__label">ช่องทางการจ่ายค่าห้อง</p>
+              <Select
+                options={paymentMethodOptions}
+                value={paymentMethodOptions.find(
+                  (option) => option.value === unpaidPaymentPaymentMethod,
+                )}
+                onChange={(option) => {
+                  if (option !== "Cash")
+                    setReceivedCash(String(roomCharge.amount));
+
+                  setUnpaidPaymentPaymentMethod(option?.value || "");
+                }}
+                styles={customStyles}
+              />
+            </div>
+          )}
+
+          {/* Restored: Allows extra cash input regardless of payment method selected */}
+          {roundingAdjustment && unpaidPaymentPaymentMethod === "Cash" && (
             <div>
               <p className="checkIn__label">รับเงินสดค่าห้องมา (บาท)</p>
               <input
@@ -191,40 +242,66 @@ const CheckIn = ({
               />
             </div>
           )}
+
           <div>
-            <p style={{ marginBottom: ".5rem" }}>ยืนยันการรับเงินสด</p>
+            <p style={{ marginBottom: ".5rem" }}>สรุปยอดการชำระเงิน</p>
             <div className="checkIn__paymentConfirmation">
-              {/* <h3>ยืนยันการรับเงินสด</h3> */}
               <div className="checkIn__paymentConfirmationList">
-                <p>ค่ามัดจำ: {formatCurrency(deposit)}</p>
-                {roomChargeTransaction(booking).paymentMethod === "Unpaid" && (
+                {/* Deposit Row */}
+                <div className="checkIn__paymentRow">
                   <p>
-                    ค่าห้อง:{" "}
-                    {formatCurrency(roomChargeTransaction(booking).amount)}
-                    <span className="checkIn__extraAmountReceived">
-                      {roundingAdjustment &&
-                        ` + เกิน ${formatCurrency(Number(receivedCash) - roomChargeTransaction(booking).amount)}`}
-                    </span>
+                    ค่ามัดจำ{" "}
+                    <span className="checkIn__paymentTag cash">Cash</span>
                   </p>
+                  <p>{formatCurrency(Number(deposit))}</p>
+                </div>
+
+                {/* Room Charge Row */}
+                {roomCharge.paymentMethod === "Unpaid" && (
+                  <div className="checkIn__paymentRow">
+                    <p>
+                      ค่าห้อง{" "}
+                      <span
+                        className={`checkIn__paymentTag ${unpaidPaymentPaymentMethod.toLowerCase()}`}
+                      >
+                        {unpaidPaymentPaymentMethod}
+                      </span>
+                    </p>
+                    <p>
+                      {formatCurrency(roomCharge.amount)}
+                      {roundingAdjustment && (
+                        <span className="checkIn__extraAmountReceived">
+                          {` + เกิน ${formatCurrency(Number(receivedCash) - roomCharge.amount)}`}
+                        </span>
+                      )}
+                    </p>
+                  </div>
                 )}
               </div>
               <div className="checkIn__paymentConfirmationTotal">
-                <div>
-                  <p>รับเงินสดทั้งหมด:</p>
-                  <p className="checkIn__paymentConfirmationTotalText">
-                    {roomChargeTransaction(booking).paymentMethod === "Unpaid"
-                      ? formatCurrency(
-                          deposit +
-                            (roundingAdjustment
-                              ? Number(receivedCash)
-                              : roomChargeTransaction(booking).amount),
-                        )
-                      : formatCurrency(deposit)}
-                  </p>
+                <div className="checkIn__totalsBreakdown">
+                  {/* Total Cash to Receive - Uses the cleaned up math from above */}
+                  <div className="checkIn__totalRow cash-total">
+                    <p>ยอดเงินสดที่ต้องรับ:</p>
+                    <p className="checkIn__paymentConfirmationTotalText">
+                      {formatCurrency(cashTotal)}
+                    </p>
+                  </div>
+
+                  {/* Total Other Methods */}
+                  {roomCharge.paymentMethod === "Unpaid" &&
+                    unpaidPaymentPaymentMethod !== "Cash" && (
+                      <div className="checkIn__totalRow other-total">
+                        <p>ยอด {unpaidPaymentPaymentMethod}:</p>
+                        <p className="checkIn__paymentConfirmationTotalText">
+                          {formatCurrency(roomCharge.amount)}
+                        </p>
+                      </div>
+                    )}
                 </div>
 
                 <label className="checkbox">
-                  ยืนยันการรับเงินสด
+                  ยืนยันการทำรายการ
                   <input
                     type="checkbox"
                     checked={confirmedPayment}
@@ -232,25 +309,35 @@ const CheckIn = ({
                   />
                   <span className="box"></span>
                 </label>
-              </div>
+              </div>{" "}
             </div>
           </div>
         </div>
       </div>
+
       <div className="checkIn__actions">
-        {roomChargeTransaction(booking).paymentMethod === "Unpaid" && (
-          <ActionButton
-            text="รับเงินสดไม่ตรงค่าห้อง"
-            onClick={() => {
-              setRoundingAdjustment(!roundingAdjustment);
-            }}
-            icon={roundingAdjustment ? "bx-check" : "bx-currency-notes"}
-            highlight={roundingAdjustment}
-          />
-        )}
+        {/* Restored: Allows the button to be clicked for ANY payment method */}
+        {roomCharge.paymentMethod === "Unpaid" &&
+          unpaidPaymentPaymentMethod === "Cash" && (
+            <ActionButton
+              text="รับเงินสดไม่ตรงค่าห้อง"
+              onClick={() => {
+                setRoundingAdjustment(!roundingAdjustment);
+              }}
+              icon={roundingAdjustment ? "bx-check" : "bx-currency-notes"}
+              highlight={roundingAdjustment}
+            />
+          )}
         <ActionButton
           text="Check In"
-          onClick={checkInHandler}
+          disabled={submitting}
+          onClick={() =>
+            toast.promise(checkInHandler(), {
+              loading: `กำลังเช็คอิน ${booking.name}`,
+              success: `เช็คอิน ${booking.name} สำเร็จ`,
+              error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง",
+            })
+          }
           className="checkIn__confirmAction"
           icon="bx-check-circle"
           highlight={true}

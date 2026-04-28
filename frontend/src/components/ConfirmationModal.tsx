@@ -14,7 +14,7 @@ const ConfirmationModal = ({
 }) => {
   const handleRemoveBooking = async () => {
     if (!booking) {
-      toast.error("No booking selected");
+      throw new Error("No booking selected");
       return;
     }
 
@@ -25,10 +25,10 @@ const ConfirmationModal = ({
           withCredentials: true,
         },
       );
-      toast.success("ลบการจองของ " + booking.name + " สำเร็จ");
+      // toast.success("ลบการจองของ " + booking.name + " สำเร็จ");
       closeAllModals();
     } catch (err: any) {
-      toast.error(err.response.data.error);
+      throw new Error(err.response.data.error);
     }
   };
 
@@ -47,7 +47,18 @@ const ConfirmationModal = ({
           icon="bx-trash"
           highlight
           className="confirmationModal__button"
-          onClick={handleRemoveBooking}
+          onClick={() =>
+            toast.promise(handleRemoveBooking(), {
+              loading: `กำลังลบการจองของ ${booking.name}`,
+              success: "ลบการจองของ " + booking.name + " สำเร็จ",
+              error: (err) => {
+                if (err.response?.status === 409) {
+                  return err.response.data.message;
+                }
+                return "เกิดข้อผิดพลาดในการเพิ่มการจอง";
+              },
+            })
+          }
         />
       </div>
     </div>

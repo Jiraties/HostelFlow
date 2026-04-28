@@ -29,6 +29,7 @@ const Home = ({ status }: { status: "arrivals" | "departures" }) => {
     null,
   );
   const [bookings, setBookings] = useState<booking[]>([]);
+  const [loading, setLoading] = useState(true);
   const [checkInIsOpen, setCheckInIsOpen] = useState(false);
   const [confirmationModalIsOpen, setConfirmationModalIsOpen] = useState<{
     isOpen: boolean;
@@ -145,6 +146,7 @@ const Home = ({ status }: { status: "arrivals" | "departures" }) => {
   };
 
   const fetchBookings = async () => {
+    setLoading(true);
     const response = await axios.get(
       status === "arrivals"
         ? `${API_URL}/bookings/todayArrivals`
@@ -157,6 +159,7 @@ const Home = ({ status }: { status: "arrivals" | "departures" }) => {
     const bookingsData = response.data.bookings;
     setLastUpdated(new Date());
     setBookings(formatBookingsDates(bookingsData));
+    setLoading(false);
   };
 
   const removeBookingHandler = (booking: booking) => {
@@ -168,10 +171,6 @@ const Home = ({ status }: { status: "arrivals" | "departures" }) => {
     setViewBookingBooking(formatBookingsDates([booking])[0]);
     setCheckInIsOpen(false);
   };
-
-  useEffect(() => {
-    fetchBookings();
-  }, []);
 
   useEffect(() => {
     fetchBookings();
@@ -214,10 +213,10 @@ const Home = ({ status }: { status: "arrivals" | "departures" }) => {
           open={checkInIsOpen}
           className="home__modalCenter"
           onClose={() => setCheckInIsOpen(false)}
-          fetchBookings={fetchBookings}
         >
           <CheckIn
             booking={viewBookingBooking}
+            // fetchBookings={fetchBookings}
             handleCheckInSuccess={handleCheckInSuccess}
           />
         </Modal>
@@ -236,7 +235,7 @@ const Home = ({ status }: { status: "arrivals" | "departures" }) => {
             <i
               className="bx bx-refresh home__refreshIcon"
               onClick={() => {
-                toast.promise(fetchBookings, {
+                toast.promise(fetchBookings(), {
                   loading: "กำลังอัปเดตข้อมูล...",
                   success: "อัปเดตข้อมูลสำเร็จ",
                   error: "เกิดข้อผิดพลาดในการอัปเดตข้อมูล",
@@ -248,7 +247,7 @@ const Home = ({ status }: { status: "arrivals" | "departures" }) => {
 
         <div className="home__headerProfile">
           <p>
-            {user?.name} <strong>{"  " + user?.admin && "Admin"}</strong>
+            {user?.name} <strong>{"  " + (user?.admin ? " Admin" : "")}</strong>
           </p>
           <Link to={"/settings"}>
             <img
@@ -264,6 +263,7 @@ const Home = ({ status }: { status: "arrivals" | "departures" }) => {
           {statCards.map((stat) => (
             <StatCard
               key={stat.label}
+              loading={loading}
               label={stat.label}
               value={stat.value ? stat.value : 0}
             />
@@ -284,6 +284,7 @@ const Home = ({ status }: { status: "arrivals" | "departures" }) => {
       </div>
       <Spreadsheet
         bookings={bookings}
+        loading={loading}
         setViewBookingBooking={setViewBookingBooking}
       />
       {/* <button onClick={logoutHandler}>logout</button> */}

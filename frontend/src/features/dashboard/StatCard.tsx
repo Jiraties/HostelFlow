@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef } from "react";
+import Skeleton from "react-loading-skeleton";
+import "react-loading-skeleton/dist/skeleton.css";
 
 interface StatCardProps {
   label: string;
   value: number;
+  loading: boolean;
 }
 
 function AnimatedDigit({
@@ -87,7 +90,7 @@ function AnimatedDigit({
   );
 }
 
-export default function StatCard({ label, value }: StatCardProps) {
+export default function StatCard({ label, value, loading }: StatCardProps) {
   const prevValue = useRef<number>(value);
   const [direction, setDirection] = useState<"up" | "down" | null>(null);
   const [flash, setFlash] = useState<"green" | "red" | null>(null);
@@ -163,16 +166,20 @@ export default function StatCard({ label, value }: StatCardProps) {
           transition: "color 0.4s",
         }}
       >
-        {slots.map((slot) =>
-          slot.type === "sep" ? (
-            <span key={`sep-${slot.idx}`}>{slot.char}</span>
-          ) : (
-            <AnimatedDigit
-              key={slot.key}
-              char={slot.char}
-              direction={direction}
-            />
-          ),
+        {loading ? (
+          <Skeleton height="2.5rem" width={40} />
+        ) : (
+          slots.map((slot) =>
+            slot.type === "sep" ? (
+              <span key={`sep-${slot.idx}`}>{slot.char}</span>
+            ) : (
+              <AnimatedDigit
+                key={slot.key}
+                char={slot.char}
+                direction={direction}
+              />
+            ),
+          )
         )}
       </div>
     </div>

@@ -22,3 +22,12 @@
 .home__actionHighlight i {
   color: #fff;
 }
+
+.home__actionDisabled {
+  background-color: #dcdcdc;
+  color: #696969;
+}
+
+.home__actionDisabled i {
+  color: #696969;
+}
