@@ -31,7 +31,7 @@
 
 .home__stats {
   display: flex;
-  gap: 1.5rem;
+  gap: 24px;
 }
 
 .home__statsItem h3 {

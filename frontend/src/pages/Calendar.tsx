@@ -1,9 +1,10 @@
 import ConfirmationModal from "../components/ConfirmationModal.tsx";
 import ViewBooking from "../features/bookings/ViewBooking";
+import AddBooking from "../features/bookings/AddBooking.tsx";
 import axios from "axios";
 import toast from "react-hot-toast";
 
-import type { booking } from "../types/bookingTypes";
+import type { booking, PlatformId } from "../types/bookingTypes";
 import { platformMap } from "../helpers/maps.ts";
 
 import { useEffect, useMemo, useState, useRef } from "react";
@@ -14,6 +15,7 @@ import { calculateNights } from "../helpers/bookingHelpers";
 import { useLocation } from "react-router";
 import { formatBookingDates } from "../helpers/bookingHelpers";
 import { API_URL } from "../config/api.ts";
+import { formatLocalDate, isSameDay } from "../helpers/bookingHelpers";
 // import { dummyBooking } from "./test.tsx";
 
 import "./Calendar.css";
@@ -23,7 +25,7 @@ type CalendarBooking = {
   from: Date;
   to: Date;
   bookingId: string;
-  platformId: string;
+  platformId: PlatformId;
 };
 
 type Room = {
@@ -37,6 +39,14 @@ const Calendar = () => {
   const { user } = useAuth();
   const timelineRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
+  const [addBookingIsOpen, setAddBookingIsOpen] = useState(false);
+  const [addBookingClickInfo, setAddBookingClickInfo] = useState<{
+    checkIn: string | null;
+    roomId: string | null;
+  }>({
+    checkIn: null,
+    roomId: null,
+  });
   const [month, setMonth] = useState(today.getMonth()); // JS MONTH 0=Jan 1=Feb 4=May
   const [year, setYear] = useState(today.getFullYear());
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -124,7 +134,12 @@ const Calendar = () => {
     }).format(day);
 
     return (
-      <div className="timeline__item timeline__dateItem" key={i} data-day={i}>
+      <div
+        className="timeline__item timeline__dateItem"
+        key={i}
+        data-day={i}
+        style={{ gridRow: 1 }}
+      >
         <p style={i === todayIndex ? { color: "red" } : {}}>
           {monthAndDate.split(" ")[1]}
         </p>
@@ -141,47 +156,61 @@ const Calendar = () => {
     );
   });
 
-  const handleAddBooking = (roomId: string, day: Date) => {};
-
   const monthStart = new Date(year, month, 1);
   const monthEnd = new Date(year, month + 1, 1);
 
-  rooms.forEach((room) => {
+  rooms.forEach((room, roomIndex) => {
+    const gridRow = roomIndex + 2; // row 1 = header, rooms start at 2
     const roomRow = [];
 
+    // Room label
     roomRow.push(
       <div
         className="timeline__item timeline__roomIdItem"
-        style={{
-          gridColumn: "1",
-        }}
+        style={{ gridColumn: "1", gridRow }}
         key={room.roomId}
       >
         <p>{room.roomId}</p>
       </div>,
     );
 
-    room.bookings.forEach((booking, index) => {
+    // Empty clickable cells
+    calendarDays.forEach((day, dayIndex) => {
+      const isToday = isSameDay(day, today);
+
+      roomRow.push(
+        <div
+          key={`empty-${room.roomId}-${dayIndex}`}
+          className="timeline__item timeline__emptyCell"
+          style={{
+            gridColumn: `${dayIndex + 2}`,
+            gridRow,
+            backgroundColor: isToday ? "#ff000010" : undefined, // 🔥 slight red
+          }}
+          onDoubleClick={() => handleAddBooking(room.roomId, day)}
+          title={`Add booking: ${room.roomId} — ${day.toDateString()}`}
+        />,
+      );
+    });
+
+    // Booking blocks
+    room.bookings.forEach((booking: CalendarBooking, index) => {
       const from = new Date(booking.from);
       const to = new Date(booking.to);
-
       const overlaps = to > monthStart && from < monthEnd;
       if (!overlaps) return;
 
       const visibleStart = from < monthStart ? monthStart : from;
       const visibleEnd = to > monthEnd ? monthEnd : to;
-
       const startingDate = calendarDays.findIndex(
         (day) =>
           day.getFullYear() === visibleStart.getFullYear() &&
           day.getMonth() === visibleStart.getMonth() &&
           day.getDate() === visibleStart.getDate(),
       );
-
       if (startingDate === -1) return;
 
       const span = calculateNights(visibleStart, visibleEnd);
-
       const continuesBefore = from < monthStart;
       const continuesAfter = to > monthEnd;
 
@@ -191,12 +220,12 @@ const Calendar = () => {
           title={booking.name + " (" + calculateNights(from, to) + " คืน)"}
           style={{
             gridColumn: `${startingDate + 2} / span ${span}`,
+            gridRow,
             backgroundColor: platformMap[booking.platformId].color,
             borderTopLeftRadius: continuesBefore ? 0 : "0.5rem",
             borderBottomLeftRadius: continuesBefore ? 0 : "0.5rem",
             borderTopRightRadius: continuesAfter ? 0 : "0.5rem",
             borderBottomRightRadius: continuesAfter ? 0 : "0.5rem",
-            // color: platformMap[booking.platformId].color,
           }}
           key={index}
           onDoubleClick={() => getBookingByIdAndUpdate(booking.bookingId)}
@@ -213,6 +242,42 @@ const Calendar = () => {
 
     roomRows.push(roomRow);
   });
+
+  const handleAddBooking = (roomId: string, checkIn: Date) => {
+    setAddBookingIsOpen(true);
+    setAddBookingClickInfo({
+      roomId,
+      checkIn: formatLocalDate(checkIn),
+    });
+  };
+
+  console.log(roomRows);
+
+  const appendToBookings = (booking: booking) => {
+    const formattedBooking = formatBookingDates(booking);
+
+    setRooms((prevRooms) =>
+      prevRooms.map((room) => {
+        if (room.roomId !== booking.roomStays[0].roomId) return room;
+
+        return {
+          ...room,
+          bookings: [
+            ...room.bookings,
+            {
+              name: formattedBooking.name,
+              from: new Date(formattedBooking.roomStays[0].from),
+              to: new Date(formattedBooking.roomStays[0].to),
+              bookingId: formattedBooking.bookingId,
+              platformId: formattedBooking.platformId,
+            },
+          ],
+        };
+      }),
+    );
+
+    setAddBookingIsOpen(false);
+  };
 
   const getBookingByIdAndUpdate = async (bookingId: string) => {
     if (loading) return;
@@ -311,6 +376,16 @@ const Calendar = () => {
           closeAllModals={closeAllModals}
         />
       </Modal>
+      <Modal
+        open={addBookingIsOpen}
+        className="home__modalCenter"
+        onClose={() => setAddBookingIsOpen(false)}
+      >
+        <AddBooking
+          appendToBookings={appendToBookings}
+          clickInfo={addBookingClickInfo}
+        />
+      </Modal>
       <header className="home__header">
         <div>
           <h1 className="calendar__monthSelector">
@@ -359,11 +434,16 @@ const Calendar = () => {
         <div
           className="timeline"
           style={{
-            gridTemplateColumns: `10rem repeat(${getDateInMonth(2026, month)}, 4rem)`,
-            gridTemplateRows: `repeat(${rooms.length}, 3rem)`,
+            gridTemplateColumns: `10rem repeat(${getDateInMonth(year, month)}, 4rem)`,
+            gridTemplateRows: `repeat(${rooms.length + 1}, 3rem)`,
           }}
         >
-          <div className="timeline__item timeline__roomIdItem">ห้อง / วัน</div>
+          <div
+            style={{ gridRow: 1, gridColumn: 1 }}
+            className="timeline__item timeline__roomIdItem"
+          >
+            ห้อง / วัน
+          </div>
           {renderedDayHeaders}
 
           {roomRows}

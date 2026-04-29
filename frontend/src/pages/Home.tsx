@@ -29,6 +29,7 @@ const Home = ({ status }: { status: "arrivals" | "departures" }) => {
     null,
   );
   const [bookings, setBookings] = useState<booking[]>([]);
+  const [occupancy, setOccupancy] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [checkInIsOpen, setCheckInIsOpen] = useState(false);
   const [confirmationModalIsOpen, setConfirmationModalIsOpen] = useState<{
@@ -71,7 +72,13 @@ const Home = ({ status }: { status: "arrivals" | "departures" }) => {
       if (!bookingCheckInIsToday(booking)) return sum;
       return sum + roomChargeTransaction(booking).amount!;
     }, 0),
-    guestsInHouse: 10,
+    revenueToday: bookings.reduce((sum, booking) => {
+      const tx = roomChargeTransaction(booking);
+      if (tx.paymentMethod === "Unpaid") return sum;
+      if (!bookingCheckInIsToday(booking)) return sum;
+      return sum + (tx.amount ?? 0);
+    }, 0),
+    guestsInHouse: occupancy,
     deposit: 10,
   };
 
@@ -83,10 +90,16 @@ const Home = ({ status }: { status: "arrivals" | "departures" }) => {
             label: "เช็คอินวันนี้",
             value: stats.arrivalsToday,
           },
+
           {
             id: "unpaidCheckins",
             label: "ยังไม่ชำระเงิน",
             value: stats.unpaidCheckins,
+          },
+          {
+            id: "revenueToday",
+            label: "รายได้รวมวันนี้ (฿)",
+            value: stats.revenueToday,
           },
           {
             id: "cashToday",
@@ -148,9 +161,8 @@ const Home = ({ status }: { status: "arrivals" | "departures" }) => {
   const fetchBookings = async () => {
     setLoading(true);
     const response = await axios.get(
-      status === "arrivals"
-        ? `${API_URL}/bookings/todayArrivals`
-        : `${API_URL}/bookings/todayDepartures`,
+      `${API_URL}/bookings/getTodayBookings/${status}`,
+
       {
         withCredentials: true,
       },
@@ -158,6 +170,7 @@ const Home = ({ status }: { status: "arrivals" | "departures" }) => {
 
     const bookingsData = response.data.bookings;
     setLastUpdated(new Date());
+    setOccupancy(response.data.occupancy);
     setBookings(formatBookingsDates(bookingsData));
     setLoading(false);
   };

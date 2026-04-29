@@ -3,8 +3,7 @@ import {
   checkIn,
   getBookingById,
   getMonthCalendar,
-  getTodayArrivalBookings,
-  getTodayDepartureBookings,
+  getTodayBookings,
   newBooking,
   removeBooking,
 } from "../controller/booking";
@@ -12,8 +11,7 @@ import {
 const bookingsRouter = express.Router();
 
 bookingsRouter.post("/newBooking", newBooking);
-bookingsRouter.get("/todayArrivals", getTodayArrivalBookings);
-bookingsRouter.get("/todayDepartures", getTodayDepartureBookings);
+bookingsRouter.get("/getTodayBookings/:type", getTodayBookings);
 bookingsRouter.delete("/removeBooking/:bookingId", removeBooking);
 bookingsRouter.put("/checkIn/:bookingId", checkIn);
 bookingsRouter.get("/getMonthCalendar", getMonthCalendar);

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
+import "./StatCard.css";
 
 interface StatCardProps {
   label: string;
@@ -15,17 +16,14 @@ function AnimatedDigit({
   char: string;
   direction: "up" | "down" | null;
 }) {
-  const [prevChar, setPrevChar] = useState(char);
+  const [prevChar, setPrevChar] = useState("0"); // ✅ start from 0
   const [animating, setAnimating] = useState(false);
   const timeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (char === prevChar) return;
 
-    // Clear any previous animation timeout immediately
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-    }
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
 
     setAnimating(true);
 
@@ -35,9 +33,7 @@ function AnimatedDigit({
     }, 350);
 
     return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
   }, [char, prevChar]);
 
@@ -50,8 +46,9 @@ function AnimatedDigit({
         display: "inline-block",
         position: "relative",
         overflow: "hidden",
-
-        lineHeight: "4rem",
+        lineHeight: "2.5rem",
+        height: "2.5rem",
+        width: "0.65em",
         verticalAlign: "bottom",
       }}
     >
@@ -59,9 +56,7 @@ function AnimatedDigit({
       <span
         style={{
           position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
+          inset: 0,
           transform: animating
             ? `translateY(${translateOut})`
             : "translateY(0)",
@@ -91,14 +86,15 @@ function AnimatedDigit({
 }
 
 export default function StatCard({ label, value, loading }: StatCardProps) {
-  const prevValue = useRef<number>(value);
-  const [direction, setDirection] = useState<"up" | "down" | null>(null);
+  const prevValue = useRef<number>(0); // ✅ start from 0
+  const [direction, setDirection] = useState<"up" | "down">("up");
   const [flash, setFlash] = useState<"green" | "red" | null>(null);
 
+  // ✅ Animate when value changes (including first load)
   useEffect(() => {
-    if (value === prevValue.current) return;
+    if (loading) return;
 
-    const dir = value > prevValue.current ? "up" : "down";
+    const dir = value >= prevValue.current ? "up" : "down";
     setDirection(dir);
     setFlash(dir === "up" ? "green" : "red");
 
@@ -106,9 +102,11 @@ export default function StatCard({ label, value, loading }: StatCardProps) {
 
     const t = setTimeout(() => setFlash(null), 800);
     return () => clearTimeout(t);
-  }, [value]);
+  }, [value, loading]);
 
-  const formatted = value.toLocaleString("en-US");
+  // ✅ This is the key: animate from 0 → value
+  const displayValue = loading ? 0 : value;
+  const formatted = displayValue.toLocaleString("en-US");
 
   type Slot =
     | { type: "digit"; char: string; key: string }
@@ -137,24 +135,11 @@ export default function StatCard({ label, value, loading }: StatCardProps) {
       ? "var(--primary-color)"
       : flash === "red"
         ? "#ff5050"
-        : "var(--text)000";
+        : "var(--text)";
 
   return (
-    <div
-      style={{
-        fontFamily: "'IBM Plex Sans Thai', sans-serif",
-
-        transition: "border 0.3s, box-shadow 0.3s, background-color 0.3s",
-      }}
-    >
-      <div
-        style={{
-          // marginBottom: "10px",
-          fontFamily: "'IBM Plex Sans Thai', sans-serif",
-        }}
-      >
-        {label}
-      </div>
+    <div style={{ fontFamily: "'IBM Plex Sans Thai', sans-serif" }}>
+      <div className="statLabel">{label}</div>
 
       <div
         style={{
@@ -167,11 +152,16 @@ export default function StatCard({ label, value, loading }: StatCardProps) {
         }}
       >
         {loading ? (
-          <Skeleton height="2.5rem" width={40} />
+          <Skeleton height="2.5rem" width={80} />
         ) : (
           slots.map((slot) =>
             slot.type === "sep" ? (
-              <span key={`sep-${slot.idx}`}>{slot.char}</span>
+              <span
+                key={`sep-${slot.idx}`}
+                style={{ opacity: 0.8, lineHeight: "0.5" }}
+              >
+                {slot.char}
+              </span>
             ) : (
               <AnimatedDigit
                 key={slot.key}

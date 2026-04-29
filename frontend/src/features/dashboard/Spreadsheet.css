@@ -7,6 +7,11 @@
   color: red;
 }
 
+/* .orange {
+  background-color: rgb(255, 242, 230);
+  color: orange;
+} */
+
 .platformCell {
   display: flex;
   height: 100%;

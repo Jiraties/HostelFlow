@@ -22,6 +22,18 @@ export const calculateNights = (checkIn: Date, checkOut: Date) => {
   return diff / 86400000;
 };
 
+export const formatLocalDate = (date: Date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+};
+
+export const isSameDay = (d1: Date, d2: Date) =>
+  d1.getFullYear() === d2.getFullYear() &&
+  d1.getMonth() === d2.getMonth() &&
+  d1.getDate() === d2.getDate();
+
 type Booking = {
   name: string;
   status: "booked" | "checkedIn" | "checkedOut";
@@ -64,7 +76,7 @@ export const populateDummyBookings = (
 
       bookings.push({
         name: names[getRandomInt(0, names.length - 1)],
-        status: "reserved",
+        status: "booked",
         bookingId: `${room.roomId}-${currentDay}`,
         from,
         to,

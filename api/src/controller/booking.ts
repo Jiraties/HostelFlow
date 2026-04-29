@@ -4,7 +4,7 @@ import crypto from "crypto";
 
 import { NextFunction, Request, Response } from "express";
 import { logActivity } from "../services/activityServices";
-import type { PlatformId, Status } from "../models/booking";
+import type { booking, PlatformId, Status } from "../models/booking";
 
 dotenv.config();
 
@@ -129,43 +129,62 @@ export const newBooking = async (
   }
 };
 
-export const getTodayArrivalBookings = async (req: Request, res: Response) => {
-  const today = new Date().toISOString().split("T")[0];
-  const todayDateString = new Date(today + "T00:00:00");
-
-  const tomorrow = new Date(todayDateString);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-
-  try {
-    const bookings = await Booking.find({
-      checkIn: { $gte: todayDateString, $lt: tomorrow },
-    });
-    res.status(200).json({ bookings });
-  } catch (err) {
-    res.status(500).json({ error: "Failed to fetch bookings" });
-  }
-};
-
-export const getTodayDepartureBookings = async (
-  req: Request,
-  res: Response,
-) => {
-  const now = new Date();
-  const startOfToday = new Date(now);
+export const getTodayBookings = async (req: Request, res: Response) => {
+  const { type } = req.params;
+  const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
 
   const startOfTomorrow = new Date(startOfToday);
   startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
 
   try {
-    const bookings = await Booking.find({
-      checkOut: { $gte: startOfToday, $lt: startOfTomorrow },
-    });
-    res.status(200).json({ bookings });
+    let bookings: booking[] = [];
+
+    switch (type) {
+      case "arrivals":
+        bookings = await Booking.find({
+          checkIn: { $gte: startOfToday, $lt: startOfTomorrow },
+        });
+        break;
+      case "departures":
+        bookings = await Booking.find({
+          checkOut: { $gte: startOfToday, $lt: startOfTomorrow },
+        });
+        break;
+      default:
+        return res
+          .json(400)
+          .json({ error: "Please specify the type of query" });
+    }
+
+    const occupancy = await Booking.countDocuments({ status: "checkedIn" });
+
+    res.status(200).json({ bookings, occupancy });
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch bookings" });
   }
 };
+
+// export const getTodayDepartureBookings = async (
+//   req: Request,
+//   res: Response,
+// ) => {
+//   const now = new Date();
+//   const startOfToday = new Date(now);
+//   startOfToday.setHours(0, 0, 0, 0);
+
+//   const startOfTomorrow = new Date(startOfToday);
+//   startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+
+//   try {
+//     const bookings = await Booking.find({
+//       checkOut: { $gte: startOfToday, $lt: startOfTomorrow },
+//     });
+//     res.status(200).json({ bookings });
+//   } catch (err) {
+//     res.status(500).json({ error: "Failed to fetch bookings" });
+//   }
+// };
 
 export const removeBooking = async (req: Request, res: Response) => {
   const { bookingId } = req.params;
@@ -279,6 +298,34 @@ export const checkIn = async (req: Request, res: Response) => {
         paymentMethod: "Cash",
         amount: checkInData.unpaidPayment.roundingAdjustment,
       });
+
+    if (checkInData.unpaidPayment) {
+      await Booking.findOneAndUpdate(
+        {
+          bookingId,
+          transactions: {
+            $elemMatch: {
+              paymentMethod: "Unpaid",
+              type: "roomCharge",
+            },
+          },
+        },
+        {
+          $set: {
+            "transactions.$[transaction].paymentMethod":
+              checkInData.unpaidPayment.paymentMethod,
+          },
+        },
+        {
+          arrayFilters: [
+            {
+              "transaction.paymentMethod": "Unpaid",
+              "transaction.type": "roomCharge",
+            },
+          ],
+        },
+      );
+    }
 
     const updatedBooking = await Booking.findOneAndUpdate(
       { bookingId },

@@ -127,10 +127,14 @@ const Spreadsheet = ({
         checkedIn: (param: any) => {
           return param.value === "checkedIn";
         },
+        checkedOut: (param: any) => {
+          return param.value === "checkedOut";
+        },
       },
       valueFormatter: (params: any) => {
         if (params.value === "booked") return "ยังไม่ Check-In";
         if (params.value === "checkedIn") return "Check-In แล้ว";
+        if (params.value === "checkedOut") return "Check-Out แล้ว";
       },
       sort: "asc",
     },

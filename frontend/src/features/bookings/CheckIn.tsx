@@ -4,9 +4,10 @@ import "./CheckIn.css";
 import Select from "react-select";
 import countries from "i18n-iso-countries";
 import en from "i18n-iso-countries/langs/en.json";
-import { customStyles } from "./AddBooking";
+import { customStyles } from "../../helpers/selectStyling";
 import ActionButton from "../../components/ActionButton";
 import { roomChargeTransaction } from "../../helpers/bookingHelpers";
+import type { OptionType } from "../../helpers/selectStyling";
 import axios from "axios";
 import toast from "react-hot-toast";
 import { API_URL } from "../../config/api";
@@ -181,9 +182,9 @@ const CheckIn = ({
           </div>
           <div>
             <p className="checkIn__label">ชาติ</p>
-            <Select
+            <Select<OptionType>
+              styles={customStyles<OptionType>()}
               options={nationalityOptions}
-              styles={customStyles}
               value={nationalityOptions.find(
                 (option) => option.value === nationality,
               )}
@@ -211,18 +212,18 @@ const CheckIn = ({
           {roomCharge.paymentMethod === "Unpaid" && (
             <div>
               <p className="checkIn__label">ช่องทางการจ่ายค่าห้อง</p>
-              <Select
+              <Select<OptionType>
+                styles={customStyles<OptionType>()}
                 options={paymentMethodOptions}
                 value={paymentMethodOptions.find(
                   (option) => option.value === unpaidPaymentPaymentMethod,
                 )}
                 onChange={(option) => {
-                  if (option !== "Cash")
+                  if (option?.value !== "Cash")
                     setReceivedCash(String(roomCharge.amount));
 
                   setUnpaidPaymentPaymentMethod(option?.value || "");
                 }}
-                styles={customStyles}
               />
             </div>
           )}

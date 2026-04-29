@@ -43,6 +43,9 @@ const ViewBooking = ({
     if (status === "checkedIn") {
       return usedFor === "classname" ? "checkedIn" : "Check-In แล้ว";
     }
+    if (status === "checkedOut") {
+      return usedFor === "classname" ? "checkedOut" : "Check-Out แล้ว";
+    }
   };
 
   const roomsName = booking.roomStays
@@ -189,10 +192,43 @@ const ViewBooking = ({
                 </div>
               </div>
             ))}
+            <div className="viewBooking__addTransaction">
+              <i className="bx bx-dollar" />
+              <p>เพิ่มรายการใช้จ่าย</p>
+            </div>
           </div>
-          <div className="viewBooking__addTransaction">
-            <i className="bx bx-dollar" />
-            <p>เพิ่มรายการใช้จ่าย</p>
+
+          <div className="viewBooking__roomStays">
+            {booking.roomStays.map((roomStay, index) => (
+              <div
+                className="viewBooking__roomStay"
+                style={
+                  index === booking.roomStays.length - 1
+                    ? {}
+                    : { borderBottom: "1px solid #eee" }
+                }
+              >
+                <h3>{roomStay.roomId}</h3>
+                <div className="viewBooking__roomStay--dates">
+                  <p className="viewBooking__roomStay--from">
+                    {new Date(roomStay.from).toLocaleDateString("th-TH", {
+                      day: "2-digit",
+                      month: "short",
+                    })}
+                  </p>
+                  <p className="viewBooking__roomStay--to">
+                    {new Date(roomStay.to).toLocaleDateString("th-TH", {
+                      day: "2-digit",
+                      month: "short",
+                    })}
+                  </p>
+                </div>
+              </div>
+            ))}
+            <div className="viewBooking__addTransaction">
+              <i className="bx bx-bed" />
+              <p>จัดการห้องพัก</p>
+            </div>
           </div>
 
           {booking.note && (

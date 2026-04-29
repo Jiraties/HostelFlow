@@ -5,86 +5,72 @@ import Select from "react-select";
 import { useAuth } from "../../context/AuthContext";
 import toast from "react-hot-toast";
 import axios from "axios";
-import type { booking, roomId } from "../../types/bookingTypes";
-import type { StylesConfig } from "react-select";
 import { API_URL } from "../../config/api";
+import { customStyles } from "../../helpers/selectStyling";
+import type { booking, PlatformId } from "../../types/bookingTypes";
+import type { OptionType } from "../../helpers/selectStyling";
 
-type OptionType = {
-  value: string;
-  label: string;
-  color?: string;
-};
-
-export const customStyles: StylesConfig<OptionType | string, false> = {
-  control: (provided) => ({
-    ...provided,
-
-    fontFamily: '"IBM Plex Sans Thai", sans-serif',
-    padding: "0.6rem",
-    borderRadius: "0.5rem",
-    border: "none",
-    boxShadow: "rgba(149, 157, 165, 0.25) 0px 8px 24px",
-    width: "100%",
-    color: "var(--text)",
-    backgroundColor: "#fff",
-  }),
-
-  input: (provided) => ({
-    ...provided,
-    padding: 0,
-    margin: 0,
-    boxShadow: "none",
-  }),
-
-  singleValue: (provided) => ({
-    ...provided,
-
-    color: "var(--text)",
-  }),
-
-  menu: (provided) => ({
-    ...provided,
-    borderRadius: "0.5rem",
-    overflow: "hidden",
-    fontFamily: '"IBM Plex Sans Thai", sans-serif',
-  }),
-
-  option: (provided, state: any) => ({
-    ...provided,
-    fontFamily: '"IBM Plex Sans Thai", sans-serif',
-    backgroundColor: state.isFocused ? "#f3f3f3" : "#fff",
-    color: "var(--text)",
-    cursor: "pointer",
-  }),
-
-  dropdownIndicator: (provided) => ({
-    ...provided,
-    color: "#fff",
-  }),
-
-  indicatorSeparator: () => ({
-    display: "none",
-  }),
-};
+interface BookingFormData {
+  name: string;
+  checkIn: string;
+  checkOut: string;
+  platformId: PlatformId | "";
+  roomId: string;
+  price: string; // always string (form input)
+  paymentMethod: string;
+  bookingId: string;
+  staffUsername: string;
+  note: string;
+}
 
 const AddBooking = ({
+  mode = "add",
+  editModeBooking,
   appendToBookings,
+  clickInfo,
 }: {
-  appendToBookings: (booking: booking) => void;
+  mode?: "add" | "edit";
+  editModeBooking?: booking;
+  appendToBookings?: (booking: booking) => void;
+  clickInfo?: {
+    checkIn: string | null;
+    roomId: string | null;
+  };
 }) => {
   const { user } = useAuth();
   const [submitting, setSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
-    name: "",
-    checkIn: "",
-    checkOut: "",
-    platformId: "",
-    roomId: "",
-    price: "",
-    paymentMethod: "",
-    bookingId: "",
-    staffUsername: user?.username || "", // Might not be used, backend already does this, but just in case we want to display it in the future without fetching the booking again
-    note: "",
+  const [formData, setFormData] = useState<BookingFormData>(() => {
+    if (editModeBooking) {
+      const roomCharge = editModeBooking.transactions.find(
+        (t) => t.type === "roomCharge",
+      );
+
+      return {
+        name: editModeBooking.name,
+        checkIn: editModeBooking.checkIn,
+        checkOut: editModeBooking.checkOut,
+        platformId: editModeBooking.platformId,
+        roomId: editModeBooking.roomStays[0].roomId,
+        price: roomCharge?.amount?.toString() || "",
+        paymentMethod: roomCharge?.paymentMethod || "",
+        bookingId: editModeBooking.bookingId,
+        staffUsername: user?.username || "",
+        note: editModeBooking.note || "",
+      };
+    }
+
+    return {
+      name: "",
+      checkIn: clickInfo?.checkIn || "",
+      checkOut: "",
+      platformId: "",
+      roomId: clickInfo?.roomId || "",
+      price: "",
+      paymentMethod: "",
+      bookingId: "",
+      staffUsername: user?.username || "",
+      note: "",
+    };
   });
 
   const platformOptions = [
@@ -310,14 +296,10 @@ const AddBooking = ({
         !formData.bookingId
       ) {
         throw new Error("กรุณากรอกข้อมูลให้ครบทุกช่อง");
-        setSubmitting(false);
-        return;
       }
 
       if (new Date(formData.checkIn) >= new Date(formData.checkOut)) {
         throw new Error("วันที่เช็คอินต้องไม่อยู่หลังวันที่เช็คเอาท์");
-        setSubmitting(false);
-        return;
       }
 
       const response = await axios.post(
@@ -326,7 +308,7 @@ const AddBooking = ({
         { withCredentials: true },
       );
 
-      appendToBookings(response.data.booking);
+      if (appendToBookings) appendToBookings(response.data.booking);
       setFormData({
         name: "",
         checkIn: "",
@@ -346,7 +328,9 @@ const AddBooking = ({
 
   return (
     <form className="addBooking__wrapper">
-      <h1 className="addBooking__title">เพิ่มการจองใหม่</h1>
+      <h1 className="addBooking__title">
+        {mode === "add" ? "เพิ่มการจองใหม่" : "แก้การจอง"}
+      </h1>
       {/* <p className="addBooking__description">
         Note: ถ้าผู้ใช้เลือกช่องทางการจอง Booking หรือ Hostel,
         ระบบจะกำหนดช่องทางการชำระเงินโดยอัตโนมัติ
@@ -399,9 +383,9 @@ const AddBooking = ({
             placeholder="เช่น Pottery 1"
             onChange={(e) => formDataChangeHandler("roomId", e.target.value)}
           /> */}
-          <Select
+          <Select<OptionType>
+            styles={customStyles<OptionType>()}
             classNamePrefix="rs"
-            styles={customStyles}
             placeholder="เช่น Veranda 1"
             options={roomIdOptions}
             value={roomIdOptions.find(
@@ -414,9 +398,9 @@ const AddBooking = ({
         </div>
         <div>
           <p className="addBooking__label">ช่องทางการจอง</p>
-          <Select
+          <Select<OptionType>
+            styles={customStyles<OptionType>()}
             classNamePrefix="rs"
-            styles={customStyles}
             options={platformOptions}
             placeholder="เลือกช่องทางการจอง"
             value={
@@ -443,9 +427,9 @@ const AddBooking = ({
         </div>
         <div>
           <p className="addBooking__label">จ่ายผ่าน</p>
-          <Select
+          <Select<OptionType>
+            styles={customStyles<OptionType>()}
             classNamePrefix="rs"
-            styles={customStyles}
             options={paymentMethodOptions}
             placeholder="เลือกช่องทางการชำระเงิน"
             formatOptionLabel={formatPaymentMethodLabel}

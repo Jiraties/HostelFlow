@@ -59,6 +59,15 @@
   color: var(--green);
 }
 
+.checkedOut div {
+  background-color: orange;
+}
+
+.checkedOut {
+  background-color: rgb(255, 242, 230);
+  color: orange;
+}
+
 .checkedIn div {
   background-color: var(--green);
 }
@@ -129,7 +138,6 @@
 .viewBooking__priceList {
   display: flex;
   flex-direction: column;
-  /* gap: 1.5rem; */
   box-shadow: var(--main-shadow);
   border-radius: 1rem;
 }
@@ -147,8 +155,8 @@
   gap: 0.5rem;
   align-items: center;
   padding: 1rem;
-  box-shadow: var(--main-shadow);
-  border-radius: 1rem;
+  border-radius: 0 0 1rem 1rem;
+  border-top: 1px solid #eee;
   transition-duration: 0.2s;
 }
 
@@ -157,7 +165,7 @@
 }
 
 .viewBooking__addTransaction:hover {
-  transform: scale(1.03);
+  background-color: #f6f6f6;
 }
 
 .viewBooking__unpaid {
@@ -223,4 +231,49 @@
   padding: 1rem;
   box-shadow: var(--main-shadow);
   border-radius: 1rem;
+}
+
+.viewBooking__roomStays {
+  display: flex;
+  flex-direction: column;
+  border-radius: 1rem;
+  box-shadow: var(--main-shadow);
+}
+
+.viewBooking__roomStay {
+  display: flex;
+  align-items: center;
+  padding: 1rem;
+  justify-content: space-between;
+}
+
+.viewBooking__roomStay h3 {
+  font-weight: 400;
+}
+
+.viewBooking__roomStay--dates {
+  display: inline-flex;
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.viewBooking__roomStay--from,
+.viewBooking__roomStay--to {
+  display: inline-block;
+  padding: 0.5rem 0.75rem;
+}
+
+.viewBooking__roomStay--from {
+  background: #bb20fe30;
+  padding: 0.5rem 1rem 0.5rem 0.75rem;
+
+  clip-path: polygon(0 0, 100% 0, 90% 100%, 0 100%);
+}
+
+.viewBooking__roomStay--to {
+  margin-left: -0.55rem;
+  background: #bb20fe10;
+  padding: 0.5rem 0.75rem 0.5rem 1rem;
+
+  clip-path: polygon(10% 0, 100% 0, 100% 100%, 0 100%);
 }

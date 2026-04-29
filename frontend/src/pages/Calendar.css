@@ -118,3 +118,28 @@
   background-color: #ffffff40;
   border-radius: 50%;
 }
+
+.timeline__emptyCell {
+  cursor: pointer;
+  border-right: 1px solid #eee;
+  transition: background-color 0.15s ease;
+  z-index: 1;
+}
+
+.timeline__emptyCell:hover {
+  background-color: #00000010;
+  border-radius: 0.5rem;
+}
+
+.timeline__bookedRoomItem {
+  z-index: 2;
+  position: relative;
+}
+
+.timeline__emptyCell:hover::after {
+  content: "+";
+  position: absolute;
+  font-size: 1.5rem;
+  color: #00000070;
+  pointer-events: none;
+}
