@@ -1,0 +1,11 @@
+.manageRoomStays__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.manageRoomStays__listItem {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}

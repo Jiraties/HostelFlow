@@ -143,3 +143,42 @@
   color: #00000070;
   pointer-events: none;
 }
+
+.home__skeletonModal {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--background);
+  border-radius: 1rem;
+  width: 50rem;
+  height: 40rem;
+  padding: 2rem;
+}
+
+/* ✨ shimmer layer */
+.home__skeletonModal::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+
+  background: linear-gradient(
+    90deg,
+    transparent 25%,
+    rgba(0, 0, 0, 0.05) 50%,
+    transparent 75%
+  );
+
+  background-size: 200% 100%;
+  animation: homeShimmer 1.4s ease-in-out infinite;
+
+  pointer-events: none;
+}
+
+@keyframes homeShimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}

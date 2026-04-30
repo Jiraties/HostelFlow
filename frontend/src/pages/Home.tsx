@@ -79,6 +79,7 @@ const Home = ({ status }: { status: "arrivals" | "departures" }) => {
       return sum + (tx.amount ?? 0);
     }, 0),
     guestsInHouse: occupancy,
+    // guestsInHouse: `${Math.trunc((occupancy / 46) * 100)}%`,
     deposit: 10,
   };
 

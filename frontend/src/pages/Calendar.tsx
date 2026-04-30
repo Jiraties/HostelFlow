@@ -187,7 +187,7 @@ const Calendar = () => {
             gridRow,
             backgroundColor: isToday ? "#ff000010" : undefined, // 🔥 slight red
           }}
-          onDoubleClick={() => handleAddBooking(room.roomId, day)}
+          onClick={() => handleAddBooking(room.roomId, day)}
           title={`Add booking: ${room.roomId} — ${day.toDateString()}`}
         />,
       );
@@ -228,7 +228,9 @@ const Calendar = () => {
             borderBottomRightRadius: continuesAfter ? 0 : "0.5rem",
           }}
           key={index}
-          onDoubleClick={() => getBookingByIdAndUpdate(booking.bookingId)}
+          onClick={() =>
+            setViewBookingBooking({ bookingId: booking.bookingId } as booking)
+          }
         >
           <p className="timeline__itemText">
             {booking.name}{" "}
@@ -277,21 +279,6 @@ const Calendar = () => {
     );
 
     setAddBookingIsOpen(false);
-  };
-
-  const getBookingByIdAndUpdate = async (bookingId: string) => {
-    if (loading) return;
-    setLoading(true);
-
-    const booking = await axios.get(
-      `${API_URL}/bookings/getBookingById/` + bookingId,
-      {
-        withCredentials: true,
-      },
-    );
-
-    setLoading(false);
-    setViewBookingBooking(formatBookingDates(booking.data));
   };
 
   const nextMonth = () => {
@@ -359,7 +346,8 @@ const Calendar = () => {
         className="home__modalCenter"
       >
         <ViewBooking
-          booking={viewBookingBooking as booking}
+          booking={null}
+          bookingId={viewBookingBooking?.bookingId}
           setCheckInIsOpen={() => {}}
           removeBookingHandler={removeBookingHandler}
         />

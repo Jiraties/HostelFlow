@@ -38,6 +38,15 @@ const platformCell = (params: any) => {
   );
 };
 
+const CustomLoadingOverlay = () => {
+  return (
+    <div className="custom-loading">
+      <div className="custom-loading__spinner"></div>
+      <p>กำลังโหลดข้อมูล...</p>
+    </div>
+  );
+};
+
 const Spreadsheet = ({
   bookings,
   setViewBookingBooking,
@@ -165,7 +174,8 @@ const Spreadsheet = ({
           theme={myTheme}
           onGridReady={onGridReady}
           autoSizeStrategy={{ type: "fitCellContents" }}
-          onRowDoubleClicked={onRowDoubleClicked}
+          onRowClicked={onRowDoubleClicked}
+          loadingOverlayComponent={CustomLoadingOverlay}
         />
       </div>
     </AgGridProvider>

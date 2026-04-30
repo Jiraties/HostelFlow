@@ -10,8 +10,8 @@ interface EncryptedField {
 
 interface roomStay {
   roomId: string;
-  from: Date;
-  to: Date;
+  from: string;
+  to: string;
 }
 
 interface Passport {

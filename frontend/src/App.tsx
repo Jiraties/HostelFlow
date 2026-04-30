@@ -47,6 +47,13 @@ function App() {
       <Toaster
         position="top-center"
         toastOptions={{
+          duration: 5000,
+          success: {
+            duration: 3000,
+          },
+          error: {
+            duration: 7000,
+          },
           style: {
             padding: "1rem",
             backgroundColor: "#fff",

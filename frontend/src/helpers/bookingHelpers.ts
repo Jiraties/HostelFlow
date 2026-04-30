@@ -42,6 +42,10 @@ type Booking = {
   to: Date;
 };
 
+export const toInputDate = (date: Date) => {
+  return date.toISOString().split("T")[0];
+};
+
 export const populateDummyBookings = (
   rooms: { roomId: string; bookings: Booking[] }[],
   year: number,
