@@ -8,6 +8,7 @@ import { toInputDate } from "../../helpers/bookingHelpers";
 import ActionButton from "../../components/ActionButton";
 import toast from "react-hot-toast";
 import axios from "axios";
+import { API_URL } from "../../config/api";
 
 interface roomStay {
   roomId: string;
@@ -17,10 +18,20 @@ interface roomStay {
 
 const ManageRoomStays = ({
   initialRoomStays,
+  bookingId,
 }: {
   initialRoomStays: roomStay[];
+  bookingId: string;
 }) => {
-  const [roomStays, setRoomStays] = useState<roomStay[]>(initialRoomStays);
+  const normalizeDate = (date: string) => date.split("T")[0];
+
+  const [roomStays, setRoomStays] = useState<roomStay[]>(
+    initialRoomStays.map((stay) => ({
+      ...stay,
+      from: stay.from ? normalizeDate(stay.from) : "",
+      to: stay.to ? normalizeDate(stay.to) : "",
+    })),
+  );
 
   const addEmptyRoomStay = () => {
     if (roomStays.length + 1 > 5)
@@ -45,7 +56,13 @@ const ManageRoomStays = ({
     );
 
     if (hasEmpty) return toast.error("กรุณากรอกข้อมูลให้ครบทุกช่อง");
-    // axios.patch("");
+    const response = await axios.patch(
+      `${API_URL}/bookings/manageRoomStays/${bookingId}`,
+      { roomStays },
+      { withCredentials: true },
+    );
+
+    if (response.status !== 200) toast.error(response.data.message);
   };
 
   return (
@@ -56,7 +73,7 @@ const ManageRoomStays = ({
 
       <div className="manageRoomStays__list">
         {roomStays.map((roomStay, index) => (
-          <div className="manageRoomStays__listItem">
+          <div className="manageRoomStays__listItem" key={index}>
             <div>
               <p className="addBooking__label">ห้องพักช่วงพักที่ {index + 1}</p>
               <Select<OptionType>
@@ -91,9 +108,7 @@ const ManageRoomStays = ({
               <div className="addBooking__dateInputs">
                 <input
                   type="date"
-                  value={
-                    roomStay.from ? toInputDate(new Date(roomStay.from)) : ""
-                  }
+                  value={roomStay.from || ""}
                   onChange={(e) => {
                     setRoomStays((prevRoomStays) => {
                       const updated = [...prevRoomStays];
@@ -112,7 +127,7 @@ const ManageRoomStays = ({
                 />
                 <input
                   type="date"
-                  value={roomStay.to ? toInputDate(new Date(roomStay.to)) : ""}
+                  value={roomStay.to || ""}
                   onChange={(e) => {
                     setRoomStays((prevRoomStays) => {
                       const updated = [...prevRoomStays];
@@ -152,7 +167,18 @@ const ManageRoomStays = ({
           text="แก้ไข"
           icon="bx-edit"
           highlight
-          onClick={() => patchRoomStays()}
+          onClick={() => {
+            toast.promise(patchRoomStays(), {
+              loading: "กำลังอัปเดตข้อมูล...",
+              success: "อัปเดตข้อมูลสำเร็จ",
+              error: (err) => {
+                if (err.response.data.message) {
+                  return err.response.data.message;
+                }
+                return "เกิดข้อผิดพลาดในการเพิ่มการจอง";
+              },
+            });
+          }}
         />
       </div>
     </div>

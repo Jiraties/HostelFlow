@@ -10,7 +10,7 @@ interface EncryptedField {
   authTag: string;
 }
 
-interface roomStay {
+export interface roomStay {
   roomId: string;
   from: Date;
   to: Date;

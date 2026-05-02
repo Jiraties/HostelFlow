@@ -182,7 +182,10 @@ const ViewBooking = ({
         onClose={() => setManageRoomStaysIsOpen(false)}
         className="home__modalCenter"
       >
-        <ManageRoomStays initialRoomStays={data.roomStays} />
+        <ManageRoomStays
+          initialRoomStays={data.roomStays}
+          bookingId={data.bookingId}
+        />
       </Modal>
       <div className="viewBooking__wrapper">
         <div className="viewBooking__top">
@@ -336,6 +339,7 @@ const ViewBooking = ({
               {data.roomStays.map((roomStay, index) => (
                 <div
                   className="viewBooking__roomStay"
+                  key={index}
                   style={
                     index === data.roomStays.length - 1
                       ? {}

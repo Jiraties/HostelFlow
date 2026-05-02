@@ -4,7 +4,8 @@ import crypto from "crypto";
 
 import { NextFunction, Request, Response } from "express";
 import { logActivity } from "../services/activityServices";
-import type { booking, PlatformId, Status } from "../models/booking";
+import type { booking, PlatformId, roomStay, Status } from "../models/booking";
+import { dateRangeText, toInputDate } from "../helpers/dateHelpers";
 
 dotenv.config();
 
@@ -46,22 +47,8 @@ export const newBooking = async (
     });
 
     if (overlappingBooking) {
-      const from = new Date(overlappingBooking.roomStays[0].from);
-      const to = new Date(overlappingBooking.roomStays[0].to);
-
-      const formatDay = (date: Date) =>
-        new Intl.DateTimeFormat("th-TH", { day: "numeric" }).format(date);
-
-      const formatMonth = (date: Date) =>
-        new Intl.DateTimeFormat("th-TH", { month: "short" }).format(date);
-
-      const sameMonth = from.getMonth() === to.getMonth();
-
-      const dateText = sameMonth
-        ? `${formatDay(from)}-${formatDay(to)} ${formatMonth(to)}`
-        : `${formatDay(from)} ${formatMonth(from)} - ${formatDay(to)} ${formatMonth(to)}`;
       return res.status(409).json({
-        message: `ห้องนี้ถูกจองแล้วระหว่างวันที่ ${dateText} กรุณาเลือกช่วงเวลาอื่น`,
+        message: `ห้องนี้ถูกจองแล้วระหว่างวันที่ ${dateRangeText(overlappingBooking.roomStays[0].from, overlappingBooking.roomStays[0].to)} กรุณาเลือกช่วงเวลาอื่น`,
       });
     }
 
@@ -469,5 +456,127 @@ export const getBookingById = async (req: Request, res: Response) => {
     res.status(200).json(booking);
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
+  }
+};
+
+export const manageRoomStays = async (req: Request, res: Response) => {
+  try {
+    const { roomStays } = req.body;
+    const { bookingId } = req.params;
+
+    if (
+      !roomStays.every(
+        (roomStay: roomStay) => roomStay.roomId && roomStay.from && roomStay.to,
+      )
+    )
+      return res.status(400).json({
+        error: "MISSING",
+        message: "กรุณากรอกข้อมูลให้ครบทุกช่อง",
+      });
+
+    const sorted = [...roomStays].sort(
+      (a, b) => new Date(a.from).getTime() - new Date(b.from).getTime(),
+    );
+
+    // Check if they overlap or not && each room is available then && full from checkin till checkout
+    const hasInternalOverlap = (sorted: roomStay[]) => {
+      for (let i = 0; i < sorted.length - 1; i++) {
+        const currentEnd = new Date(sorted[i].to);
+        const nextStart = new Date(sorted[i + 1].from);
+
+        if (currentEnd > nextStart) return true;
+      }
+
+      return false;
+    };
+
+    if (hasInternalOverlap(sorted))
+      return res.status(400).json({
+        error: "ROOM_STAYS_OVERLAP",
+        message: "ช่วงการเข้าพักซ้อนกัน",
+      });
+
+    const booking = await Booking.findOne(
+      { bookingId },
+      { checkIn: 1, checkOut: 1 },
+    ).lean();
+
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found" });
+    }
+
+    // 1. Start must match check-in
+    if (sorted[0].from !== toInputDate(booking.checkIn)) {
+      return res.status(400).json({
+        error: "INVALID_START",
+        message: "ช่วงแรกต้องเริ่มตรงกับวันเช็คอิน",
+      });
+    }
+
+    // 2. End must match check-out
+    if (sorted[sorted.length - 1].to !== toInputDate(booking.checkOut)) {
+      return res.status(400).json({
+        error: "INVALID_END",
+        message: "ช่วงสุดท้ายต้องตรงกับวันเช็คเอาท์",
+      });
+    }
+
+    // 3. No gaps
+    for (let i = 0; i < sorted.length - 1; i++) {
+      if (sorted[i].to !== sorted[i + 1].from) {
+        return res.status(400).json({
+          error: "ROOM_STAYS_GAP",
+          message: "ช่วงการเข้าพักต้องต่อเนื่องกัน",
+        });
+      }
+    }
+
+    const roomIds = [
+      ...new Set(sorted.map((roomStay: roomStay) => roomStay.roomId)),
+    ];
+    const minFrom = new Date(sorted[0].from);
+    const maxTo = new Date(sorted[sorted.length - 1].to);
+
+    const conflictingBookings = await Booking.find({
+      bookingId: { $ne: bookingId },
+
+      roomStays: {
+        $elemMatch: {
+          roomId: { $in: roomIds },
+          from: { $lt: maxTo },
+          to: { $gt: minFrom },
+        },
+      },
+    });
+
+    const hasConflict = conflictingBookings.some((booking) =>
+      booking.roomStays.some((existing: roomStay) =>
+        sorted.some(
+          (incoming: roomStay) =>
+            existing.roomId === incoming.roomId &&
+            new Date(existing.from) < new Date(incoming.to) &&
+            new Date(existing.to) > new Date(incoming.from),
+        ),
+      ),
+    );
+
+    if (hasConflict) {
+      return res.status(409).json({
+        error: "ROOM_CONFLICT",
+        message: "ห้องถูกจองในช่วงเวลานี้",
+      });
+    }
+
+    await Booking.findOneAndUpdate(
+      { bookingId },
+      {
+        $set: {
+          roomStays: sorted,
+        },
+      },
+    );
+    res.status(200).json({ message: "สำเร็จ" });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
   }
 };
