@@ -15,7 +15,9 @@ const Sidebar = () => {
       icon: "bx-arrow-from-left",
     },
     { id: 4, label: "ตารางการจอง", link: "/calendar", icon: "bx-calendar" },
-    { id: 5, label: "ตั้งค่า และ ประวัติ", link: "/settings", icon: "bx-cog" },
+    { id: 5, label: "เอกสาร", link: "/documents", icon: "bx-article" },
+    { id: 6, label: "สถิติ", link: "/stats", icon: "bx-bar-chart-big" },
+    { id: 7, label: "ตั้งค่า และ ประวัติ", link: "/settings", icon: "bx-cog" },
   ];
 
   return (

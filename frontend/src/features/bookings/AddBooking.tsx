@@ -1,7 +1,7 @@
 import { useState } from "react";
 import ActionButton from "../../components/ActionButton";
 import "./AddBooking.css";
-import Select from "react-select";
+import Select, { type SingleValue } from "react-select";
 import { useAuth } from "../../context/AuthContext";
 import toast from "react-hot-toast";
 import axios from "axios";
@@ -9,6 +9,7 @@ import { API_URL } from "../../config/api";
 import { customStyles } from "../../helpers/selectStyling";
 import type { booking, PlatformId } from "../../types/bookingTypes";
 import type { OptionType } from "../../helpers/selectStyling";
+import { formatLocalDate } from "../../helpers/bookingHelpers";
 import {
   platformOptions,
   roomIdOptions,
@@ -146,7 +147,6 @@ const AddBooking = ({
       arr[Math.floor(Math.random() * arr.length)];
 
     const today = new Date();
-    const formatDate = (date: Date) => date.toISOString().split("T")[0];
 
     const nights = Math.floor(Math.random() * 4) + 1; // 1–4 nights
 
@@ -162,8 +162,8 @@ const AddBooking = ({
 
     setFormData({
       name: random(names),
-      checkIn: formatDate(checkInDate), // ✅ always today
-      checkOut: formatDate(checkOutDate),
+      checkIn: formatLocalDate(checkInDate), // ✅ always today
+      checkOut: formatLocalDate(checkOutDate),
       platformId: platform,
       roomId: random(rooms),
       price: String((Math.floor(Math.random() * 20) + 10) * 100),
@@ -326,7 +326,7 @@ const AddBooking = ({
             value={roomIdOptions.find(
               (option) => option.value === formData.roomId,
             )}
-            onChange={(option: any) =>
+            onChange={(option: SingleValue<OptionType>) =>
               formDataChangeHandler("roomId", option?.value || "")
             }
           />
@@ -344,7 +344,7 @@ const AddBooking = ({
               ) || null
             }
             formatOptionLabel={formatOptionLabel}
-            onChange={(option: any) =>
+            onChange={(option: SingleValue<OptionType>) =>
               formDataChangeHandler("platformId", option?.value || "BOOK")
             }
           />
@@ -373,7 +373,7 @@ const AddBooking = ({
                 (option) => option.value === formData.paymentMethod,
               ) || null
             }
-            onChange={(option: any) =>
+            onChange={(option: SingleValue<OptionType>) =>
               formDataChangeHandler("paymentMethod", option?.value || "")
             }
           />

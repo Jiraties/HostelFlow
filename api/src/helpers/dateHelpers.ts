@@ -10,6 +10,8 @@ export const dateRangeText = (from: Date, to: Date) => {
   const dateText = sameMonth
     ? `${formatDay(from)}-${formatDay(to)} ${formatMonth(to)}`
     : `${formatDay(from)} ${formatMonth(from)} - ${formatDay(to)} ${formatMonth(to)}`;
+
+  return dateText;
 };
 
 export const toInputDate = (date: string | Date) => {

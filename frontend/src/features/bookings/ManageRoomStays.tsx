@@ -1,14 +1,18 @@
-import Select from "react-select";
+import Select, { type SingleValue } from "react-select";
 import "./ManageRoomStays.css";
 import type { OptionType } from "../../helpers/selectStyling";
 import { customStyles } from "../../helpers/selectStyling";
 import { roomIdOptions } from "../../helpers/options";
 import { useState } from "react";
-import { toInputDate } from "../../helpers/bookingHelpers";
 import ActionButton from "../../components/ActionButton";
 import toast from "react-hot-toast";
 import axios from "axios";
 import { API_URL } from "../../config/api";
+import {
+  formatBookingDates,
+  formatLocalDate,
+} from "../../helpers/bookingHelpers";
+import type { booking } from "../../types/bookingTypes";
 
 interface roomStay {
   roomId: string;
@@ -19,11 +23,17 @@ interface roomStay {
 const ManageRoomStays = ({
   initialRoomStays,
   bookingId,
+  onUpdated,
 }: {
   initialRoomStays: roomStay[];
   bookingId: string;
+  onUpdated?: (booking: booking) => void;
 }) => {
-  const normalizeDate = (date: string) => date.split("T")[0];
+  const normalizeDate = (date: string) => {
+    if (!date) return "";
+    if (!date.includes("T")) return date;
+    return formatLocalDate(new Date(date));
+  };
 
   const [roomStays, setRoomStays] = useState<roomStay[]>(
     initialRoomStays.map((stay) => ({
@@ -63,6 +73,7 @@ const ManageRoomStays = ({
     );
 
     if (response.status !== 200) toast.error(response.data.message);
+    if (response.data.booking) onUpdated?.(formatBookingDates(response.data.booking));
   };
 
   return (
@@ -87,7 +98,9 @@ const ManageRoomStays = ({
                   ) || null
                 }
                 //   formatOptionLabel={formatOptionLabel}
-                onChange={(option: any) => {
+                onChange={(option: SingleValue<OptionType>) => {
+                  if (!option) return;
+
                   setRoomStays((prevRoomStays) => {
                     const updated = [...prevRoomStays];
                     updated[index] = {

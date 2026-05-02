@@ -2,7 +2,7 @@ import Activity from "../models/activity";
 import type { actionType } from "../models/activity";
 
 export const logActivity = async (
-  staffUsername: string,
+  staffUsername: string | undefined,
   action: actionType,
   details: {
     changes?: Record<string, { before: any; after: any }>;
@@ -13,14 +13,14 @@ export const logActivity = async (
 ) => {
   if (action === "LOGIN" || action === "LOGOUT") {
     return await Activity.create({
-      staffUsername,
+      staffUsername: staffUsername || "system",
       action,
       details,
     });
   }
 
   await Activity.create({
-    staffUsername,
+    staffUsername: staffUsername || "system",
     action,
     details,
     bookingId,

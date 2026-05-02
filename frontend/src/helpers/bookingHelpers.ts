@@ -1,9 +1,7 @@
 import type { booking } from "../types/bookingTypes";
 
 export const roomChargeTransaction = (booking: booking) =>
-  booking.transactions.find(
-    (transaction) => transaction.type === "roomCharge",
-  )!;
+  booking.transactions.find((transaction) => transaction.type === "roomCharge");
 
 export const calculateNights = (checkIn: Date, checkOut: Date) => {
   const start = new Date(
@@ -42,9 +40,7 @@ type Booking = {
   to: Date;
 };
 
-export const toInputDate = (date: Date) => {
-  return date.toISOString().split("T")[0];
-};
+export const toInputDate = formatLocalDate;
 
 export const populateDummyBookings = (
   rooms: { roomId: string; bookings: Booking[] }[],
@@ -98,14 +94,10 @@ export const populateDummyBookings = (
 };
 
 export const formatBookingsDates = (bookings: booking[]) =>
-  bookings.map((booking: booking) => {
-    booking.checkIn = new Date(booking.checkIn);
-    booking.checkOut = new Date(booking.checkOut);
-    return booking;
-  });
+  bookings.map(formatBookingDates);
 
-export const formatBookingDates = (booking: booking) => {
-  booking.checkIn = new Date(booking.checkIn);
-  booking.checkOut = new Date(booking.checkOut);
-  return booking;
-};
+export const formatBookingDates = (booking: booking) => ({
+  ...booking,
+  checkIn: new Date(booking.checkIn),
+  checkOut: new Date(booking.checkOut),
+});

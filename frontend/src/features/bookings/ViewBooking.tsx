@@ -5,7 +5,10 @@ import "./ViewBooking.css";
 import axios from "axios";
 import { API_URL } from "../../config/api.ts";
 import { platformMap } from "../../helpers/maps.ts";
-import { formatBookingDates } from "../../helpers/bookingHelpers.ts";
+import {
+  formatBookingDates,
+  isSameDay,
+} from "../../helpers/bookingHelpers.ts";
 import Skeleton from "react-loading-skeleton";
 import { Modal } from "@mui/material";
 import ManageRoomStays from "./ManageRoomStays.tsx";
@@ -60,7 +63,7 @@ const ViewBooking = ({
     };
 
     fetchBooking();
-  }, [bookingId]);
+  }, [bookingId, data]);
 
   if (loading || !data) {
     return (
@@ -149,9 +152,9 @@ const ViewBooking = ({
   }
 
   const statusDeterminer = (status: string, usedFor: string) => {
-    const checkInIsToday =
-      new Date().toISOString().split("T")[0] ===
-      new Date(data.checkIn).toISOString().split("T")[0];
+    const checkInIsToday = isSameDay(new Date(), new Date(data.checkIn));
+
+    console.log(checkInIsToday);
 
     if (status === "booked" && !checkInIsToday) {
       return usedFor === "classname" ? "booked" : "จองแล้ว";
@@ -165,15 +168,13 @@ const ViewBooking = ({
     if (status === "checkedOut") {
       return usedFor === "classname" ? "checkedOut" : "Check-Out แล้ว";
     }
+
+    return usedFor === "classname" ? "unknown" : status;
   };
 
   const roomsName = data.roomStays
     .map((roomStay) => roomStay.roomId)
     .join(", ");
-
-  const roomChargeTransaction = data.transactions.find(
-    (transaction) => transaction.type === "roomCharge",
-  )!;
 
   return (
     <>
@@ -185,6 +186,10 @@ const ViewBooking = ({
         <ManageRoomStays
           initialRoomStays={data.roomStays}
           bookingId={data.bookingId}
+          onUpdated={(updatedBooking) => {
+            setData(updatedBooking);
+            setManageRoomStaysIsOpen(false);
+          }}
         />
       </Modal>
       <div className="viewBooking__wrapper">
@@ -386,7 +391,7 @@ const ViewBooking = ({
                   <i className="bx bx-note" style={{ fontSize: "1.3rem" }} />
                   Note:{" "}
                 </p>
-                <p>{booking.note}</p>
+                <p>{data.note}</p>
               </div>
             )}
           </div>

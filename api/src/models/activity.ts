@@ -1,6 +1,12 @@
 import mongoose from "mongoose";
 
-export type actionType = "LOGIN" | "LOGOUT" | "NEW_BOOKING" | "REMOVE_BOOKING";
+export type actionType =
+  | "LOGIN"
+  | "LOGOUT"
+  | "NEW_BOOKING"
+  | "REMOVE_BOOKING"
+  | "CHECK_IN"
+  | "MANAGE_ROOM_STAYS";
 
 export type activity =
   | {
@@ -13,7 +19,7 @@ export type activity =
     }
   | {
       staffUsername: string;
-      action: "NEW_BOOKING" | "REMOVE_BOOKING";
+      action: "NEW_BOOKING" | "REMOVE_BOOKING" | "CHECK_IN" | "MANAGE_ROOM_STAYS";
       details: {
         changes?: Record<string, { before: any; after: any }>;
         snapshot?: {
@@ -37,7 +43,14 @@ const activitySchema = new mongoose.Schema({
   action: {
     type: String,
     required: true,
-    enum: ["LOGIN", "LOGOUT", "NEW_BOOKING", "REMOVE_BOOKING"],
+    enum: [
+      "LOGIN",
+      "LOGOUT",
+      "NEW_BOOKING",
+      "REMOVE_BOOKING",
+      "CHECK_IN",
+      "MANAGE_ROOM_STAYS",
+    ],
   },
   details: {
     type: mongoose.Schema.Types.Mixed,

@@ -140,7 +140,7 @@ export const getTodayBookings = async (req: Request, res: Response) => {
         break;
       default:
         return res
-          .json(400)
+          .status(400)
           .json({ error: "Please specify the type of query" });
     }
 
@@ -177,6 +177,25 @@ export const removeBooking = async (req: Request, res: Response) => {
   const { bookingId } = req.params;
 
   try {
+    if (!req.user?.admin) {
+      return res.status(403).json({
+        message: "เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถลบการจองได้",
+      });
+    }
+
+    const booking = await Booking.findOne({ bookingId });
+
+    if (!booking)
+      return res.status(404).json({
+        message: "ไม่พบ booking นี้",
+      });
+
+    if (booking.status !== "booked") {
+      return res.status(409).json({
+        message: "ลบได้เฉพาะ booking ที่ยังไม่ได้ check-in",
+      });
+    }
+
     const deletedBooking = await Booking.findOneAndDelete({ bookingId });
 
     if (!deletedBooking)
@@ -230,13 +249,43 @@ export const checkIn = async (req: Request, res: Response) => {
       });
 
     if (
-      !checkInData.passportData.nationality ||
-      !checkInData.passportData.passportNo ||
-      !checkInData.passportData.passportName ||
+      !checkInData.passportData?.nationality ||
+      !checkInData.passportData?.passportNo ||
+      !checkInData.passportData?.passportName ||
       checkInData.deposit == null
     ) {
       return res.status(400).json({
         message: "กรุณากรอกข้อมูลให้ครบทุกช่อง",
+      });
+    }
+
+    if (checkInData.deposit < 0) {
+      return res.status(400).json({
+        message: "ยอดมัดจำต้องไม่ติดลบ",
+      });
+    }
+
+    const existingBooking = await Booking.findOne({ bookingId });
+
+    if (!existingBooking) {
+      return res.status(404).json({
+        message: "ไม่พบ booking นี้",
+      });
+    }
+
+    if (existingBooking.status !== "booked") {
+      return res.status(409).json({
+        message: "booking นี้ไม่สามารถ check-in ซ้ำได้",
+      });
+    }
+
+    const hasDeposit = existingBooking.transactions.some(
+      (transaction) => transaction.type === "deposit",
+    );
+
+    if (hasDeposit) {
+      return res.status(409).json({
+        message: "booking นี้มีรายการมัดจำแล้ว",
       });
     }
 
@@ -315,7 +364,7 @@ export const checkIn = async (req: Request, res: Response) => {
     }
 
     const updatedBooking = await Booking.findOneAndUpdate(
-      { bookingId },
+      { bookingId, status: "booked" },
       {
         $push: {
           transactions: {
@@ -324,7 +373,7 @@ export const checkIn = async (req: Request, res: Response) => {
         },
         $set: {
           status: "checkedIn",
-          checkInByStaffUsername: req.user?.userId,
+          checkInByStaffUsername: req.user?.username,
           passport: encryptedPassportData,
         },
       },
@@ -346,6 +395,21 @@ export const checkIn = async (req: Request, res: Response) => {
     }
 
     res.status(200).json(sanitizedBooking);
+
+    logActivity(
+      req.user?.username,
+      "CHECK_IN",
+      {
+        changes: {
+          status: { before: "booked", after: "checkedIn" },
+          checkInByStaffUsername: {
+            before: existingBooking.checkInByStaffUsername,
+            after: req.user?.username,
+          },
+        },
+      },
+      String(bookingId),
+    );
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
   }
@@ -465,6 +529,8 @@ export const manageRoomStays = async (req: Request, res: Response) => {
     const { bookingId } = req.params;
 
     if (
+      !Array.isArray(roomStays) ||
+      roomStays.length === 0 ||
       !roomStays.every(
         (roomStay: roomStay) => roomStay.roomId && roomStay.from && roomStay.to,
       )
@@ -496,14 +562,20 @@ export const manageRoomStays = async (req: Request, res: Response) => {
         message: "ช่วงการเข้าพักซ้อนกัน",
       });
 
-    const booking = await Booking.findOne(
-      { bookingId },
-      { checkIn: 1, checkOut: 1 },
-    ).lean();
+    const booking = await Booking.findOne({ bookingId }).lean();
 
     if (!booking) {
       return res.status(404).json({ message: "Booking not found" });
     }
+
+    if (booking.status === "checkedOut") {
+      return res.status(409).json({
+        error: "BOOKING_CHECKED_OUT",
+        message: "ไม่สามารถแก้ไขช่วงพักของ booking ที่ check-out แล้ว",
+      });
+    }
+
+    const originalRoomStays = booking.roomStays;
 
     // 1. Start must match check-in
     if (sorted[0].from !== toInputDate(booking.checkIn)) {
@@ -567,15 +639,28 @@ export const manageRoomStays = async (req: Request, res: Response) => {
       });
     }
 
-    await Booking.findOneAndUpdate(
+    const updatedBooking = await Booking.findOneAndUpdate(
       { bookingId },
       {
         $set: {
           roomStays: sorted,
         },
       },
+      { new: true },
     );
-    res.status(200).json({ message: "สำเร็จ" });
+
+    logActivity(
+      req.user?.username,
+      "MANAGE_ROOM_STAYS",
+      {
+        changes: {
+          roomStays: { before: originalRoomStays, after: sorted },
+        },
+      },
+      String(bookingId),
+    );
+
+    res.status(200).json({ message: "สำเร็จ", booking: updatedBooking });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
