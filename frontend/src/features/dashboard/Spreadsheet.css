@@ -39,6 +39,27 @@
   cursor: pointer;
 }
 
+.daySeparator {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 1rem;
+  border-left: 0.25rem solid var(--primary-color);
+  background-color: color-mix(in srgb, var(--primary-color) 8%, #fff);
+  color: var(--text);
+  font-weight: 500;
+  cursor: default;
+}
+
+.daySeparator span {
+  line-height: 1;
+}
+
+.ag-row-todaySeparator .daySeparator {
+  background-color: color-mix(in srgb, var(--primary-color) 14%, #fff);
+  font-weight: 600;
+}
+
 .custom-loading {
   display: flex;
   flex-direction: column;

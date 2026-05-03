@@ -1,9 +1,11 @@
 import { Link, useLocation } from "react-router";
+import { useState } from "react";
 import Logo from "./Logo";
 import "./Sidebar.css";
 
 const Sidebar = () => {
-  let location = useLocation();
+  const location = useLocation();
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   const sidebarItems = [
     { id: 1, label: "หน้าแรก", link: "/", icon: "bx-home" },
@@ -14,19 +16,34 @@ const Sidebar = () => {
       link: "/departures",
       icon: "bx-arrow-from-left",
     },
-    { id: 4, label: "ตารางการจอง", link: "/calendar", icon: "bx-calendar" },
-    { id: 5, label: "เอกสาร", link: "/documents", icon: "bx-article" },
-    { id: 6, label: "สถิติ", link: "/stats", icon: "bx-bar-chart-big" },
-    { id: 7, label: "ตั้งค่า และ ประวัติ", link: "/settings", icon: "bx-cog" },
+    // { id: 4, label: "Master", link: "/master", icon: "bx-table" },
+    { id: 5, label: "ตารางการจอง", link: "/calendar", icon: "bx-calendar" },
+    { id: 6, label: "เอกสาร", link: "/documents", icon: "bx-article" },
+    { id: 7, label: "สถิติ", link: "/stats", icon: "bx-bar-chart-big" },
+    { id: 8, label: "ตั้งค่า และ ประวัติ", link: "/settings", icon: "bx-cog" },
   ];
 
   return (
-    <div className="sidebar">
-      <Logo isAbsolute={false} />
+    <div className={isCollapsed ? "sidebar sidebar--collapsed" : "sidebar"}>
+      <div className="sidebar__top">
+        {!isCollapsed && <Logo isAbsolute={false} />}
+        <button
+          className="sidebar__toggle"
+          type="button"
+          aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          onClick={() => setIsCollapsed((prev) => !prev)}
+        >
+          <i
+            className={
+              isCollapsed ? "bx bx-chevrons-right" : "bx bx-chevrons-left"
+            }
+          />
+        </button>
+      </div>
 
       <ul className="sidebar__navList">
         {sidebarItems.map((item) => (
-          <Link key={item.id} to={item.link}>
+          <Link key={item.id} to={item.link} title={item.label}>
             <div
               className={
                 location.pathname === item.link
@@ -35,7 +52,7 @@ const Sidebar = () => {
               }
             >
               <i className={`bx ${item.icon}`} />
-              {item.label}
+              <span className="sidebar__navLabel">{item.label}</span>
             </div>
           </Link>
         ))}

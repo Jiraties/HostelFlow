@@ -33,9 +33,15 @@ export const customStyles = <T>(): StylesConfig<T, false> => ({
 
   menu: (provided) => ({
     ...provided,
+    zIndex: 1000,
     borderRadius: "0.5rem",
     overflow: "hidden",
     fontFamily: '"IBM Plex Sans Thai", sans-serif',
+  }),
+
+  menuPortal: (provided) => ({
+    ...provided,
+    zIndex: 9999,
   }),
 
   option: (provided, state) => ({

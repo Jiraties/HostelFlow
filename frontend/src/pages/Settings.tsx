@@ -59,6 +59,7 @@ const Settings = () => {
         </div>
         <div className="settings__activities">
           {activities.map((activity) => {
+            console.log(activity);
             const date = new Date(activity.timestamp);
             const actionMap = {
               NEW_BOOKING: { icon: "bx-plus", text: "เพิ่ม Booking" },
@@ -70,6 +71,10 @@ const Settings = () => {
               LOGIN: {
                 icon: "bx-arrow-in-right-square-half",
                 text: "เข้าสู่ระบบ",
+              },
+              MANAGE_ROOM_STAYS: {
+                icon: "bx-calendar-cog",
+                text: "แก้ช่วงการเข้าพัก",
               },
             };
 
@@ -88,12 +93,17 @@ const Settings = () => {
                   >
                     <i
                       className={
-                        "bx settings__activityIcon " +
-                        actionMap[activity.action]["icon"]
+                        "bx settings__activityIcon " + activity.action
+                          ? actionMap[activity.action]["icon"]
+                          : ""
                       }
                     ></i>
                     <div>
-                      <h3>{actionMap[activity.action]["text"]}</h3>
+                      <h3>
+                        {activity.action
+                          ? actionMap[activity.action]["text"]
+                          : ""}
+                      </h3>
                       <p>
                         {date.toLocaleTimeString("th-TH", {
                           hour: "2-digit",
@@ -160,12 +170,17 @@ const Settings = () => {
                 >
                   <i
                     className={
-                      "bx settings__activityIcon " +
-                      actionMap[activity.action]["icon"]
+                      "bx settings__activityIcon " + activity.action
+                        ? actionMap[activity.action]["icon"]
+                        : ""
                     }
                   ></i>
                   <div>
-                    <h3>{actionMap[activity.action]["text"]}</h3>
+                    <h3>
+                      {activity.action
+                        ? actionMap[activity.action]["text"]
+                        : ""}
+                    </h3>
                     <p>
                       {date.toLocaleTimeString("th-TH", {
                         hour: "2-digit",

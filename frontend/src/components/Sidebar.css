@@ -1,7 +1,55 @@
 .sidebar {
   background-color: var(--light-background);
-
+  box-sizing: border-box;
+  width: 17rem;
   padding: 2.5rem;
+  transition:
+    width 0.25s ease,
+    padding 0.25s ease;
+}
+
+.sidebar--collapsed {
+  width: 5.5rem;
+  padding: 2.5rem 1rem;
+}
+
+.sidebar__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.sidebar--collapsed .sidebar__top {
+  justify-content: center;
+}
+
+.sidebar__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background-color: var(--background);
+  box-shadow: var(--main-shadow);
+  color: var(--primary-color);
+  cursor: pointer;
+  transition-duration: 0.2s;
+}
+
+.sidebar__toggle:hover {
+  transform: scale(1.07);
+}
+
+.sidebar__toggle:active {
+  transform: scale(0.95);
+}
+
+.sidebar__toggle i {
+  font-size: 1.4rem;
 }
 
 .sidebar__navList {
@@ -28,6 +76,36 @@
   display: flex;
   gap: 0.5rem;
   align-items: center;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.sidebar--collapsed .sidebar__navItem {
+  justify-content: center;
+  gap: 0;
+  width: 3.25rem;
+  height: 3.25rem;
+  padding: 0;
+  margin-inline: auto;
+  border-radius: 0.85rem;
+}
+
+.sidebar__navItem i {
+  flex: 0 0 auto;
+  font-size: 1.25rem;
+}
+
+.sidebar__navLabel {
+  transition:
+    opacity 0.18s ease,
+    max-width 0.25s ease;
+  max-width: 12rem;
+  overflow: hidden;
+}
+
+.sidebar--collapsed .sidebar__navLabel {
+  opacity: 0;
+  max-width: 0;
 }
 
 .sidebar__navItem--active {

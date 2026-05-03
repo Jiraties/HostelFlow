@@ -65,8 +65,10 @@ function App() {
         <div className="app">
           <Sidebar />
           <Routes>
+            <Route path="/" element={<Home status="master" />} />
             <Route path="/arrivals" element={<Home status="arrivals" />} />
             <Route path="/departures" element={<Home status="departures" />} />
+            <Route path="/master" element={<Home status="master" />} />
             <Route path="/calendar" element={<Calendar />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<NotFound />} />

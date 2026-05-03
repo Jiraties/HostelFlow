@@ -1,6 +1,7 @@
 import StatCard from "../features/dashboard/StatCard";
-import Logo from "../components/Logo";
 import axios from "axios";
+import Select from "react-select";
+import type { SingleValue } from "react-select";
 
 import ActionButton from "../components/ActionButton";
 import Spreadsheet from "../features/dashboard/Spreadsheet";
@@ -9,21 +10,65 @@ import toast from "react-hot-toast";
 import ViewBooking from "../features/bookings/ViewBooking";
 import ConfirmationModal from "../components/ConfirmationModal";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Modal } from "@mui/material";
 import { useAuth } from "../context/AuthContext";
 import { Link, useLocation } from "react-router";
 import { formatBookingsDates } from "../helpers/bookingHelpers";
+import { platformOptions, roomIdOptions } from "../helpers/options";
+import { customStyles } from "../helpers/selectStyling";
 import { API_URL } from "../config/api";
 
 import type { booking } from "../types/bookingTypes";
+import type { OptionType } from "../helpers/selectStyling";
 
 import "./Home.css";
 import CheckIn from "../features/bookings/CheckIn";
 
-const Home = ({ status }: { status: "arrivals" | "departures" }) => {
-  const { user, logout } = useAuth();
+type HomeStatus = "arrivals" | "departures" | "master";
+
+type MasterFilters = {
+  from: string;
+  to: string;
+  name: string;
+  room: string;
+  channel: string;
+};
+
+const formatInputDate = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+};
+
+const getDefaultMasterFilters = (): MasterFilters => {
+  const today = new Date();
+  const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+  return {
+    from: formatInputDate(firstDayOfMonth),
+    to: formatInputDate(lastDayOfMonth),
+    name: "",
+    room: "",
+    channel: "",
+  };
+};
+
+const getFetchErrorMessage = (err: unknown) => {
+  if (axios.isAxiosError(err) && err.response?.data?.message) {
+    return err.response.data.message;
+  }
+
+  return "เกิดข้อผิดพลาดในการโหลดข้อมูล";
+};
+
+const Home = ({ status }: { status: HomeStatus }) => {
+  const { user } = useAuth();
   const location = useLocation();
+  const isMaster = status === "master";
   const [addBookingIsOpen, setAddBookingIsOpen] = useState(false);
   const [viewBookingBooking, setViewBookingBooking] = useState<booking | null>(
     null,
@@ -40,6 +85,14 @@ const Home = ({ status }: { status: "arrivals" | "departures" }) => {
     booking: null,
   });
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [masterFilters, setMasterFilters] = useState<MasterFilters>(
+    getDefaultMasterFilters,
+  );
+  const masterFiltersRef = useRef(masterFilters);
+
+  useEffect(() => {
+    masterFiltersRef.current = masterFilters;
+  }, [masterFilters]);
 
   const fullFormattedDate = new Intl.DateTimeFormat("th-TH", {
     day: "numeric",
@@ -64,27 +117,34 @@ const Home = ({ status }: { status: "arrivals" | "departures" }) => {
       (booking) =>
         booking.checkOut.toDateString() === new Date().toDateString(),
     ).length,
-    unpaidCheckins: bookings.filter(
-      (booking) => roomChargeTransaction(booking).paymentMethod === "Unpaid",
-    ).length,
-    cashToday: bookings.reduce((sum, booking) => {
-      if (roomChargeTransaction(booking).paymentMethod !== "Cash") return sum;
-      if (!bookingCheckInIsToday(booking)) return sum;
-      return sum + roomChargeTransaction(booking).amount!;
-    }, 0),
-    revenueToday: bookings.reduce((sum, booking) => {
-      const tx = roomChargeTransaction(booking);
-      if (tx.paymentMethod === "Unpaid") return sum;
-      if (!bookingCheckInIsToday(booking)) return sum;
-      return sum + (tx.amount ?? 0);
-    }, 0),
+    unpaidCheckins: isMaster
+      ? 0
+      : bookings.filter(
+          (booking) =>
+            roomChargeTransaction(booking).paymentMethod === "Unpaid",
+        ).length,
+    cashToday: isMaster
+      ? 0
+      : bookings.reduce((sum, booking) => {
+          if (roomChargeTransaction(booking).paymentMethod !== "Cash")
+            return sum;
+          if (!bookingCheckInIsToday(booking)) return sum;
+          return sum + roomChargeTransaction(booking).amount!;
+        }, 0),
+    // revenueToday: bookings.reduce((sum, booking) => {
+    //   const tx = roomChargeTransaction(booking);
+    //   if (tx.paymentMethod === "Unpaid") return sum;
+    //   if (!bookingCheckInIsToday(booking)) return sum;
+    //   return sum + (tx.amount ?? 0);
+    // }, 0),
     guestsInHouse: occupancy,
     // guestsInHouse: `${Math.trunc((occupancy / 46) * 100)}%`,
     deposit: 10,
   };
 
-  const statCards =
-    status === "arrivals"
+  const statCards = isMaster
+    ? []
+    : status === "arrivals"
       ? [
           {
             id: "arrivalsToday",
@@ -97,11 +157,11 @@ const Home = ({ status }: { status: "arrivals" | "departures" }) => {
             label: "ยังไม่ชำระเงิน",
             value: stats.unpaidCheckins,
           },
-          {
-            id: "revenueToday",
-            label: "รายได้รวมวันนี้ (฿)",
-            value: stats.revenueToday,
-          },
+          // {
+          //   id: "revenueToday",
+          //   label: "รายได้รวมวันนี้ (฿)",
+          //   value: stats.revenueToday,
+          // },
           {
             id: "cashToday",
             label: "เงินสดวันนี้ (฿)",
@@ -144,11 +204,14 @@ const Home = ({ status }: { status: "arrivals" | "departures" }) => {
   const appendToBookings = (booking: booking) => {
     const formattedBooking = formatBookingsDates([booking])[0];
 
-    if (
+    if (isMaster) {
+      fetchBookings();
+    } else if (
       formattedBooking.checkIn.toDateString() === new Date().toDateString() &&
       location.pathname === "/arrivals"
-    )
+    ) {
       setBookings((prev) => [...prev, formattedBooking]);
+    }
 
     setAddBookingIsOpen(false);
   };
@@ -159,21 +222,55 @@ const Home = ({ status }: { status: "arrivals" | "departures" }) => {
     fetchBookings();
   };
 
-  const fetchBookings = async () => {
+  const fetchBookingsWithFilters = useCallback(
+    async (filters: MasterFilters) => {
+      setLoading(true);
+      try {
+        const response = await axios.get(
+          `${API_URL}/bookings/getMasterBookings`,
+          {
+            withCredentials: true,
+            params: filters,
+          },
+        );
+
+        const bookingsData = response.data.bookings;
+        setLastUpdated(new Date());
+        setOccupancy(response.data.occupancy);
+        setBookings(formatBookingsDates(bookingsData));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [],
+  );
+
+  const fetchBookings = useCallback(async () => {
+    if (isMaster) {
+      await fetchBookingsWithFilters(masterFiltersRef.current);
+      return;
+    }
+
     setLoading(true);
-    const response = await axios.get(
-      `${API_URL}/bookings/getTodayBookings/${status}`,
+    try {
+      const response = await axios.get(
+        `${API_URL}/bookings/getTodayBookings/${status}`,
+        {
+          withCredentials: true,
+        },
+      );
 
-      {
-        withCredentials: true,
-      },
-    );
+      const bookingsData = response.data.bookings;
+      setLastUpdated(new Date());
+      setOccupancy(response.data.occupancy);
+      setBookings(formatBookingsDates(bookingsData));
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchBookingsWithFilters, isMaster, status]);
 
-    const bookingsData = response.data.bookings;
-    setLastUpdated(new Date());
-    setOccupancy(response.data.occupancy);
-    setBookings(formatBookingsDates(bookingsData));
-    setLoading(false);
+  const updateMasterFilter = (key: keyof MasterFilters, value: string) => {
+    setMasterFilters((prev) => ({ ...prev, [key]: value }));
   };
 
   const removeBookingHandler = (booking: booking) => {
@@ -187,8 +284,21 @@ const Home = ({ status }: { status: "arrivals" | "departures" }) => {
   };
 
   useEffect(() => {
-    fetchBookings();
-  }, [location]);
+    if (isMaster) return;
+    fetchBookings().catch((err) => toast.error(getFetchErrorMessage(err)));
+  }, [fetchBookings, isMaster, location.pathname]);
+
+  useEffect(() => {
+    if (!isMaster) return;
+
+    const timeoutId = window.setTimeout(() => {
+      fetchBookingsWithFilters(masterFilters).catch((err) =>
+        toast.error(getFetchErrorMessage(err)),
+      );
+    }, 500);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [fetchBookingsWithFilters, isMaster, masterFilters]);
 
   return (
     <main className="home">
@@ -238,8 +348,12 @@ const Home = ({ status }: { status: "arrivals" | "departures" }) => {
       <header className="home__header">
         <div>
           <h1>
-            {status === "arrivals" ? "Arrivals" : "Departures"} |{" "}
-            {fullFormattedDate}
+            {status === "arrivals"
+              ? "Arrivals"
+              : status === "departures"
+                ? "Departures"
+                : "Master"}{" "}
+            | {fullFormattedDate}
           </h1>
           <div style={{ display: "flex", gap: "0.3rem" }}>
             <p>
@@ -272,33 +386,125 @@ const Home = ({ status }: { status: "arrivals" | "departures" }) => {
           </Link>
         </div>
       </header>
-      <div className="home__statsAndActions">
-        <div className="home__stats">
-          {statCards.map((stat) => (
-            <StatCard
-              key={stat.label}
-              loading={loading}
-              label={stat.label}
-              value={stat.value ? stat.value : 0}
+      {isMaster && (
+        <section className="home__masterControls">
+          <div className="home__masterFilters">
+            <div className="home__dateFilter">
+              <div className="home__filterLabels">
+                <p className="home__filterLabel">จากวันที่</p>
+                <p className="home__filterLabel">ถึงวันที่</p>
+              </div>
+              <div className="home__dateInputs">
+                <input
+                  type="date"
+                  value={masterFilters.from}
+                  onChange={(e) => updateMasterFilter("from", e.target.value)}
+                  className="boxInput home__dateInput"
+                />
+                <input
+                  type="date"
+                  value={masterFilters.to}
+                  onChange={(e) => updateMasterFilter("to", e.target.value)}
+                  className="boxInput home__dateInput"
+                />
+              </div>
+            </div>
+            <div className="home__filterField">
+              <p className="home__filterLabel">ชื่อ</p>
+              <input
+                className="boxInput home__filterInput"
+                type="text"
+                value={masterFilters.name}
+                placeholder="ค้นหาชื่อแขก"
+                onChange={(e) => updateMasterFilter("name", e.target.value)}
+              />
+            </div>
+            <div className="home__filterField">
+              <p className="home__filterLabel">ห้อง</p>
+              <Select<OptionType>
+                styles={customStyles<OptionType>()}
+                classNamePrefix="rs"
+                placeholder="ทุกห้อง"
+                isClearable
+                menuPortalTarget={document.body}
+                options={roomIdOptions}
+                value={
+                  roomIdOptions.find(
+                    (option) => option.value === masterFilters.room,
+                  ) || null
+                }
+                onChange={(option: SingleValue<OptionType>) =>
+                  updateMasterFilter("room", option?.value || "")
+                }
+              />
+            </div>
+            <div className="home__filterField">
+              <p className="home__filterLabel">ช่องทางการจอง</p>
+              <Select<OptionType>
+                styles={customStyles<OptionType>()}
+                classNamePrefix="rs"
+                placeholder="ทุกช่องทาง"
+                isClearable
+                menuPortalTarget={document.body}
+                options={platformOptions}
+                value={
+                  platformOptions.find(
+                    (option) => option.value === masterFilters.channel,
+                  ) || null
+                }
+                onChange={(option: SingleValue<OptionType>) =>
+                  updateMasterFilter("channel", option?.value || "")
+                }
+              />
+            </div>
+          </div>
+          <div className="home__masterActions">
+            <ActionButton
+              text="เพิ่มการจองใหม่"
+              icon="bx-plus"
+              onClick={() => setAddBookingIsOpen(true)}
             />
-          ))}
+          </div>
+        </section>
+      )}
+      {!isMaster && (
+        <div className="home__statsAndActions">
+          <div className="home__stats">
+            {statCards.map((stat) => (
+              <StatCard
+                key={stat.label}
+                loading={loading}
+                label={stat.label}
+                value={stat.value ? stat.value : 0}
+              />
+            ))}
+          </div>
+          <div className="home__actions">
+            <ActionButton
+              text="เรียกเก็บเงิน"
+              icon="bx-dollar"
+              onClick={() => {}}
+            />
+            <ActionButton
+              text="เพิ่มการจองใหม่"
+              icon="bx-plus"
+              onClick={() => setAddBookingIsOpen(true)}
+            />
+          </div>
         </div>
-        <div className="home__actions">
-          <ActionButton
-            text="เรียกเก็บเงิน"
-            icon="bx-dollar"
-            onClick={() => {}}
-          />
-          <ActionButton
-            text="เพิ่มการจองใหม่"
-            icon="bx-plus"
-            onClick={() => setAddBookingIsOpen(true)}
-          />
-        </div>
-      </div>
+      )}
       <Spreadsheet
         bookings={bookings}
         loading={loading}
+        status={status}
+        masterRange={
+          isMaster
+            ? {
+                from: masterFilters.from,
+                to: masterFilters.to,
+              }
+            : undefined
+        }
         setViewBookingBooking={setViewBookingBooking}
       />
       {/* <button onClick={logoutHandler}>logout</button> */}

@@ -152,6 +152,67 @@ export const getTodayBookings = async (req: Request, res: Response) => {
   }
 };
 
+const escapeRegex = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+export const getMasterBookings = async (req: Request, res: Response) => {
+  const { from, to, name, room, channel } = req.query;
+
+  if (!from || !to) {
+    return res.status(400).json({
+      message: "Please specify from and to dates",
+    });
+  }
+
+  const fromDate = new Date(`${from as string}T00:00:00`);
+  const toDate = new Date(`${to as string}T00:00:00`);
+
+  if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime())) {
+    return res.status(400).json({
+      message: "Invalid date range",
+    });
+  }
+
+  if (fromDate > toDate) {
+    return res.status(400).json({
+      message: "วันที่เริ่มต้นต้องไม่อยู่หลังวันที่สิ้นสุด",
+    });
+  }
+
+  const endOfToDate = new Date(toDate);
+  endOfToDate.setDate(endOfToDate.getDate() + 1);
+
+  try {
+    const query: Record<string, unknown> = {
+      checkIn: { $lt: endOfToDate },
+      checkOut: { $gt: fromDate },
+    };
+
+    if (typeof name === "string" && name.trim()) {
+      query.name = { $regex: escapeRegex(name.trim()), $options: "i" };
+    }
+
+    if (typeof room === "string" && room.trim()) {
+      query["roomStays.roomId"] = room.trim();
+    }
+
+    if (typeof channel === "string" && channel.trim()) {
+      query.platformId = channel.trim();
+    }
+
+    const bookings = await Booking.find(query).sort({
+      checkIn: 1,
+      checkOut: 1,
+      name: 1,
+    });
+    const occupancy = await Booking.countDocuments({ status: "checkedIn" });
+
+    res.status(200).json({ bookings, occupancy });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch bookings" });
+  }
+};
+
 // export const getTodayDepartureBookings = async (
 //   req: Request,
 //   res: Response,

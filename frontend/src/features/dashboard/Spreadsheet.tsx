@@ -1,11 +1,66 @@
 import { AgGridProvider, AgGridReact } from "ag-grid-react";
-import { useState, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { AllCommunityModule } from "ag-grid-community";
 import { themeQuartz } from "ag-grid-community";
+import type {
+  CellClassParams,
+  ColDef,
+  GridReadyEvent,
+  ICellRendererParams,
+  IsFullWidthRowParams,
+  GridApi,
+  RowClickedEvent,
+  RowHeightParams,
+  ValueFormatterParams,
+  ValueGetterParams,
+} from "ag-grid-community";
 import type { booking } from "../../types/bookingTypes";
 import "./Spreadsheet.css";
-import { useLocation } from "react-router";
 import { platformMap } from "../../helpers/maps.ts";
+
+type SpreadsheetStatus = "arrivals" | "departures" | "master";
+
+type SeparatorRow = {
+  __separator: true;
+  dateKey: string;
+  dateLabel: string;
+  isToday?: boolean;
+};
+
+type SpreadsheetRow = booking | SeparatorRow;
+
+const isSeparatorRow = (
+  row: SpreadsheetRow | undefined,
+): row is SeparatorRow => !!row && "__separator" in row;
+
+const separatorDateKey = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+};
+
+const inputDateToLocalDate = (value?: string) => {
+  if (!value) return null;
+
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return null;
+
+  return new Date(year, month - 1, day);
+};
+
+const dateKeyIsInRange = (dateKey: string, from?: string, to?: string) => {
+  const date = inputDateToLocalDate(dateKey);
+  const fromDate = inputDateToLocalDate(from);
+  const toDate = inputDateToLocalDate(to);
+
+  if (!date) return false;
+  if (fromDate && date < fromDate) return false;
+  if (toDate && date > toDate) return false;
+
+  return true;
+};
 
 const myTheme = themeQuartz.withParams({
   fontFamily: "IBM Plex Sans Thai",
@@ -19,8 +74,10 @@ const myTheme = themeQuartz.withParams({
   wrapperBorder: false,
 });
 
-const platformCell = (params: any) => {
+const platformCell = (params: ICellRendererParams<SpreadsheetRow, string>) => {
   const platform = platformMap[params.value as keyof typeof platformMap];
+
+  if (!platform) return null;
 
   return (
     <div className="platformCell">
@@ -51,27 +108,141 @@ const Spreadsheet = ({
   bookings,
   setViewBookingBooking,
   loading,
+  status,
+  masterRange,
 }: {
   bookings: booking[];
   setViewBookingBooking: (booking: booking) => void;
   loading: boolean;
+  status: SpreadsheetStatus;
+  masterRange?: {
+    from: string;
+    to: string;
+  };
 }) => {
   const modules = [AllCommunityModule];
-  const location = useLocation();
+  const isMaster = status === "master";
+  const gridApiRef = useRef<GridApi<SpreadsheetRow> | null>(null);
+  const hasScrolledToTodayRef = useRef(false);
+  const todayKey = separatorDateKey(new Date());
 
-  const status = location.pathname.includes("arrivals")
-    ? "arrivals"
-    : "departures";
+  const dateValueFormater = (
+    params: ValueFormatterParams<SpreadsheetRow, Date>,
+  ) =>
+    params.value
+      ? new Intl.DateTimeFormat("th-TH", {
+          calendar: "gregory",
+          day: "numeric",
+          month: "short",
+          year: "2-digit",
+        }).format(params.value)
+      : "";
 
-  const dateValueFormater = (params: any) =>
+  const separatorDateFormatter = (date: Date) =>
     new Intl.DateTimeFormat("th-TH", {
       calendar: "gregory",
       day: "numeric",
-      month: "short",
-      year: "2-digit",
-    }).format(params.value);
+      month: "long",
+      year: "numeric",
+    }).format(date);
 
-  const [colDefs] = useState([
+  const rowData = useMemo<SpreadsheetRow[]>(() => {
+    if (!isMaster) return bookings;
+
+    const sortedBookings = [...bookings].sort((a, b) => {
+      const checkInDiff = a.checkIn.getTime() - b.checkIn.getTime();
+      if (checkInDiff !== 0) return checkInDiff;
+
+      const checkOutDiff = a.checkOut.getTime() - b.checkOut.getTime();
+      if (checkOutDiff !== 0) return checkOutDiff;
+
+      return a.name.localeCompare(b.name);
+    });
+
+    const rows: SpreadsheetRow[] = [];
+    let currentDateKey = "";
+    let todaySeparatorExists = false;
+
+    sortedBookings.forEach((booking) => {
+      const dateKey = separatorDateKey(booking.checkIn);
+
+      if (dateKey !== currentDateKey) {
+        if (
+          !todaySeparatorExists &&
+          dateKey > todayKey &&
+          dateKeyIsInRange(todayKey, masterRange?.from, masterRange?.to)
+        ) {
+          rows.push({
+            __separator: true,
+            dateKey: todayKey,
+            dateLabel: `วันนี้ | ${separatorDateFormatter(new Date())}`,
+            isToday: true,
+          });
+          todaySeparatorExists = true;
+        }
+
+        rows.push({
+          __separator: true,
+          dateKey,
+          dateLabel:
+            dateKey === todayKey
+              ? `วันนี้ | ${separatorDateFormatter(booking.checkIn)}`
+              : separatorDateFormatter(booking.checkIn),
+          isToday: dateKey === todayKey,
+        });
+        if (dateKey === todayKey) todaySeparatorExists = true;
+        currentDateKey = dateKey;
+      }
+
+      rows.push(booking);
+    });
+
+    if (
+      !todaySeparatorExists &&
+      dateKeyIsInRange(todayKey, masterRange?.from, masterRange?.to)
+    ) {
+      rows.push({
+        __separator: true,
+        dateKey: todayKey,
+        dateLabel: `วันนี้ | ${separatorDateFormatter(new Date())}`,
+        isToday: true,
+      });
+      rows.sort((a, b) => {
+        const aDateKey = isSeparatorRow(a) ? a.dateKey : separatorDateKey(a.checkIn);
+        const bDateKey = isSeparatorRow(b) ? b.dateKey : separatorDateKey(b.checkIn);
+
+        return aDateKey.localeCompare(bDateKey);
+      });
+    }
+
+    return rows;
+  }, [bookings, isMaster, masterRange?.from, masterRange?.to, todayKey]);
+
+  const scrollToTodaySeparator = useCallback(() => {
+    const api = gridApiRef.current;
+    if (!api || !isMaster || loading || hasScrolledToTodayRef.current) return;
+
+    const todayRowIndex = rowData.findIndex(
+      (row) => isSeparatorRow(row) && row.dateKey === todayKey,
+    );
+
+    if (todayRowIndex === -1) return;
+
+    api.ensureIndexVisible(todayRowIndex, "top");
+    hasScrolledToTodayRef.current = true;
+  }, [isMaster, loading, rowData, todayKey]);
+
+  useEffect(() => {
+    if (isMaster) return;
+    hasScrolledToTodayRef.current = false;
+  }, [isMaster]);
+
+  useEffect(() => {
+    scrollToTodaySeparator();
+  }, [scrollToTodaySeparator]);
+
+  const colDefs = useMemo<ColDef<SpreadsheetRow>[]>(
+    () => [
     { field: "name", headerName: "ชื่อ", filter: true },
     {
       field: "checkIn",
@@ -83,8 +254,10 @@ const Spreadsheet = ({
     },
     { field: "nights", headerName: "คืน" },
     {
-      valueGetter: (params: any) =>
-        params.data.roomStays?.map((r: any) => r.roomId).join(", "),
+      valueGetter: (params: ValueGetterParams<SpreadsheetRow>) => {
+        if (isSeparatorRow(params.data)) return "";
+        return params.data?.roomStays?.map((roomStay) => roomStay.roomId).join(", ") || "";
+      },
       headerName: "ห้อง",
       filter: true,
     },
@@ -97,26 +270,37 @@ const Spreadsheet = ({
     {
       headerName: "ค่าห้อง",
       maxWidth: 130,
-      valueGetter: (params: any) =>
-        params.data.transactions.find(
+      valueGetter: (params: ValueGetterParams<SpreadsheetRow>) => {
+        if (isSeparatorRow(params.data)) return undefined;
+        return params.data?.transactions?.find(
           (transaction) => transaction.type === "roomCharge",
-        ).amount,
-      valueFormatter: (params: any) =>
-        new Intl.NumberFormat("th-TH", {
-          style: "currency",
-          currency: "THB",
-          minimumFractionDigits: 0,
-          currencyDisplay: "code",
-        }).format(params.value),
+        )?.amount;
+      },
+      valueFormatter: (
+        params: ValueFormatterParams<SpreadsheetRow, number | undefined>,
+      ) =>
+        params.value == null
+          ? ""
+          : new Intl.NumberFormat("th-TH", {
+              style: "currency",
+              currency: "THB",
+              minimumFractionDigits: 0,
+              currencyDisplay: "code",
+            }).format(params.value),
     },
     {
-      valueGetter: (params: any) =>
-        params.data.transactions.find(
+      valueGetter: (params: ValueGetterParams<SpreadsheetRow>) => {
+        if (isSeparatorRow(params.data)) return "";
+        return params.data?.transactions?.find(
           (transaction) => transaction.type === "roomCharge",
-        ).paymentMethod,
+        )?.paymentMethod;
+      },
       headerName: "ช่องทางการจ่าย",
       filter: true,
-      cellClassRules: { red: (param: any) => param.value === "Unpaid" },
+      cellClassRules: {
+        red: (param: CellClassParams<SpreadsheetRow>) =>
+          param.value === "Unpaid",
+      },
     },
     { field: "bookingId", headerName: "Booking ID", sortable: false },
     {
@@ -130,33 +314,41 @@ const Spreadsheet = ({
       pinned: "right",
       maxWidth: 130,
       cellClassRules: {
-        notCheckedIn: (param: any) => {
+        notCheckedIn: (param: CellClassParams<SpreadsheetRow>) => {
           return param.value === "booked";
         },
-        checkedIn: (param: any) => {
+        checkedIn: (param: CellClassParams<SpreadsheetRow>) => {
           return param.value === "checkedIn";
         },
-        checkedOut: (param: any) => {
+        checkedOut: (param: CellClassParams<SpreadsheetRow>) => {
           return param.value === "checkedOut";
         },
       },
-      valueFormatter: (params: any) => {
+      valueFormatter: (
+        params: ValueFormatterParams<SpreadsheetRow, string | undefined>,
+      ) => {
         if (params.value === "booked") return "ยังไม่ Check-In";
         if (params.value === "checkedIn") return "Check-In แล้ว";
         if (params.value === "checkedOut") return "Check-Out แล้ว";
+        return "";
       },
-      sort: "asc",
+      sort: isMaster ? undefined : "asc",
     },
-  ]);
+    ],
+    [isMaster],
+  );
 
-  const onRowDoubleClicked = (event: any) => {
+  const onRowDoubleClicked = (event: RowClickedEvent<SpreadsheetRow>) => {
+    if (!event.data || isSeparatorRow(event.data)) return;
     setViewBookingBooking(event.data);
   };
 
-  const onGridReady = (params) => {
+  const onGridReady = (params: GridReadyEvent<SpreadsheetRow>) => {
     const api = params.api;
+    gridApiRef.current = api;
 
     if (loading) api.showLoadingOverlay();
+    window.requestAnimationFrame(scrollToTodaySeparator);
   };
 
   return (
@@ -169,13 +361,41 @@ const Spreadsheet = ({
         }}
       >
         <AgGridReact
-          rowData={bookings}
+          key={status}
+          rowData={rowData}
           columnDefs={colDefs}
           theme={myTheme}
           onGridReady={onGridReady}
           autoSizeStrategy={{ type: "fitCellContents" }}
+          getRowId={(params) =>
+            isSeparatorRow(params.data)
+              ? `separator-${params.data.dateKey}`
+              : `booking-${status}-${params.data.bookingId}`
+          }
           onRowClicked={onRowDoubleClicked}
+          isFullWidthRow={(params: IsFullWidthRowParams<SpreadsheetRow>) =>
+            isMaster && isSeparatorRow(params.rowNode.data)
+          }
+          fullWidthCellRenderer={(
+            params: ICellRendererParams<SpreadsheetRow>,
+          ) => (
+            <div className="daySeparator">
+              <span>
+                {isSeparatorRow(params.data) ? params.data.dateLabel : ""}
+              </span>
+            </div>
+          )}
+          getRowHeight={(params: RowHeightParams<SpreadsheetRow>) =>
+            isSeparatorRow(params.data) ? 42 : undefined
+          }
           loadingOverlayComponent={CustomLoadingOverlay}
+          onFirstDataRendered={scrollToTodaySeparator}
+          onRowDataUpdated={scrollToTodaySeparator}
+          getRowClass={(params) =>
+            isSeparatorRow(params.data) && params.data.isToday
+              ? "ag-row-todaySeparator"
+              : undefined
+          }
         />
       </div>
     </AgGridProvider>

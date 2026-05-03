@@ -45,6 +45,85 @@
   align-items: center;
 }
 
+.home__masterControls {
+  width: 100%;
+  display: flex;
+  gap: 2rem;
+  align-items: end;
+}
+
+.home__masterFilters {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  gap: 1rem;
+  align-items: end;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: clip;
+  padding: 0.75rem 0.75rem 1.25rem;
+  margin: -0.75rem -0.75rem 0;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.home__masterFilters::-webkit-scrollbar {
+  display: none;
+}
+
+.home__masterActions {
+  flex: 0 0 auto;
+  padding-bottom: 1.25rem;
+}
+
+.home__dateFilter,
+.home__filterField {
+  flex: 0 0 13rem;
+}
+
+.home__dateFilter {
+  flex-basis: 22rem;
+}
+
+.home__filterLabel {
+  margin-bottom: 0.5rem;
+}
+
+.home__filterLabels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.home__dateInputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  box-shadow: var(--main-shadow);
+}
+
+.home__dateInput {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.home__dateInput:first-child {
+  border-right: 0.1rem solid #e8e8e8;
+}
+
+.home__filterInput {
+  width: 100%;
+}
+
+.home__filterActions {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+  align-items: center;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .home__actions {
   display: flex;
   gap: 1rem;
@@ -80,4 +159,28 @@
   transition-duration: 0.2s;
 
   transform: scale(1.1);
+}
+
+@media (max-width: 1080px) {
+  .home {
+    padding: 2rem;
+  }
+
+  .home__header,
+  .home__statsAndActions {
+    align-items: flex-start;
+    gap: 1rem;
+  }
+}
+
+@media (max-width: 760px) {
+  .home {
+    padding: 1.25rem;
+    gap: 1.5rem;
+  }
+
+  .home__header,
+  .home__statsAndActions {
+    flex-direction: column;
+  }
 }

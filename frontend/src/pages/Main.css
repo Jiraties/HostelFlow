@@ -1,0 +1,22 @@
+.main__stats {
+  display: flex;
+  box-shadow: var(--main-shadow);
+  border-radius: 2rem;
+}
+
+.main__statsItem {
+  padding: 1.5rem;
+  display: flex;
+  gap: 1rem;
+}
+
+.main__statsItem--icon {
+  padding: 2rem;
+  border-radius: 50%;
+  font-size: 1.5rem;
+}
+
+.main__statsItem h3 {
+  font-size: 2rem;
+  font-weight: 500;
+}
