@@ -1,7 +1,18 @@
 import type { booking } from "../types/bookingTypes";
 
-export const roomChargeTransaction = (booking: booking) =>
-  booking.transactions.find((transaction) => transaction.type === "roomCharge");
+export const roomChargeTransaction = (booking: booking) => {
+  const transaction = booking.transactions.find(
+    (transaction) => transaction.type === "roomCharge",
+  );
+
+  if (transaction) return transaction;
+  return {
+    type: "roomCharge",
+    paymentMethod: "Unpaid",
+
+    amount: 0,
+  };
+};
 
 export const calculateNights = (checkIn: Date, checkOut: Date) => {
   const start = new Date(

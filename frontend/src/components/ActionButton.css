@@ -7,6 +7,14 @@
   box-shadow: var(--main-shadow);
   border-radius: 2rem;
   cursor: pointer;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.home__action p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .home__action i {
@@ -30,4 +38,10 @@
 
 .home__actionDisabled i {
   color: #696969;
+}
+
+@media (max-width: 520px) {
+  .home__action {
+    padding: 0.85rem 1rem;
+  }
 }

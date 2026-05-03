@@ -122,3 +122,54 @@
   transition-duration: 0.2s;
   transform: scale(0.97);
 }
+
+@media (max-width: 760px) {
+  .sidebar,
+  .sidebar--collapsed {
+    grid-row: 2;
+    width: 100%;
+    padding: 0.65rem 0.75rem calc(0.65rem + env(safe-area-inset-bottom));
+    border-top: 0.1rem solid #ededed;
+    box-shadow: 0 -0.5rem 1.5rem rgba(149, 157, 165, 0.14);
+  }
+
+  .sidebar__top {
+    display: none;
+  }
+
+  .sidebar__navList {
+    display: flex;
+    gap: 0.65rem;
+    margin-top: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.15rem;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .sidebar__navList::-webkit-scrollbar {
+    display: none;
+  }
+
+  .sidebar__navList a {
+    flex: 0 0 auto;
+  }
+
+  .sidebar__navItem,
+  .sidebar--collapsed .sidebar__navItem {
+    justify-content: center;
+    gap: 0;
+    width: 3.25rem;
+    height: 3.25rem;
+    margin: 0;
+    padding: 0;
+    border-radius: 0.9rem;
+  }
+
+  .sidebar__navLabel,
+  .sidebar--collapsed .sidebar__navLabel {
+    opacity: 0;
+    max-width: 0;
+  }
+}

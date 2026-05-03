@@ -9,6 +9,32 @@ import { dateRangeText, toInputDate } from "../helpers/dateHelpers";
 
 dotenv.config();
 
+const TOTAL_ROOM_COUNT = 46;
+
+const formatLocalDateKey = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+};
+
+const roomChargeRevenue = (booking: booking) =>
+  booking.transactions.reduce((sum, transaction) => {
+    if (transaction.type !== "roomCharge") return sum;
+    if (transaction.paymentMethod === "Unpaid") return sum;
+
+    return sum + transaction.amount;
+  }, 0);
+
+const unpaidRoomChargeAmount = (booking: booking) =>
+  booking.transactions.reduce((sum, transaction) => {
+    if (transaction.type !== "roomCharge") return sum;
+    if (transaction.paymentMethod !== "Unpaid") return sum;
+
+    return sum + transaction.amount;
+  }, 0);
+
 export const newBooking = async (
   req: Request,
   res: Response,
@@ -149,6 +175,114 @@ export const getTodayBookings = async (req: Request, res: Response) => {
     res.status(200).json({ bookings, occupancy });
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch bookings" });
+  }
+};
+
+export const getAdminDashboardStats = async (req: Request, res: Response) => {
+  if (!req.user?.admin) {
+    return res.status(403).json({
+      message: "เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถดูสถิตินี้ได้",
+    });
+  }
+
+  const today = new Date();
+  const startOfToday = new Date(today);
+  startOfToday.setHours(0, 0, 0, 0);
+
+  const startOfTomorrow = new Date(startOfToday);
+  startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+
+  const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const startOfNextMonth = new Date(
+    today.getFullYear(),
+    today.getMonth() + 1,
+    1,
+  );
+
+  try {
+    const [todayArrivals, monthBookings, unpaidBookings, occupancy] =
+      await Promise.all([
+        Booking.find({
+          checkIn: { $gte: startOfToday, $lt: startOfTomorrow },
+        }),
+        Booking.find({
+          checkIn: { $gte: startOfMonth, $lt: startOfNextMonth },
+        }),
+        Booking.find({
+          status: { $ne: "checkedOut" },
+          transactions: {
+            $elemMatch: {
+              type: "roomCharge",
+              paymentMethod: "Unpaid",
+            },
+          },
+        }),
+        Booking.countDocuments({ status: "checkedIn" }),
+      ]);
+
+    const todayExpectedRevenue = todayArrivals.reduce(
+      (sum, booking) => sum + roomChargeRevenue(booking),
+      0,
+    );
+    const monthRoomRevenue = monthBookings.reduce(
+      (sum, booking) => sum + roomChargeRevenue(booking),
+      0,
+    );
+    const unpaidAmount = unpaidBookings.reduce(
+      (sum, booking) => sum + unpaidRoomChargeAmount(booking),
+      0,
+    );
+
+    const channelCounts = new Map<PlatformId, number>();
+    const revenueByDate = new Map<string, number>();
+
+    for (
+      let date = new Date(startOfMonth);
+      date <= startOfToday;
+      date.setDate(date.getDate() + 1)
+    ) {
+      revenueByDate.set(formatLocalDateKey(date), 0);
+    }
+
+    monthBookings.forEach((booking) => {
+      channelCounts.set(
+        booking.platformId,
+        (channelCounts.get(booking.platformId) || 0) + 1,
+      );
+
+      const dateKey = formatLocalDateKey(booking.checkIn);
+      if (revenueByDate.has(dateKey)) {
+        revenueByDate.set(
+          dateKey,
+          (revenueByDate.get(dateKey) || 0) + roomChargeRevenue(booking),
+        );
+      }
+    });
+
+    const channelMix = Array.from(channelCounts.entries()).map(
+      ([platformId, count]) => ({
+        platformId,
+        count,
+      }),
+    );
+    const revenueSeries = Array.from(revenueByDate.entries()).map(
+      ([date, revenue]) => ({
+        date,
+        revenue,
+      }),
+    );
+
+    res.status(200).json({
+      todayExpectedRevenue,
+      monthRoomRevenue,
+      monthBookings: monthBookings.length,
+      unpaidAmount,
+      occupancyRate: occupancy / TOTAL_ROOM_COUNT,
+      channelMix,
+      revenueSeries,
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch admin dashboard stats" });
   }
 };
 

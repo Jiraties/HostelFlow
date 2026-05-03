@@ -3,13 +3,34 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.manageRoomStays = exports.getBookingById = exports.getMonthCalendar = exports.checkIn = exports.removeBooking = exports.getMasterBookings = exports.getTodayBookings = exports.newBooking = void 0;
+exports.manageRoomStays = exports.getBookingById = exports.getMonthCalendar = exports.checkIn = exports.removeBooking = exports.getMasterBookings = exports.getAdminDashboardStats = exports.getTodayBookings = exports.newBooking = void 0;
 const booking_1 = __importDefault(require("../models/booking"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const crypto_1 = __importDefault(require("crypto"));
 const activityServices_1 = require("../services/activityServices");
 const dateHelpers_1 = require("../helpers/dateHelpers");
 dotenv_1.default.config();
+const TOTAL_ROOM_COUNT = 46;
+const formatLocalDateKey = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+};
+const roomChargeRevenue = (booking) => booking.transactions.reduce((sum, transaction) => {
+    if (transaction.type !== "roomCharge")
+        return sum;
+    if (transaction.paymentMethod === "Unpaid")
+        return sum;
+    return sum + transaction.amount;
+}, 0);
+const unpaidRoomChargeAmount = (booking) => booking.transactions.reduce((sum, transaction) => {
+    if (transaction.type !== "roomCharge")
+        return sum;
+    if (transaction.paymentMethod !== "Unpaid")
+        return sum;
+    return sum + transaction.amount;
+}, 0);
 const newBooking = async (req, res, next) => {
     try {
         if (!req.body.booking)
@@ -132,6 +153,76 @@ const getTodayBookings = async (req, res) => {
     }
 };
 exports.getTodayBookings = getTodayBookings;
+const getAdminDashboardStats = async (req, res) => {
+    if (!req.user?.admin) {
+        return res.status(403).json({
+            message: "เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถดูสถิตินี้ได้",
+        });
+    }
+    const today = new Date();
+    const startOfToday = new Date(today);
+    startOfToday.setHours(0, 0, 0, 0);
+    const startOfTomorrow = new Date(startOfToday);
+    startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const startOfNextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    try {
+        const [todayArrivals, monthBookings, unpaidBookings, occupancy] = await Promise.all([
+            booking_1.default.find({
+                checkIn: { $gte: startOfToday, $lt: startOfTomorrow },
+            }),
+            booking_1.default.find({
+                checkIn: { $gte: startOfMonth, $lt: startOfNextMonth },
+            }),
+            booking_1.default.find({
+                status: { $ne: "checkedOut" },
+                transactions: {
+                    $elemMatch: {
+                        type: "roomCharge",
+                        paymentMethod: "Unpaid",
+                    },
+                },
+            }),
+            booking_1.default.countDocuments({ status: "checkedIn" }),
+        ]);
+        const todayExpectedRevenue = todayArrivals.reduce((sum, booking) => sum + roomChargeRevenue(booking), 0);
+        const monthRoomRevenue = monthBookings.reduce((sum, booking) => sum + roomChargeRevenue(booking), 0);
+        const unpaidAmount = unpaidBookings.reduce((sum, booking) => sum + unpaidRoomChargeAmount(booking), 0);
+        const channelCounts = new Map();
+        const revenueByDate = new Map();
+        for (let date = new Date(startOfMonth); date <= startOfToday; date.setDate(date.getDate() + 1)) {
+            revenueByDate.set(formatLocalDateKey(date), 0);
+        }
+        monthBookings.forEach((booking) => {
+            channelCounts.set(booking.platformId, (channelCounts.get(booking.platformId) || 0) + 1);
+            const dateKey = formatLocalDateKey(booking.checkIn);
+            if (revenueByDate.has(dateKey)) {
+                revenueByDate.set(dateKey, (revenueByDate.get(dateKey) || 0) + roomChargeRevenue(booking));
+            }
+        });
+        const channelMix = Array.from(channelCounts.entries()).map(([platformId, count]) => ({
+            platformId,
+            count,
+        }));
+        const revenueSeries = Array.from(revenueByDate.entries()).map(([date, revenue]) => ({
+            date,
+            revenue,
+        }));
+        res.status(200).json({
+            todayExpectedRevenue,
+            monthRoomRevenue,
+            monthBookings: monthBookings.length,
+            unpaidAmount,
+            occupancyRate: occupancy / TOTAL_ROOM_COUNT,
+            channelMix,
+            revenueSeries,
+        });
+    }
+    catch (err) {
+        res.status(500).json({ error: "Failed to fetch admin dashboard stats" });
+    }
+};
+exports.getAdminDashboardStats = getAdminDashboardStats;
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const getMasterBookings = async (req, res) => {
     const { from, to, name, room, channel } = req.query;

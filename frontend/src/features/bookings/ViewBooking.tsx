@@ -5,10 +5,7 @@ import "./ViewBooking.css";
 import axios from "axios";
 import { API_URL } from "../../config/api.ts";
 import { platformMap } from "../../helpers/maps.ts";
-import {
-  formatBookingDates,
-  isSameDay,
-} from "../../helpers/bookingHelpers.ts";
+import { formatBookingDates, isSameDay } from "../../helpers/bookingHelpers.ts";
 import Skeleton from "react-loading-skeleton";
 import { Modal } from "@mui/material";
 import ManageRoomStays from "./ManageRoomStays.tsx";
@@ -41,6 +38,13 @@ const ViewBooking = ({
   const [data, setData] = useState<booking | null>(booking || null);
   const [manageRoomStaysIsOpen, setManageRoomStaysIsOpen] = useState(false);
   const [loading, setLoading] = useState(!booking);
+
+  useEffect(() => {
+    if (!booking) return;
+
+    setData(booking);
+    setLoading(false);
+  }, [booking]);
 
   useEffect(() => {
     if (data) return;
@@ -153,8 +157,6 @@ const ViewBooking = ({
 
   const statusDeterminer = (status: string, usedFor: string) => {
     const checkInIsToday = isSameDay(new Date(), new Date(data.checkIn));
-
-    console.log(checkInIsToday);
 
     if (status === "booked" && !checkInIsToday) {
       return usedFor === "classname" ? "booked" : "จองแล้ว";

@@ -12,6 +12,7 @@ import Sidebar from "./components/Sidebar";
 import NotFound from "./pages/NotFound";
 import Settings from "./pages/Settings";
 import Calendar from "./pages/Calendar";
+import Main from "./pages/Main";
 
 function App() {
   const { isAuthenticated, login } = useAuth();
@@ -65,7 +66,7 @@ function App() {
         <div className="app">
           <Sidebar />
           <Routes>
-            <Route path="/" element={<Home status="master" />} />
+            <Route path="/" element={<Main />} />
             <Route path="/arrivals" element={<Home status="arrivals" />} />
             <Route path="/departures" element={<Home status="departures" />} />
             <Route path="/master" element={<Home status="master" />} />

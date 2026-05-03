@@ -33,6 +33,7 @@
   width: fit-content;
   padding: 0.6rem;
   border-radius: 2rem;
+  box-sizing: content-box;
 }
 
 .ag-row {

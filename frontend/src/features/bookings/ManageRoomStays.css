@@ -9,3 +9,13 @@
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
 }
+
+@media (max-width: 720px) {
+  .manageRoomStays__list {
+    gap: 1.25rem;
+  }
+
+  .manageRoomStays__listItem {
+    grid-template-columns: 1fr;
+  }
+}

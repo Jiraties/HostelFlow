@@ -7,20 +7,29 @@ import { useEffect, useState } from "react";
 import type { activity } from "../types/activitiesTypes";
 import { API_URL } from "../config/api";
 
+const actionMap = {
+  NEW_BOOKING: { icon: "bx-plus", text: "เพิ่ม Booking" },
+  REMOVE_BOOKING: { icon: "bx-trash", text: "ลบ Booking" },
+  CHECK_IN: { icon: "bx-check-circle", text: "Check-In" },
+  MANAGE_ROOM_STAYS: {
+    icon: "bx-calendar-cog",
+    text: "แก้ช่วงการเข้าพัก",
+  },
+  LOGOUT: {
+    icon: "bx-arrow-out-right-square-half",
+    text: "ออกจากระบบ",
+  },
+  LOGIN: {
+    icon: "bx-arrow-in-right-square-half",
+    text: "เข้าสู่ระบบ",
+  },
+} satisfies Record<activity["action"], { icon: string; text: string }>;
+
 const Settings = () => {
   const [activities, setActivities] = useState<activity[]>([]);
   const location = useLocation();
   const { logout } = useAuth();
   const navigate = useNavigate();
-
-  const fetchActivities = async () => {
-    const fetchedActivities = await axios.get(
-      `${API_URL}/activities/recentActivities`,
-      { withCredentials: true },
-    );
-
-    setActivities(fetchedActivities.data.activities);
-  };
 
   const logoutHandler = async () => {
     await axios.post(
@@ -37,7 +46,22 @@ const Settings = () => {
   };
 
   useEffect(() => {
-    fetchActivities();
+    let ignore = false;
+
+    const fetchActivities = async () => {
+      const fetchedActivities = await axios.get(
+        `${API_URL}/activities/recentActivities`,
+        { withCredentials: true },
+      );
+
+      if (!ignore) setActivities(fetchedActivities.data.activities);
+    };
+
+    void fetchActivities();
+
+    return () => {
+      ignore = true;
+    };
   }, [location]);
 
   console.log(activities);
@@ -61,22 +85,7 @@ const Settings = () => {
           {activities.map((activity) => {
             console.log(activity);
             const date = new Date(activity.timestamp);
-            const actionMap = {
-              NEW_BOOKING: { icon: "bx-plus", text: "เพิ่ม Booking" },
-              REMOVE_BOOKING: { icon: "bx-trash", text: "ลบ Booking" },
-              LOGOUT: {
-                icon: "bx-arrow-out-right-square-half",
-                text: "ออกจากระบบ",
-              },
-              LOGIN: {
-                icon: "bx-arrow-in-right-square-half",
-                text: "เข้าสู่ระบบ",
-              },
-              MANAGE_ROOM_STAYS: {
-                icon: "bx-calendar-cog",
-                text: "แก้ช่วงการเข้าพัก",
-              },
-            };
+            const action = actionMap[activity.action];
 
             if (
               activity.action === "NEW_BOOKING" ||
@@ -92,18 +101,10 @@ const Settings = () => {
                     }}
                   >
                     <i
-                      className={
-                        "bx settings__activityIcon " + activity.action
-                          ? actionMap[activity.action]["icon"]
-                          : ""
-                      }
+                      className={`bx settings__activityIcon ${action.icon}`}
                     ></i>
                     <div>
-                      <h3>
-                        {activity.action
-                          ? actionMap[activity.action]["text"]
-                          : ""}
-                      </h3>
+                      <h3>{action.text}</h3>
                       <p>
                         {date.toLocaleTimeString("th-TH", {
                           hour: "2-digit",
@@ -169,18 +170,10 @@ const Settings = () => {
                   }}
                 >
                   <i
-                    className={
-                      "bx settings__activityIcon " + activity.action
-                        ? actionMap[activity.action]["icon"]
-                        : ""
-                    }
+                    className={`bx settings__activityIcon ${action.icon}`}
                   ></i>
                   <div>
-                    <h3>
-                      {activity.action
-                        ? actionMap[activity.action]["text"]
-                        : ""}
-                    </h3>
+                    <h3>{action.text}</h3>
                     <p>
                       {date.toLocaleTimeString("th-TH", {
                         hour: "2-digit",

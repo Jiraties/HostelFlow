@@ -8,6 +8,7 @@ const booking_1 = require("../controller/booking");
 const bookingsRouter = express_1.default.Router();
 bookingsRouter.post("/newBooking", booking_1.newBooking);
 bookingsRouter.get("/getTodayBookings/:type", booking_1.getTodayBookings);
+bookingsRouter.get("/getAdminDashboardStats", booking_1.getAdminDashboardStats);
 bookingsRouter.get("/getMasterBookings", booking_1.getMasterBookings);
 bookingsRouter.delete("/removeBooking/:bookingId", booking_1.removeBooking);
 bookingsRouter.put("/checkIn/:bookingId", booking_1.checkIn);

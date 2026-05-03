@@ -1,4 +1,10 @@
-export type actionType = "LOGIN" | "LOGOUT" | "NEW_BOOKING" | "REMOVE_BOOKING";
+export type actionType =
+  | "LOGIN"
+  | "LOGOUT"
+  | "NEW_BOOKING"
+  | "REMOVE_BOOKING"
+  | "CHECK_IN"
+  | "MANAGE_ROOM_STAYS";
 
 export type activity =
   | {
@@ -11,9 +17,9 @@ export type activity =
     }
   | {
       staffUsername: string;
-      action: "NEW_BOOKING" | "REMOVE_BOOKING";
+      action: "NEW_BOOKING" | "REMOVE_BOOKING" | "CHECK_IN" | "MANAGE_ROOM_STAYS";
       details: {
-        changes?: Record<string, { before: any; after: any }>;
+        changes?: Record<string, { before: unknown; after: unknown }>;
         snapshot?: {
           name: string;
           checkIn: Date;

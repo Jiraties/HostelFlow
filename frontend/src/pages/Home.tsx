@@ -14,7 +14,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Modal } from "@mui/material";
 import { useAuth } from "../context/AuthContext";
 import { Link, useLocation } from "react-router";
-import { formatBookingsDates } from "../helpers/bookingHelpers";
+import {
+  formatBookingDates,
+  formatBookingsDates,
+} from "../helpers/bookingHelpers";
 import { platformOptions, roomIdOptions } from "../helpers/options";
 import { customStyles } from "../helpers/selectStyling";
 import { API_URL } from "../config/api";
@@ -101,36 +104,79 @@ const Home = ({ status }: { status: HomeStatus }) => {
     calendar: "gregory",
   }).format(new Date());
 
+  const today = new Date();
   const bookingCheckInIsToday = (booking: booking) =>
-    booking.checkIn.toDateString() === new Date().toDateString();
+    booking.checkIn.toDateString() === today.toDateString();
+
+  const bookingCheckOutIsToday = (booking: booking) =>
+    booking.checkOut.toDateString() === today.toDateString();
 
   const roomChargeTransaction = (booking: booking) =>
     booking.transactions.find(
       (transaction) => transaction.type === "roomCharge",
     )!;
 
+  const sumBookingTransactions = (
+    booking: booking,
+    predicate: (transaction: booking["transactions"][number]) => boolean,
+  ) =>
+    booking.transactions.reduce(
+      (sum, transaction) =>
+        predicate(transaction) ? sum + transaction.amount : sum,
+      0,
+    );
+
+  const arrivalsToday = bookings.filter(bookingCheckInIsToday);
+  const departuresToday = bookings.filter(bookingCheckOutIsToday);
+  const depositToReturn = departuresToday.reduce((sum, booking) => {
+    const deposits = sumBookingTransactions(
+      booking,
+      (transaction) => transaction.type === "deposit",
+    );
+    const refundedDeposits = sumBookingTransactions(
+      booking,
+      (transaction) => transaction.type === "depositRefund",
+    );
+
+    return sum + Math.max(deposits - refundedDeposits, 0);
+  }, 0);
+  const cashRefundedToday = departuresToday.reduce(
+    (sum, booking) =>
+      sum +
+      sumBookingTransactions(
+        booking,
+        (transaction) =>
+          transaction.type === "depositRefund" &&
+          transaction.paymentMethod === "Cash",
+      ),
+    0,
+  );
+
   const stats = {
-    arrivalsToday: bookings.filter(
-      (booking) => booking.checkIn.toDateString() === new Date().toDateString(),
-    ).length,
-    departuresToday: bookings.filter(
-      (booking) =>
-        booking.checkOut.toDateString() === new Date().toDateString(),
-    ).length,
+    arrivalsToday: arrivalsToday.length,
+    departuresToday: departuresToday.length,
     unpaidCheckins: isMaster
       ? 0
-      : bookings.filter(
+      : arrivalsToday.filter(
           (booking) =>
             roomChargeTransaction(booking).paymentMethod === "Unpaid",
         ).length,
-    cashToday: isMaster
-      ? 0
-      : bookings.reduce((sum, booking) => {
-          if (roomChargeTransaction(booking).paymentMethod !== "Cash")
-            return sum;
-          if (!bookingCheckInIsToday(booking)) return sum;
-          return sum + roomChargeTransaction(booking).amount!;
-        }, 0),
+    cashToday:
+      isMaster || status === "departures"
+        ? 0
+        : arrivalsToday.reduce(
+            (sum, booking) =>
+              sum +
+              sumBookingTransactions(
+                booking,
+                (transaction) =>
+                  transaction.paymentMethod === "Cash" &&
+                  transaction.type !== "depositRefund",
+              ),
+            0,
+          ),
+    cashToReturnToday:
+      isMaster || status === "arrivals" ? 0 : cashRefundedToday,
     // revenueToday: bookings.reduce((sum, booking) => {
     //   const tx = roomChargeTransaction(booking);
     //   if (tx.paymentMethod === "Unpaid") return sum;
@@ -139,7 +185,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
     // }, 0),
     guestsInHouse: occupancy,
     // guestsInHouse: `${Math.trunc((occupancy / 46) * 100)}%`,
-    deposit: 10,
+    deposit: depositToReturn,
   };
 
   const statCards = isMaster
@@ -179,13 +225,12 @@ const Home = ({ status }: { status: HomeStatus }) => {
             label: "เช็คเอาท์วันนี้",
             value: stats.departuresToday,
           },
-
-          {
-            id: "cashToday",
-            label: "เงินสดวันนี้ (฿)",
-            value: stats.cashToday,
-          },
           { id: "deposit", label: "มัดจำที่ต้องคืน (฿)", value: stats.deposit },
+          // {
+          //   id: "deposit",
+          //   label: "มัดจำที่ต้องคืน (฿)",
+          //   value: stats.cashReturn,
+          // },
           {
             id: "guestsInHouse",
             label: "แขกที่พักอยู่ตอนนี้",
@@ -278,9 +323,18 @@ const Home = ({ status }: { status: HomeStatus }) => {
   };
 
   const handleCheckInSuccess = (booking: booking) => {
-    fetchBookings();
-    setViewBookingBooking(formatBookingsDates([booking])[0]);
+    const formattedBooking = formatBookingDates(booking);
+
+    setViewBookingBooking(formattedBooking);
+    setBookings((prevBookings) =>
+      prevBookings.map((prevBooking) =>
+        prevBooking.bookingId === formattedBooking.bookingId
+          ? formattedBooking
+          : prevBooking,
+      ),
+    );
     setCheckInIsOpen(false);
+    fetchBookings();
   };
 
   useEffect(() => {
@@ -349,11 +403,11 @@ const Home = ({ status }: { status: HomeStatus }) => {
         <div>
           <h1>
             {status === "arrivals"
-              ? "Arrivals"
+              ? "Arrivals |"
               : status === "departures"
-                ? "Departures"
-                : "Master"}{" "}
-            | {fullFormattedDate}
+                ? "Departures |"
+                : ""}{" "}
+            {fullFormattedDate}
           </h1>
           <div style={{ display: "flex", gap: "0.3rem" }}>
             <p>

@@ -1,22 +1,387 @@
-.main__stats {
-  display: flex;
-  box-shadow: var(--main-shadow);
-  border-radius: 2rem;
+.main {
+  gap: 1.5rem;
 }
 
-.main__statsItem {
-  padding: 1.5rem;
+.main__lastUpdated {
   display: flex;
+  gap: 0.3rem;
+}
+
+.main__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+}
+
+.main__statsGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 1rem;
 }
 
-.main__statsItem--icon {
-  padding: 2rem;
+.main__statCard {
+  min-height: 7.5rem;
+  padding: 1.25rem;
+  border-radius: 2rem;
+  background-color: var(--background);
+  box-shadow: var(--main-shadow);
+  box-sizing: border-box;
+}
+
+.main__adminSection {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.25rem;
+  border-radius: 2rem;
+  background-color: var(--background);
+  box-shadow: var(--main-shadow);
+}
+
+.main__adminHeader,
+.main__cardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.main__adminHeader div {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.main__adminHeader i {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
   border-radius: 50%;
+  background-color: color-mix(in srgb, var(--primary-color) 14%, #fff);
+  color: var(--primary-color);
+  font-size: 1.4rem;
+}
+
+.main__adminHeader h2,
+.main__cardHeader h3 {
+  font-size: 1.25rem;
+  font-weight: 500;
+}
+
+.main__adminHeader span,
+.main__cardHeader span {
+  color: #777777;
+}
+
+.main__adminStatsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  min-width: 0;
+}
+
+.main__adminStatCard,
+.main__chartCard,
+.main__channelCard {
+  padding: 1.25rem;
+  border-radius: 1.5rem;
+  background-color: var(--background);
+  box-shadow: var(--light-shadow);
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.main__adminStatCard {
+  overflow: hidden;
+}
+
+.main__adminStatCard > div,
+.main__adminStatCard > div > div {
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.main__adminStatCard .statLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.main__adminInsights {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(18rem, 0.8fr);
+  gap: 1rem;
+}
+
+.main__chartCard,
+.main__channelCard {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.main__chartWrapper {
+  width: 100%;
+  overflow: hidden;
+}
+
+.main__channelList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.main__channelItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.main__channelItem div {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.main__channelItem span {
+  flex: 0 0 auto;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+}
+
+.main__channelItem p {
+  overflow: hidden;
+  color: #555555;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.main__channelItem strong {
+  flex: 0 0 auto;
+  font-weight: 500;
+}
+
+.main__todayGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.main__todaySection {
+  min-width: 0;
+  padding: 1.25rem;
+  border-radius: 2rem;
+  background-color: var(--background);
+  box-shadow: var(--main-shadow);
+}
+
+.main__sectionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.main__sectionHeader div {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.main__sectionHeader i {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background-color: color-mix(in srgb, var(--primary-color) 14%, #fff);
+  color: var(--primary-color);
+  font-size: 1.4rem;
+}
+
+.main__sectionHeader h2 {
+  font-size: 1.25rem;
+  font-weight: 500;
+}
+
+.main__sectionHeader span {
+  display: grid;
+  place-items: center;
+  min-width: 2rem;
+  height: 2rem;
+  padding: 0 0.45rem;
+  border-radius: 2rem;
+  background-color: var(--light-background);
+  color: var(--text);
+  box-sizing: border-box;
+}
+
+.main__bookingList {
+  display: flex;
+  flex-direction: column;
+}
+
+.main__bookingItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  min-height: 4rem;
+  padding: 0.85rem 0;
+  border-bottom: 0.1rem solid #eeeeee;
+}
+
+.main__bookingItem:last-child {
+  border-bottom: 0;
+}
+
+.main__bookingPrimary {
+  min-width: 0;
+}
+
+.main__bookingPrimary h3 {
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.main__bookingPrimary p,
+.main__bookingMeta span,
+.main__emptyState p {
+  font-size: 1rem;
+  color: #777777;
+}
+
+.main__bookingPrimary p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.main__bookingMeta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.2rem;
+  flex: 0 0 auto;
+  text-align: right;
+  font-size: 0.85rem;
+}
+
+.main__bookingMeta strong {
+  color: var(--red);
+  font-weight: 500;
+}
+
+.main__emptyState {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 5rem;
+}
+
+.main__emptyState i {
+  color: var(--primary-color);
   font-size: 1.5rem;
 }
 
-.main__statsItem h3 {
-  font-size: 2rem;
-  font-weight: 500;
+@media (max-width: 1180px) {
+  .main__statsGrid,
+  .main__adminStatsGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .main__adminInsights {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 920px) {
+  .main__todayGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .main__statsGrid,
+  .main__adminStatsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .main__adminSection,
+  .main__statCard,
+  .main__todaySection {
+    border-radius: 1.35rem;
+  }
+
+  .main__adminSection,
+  .main__statCard,
+  .main__adminStatCard,
+  .main__chartCard,
+  .main__channelCard,
+  .main__todaySection {
+    padding: 1rem;
+  }
+
+  .main__adminHeader,
+  .main__cardHeader,
+  .main__sectionHeader {
+    align-items: flex-start;
+  }
+
+  .main__cardHeader {
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .main__actions .home__action {
+    justify-content: center;
+    flex: 1 1 12rem;
+  }
+
+  .main__bookingItem {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .main__bookingMeta {
+    align-items: flex-start;
+    text-align: left;
+  }
+}
+
+@media (max-width: 520px) {
+  .main {
+    gap: 1.25rem;
+  }
+
+  .main__lastUpdated {
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .main__adminHeader div,
+  .main__sectionHeader div {
+    min-width: 0;
+  }
+
+  .main__adminHeader h2,
+  .main__sectionHeader h2,
+  .main__cardHeader h3 {
+    overflow-wrap: anywhere;
+  }
+
+  .main__channelItem {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
 }

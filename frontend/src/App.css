@@ -6,10 +6,35 @@
   min-width: 0;
 }
 
+.app > main {
+  height: 100vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
 .app {
   display: grid;
   grid-template-columns: auto 1fr;
   height: 100vh;
   width: 100vw;
   overflow: hidden;
+}
+
+@media (max-width: 760px) {
+  .toast {
+    padding: 1rem;
+  }
+
+  .app {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr auto;
+  }
+
+  .app > main {
+    grid-row: 1;
+    height: auto;
+    min-height: 0;
+    padding-bottom: 1.25rem;
+  }
 }
