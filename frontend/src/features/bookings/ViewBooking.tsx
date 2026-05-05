@@ -9,6 +9,7 @@ import { formatBookingDates, isSameDay } from "../../helpers/bookingHelpers.ts";
 import Skeleton from "react-loading-skeleton";
 import { Modal } from "@mui/material";
 import ManageRoomStays from "./ManageRoomStays.tsx";
+import AddTransaction from "./AddTransaction.tsx";
 
 const paymentMethodIconMap = {
   OTA: "bx-bank",
@@ -22,6 +23,16 @@ const transactionMap = {
   deposit: { icon: "bx-wallet", name: "รับมัดจำ", color: "#facc15" },
   adjustment: { icon: "bx-edit-alt", name: "ปรับราคา", color: "#a78bfa" },
   depositRefund: { icon: "bx-undo", name: "คืนมัดจำ", color: "#f87171" },
+  towel: { icon: "bx-bath", name: "ผ้าเช็ดตัว", color: "#38bdf8" },
+  motorbike: { icon: "bx-cycling", name: "มอเตอร์ไซค์", color: "#fb923c" },
+  slowBoat: { icon: "bx-water", name: "Slow Boat", color: "#2dd4bf" },
+  joinTour: { icon: "bx-map", name: "Join Tour", color: "#22c55e" },
+  extraBed: { icon: "bx-bed", name: "เตียงเสริม", color: "#ec4899" },
+  cardSurcharge: {
+    icon: "bx-credit-card-alt",
+    name: "ค่าธรรมเนียมบัตร 3%",
+    color: "#94a3b8",
+  },
 };
 
 const ViewBooking = ({
@@ -37,6 +48,7 @@ const ViewBooking = ({
 }) => {
   const [data, setData] = useState<booking | null>(booking || null);
   const [manageRoomStaysIsOpen, setManageRoomStaysIsOpen] = useState(false);
+  const [addTransactionIsOpen, setAddTransactionIsOpen] = useState(false);
   const [loading, setLoading] = useState(!booking);
 
   useEffect(() => {
@@ -178,8 +190,114 @@ const ViewBooking = ({
     .map((roomStay) => roomStay.roomId)
     .join(", ");
 
+  const formatTransactionAmount = (
+    transaction: booking["transactions"][number],
+  ) => {
+    const amountText = transaction.amount.toLocaleString("th-TH");
+    return transaction.type === "depositRefund"
+      ? `-${amountText} บาท`
+      : `${amountText} บาท`;
+  };
+
+  const isChildTransaction = (transaction: booking["transactions"][number]) =>
+    transaction.type === "cardSurcharge" ||
+    transaction.type === "depositRefund";
+
+  const groupedTransactions = data.transactions.reduce<
+    {
+      transaction: booking["transactions"][number];
+      children: booking["transactions"];
+    }[]
+  >((groups, transaction) => {
+    if (transaction.type === "cardSurcharge") {
+      const lastGroup = groups[groups.length - 1];
+
+      if (lastGroup && !isChildTransaction(lastGroup.transaction)) {
+        lastGroup.children.push(transaction);
+      } else {
+        groups.push({ transaction, children: [] });
+      }
+      return groups;
+    }
+
+    if (transaction.type === "depositRefund") {
+      const depositGroup = [...groups]
+        .reverse()
+        .find((group) => group.transaction.type === "deposit");
+
+      if (depositGroup) {
+        depositGroup.children.push(transaction);
+      } else {
+        groups.push({ transaction, children: [] });
+      }
+      return groups;
+    }
+
+    groups.push({ transaction, children: [] });
+    return groups;
+  }, []);
+
+  const renderPaymentMethod = (transaction: booking["transactions"][number]) => (
+    <div style={{ display: "flex", gap: "0.5rem" }}>
+      <p
+        className={
+          transaction.paymentMethod === "Unpaid" ? "viewBooking__unpaid" : ""
+        }
+      >
+        {transaction.paymentMethod}
+      </p>
+      {transaction.paymentMethod === "Unpaid" ? (
+        <i
+          className="bx bx-error viewBooking__unpaid"
+          style={{ fontSize: "1.4rem" }}
+        />
+      ) : (
+        <i
+          className={"bx " + paymentMethodIconMap[transaction.paymentMethod]}
+          style={{ fontSize: "1.4rem" }}
+        />
+      )}
+    </div>
+  );
+
+  const renderChildTransaction = (
+    transaction: booking["transactions"][number],
+    index: number,
+  ) => (
+    <div
+      className="viewBooking__priceChild"
+      key={`${transaction.type}-${transaction.amount}-${index}`}
+    >
+      <div className="viewBooking__priceChildMain">
+        <span className="viewBooking__priceChildMarker">↳</span>
+        <div>
+          <p className="viewBooking__priceChildAmount">
+            {formatTransactionAmount(transaction)}
+          </p>
+          <p>{transactionMap[transaction.type].name}</p>
+        </div>
+      </div>
+      {renderPaymentMethod(transaction)}
+    </div>
+  );
+
   return (
     <>
+      <Modal
+        open={addTransactionIsOpen}
+        onClose={() => setAddTransactionIsOpen(false)}
+        className="home__modalCenter"
+      >
+        <AddTransaction
+          bookingId={data.bookingId}
+          guestName={data.name}
+          onClose={() => setAddTransactionIsOpen(false)}
+          onUpdated={(updatedBooking) => {
+            setData(updatedBooking);
+            setAddTransactionIsOpen(false);
+          }}
+        />
+      </Modal>
       <Modal
         open={manageRoomStaysIsOpen}
         onClose={() => setManageRoomStaysIsOpen(false)}
@@ -278,65 +396,51 @@ const ViewBooking = ({
           <div className="viewBooking__mainRight">
             {/* <p>ค่าใช้จ่าย</p> */}
             <div className="viewBooking__priceList">
-              {data.transactions.map((transaction, index) => (
+              {groupedTransactions.map(({ transaction, children }, index) => (
                 <div
-                  className="viewBooking__price"
+                  className="viewBooking__transactionGroup"
                   style={
-                    index === data.transactions.length - 1
+                    index === groupedTransactions.length - 1
                       ? {}
                       : { borderBottom: "1px solid #eee" }
                   }
-                  key={transaction.amount}
+                  key={`${transaction.type}-${transaction.amount}-${index}`}
                 >
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: "1rem",
-                      alignItems: "center",
-                    }}
-                  >
-                    <i
-                      className={`bx ${transactionMap[transaction.type].icon} viewBooking__bedIcon`}
-                      style={{
-                        backgroundColor: transactionMap[transaction.type].color,
-                      }}
-                    />
-                    <div>
-                      <p className="viewBooking__infoText">
-                        {transaction.amount.toLocaleString("th-TH")} บาท
-                      </p>
-                      <p>{transactionMap[transaction.type].name}</p>
+                  {isChildTransaction(transaction) ? (
+                    renderChildTransaction(transaction, index)
+                  ) : (
+                    <div className="viewBooking__price">
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: "1rem",
+                          alignItems: "center",
+                        }}
+                      >
+                        <i
+                          className={`bx ${transactionMap[transaction.type].icon} viewBooking__bedIcon`}
+                          style={{
+                            backgroundColor:
+                              transactionMap[transaction.type].color,
+                          }}
+                        />
+                        <div>
+                          <p className="viewBooking__infoText">
+                            {formatTransactionAmount(transaction)}
+                          </p>
+                          <p>{transactionMap[transaction.type].name}</p>
+                        </div>
+                      </div>
+                      {renderPaymentMethod(transaction)}
                     </div>
-                  </div>
-                  <div style={{ display: "flex", gap: "0.5rem" }}>
-                    <p
-                      className={
-                        transaction.paymentMethod === "Unpaid"
-                          ? "viewBooking__unpaid"
-                          : ""
-                      }
-                    >
-                      {transaction.paymentMethod}
-                      {}
-                    </p>
-                    {transaction.paymentMethod === "Unpaid" ? (
-                      <i
-                        className="bx bx-error viewBooking__unpaid"
-                        style={{ fontSize: "1.4rem" }}
-                      />
-                    ) : (
-                      <i
-                        className={
-                          "bx " +
-                          paymentMethodIconMap[transaction.paymentMethod]
-                        }
-                        style={{ fontSize: "1.4rem" }}
-                      />
-                    )}
-                  </div>
+                  )}
+                  {children.map(renderChildTransaction)}
                 </div>
               ))}
-              <div className="viewBooking__addTransaction">
+              <div
+                className="viewBooking__addTransaction"
+                onClick={() => setAddTransactionIsOpen(true)}
+              >
                 <i className="bx bx-dollar" />
                 <p>เพิ่มรายการใช้จ่าย</p>
               </div>
@@ -400,18 +504,14 @@ const ViewBooking = ({
         </div>
         <div className="viewBooking__actions">
           <div className="viewBooking__actionsLeft">
+            <ActionButton text="แก้ไข" onClick={() => {}} icon="bx-edit" />
             <ActionButton
-              text="แก้ไขการจอง"
-              onClick={() => {}}
-              icon="bx-edit"
-            />
-            <ActionButton
-              text="ลบการจอง"
+              text="ลบ"
               onClick={() => removeBookingHandler(data)}
               icon="bx-trash"
             />
             <ActionButton
-              text="ยกเลิกการจอง"
+              text="ยกเลิก"
               onClick={() => {}}
               icon="bx-calendar-x"
             />

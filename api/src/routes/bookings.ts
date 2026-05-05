@@ -1,5 +1,6 @@
 import express from "express";
 import {
+  addTransaction,
   checkIn,
   getAdminDashboardStats,
   getBookingById,
@@ -14,6 +15,7 @@ import {
 const bookingsRouter = express.Router();
 
 bookingsRouter.post("/newBooking", newBooking);
+bookingsRouter.post("/addTransaction/:bookingId", addTransaction);
 bookingsRouter.get("/getTodayBookings/:type", getTodayBookings);
 bookingsRouter.get("/getAdminDashboardStats", getAdminDashboardStats);
 bookingsRouter.get("/getMasterBookings", getMasterBookings);

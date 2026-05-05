@@ -65,15 +65,24 @@ const ManageRoomStays = ({
       (stay) => !stay.roomId || !stay.from || !stay.to,
     );
 
-    if (hasEmpty) return toast.error("กรุณากรอกข้อมูลให้ครบทุกช่อง");
+    if (hasEmpty) throw new Error("กรุณากรอกข้อมูลให้ครบทุกช่อง");
+    const hasInvalidDateRange = roomStays.some(
+      (stay) => new Date(stay.from) >= new Date(stay.to),
+    );
+
+    if (hasInvalidDateRange) {
+      throw new Error("วันที่เข้าพักต้องมาก่อนวันที่ออก");
+    }
+
     const response = await axios.patch(
       `${API_URL}/bookings/manageRoomStays/${bookingId}`,
       { roomStays },
       { withCredentials: true },
     );
 
-    if (response.status !== 200) toast.error(response.data.message);
-    if (response.data.booking) onUpdated?.(formatBookingDates(response.data.booking));
+    if (response.status !== 200) throw new Error(response.data.message);
+    if (response.data.booking)
+      onUpdated?.(formatBookingDates(response.data.booking));
   };
 
   return (
@@ -185,10 +194,11 @@ const ManageRoomStays = ({
               loading: "กำลังอัปเดตข้อมูล...",
               success: "อัปเดตข้อมูลสำเร็จ",
               error: (err) => {
-                if (err.response.data.message) {
-                  return err.response.data.message;
-                }
-                return "เกิดข้อผิดพลาดในการเพิ่มการจอง";
+                return (
+                  err.response?.data?.message ||
+                  err.message ||
+                  "เกิดข้อผิดพลาดในการแก้ไขช่วงพัก"
+                );
               },
             });
           }}

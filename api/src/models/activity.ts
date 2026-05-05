@@ -6,7 +6,8 @@ export type actionType =
   | "NEW_BOOKING"
   | "REMOVE_BOOKING"
   | "CHECK_IN"
-  | "MANAGE_ROOM_STAYS";
+  | "MANAGE_ROOM_STAYS"
+  | "ADD_TRANSACTION";
 
 export type activity =
   | {
@@ -19,7 +20,12 @@ export type activity =
     }
   | {
       staffUsername: string;
-      action: "NEW_BOOKING" | "REMOVE_BOOKING" | "CHECK_IN" | "MANAGE_ROOM_STAYS";
+      action:
+        | "NEW_BOOKING"
+        | "REMOVE_BOOKING"
+        | "CHECK_IN"
+        | "MANAGE_ROOM_STAYS"
+        | "ADD_TRANSACTION";
       details: {
         changes?: Record<string, { before: any; after: any }>;
         snapshot?: {
@@ -50,6 +56,7 @@ const activitySchema = new mongoose.Schema({
       "REMOVE_BOOKING",
       "CHECK_IN",
       "MANAGE_ROOM_STAYS",
+      "ADD_TRANSACTION",
     ],
   },
   details: {

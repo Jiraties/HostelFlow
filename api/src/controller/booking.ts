@@ -4,12 +4,60 @@ import crypto from "crypto";
 
 import { NextFunction, Request, Response } from "express";
 import { logActivity } from "../services/activityServices";
-import type { booking, PlatformId, roomStay, Status } from "../models/booking";
+import type {
+  booking,
+  PlatformId,
+  roomStay,
+  Status,
+  transcation,
+  TransactionType,
+} from "../models/booking";
 import { dateRangeText, toInputDate } from "../helpers/dateHelpers";
 
 dotenv.config();
 
 const TOTAL_ROOM_COUNT = 46;
+const CARD_SURCHARGE_RATE = 0.03;
+const ADD_TRANSACTION_TYPES: TransactionType[] = [
+  "deposit",
+  "adjustment",
+  "depositRefund",
+  "towel",
+  "motorbike",
+  "slowBoat",
+  "joinTour",
+  "extraBed",
+];
+const PAYMENT_METHODS: PaymentMethod[] = [
+  "Cash",
+  "Card",
+  "Transfer",
+];
+
+const calculateCardSurcharge = (amount: number) =>
+  Number((amount * CARD_SURCHARGE_RATE).toFixed(2));
+
+const buildTransactionsWithCardSurcharge = (
+  transaction: transcation,
+): transcation[] => {
+  const transactions = [transaction];
+
+  if (
+    transaction.paymentMethod === "Card" &&
+    transaction.amount > 0 &&
+    transaction.type !== "depositRefund" &&
+    transaction.type !== "cardSurcharge"
+  ) {
+    transactions.push({
+      type: "cardSurcharge",
+      paymentMethod: "Card",
+      relatedTransactionType: transaction.type,
+      amount: calculateCardSurcharge(transaction.amount),
+    });
+  }
+
+  return transactions;
+};
 
 const formatLocalDateKey = (date: Date) => {
   const year = date.getFullYear();
@@ -78,6 +126,12 @@ export const newBooking = async (
       });
     }
 
+    const roomChargeTransaction: transcation = {
+      type: "roomCharge",
+      amount: Number(booking.price),
+      paymentMethod: booking.paymentMethod,
+    };
+
     const savedBooking = new Booking({
       name: booking.name,
       checkIn: newCheckIn,
@@ -99,13 +153,7 @@ export const newBooking = async (
       // deposit: null,
       // depositRepaid: null,
 
-      transactions: [
-        {
-          type: "roomCharge",
-          amount: booking.price,
-          paymentMethod: booking.paymentMethod,
-        },
-      ],
+      transactions: buildTransactionsWithCardSurcharge(roomChargeTransaction),
 
       staffUsername: booking.staffUsername,
       bookingId: booking.bookingId,
@@ -515,7 +563,7 @@ export const checkIn = async (req: Request, res: Response) => {
       passportName: encrypt(checkInData.passportData.passportName),
     };
 
-    const newTransactions = [
+    const newTransactions: transcation[] = [
       {
         type: "deposit",
         paymentMethod: "Cash",
@@ -531,6 +579,24 @@ export const checkIn = async (req: Request, res: Response) => {
       });
 
     if (checkInData.unpaidPayment) {
+      const unpaidRoomCharge = existingBooking.transactions.find(
+        (transaction) =>
+          transaction.type === "roomCharge" &&
+          transaction.paymentMethod === "Unpaid",
+      );
+
+      if (
+        checkInData.unpaidPayment.paymentMethod === "Card" &&
+        unpaidRoomCharge
+      ) {
+        newTransactions.push({
+          type: "cardSurcharge",
+          paymentMethod: "Card",
+          relatedTransactionType: "roomCharge",
+          amount: calculateCardSurcharge(unpaidRoomCharge.amount),
+        });
+      }
+
       await Booking.findOneAndUpdate(
         {
           bookingId,
@@ -856,6 +922,115 @@ export const manageRoomStays = async (req: Request, res: Response) => {
     );
 
     res.status(200).json({ message: "สำเร็จ", booking: updatedBooking });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+};
+
+type AddTransactionRequestBody = {
+  transaction: transcation;
+};
+type AddTransactionParams = {
+  bookingId: string;
+};
+
+export const addTransaction = async (
+  req: Request<AddTransactionParams, {}, AddTransactionRequestBody>,
+  res: Response,
+) => {
+  try {
+    const { transaction } = req.body;
+    const { bookingId } = req.params;
+
+    if (!bookingId)
+      return res.status(400).json({
+        error: "MISSING",
+        message: "กรุณากรอก BookingId ใน Params",
+      });
+
+    if (
+      !transaction ||
+      transaction.amount == null ||
+      !transaction.paymentMethod ||
+      !transaction.type
+    )
+      return res.status(400).json({
+        error: "MISSING",
+        message: "กรุณากรอกข้อมูลให้ครบทุกช่อง",
+      });
+
+    const amount = Number(transaction.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({
+        error: "INVALID_AMOUNT",
+        message: "จำนวนเงินต้องมากกว่า 0",
+      });
+    }
+
+    if (!PAYMENT_METHODS.includes(transaction.paymentMethod)) {
+      return res.status(400).json({
+        error: "INVALID_PAYMENT_METHOD",
+        message: "ช่องทางการชำระเงินไม่ถูกต้อง",
+      });
+    }
+
+    if (!ADD_TRANSACTION_TYPES.includes(transaction.type)) {
+      return res.status(400).json({
+        error: "INVALID_TRANSACTION_TYPE",
+        message: "ประเภทรายการไม่ถูกต้อง",
+      });
+    }
+
+    const booking = await Booking.findOne({ bookingId }).lean();
+    if (!booking) {
+      return res.status(404).json({
+        error: "BOOKING_NOT_FOUND",
+        message: "ไม่พบ booking นี้",
+      });
+    }
+
+    const baseTransaction: transcation = {
+      type: transaction.type,
+      paymentMethod: transaction.paymentMethod,
+      amount,
+    };
+
+    if (transaction.reasonOfAdjustment) {
+      baseTransaction.reasonOfAdjustment = transaction.reasonOfAdjustment;
+    }
+
+    const newTransactions = buildTransactionsWithCardSurcharge(baseTransaction);
+
+    const updatedBooking = await Booking.findOneAndUpdate(
+      { bookingId },
+      {
+        $push: {
+          transactions: {
+            $each: newTransactions,
+          },
+        },
+      },
+      { new: true },
+    );
+
+    logActivity(
+      req.user?.username,
+      "ADD_TRANSACTION",
+      {
+        changes: {
+          transactions: {
+            before: booking.transactions,
+            after: updatedBooking?.transactions,
+          },
+        },
+      },
+      String(bookingId),
+    );
+
+    res.status(200).json({
+      message: "เพิ่มรายการใช้จ่ายสำเร็จ",
+      booking: updatedBooking,
+    });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

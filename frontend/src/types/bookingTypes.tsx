@@ -1,6 +1,17 @@
 export type PlatformId = "BOOK" | "HOST" | "TRAV" | "AGOD" | "WALK";
 type PaymentMethod = "OTA" | "Cash" | "Card" | "Transfer" | "Unpaid";
 type Status = "booked" | "checkedIn" | "checkedOut";
+type TransactionType =
+  | "roomCharge"
+  | "deposit"
+  | "adjustment"
+  | "depositRefund"
+  | "towel"
+  | "motorbike"
+  | "slowBoat"
+  | "joinTour"
+  | "extraBed"
+  | "cardSurcharge";
 
 interface EncryptedField {
   ciphertText: string;
@@ -22,9 +33,10 @@ interface Passport {
 }
 
 export interface transcation {
-  type: "roomCharge" | "deposit" | "adjustment" | "depositRefund";
+  type: TransactionType;
   paymentMethod: PaymentMethod;
   reasonOfAdjustment?: "rounding";
+  relatedTransactionType?: Exclude<TransactionType, "cardSurcharge">;
   amount: number;
 }
 
@@ -43,6 +55,7 @@ export interface booking extends Document {
   staffUsername: string;
   checkInByStaffUsername?: string | null;
 
+  passport?: Passport;
   note?: string;
 }
 

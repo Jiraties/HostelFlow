@@ -3,6 +3,17 @@ import mongoose from "mongoose";
 export type PlatformId = "BOOK" | "HOST" | "TRAV" | "AGOD" | "WALK";
 export type PaymentMethod = "OTA" | "Cash" | "Card" | "Transfer" | "Unpaid";
 export type Status = "booked" | "checkedIn" | "checkedOut";
+export type TransactionType =
+  | "roomCharge"
+  | "deposit"
+  | "adjustment"
+  | "depositRefund"
+  | "towel"
+  | "motorbike"
+  | "slowBoat"
+  | "joinTour"
+  | "extraBed"
+  | "cardSurcharge";
 
 interface EncryptedField {
   cipherText: string;
@@ -23,10 +34,11 @@ interface Passport {
   passportName?: EncryptedField;
 }
 
-interface transcation {
-  type: "roomCharge" | "deposit" | "adjustment" | "depositRefund";
+export interface transcation {
+  type: TransactionType;
   paymentMethod: PaymentMethod;
   reasonOfAdjustment?: "rounding";
+  relatedTransactionType?: Exclude<TransactionType, "cardSurcharge">;
   amount: number;
 }
 
@@ -78,7 +90,18 @@ const roomStaySchema = new mongoose.Schema({
 const transactionSchema = new mongoose.Schema({
   type: {
     type: String,
-    enum: ["roomCharge", "deposit", "adjustment", "depositRefund"],
+    enum: [
+      "roomCharge",
+      "deposit",
+      "adjustment",
+      "depositRefund",
+      "towel",
+      "motorbike",
+      "slowBoat",
+      "joinTour",
+      "extraBed",
+      "cardSurcharge",
+    ],
   },
   paymentMethod: {
     type: String,
@@ -87,6 +110,21 @@ const transactionSchema = new mongoose.Schema({
   reasonOfAdjustment: {
     type: String,
     enum: ["rounding"],
+    required: false,
+  },
+  relatedTransactionType: {
+    type: String,
+    enum: [
+      "roomCharge",
+      "deposit",
+      "adjustment",
+      "depositRefund",
+      "towel",
+      "motorbike",
+      "slowBoat",
+      "joinTour",
+      "extraBed",
+    ],
     required: false,
   },
   amount: { type: Number },

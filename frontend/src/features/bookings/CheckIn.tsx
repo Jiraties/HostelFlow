@@ -32,6 +32,19 @@ const paymentMethodOptions = [
   { value: "Transfer", label: "Transfer" },
 ];
 
+type CheckInPayload = {
+  deposit: number;
+  passportData: {
+    passportNo: string;
+    passportName: string;
+    nationality: string;
+  };
+  unpaidPayment?: {
+    paymentMethod: string;
+    roundingAdjustment: number;
+  };
+};
+
 const CheckIn = ({
   booking,
   handleCheckInSuccess,
@@ -61,10 +74,16 @@ const CheckIn = ({
   const formatCurrency = (num: number) =>
     new Intl.NumberFormat("en-US", {
       style: "currency",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
+      minimumFractionDigits: num % 1 === 0 ? 0 : 2,
+      maximumFractionDigits: 2,
       currency: "THB",
     }).format(num);
+
+  const cardSurcharge =
+    roomCharge.paymentMethod === "Unpaid" &&
+    unpaidPaymentPaymentMethod === "Card"
+      ? Number((roomCharge.amount * 0.03).toFixed(2))
+      : 0;
 
   // --- CLEAN MATH FOR THE UI TOTALS ---
   let cashTotal = Number(deposit) || 0;
@@ -94,11 +113,11 @@ const CheckIn = ({
       throw new Error("กรุณายืนยันการรับเงินสดจากลูกค้า");
     }
 
-    try {
-      setSubmitting(true);
+    setSubmitting(true);
 
+    try {
       // Dynamically build payload to preserve the selected payment method!
-      const payload: any = {
+      const payload: CheckInPayload = {
         deposit: Number(deposit),
         passportData: {
           passportNo,
@@ -127,8 +146,6 @@ const CheckIn = ({
       }
 
       return response;
-    } catch (error) {
-      throw error;
     } finally {
       setSubmitting(false);
     }
@@ -278,6 +295,16 @@ const CheckIn = ({
                     </p>
                   </div>
                 )}
+
+                {cardSurcharge > 0 && (
+                  <div className="checkIn__paymentRow">
+                    <p>
+                      ค่าธรรมเนียมบัตร 3%{" "}
+                      <span className="checkIn__paymentTag card">Card</span>
+                    </p>
+                    <p>{formatCurrency(cardSurcharge)}</p>
+                  </div>
+                )}
               </div>
               <div className="checkIn__paymentConfirmationTotal">
                 <div className="checkIn__totalsBreakdown">
@@ -295,7 +322,7 @@ const CheckIn = ({
                       <div className="checkIn__totalRow other-total">
                         <p>ยอด {unpaidPaymentPaymentMethod}:</p>
                         <p className="checkIn__paymentConfirmationTotalText">
-                          {formatCurrency(roomCharge.amount)}
+                          {formatCurrency(roomCharge.amount + cardSurcharge)}
                         </p>
                       </div>
                     )}

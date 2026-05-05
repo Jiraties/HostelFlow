@@ -1,0 +1,80 @@
+.addTransaction__wrapper {
+  width: min(48rem, calc(100vw - 2rem));
+  background-color: #fff;
+  border-radius: 0.8rem;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  box-shadow: rgba(149, 157, 165, 0.25) 0px 8px 24px;
+}
+
+.addTransaction__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.addTransaction__title {
+  font-size: 2rem;
+  line-height: 1.2;
+}
+
+.addTransaction__subtitle {
+  color: #777;
+  margin-top: 0.3rem;
+}
+
+.addTransaction__close {
+  width: 3.2rem;
+  height: 3.2rem;
+  border: none;
+  border-radius: 50%;
+  background-color: #f3f3f3;
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.addTransaction__close i {
+  font-size: 1.8rem;
+}
+
+.addTransaction__form {
+  display: grid;
+  gap: 1.2rem;
+}
+
+.addTransaction__cardPreview {
+  border: 1px solid #eee;
+  border-radius: 0.6rem;
+  padding: 1rem 1.2rem;
+  display: grid;
+  gap: 0.8rem;
+}
+
+.addTransaction__cardPreview div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.addTransaction__cardPreview p {
+  color: #777;
+}
+
+.addTransaction__cardPreviewTotal {
+  border-top: 1px solid #eee;
+  padding-top: 0.8rem;
+}
+
+.addTransaction__actions {
+  display: flex;
+  margin-top: 2rem;
+  justify-content: flex-end;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
