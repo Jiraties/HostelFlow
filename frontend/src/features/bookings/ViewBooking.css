@@ -7,6 +7,38 @@
   padding: 2rem;
 }
 
+.viewBooking__wrapper,
+.viewBooking__mainLeft,
+.viewBooking__priceList {
+  scrollbar-color: #d4d4d4 transparent;
+  scrollbar-width: thin;
+}
+
+.viewBooking__wrapper::-webkit-scrollbar,
+.viewBooking__mainLeft::-webkit-scrollbar,
+.viewBooking__priceList::-webkit-scrollbar {
+  width: 0.5rem;
+}
+
+.viewBooking__wrapper::-webkit-scrollbar-track,
+.viewBooking__mainLeft::-webkit-scrollbar-track,
+.viewBooking__priceList::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.viewBooking__wrapper::-webkit-scrollbar-thumb,
+.viewBooking__mainLeft::-webkit-scrollbar-thumb,
+.viewBooking__priceList::-webkit-scrollbar-thumb {
+  background-color: #d4d4d4;
+  border-radius: 999rem;
+}
+
+.viewBooking__wrapper::-webkit-scrollbar-corner,
+.viewBooking__mainLeft::-webkit-scrollbar-corner,
+.viewBooking__priceList::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 .viewBooking__top {
   display: flex;
   justify-content: space-between;
@@ -106,8 +138,6 @@
 
   overflow-y: scroll;
   height: 25rem;
-  scrollbar-color: #e0e0e0 #fff;
-  scrollbar-width: thin;
 }
 
 .viewBooking__mainRight {
@@ -138,11 +168,16 @@
   border-radius: 0.5rem;
 }
 
+.viewBooking__transactions {
+  box-shadow: var(--main-shadow);
+  border-radius: 1rem;
+}
+
 .viewBooking__priceList {
   display: flex;
   flex-direction: column;
-  box-shadow: var(--main-shadow);
-  border-radius: 1rem;
+  max-height: 17.25rem;
+  overflow-y: scroll;
 }
 
 .viewBooking__price {

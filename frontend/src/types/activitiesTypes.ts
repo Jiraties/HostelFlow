@@ -3,8 +3,38 @@ export type actionType =
   | "LOGOUT"
   | "NEW_BOOKING"
   | "REMOVE_BOOKING"
+  | "EDIT_BOOKING"
   | "CHECK_IN"
-  | "MANAGE_ROOM_STAYS";
+  | "MANAGE_ROOM_STAYS"
+  | "ADD_TRANSACTION";
+
+export type TransactionType =
+  | "roomCharge"
+  | "deposit"
+  | "adjustment"
+  | "depositRefund"
+  | "towel"
+  | "motorbike"
+  | "slowBoat"
+  | "joinTour"
+  | "extraBed"
+  | "cardSurcharge";
+
+export type PaymentMethod = "OTA" | "Cash" | "Card" | "Transfer" | "Unpaid";
+
+export interface transaction {
+  type: TransactionType;
+  paymentMethod: PaymentMethod;
+  reasonOfAdjustment?: "rounding";
+  relatedTransactionType?: Exclude<TransactionType, "cardSurcharge">;
+  amount: number;
+}
+
+export interface roomStay {
+  roomId: string;
+  from: string | Date;
+  to: string | Date;
+}
 
 export type activity =
   | {
@@ -17,9 +47,29 @@ export type activity =
     }
   | {
       staffUsername: string;
-      action: "NEW_BOOKING" | "REMOVE_BOOKING" | "CHECK_IN" | "MANAGE_ROOM_STAYS";
+      action:
+        | "NEW_BOOKING"
+        | "REMOVE_BOOKING"
+        | "EDIT_BOOKING"
+        | "CHECK_IN"
+        | "MANAGE_ROOM_STAYS"
+        | "ADD_TRANSACTION";
       details: {
-        changes?: Record<string, { before: unknown; after: unknown }>;
+        changes?: Record<string, { before: unknown; after: unknown }> & {
+          transactions?: {
+            before: transaction[];
+            after: transaction[];
+          };
+          roomStays?: {
+            before: roomStay[];
+            after: roomStay[];
+          };
+        };
+        summary?: {
+          addedTransactions?: transaction[];
+          beforeRoomStays?: roomStay[];
+          afterRoomStays?: roomStay[];
+        };
         snapshot?: {
           name: string;
           checkIn: Date;
@@ -27,7 +77,7 @@ export type activity =
           platformId: "BOOK" | "HSTL" | "TRVL" | "AGDA";
           roomId: string;
           price: number;
-          paymentMethod: "OTA" | "Cash" | "Card" | "Transfer" | "Unpaid";
+          paymentMethod: PaymentMethod;
           bookingId: string;
         };
       };

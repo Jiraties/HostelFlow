@@ -139,7 +139,7 @@ const AddTransaction = ({
   };
 
   return (
-    <div className="addBooking__wrapper ">
+    <div className="addBooking__wrapper addTransaction__wrapper">
       <div className="addTransaction__header">
         <div>
           <h1 className="addBooking__title">เพิ่มรายการใช้จ่าย</h1>

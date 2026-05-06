@@ -54,6 +54,7 @@ const login = async (req, res, next) => {
             httpOnly: true,
             secure: true,
             sameSite: "none",
+            path: "/",
         });
         res.status(200).json({
             message: "Logged In Successfully.",
@@ -96,7 +97,8 @@ const logout = (req, res) => {
     res.clearCookie("token", {
         httpOnly: true,
         secure: true,
-        sameSite: "strict",
+        sameSite: "none",
+        path: "/",
     });
     res.status(200).json({ message: "Successfully logged out" });
     console.log(req.user);

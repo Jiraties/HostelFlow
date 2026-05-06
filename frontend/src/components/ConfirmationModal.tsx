@@ -55,7 +55,7 @@ const ConfirmationModal = ({
                 if (err.response?.status === 409) {
                   return err.response.data.message;
                 }
-                return "เกิดข้อผิดพลาดในการเพิ่มการจอง";
+                return "เกิดข้อผิดพลาดในการลบการจอง";
               },
             })
           }

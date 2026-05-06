@@ -7,6 +7,8 @@ const express_1 = __importDefault(require("express"));
 const booking_1 = require("../controller/booking");
 const bookingsRouter = express_1.default.Router();
 bookingsRouter.post("/newBooking", booking_1.newBooking);
+bookingsRouter.patch("/editBooking/:bookingId", booking_1.editBooking);
+bookingsRouter.post("/addTransaction/:bookingId", booking_1.addTransaction);
 bookingsRouter.get("/getTodayBookings/:type", booking_1.getTodayBookings);
 bookingsRouter.get("/getAdminDashboardStats", booking_1.getAdminDashboardStats);
 bookingsRouter.get("/getMasterBookings", booking_1.getMasterBookings);

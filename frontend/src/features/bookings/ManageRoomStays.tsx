@@ -23,10 +23,14 @@ interface roomStay {
 const ManageRoomStays = ({
   initialRoomStays,
   bookingId,
+  checkIn,
+  checkOut,
   onUpdated,
 }: {
   initialRoomStays: roomStay[];
   bookingId: string;
+  checkIn: string | Date;
+  checkOut: string | Date;
   onUpdated?: (booking: booking) => void;
 }) => {
   const normalizeDate = (date: string) => {
@@ -35,12 +39,23 @@ const ManageRoomStays = ({
     return formatLocalDate(new Date(date));
   };
 
-  const [roomStays, setRoomStays] = useState<roomStay[]>(
-    initialRoomStays.map((stay) => ({
+  const bookingCheckIn = normalizeDate(String(checkIn));
+  const bookingCheckOut = normalizeDate(String(checkOut));
+  const applyBookingBoundaries = (stays: roomStay[]) =>
+    stays.map((stay, index) => ({
       ...stay,
-      from: stay.from ? normalizeDate(stay.from) : "",
-      to: stay.to ? normalizeDate(stay.to) : "",
-    })),
+      from: index === 0 ? bookingCheckIn : stay.from,
+      to: index === stays.length - 1 ? bookingCheckOut : stay.to,
+    }));
+
+  const [roomStays, setRoomStays] = useState<roomStay[]>(() =>
+    applyBookingBoundaries(
+      initialRoomStays.map((stay) => ({
+        ...stay,
+        from: stay.from ? normalizeDate(stay.from) : "",
+        to: stay.to ? normalizeDate(stay.to) : "",
+      })),
+    ),
   );
 
   const addEmptyRoomStay = () => {
@@ -51,22 +66,26 @@ const ManageRoomStays = ({
     });
   };
 
+  const isFirstStay = (index: number) => index === 0;
+  const isLastStay = (index: number) => index === roomStays.length - 1;
+
   const removeRoomStay = () => {
     if (roomStays.length - 1 < 1) return toast.error("");
     setRoomStays((prevRoomStays) => {
       const updated = [...prevRoomStays];
       updated.pop();
-      return updated;
+      return applyBookingBoundaries(updated);
     });
   };
 
   const patchRoomStays = async () => {
-    const hasEmpty = roomStays.some(
+    const roomStaysWithBoundaries = applyBookingBoundaries(roomStays);
+    const hasEmpty = roomStaysWithBoundaries.some(
       (stay) => !stay.roomId || !stay.from || !stay.to,
     );
 
     if (hasEmpty) throw new Error("กรุณากรอกข้อมูลให้ครบทุกช่อง");
-    const hasInvalidDateRange = roomStays.some(
+    const hasInvalidDateRange = roomStaysWithBoundaries.some(
       (stay) => new Date(stay.from) >= new Date(stay.to),
     );
 
@@ -76,7 +95,7 @@ const ManageRoomStays = ({
 
     const response = await axios.patch(
       `${API_URL}/bookings/manageRoomStays/${bookingId}`,
-      { roomStays },
+      { roomStays: roomStaysWithBoundaries },
       { withCredentials: true },
     );
 
@@ -124,13 +143,30 @@ const ManageRoomStays = ({
 
             <div>
               <div className="addBooking__labels">
-                <p className="addBooking__label">จากวันที่</p>
-                <p className="addBooking__label">ถึงวันที่</p>
+                <p className="addBooking__label">
+                  จากวันที่{" "}
+                  {isFirstStay(index) && (
+                    <span className="manageRoomStays__lockedHint">
+                      <i className="bx bx-lock-alt" />
+                      วัน Check-In
+                    </span>
+                  )}
+                </p>
+                <p className="addBooking__label">
+                  ถึงวันที่{" "}
+                  {isLastStay(index) && (
+                    <span className="manageRoomStays__lockedHint">
+                      <i className="bx bx-lock-alt" />
+                      วัน Check-Out
+                    </span>
+                  )}
+                </p>
               </div>
               <div className="addBooking__dateInputs">
                 <input
                   type="date"
-                  value={roomStay.from || ""}
+                  value={isFirstStay(index) ? bookingCheckIn : roomStay.from || ""}
+                  disabled={isFirstStay(index)}
                   onChange={(e) => {
                     setRoomStays((prevRoomStays) => {
                       const updated = [...prevRoomStays];
@@ -145,11 +181,12 @@ const ManageRoomStays = ({
                     borderRight: "0.1rem solid #e8e8e8",
                     borderRadius: "0.5rem 0 0 0.5rem",
                   }}
-                  className="boxInput addBooking__dateInput"
+                  className="boxInput addBooking__dateInput manageRoomStays__boundaryDate"
                 />
                 <input
                   type="date"
-                  value={roomStay.to || ""}
+                  value={isLastStay(index) ? bookingCheckOut : roomStay.to || ""}
+                  disabled={isLastStay(index)}
                   onChange={(e) => {
                     setRoomStays((prevRoomStays) => {
                       const updated = [...prevRoomStays];
@@ -161,7 +198,7 @@ const ManageRoomStays = ({
                     });
                   }}
                   style={{ borderRadius: "0 0.5rem 0.5rem 0" }}
-                  className="boxInput addBooking__dateInput"
+                  className="boxInput addBooking__dateInput manageRoomStays__boundaryDate"
                 />
               </div>
             </div>

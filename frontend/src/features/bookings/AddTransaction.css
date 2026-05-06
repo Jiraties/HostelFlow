@@ -1,12 +1,5 @@
 .addTransaction__wrapper {
-  width: min(48rem, calc(100vw - 2rem));
-  background-color: #fff;
-  border-radius: 0.8rem;
-  padding: 2rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  box-shadow: rgba(149, 157, 165, 0.25) 0px 8px 24px;
+  /* width: 40%; */
 }
 
 .addTransaction__header {

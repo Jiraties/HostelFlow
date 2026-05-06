@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.manageRoomStays = exports.getBookingById = exports.getMonthCalendar = exports.checkIn = exports.removeBooking = exports.getMasterBookings = exports.getAdminDashboardStats = exports.getTodayBookings = exports.newBooking = void 0;
+exports.addTransaction = exports.manageRoomStays = exports.getBookingById = exports.getMonthCalendar = exports.checkIn = exports.removeBooking = exports.getMasterBookings = exports.getAdminDashboardStats = exports.getTodayBookings = exports.editBooking = exports.newBooking = void 0;
 const booking_1 = __importDefault(require("../models/booking"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const crypto_1 = __importDefault(require("crypto"));
@@ -11,6 +11,38 @@ const activityServices_1 = require("../services/activityServices");
 const dateHelpers_1 = require("../helpers/dateHelpers");
 dotenv_1.default.config();
 const TOTAL_ROOM_COUNT = 46;
+const CARD_SURCHARGE_RATE = 0.03;
+const ADD_TRANSACTION_TYPES = [
+    "deposit",
+    "adjustment",
+    "depositRefund",
+    "towel",
+    "motorbike",
+    "slowBoat",
+    "joinTour",
+    "extraBed",
+];
+const PAYMENT_METHODS = [
+    "Cash",
+    "Card",
+    "Transfer",
+];
+const calculateCardSurcharge = (amount) => Number((amount * CARD_SURCHARGE_RATE).toFixed(2));
+const buildTransactionsWithCardSurcharge = (transaction) => {
+    const transactions = [transaction];
+    if (transaction.paymentMethod === "Card" &&
+        transaction.amount > 0 &&
+        transaction.type !== "depositRefund" &&
+        transaction.type !== "cardSurcharge") {
+        transactions.push({
+            type: "cardSurcharge",
+            paymentMethod: "Card",
+            relatedTransactionType: transaction.type,
+            amount: calculateCardSurcharge(transaction.amount),
+        });
+    }
+    return transactions;
+};
 const formatLocalDateKey = (date) => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -31,6 +63,12 @@ const unpaidRoomChargeAmount = (booking) => booking.transactions.reduce((sum, tr
         return sum;
     return sum + transaction.amount;
 }, 0);
+const calculateNights = (checkIn, checkOut) => {
+    const checkInDate = new Date(checkIn + "T00:00:00");
+    const checkOutDate = new Date(checkOut + "T00:00:00");
+    const diff = checkOutDate.getTime() - checkInDate.getTime();
+    return diff / 86400000;
+};
 const newBooking = async (req, res, next) => {
     try {
         if (!req.body.booking)
@@ -42,12 +80,6 @@ const newBooking = async (req, res, next) => {
             return res.status(400).json({
                 message: "วันที่เช็คอินต้องไม่อยู่หลังวันที่เช็คเอาท์",
             });
-        const calculateNights = (checkIn, checkOut) => {
-            const checkInDate = new Date(checkIn + "T00:00:00");
-            const checkOutDate = new Date(checkOut + "T00:00:00");
-            const diff = checkOutDate.getTime() - checkInDate.getTime();
-            return diff / 86400000;
-        };
         // find bookings that have same room && checkout greater than new checkin && checkin less than new checkout
         const overlappingBooking = await booking_1.default.findOne({
             roomStays: {
@@ -63,6 +95,11 @@ const newBooking = async (req, res, next) => {
                 message: `ห้องนี้ถูกจองแล้วระหว่างวันที่ ${(0, dateHelpers_1.dateRangeText)(overlappingBooking.roomStays[0].from, overlappingBooking.roomStays[0].to)} กรุณาเลือกช่วงเวลาอื่น`,
             });
         }
+        const roomChargeTransaction = {
+            type: "roomCharge",
+            amount: Number(booking.price),
+            paymentMethod: booking.paymentMethod,
+        };
         const savedBooking = new booking_1.default({
             name: booking.name,
             checkIn: newCheckIn,
@@ -82,13 +119,7 @@ const newBooking = async (req, res, next) => {
             // paymentMethod: booking.paymentMethod,
             // deposit: null,
             // depositRepaid: null,
-            transactions: [
-                {
-                    type: "roomCharge",
-                    amount: booking.price,
-                    paymentMethod: booking.paymentMethod,
-                },
-            ],
+            transactions: buildTransactionsWithCardSurcharge(roomChargeTransaction),
             staffUsername: booking.staffUsername,
             bookingId: booking.bookingId,
             checkInByStaffUsername: null,
@@ -121,6 +152,114 @@ const newBooking = async (req, res, next) => {
     }
 };
 exports.newBooking = newBooking;
+const editBooking = async (req, res) => {
+    try {
+        const { booking } = req.body;
+        const { bookingId } = req.params;
+        if (!booking ||
+            !booking.name ||
+            !booking.checkIn ||
+            !booking.checkOut ||
+            !booking.platformId) {
+            return res.status(400).json({
+                message: "กรุณากรอกข้อมูลให้ครบทุกช่อง",
+            });
+        }
+        const newCheckIn = new Date(booking.checkIn + "T00:00:00");
+        const newCheckOut = new Date(booking.checkOut + "T00:00:00");
+        if (newCheckIn >= newCheckOut) {
+            return res.status(400).json({
+                message: "วันที่เช็คอินต้องไม่อยู่หลังวันที่เช็คเอาท์",
+            });
+        }
+        const existingBooking = await booking_1.default.findOne({ bookingId }).lean();
+        if (!existingBooking) {
+            return res.status(404).json({ message: "Booking not found" });
+        }
+        if (existingBooking.status === "checkedOut") {
+            return res.status(409).json({
+                message: "ไม่สามารถแก้ไข booking ที่ check-out แล้ว",
+            });
+        }
+        const originalRoomStays = [...existingBooking.roomStays].sort((a, b) => new Date(a.from).getTime() - new Date(b.from).getTime());
+        const correctedRoomStays = originalRoomStays.map((roomStay) => ({
+            roomId: roomStay.roomId,
+            from: (0, dateHelpers_1.toInputDate)(roomStay.from),
+            to: (0, dateHelpers_1.toInputDate)(roomStay.to),
+        }));
+        correctedRoomStays[0].from = booking.checkIn;
+        correctedRoomStays[correctedRoomStays.length - 1].to = booking.checkOut;
+        const hasInvalidStay = correctedRoomStays.some((roomStay) => new Date(roomStay.from) >= new Date(roomStay.to));
+        if (hasInvalidStay) {
+            return res.status(400).json({
+                message: "วันที่ใหม่ทำให้ช่วงพักเดิมไม่ถูกต้อง กรุณาใช้จัดการช่วงการเข้าพักแทน",
+            });
+        }
+        for (let i = 0; i < correctedRoomStays.length - 1; i++) {
+            if (correctedRoomStays[i].to !== correctedRoomStays[i + 1].from) {
+                return res.status(400).json({
+                    message: "วันที่ใหม่ทำให้ช่วงพักไม่ต่อเนื่อง กรุณาใช้จัดการช่วงการเข้าพักแทน",
+                });
+            }
+        }
+        const roomIds = [
+            ...new Set(correctedRoomStays.map((roomStay) => roomStay.roomId)),
+        ];
+        const conflictingBookings = await booking_1.default.find({
+            bookingId: { $ne: bookingId },
+            roomStays: {
+                $elemMatch: {
+                    roomId: { $in: roomIds },
+                    from: { $lt: newCheckOut },
+                    to: { $gt: newCheckIn },
+                },
+            },
+        });
+        const hasConflict = conflictingBookings.some((conflictingBooking) => conflictingBooking.roomStays.some((existing) => correctedRoomStays.some((incoming) => existing.roomId === incoming.roomId &&
+            new Date(existing.from) < new Date(incoming.to) &&
+            new Date(existing.to) > new Date(incoming.from))));
+        if (hasConflict) {
+            return res.status(409).json({
+                message: "ห้องถูกจองในช่วงวันที่ที่แก้ไข",
+            });
+        }
+        const updatedBooking = await booking_1.default.findOneAndUpdate({ bookingId }, {
+            $set: {
+                name: booking.name,
+                checkIn: newCheckIn,
+                checkOut: newCheckOut,
+                nights: calculateNights(booking.checkIn, booking.checkOut),
+                platformId: booking.platformId,
+                note: booking.note || "",
+                roomStays: correctedRoomStays,
+            },
+        }, { new: true });
+        (0, activityServices_1.logActivity)(req.user?.username, "EDIT_BOOKING", {
+            changes: {
+                name: { before: existingBooking.name, after: booking.name },
+                checkIn: { before: existingBooking.checkIn, after: newCheckIn },
+                checkOut: { before: existingBooking.checkOut, after: newCheckOut },
+                platformId: {
+                    before: existingBooking.platformId,
+                    after: booking.platformId,
+                },
+                note: { before: existingBooking.note || "", after: booking.note || "" },
+                roomStays: {
+                    before: existingBooking.roomStays,
+                    after: correctedRoomStays,
+                },
+            },
+        }, String(bookingId));
+        res.status(200).json({
+            message: "แก้ไข booking สำเร็จ",
+            booking: updatedBooking,
+        });
+    }
+    catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+exports.editBooking = editBooking;
 const getTodayBookings = async (req, res) => {
     const { type } = req.params;
     const startOfToday = new Date();
@@ -411,6 +550,17 @@ const checkIn = async (req, res) => {
                 amount: checkInData.unpaidPayment.roundingAdjustment,
             });
         if (checkInData.unpaidPayment) {
+            const unpaidRoomCharge = existingBooking.transactions.find((transaction) => transaction.type === "roomCharge" &&
+                transaction.paymentMethod === "Unpaid");
+            if (checkInData.unpaidPayment.paymentMethod === "Card" &&
+                unpaidRoomCharge) {
+                newTransactions.push({
+                    type: "cardSurcharge",
+                    paymentMethod: "Card",
+                    relatedTransactionType: "roomCharge",
+                    amount: calculateCardSurcharge(unpaidRoomCharge.amount),
+                });
+            }
             await booking_1.default.findOneAndUpdate({
                 bookingId,
                 transactions: {
@@ -643,6 +793,10 @@ const manageRoomStays = async (req, res) => {
             },
         }, { new: true });
         (0, activityServices_1.logActivity)(req.user?.username, "MANAGE_ROOM_STAYS", {
+            summary: {
+                beforeRoomStays: originalRoomStays,
+                afterRoomStays: sorted,
+            },
             changes: {
                 roomStays: { before: originalRoomStays, after: sorted },
             },
@@ -654,4 +808,84 @@ const manageRoomStays = async (req, res) => {
     }
 };
 exports.manageRoomStays = manageRoomStays;
+const addTransaction = async (req, res) => {
+    try {
+        const { transaction } = req.body;
+        const { bookingId } = req.params;
+        if (!bookingId)
+            return res.status(400).json({
+                error: "MISSING",
+                message: "กรุณากรอก BookingId ใน Params",
+            });
+        if (!transaction ||
+            transaction.amount == null ||
+            !transaction.paymentMethod ||
+            !transaction.type)
+            return res.status(400).json({
+                error: "MISSING",
+                message: "กรุณากรอกข้อมูลให้ครบทุกช่อง",
+            });
+        const amount = Number(transaction.amount);
+        if (!Number.isFinite(amount) || amount <= 0) {
+            return res.status(400).json({
+                error: "INVALID_AMOUNT",
+                message: "จำนวนเงินต้องมากกว่า 0",
+            });
+        }
+        if (!PAYMENT_METHODS.includes(transaction.paymentMethod)) {
+            return res.status(400).json({
+                error: "INVALID_PAYMENT_METHOD",
+                message: "ช่องทางการชำระเงินไม่ถูกต้อง",
+            });
+        }
+        if (!ADD_TRANSACTION_TYPES.includes(transaction.type)) {
+            return res.status(400).json({
+                error: "INVALID_TRANSACTION_TYPE",
+                message: "ประเภทรายการไม่ถูกต้อง",
+            });
+        }
+        const booking = await booking_1.default.findOne({ bookingId }).lean();
+        if (!booking) {
+            return res.status(404).json({
+                error: "BOOKING_NOT_FOUND",
+                message: "ไม่พบ booking นี้",
+            });
+        }
+        const baseTransaction = {
+            type: transaction.type,
+            paymentMethod: transaction.paymentMethod,
+            amount,
+        };
+        if (transaction.reasonOfAdjustment) {
+            baseTransaction.reasonOfAdjustment = transaction.reasonOfAdjustment;
+        }
+        const newTransactions = buildTransactionsWithCardSurcharge(baseTransaction);
+        const updatedBooking = await booking_1.default.findOneAndUpdate({ bookingId }, {
+            $push: {
+                transactions: {
+                    $each: newTransactions,
+                },
+            },
+        }, { new: true });
+        (0, activityServices_1.logActivity)(req.user?.username, "ADD_TRANSACTION", {
+            summary: {
+                addedTransactions: newTransactions,
+            },
+            changes: {
+                transactions: {
+                    before: booking.transactions,
+                    after: updatedBooking?.transactions,
+                },
+            },
+        }, String(bookingId));
+        res.status(200).json({
+            message: "เพิ่มรายการใช้จ่ายสำเร็จ",
+            booking: updatedBooking,
+        });
+    }
+    catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+exports.addTransaction = addTransaction;
 //# sourceMappingURL=booking.js.map

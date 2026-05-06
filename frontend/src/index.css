@@ -5,6 +5,8 @@
 
   color-scheme: light;
   --primary-color: #51d1dc;
+  /* --primary-color: #ff1346; */
+
   --background: #fff;
   --light-background: #f6f6f6;
   --main-shadow: rgba(149, 157, 165, 0.25) 0px 8px 24px;

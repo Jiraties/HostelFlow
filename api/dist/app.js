@@ -15,12 +15,33 @@ const activities_1 = __importDefault(require("./routes/activities"));
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 const port = process.env.PORT;
+const defaultAllowedOrigins = [
+    "http://localhost:5173",
+    "https://bookings-3wjm.vercel.app",
+];
+const envAllowedOrigins = process.env.ALLOWED_ORIGINS?.split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+const allowedOrigins = new Set(envAllowedOrigins?.length ? envAllowedOrigins : defaultAllowedOrigins);
+const vercelPreviewPattern = new RegExp(process.env.ALLOWED_VERCEL_PREVIEW_PATTERN ||
+    "^https://bookings-[a-z0-9-]+\\.vercel\\.app$");
 app.use((0, cors_1.default)({
-    origin: ["http://localhost:5173", "https://bookings-3wjm.vercel.app"],
+    origin(origin, callback) {
+        if (!origin ||
+            allowedOrigins.has(origin) ||
+            vercelPreviewPattern.test(origin)) {
+            callback(null, true);
+            return;
+        }
+        callback(new Error(`Origin ${origin} is not allowed by CORS`));
+    },
     credentials: true,
 }));
 app.use(express_1.default.json());
 app.use((0, cookie_parser_1.default)());
+app.get("/health", (_req, res) => {
+    res.status(200).json({ status: "ok" });
+});
 app.use("/auth", auth_1.default);
 app.use("/bookings", authMiddleware_1.default, bookings_1.default);
 app.use("/activities", authMiddleware_1.default, activities_1.default);

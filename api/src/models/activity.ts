@@ -5,6 +5,7 @@ export type actionType =
   | "LOGOUT"
   | "NEW_BOOKING"
   | "REMOVE_BOOKING"
+  | "EDIT_BOOKING"
   | "CHECK_IN"
   | "MANAGE_ROOM_STAYS"
   | "ADD_TRANSACTION";
@@ -23,6 +24,7 @@ export type activity =
       action:
         | "NEW_BOOKING"
         | "REMOVE_BOOKING"
+        | "EDIT_BOOKING"
         | "CHECK_IN"
         | "MANAGE_ROOM_STAYS"
         | "ADD_TRANSACTION";
@@ -38,6 +40,7 @@ export type activity =
           paymentMethod: "OTA" | "Cash" | "Card" | "Transfer" | "Unpaid";
           bookingId: string;
         };
+        summary?: Record<string, any>;
       };
       timestamp: Date;
       bookingId: string;
@@ -54,6 +57,7 @@ const activitySchema = new mongoose.Schema({
       "LOGOUT",
       "NEW_BOOKING",
       "REMOVE_BOOKING",
+      "EDIT_BOOKING",
       "CHECK_IN",
       "MANAGE_ROOM_STAYS",
       "ADD_TRANSACTION",

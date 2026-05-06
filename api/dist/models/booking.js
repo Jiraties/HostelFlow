@@ -12,7 +12,18 @@ const roomStaySchema = new mongoose_1.default.Schema({
 const transactionSchema = new mongoose_1.default.Schema({
     type: {
         type: String,
-        enum: ["roomCharge", "deposit", "adjustment", "depositRefund"],
+        enum: [
+            "roomCharge",
+            "deposit",
+            "adjustment",
+            "depositRefund",
+            "towel",
+            "motorbike",
+            "slowBoat",
+            "joinTour",
+            "extraBed",
+            "cardSurcharge",
+        ],
     },
     paymentMethod: {
         type: String,
@@ -21,6 +32,21 @@ const transactionSchema = new mongoose_1.default.Schema({
     reasonOfAdjustment: {
         type: String,
         enum: ["rounding"],
+        required: false,
+    },
+    relatedTransactionType: {
+        type: String,
+        enum: [
+            "roomCharge",
+            "deposit",
+            "adjustment",
+            "depositRefund",
+            "towel",
+            "motorbike",
+            "slowBoat",
+            "joinTour",
+            "extraBed",
+        ],
         required: false,
     },
     amount: { type: Number },

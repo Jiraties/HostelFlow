@@ -5,12 +5,15 @@
   max-height: calc(100vh - 2rem);
   overflow-y: auto;
   padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
 }
 
 .addBooking__title {
   font-weight: 500;
   margin-top: 1rem;
-  margin-bottom: 2rem;
+  /* margin-bottom: 2rem; */
 }
 
 .addBooking__description {
@@ -49,7 +52,6 @@
 .addBooking__submit {
   width: fit-content;
   margin-left: auto;
-  margin-top: 2rem;
 }
 
 .platformCell__dot {
@@ -111,4 +113,35 @@
   .addBooking__dateInput:first-child {
     border-bottom: 0.1rem solid #e8e8e8;
   }
+}
+
+.editBooking__reminder strong {
+  font-weight: 600;
+}
+
+.editBooking__reminder {
+  padding: 1rem;
+  background-color: #00000007;
+  border-radius: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-top: -1rem;
+}
+
+.editBooking__textAndIcon {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.editBooking__reminder i {
+  font-size: 1.3rem;
+  transition-duration: 0.2s;
+  /* color: var(--red); */
+}
+
+.editBooking__closeReminder:hover {
+  transform: scale(1.3);
 }

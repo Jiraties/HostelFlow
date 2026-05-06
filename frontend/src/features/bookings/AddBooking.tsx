@@ -9,7 +9,10 @@ import { API_URL } from "../../config/api";
 import { customStyles } from "../../helpers/selectStyling";
 import type { booking, PlatformId } from "../../types/bookingTypes";
 import type { OptionType } from "../../helpers/selectStyling";
-import { formatLocalDate } from "../../helpers/bookingHelpers";
+import {
+  formatBookingDates,
+  formatLocalDate,
+} from "../../helpers/bookingHelpers";
 import {
   platformOptions,
   roomIdOptions,
@@ -33,18 +36,26 @@ const AddBooking = ({
   mode = "add",
   editModeBooking,
   appendToBookings,
+  onUpdated,
+  onClose,
   clickInfo,
 }: {
   mode?: "add" | "edit";
   editModeBooking?: booking;
   appendToBookings?: (booking: booking) => void;
+  onUpdated?: (booking: booking) => void;
+  onClose?: () => void;
   clickInfo?: {
     checkIn: string | null;
     roomId: string | null;
   };
 }) => {
   const { user } = useAuth();
+  const isEditMode = mode === "edit" && !!editModeBooking;
   const [submitting, setSubmitting] = useState(false);
+  const [reminderIsOpen, setReminderIsOpen] = useState(
+    mode === "edit" && editModeBooking && editModeBooking?.roomStays.length > 1,
+  );
   const [formData, setFormData] = useState<BookingFormData>(() => {
     if (editModeBooking) {
       const roomCharge = editModeBooking.transactions.find(
@@ -53,10 +64,10 @@ const AddBooking = ({
 
       return {
         name: editModeBooking.name,
-        checkIn: editModeBooking.checkIn,
-        checkOut: editModeBooking.checkOut,
+        checkIn: formatLocalDate(new Date(editModeBooking.checkIn)),
+        checkOut: formatLocalDate(new Date(editModeBooking.checkOut)),
         platformId: editModeBooking.platformId,
-        roomId: editModeBooking.roomStays[0].roomId,
+        roomId: editModeBooking.roomStays[0]?.roomId || "",
         price: roomCharge?.amount?.toString() || "",
         paymentMethod: roomCharge?.paymentMethod || "",
         bookingId: editModeBooking.bookingId,
@@ -220,21 +231,46 @@ const AddBooking = ({
     setSubmitting(true);
 
     try {
-      if (
+      const missingEditFields =
         !formData.name ||
         !formData.checkIn ||
         !formData.checkOut ||
-        !formData.platformId ||
+        !formData.platformId;
+      const missingAddFields =
+        missingEditFields ||
         !formData.roomId ||
         !formData.price ||
         !formData.paymentMethod ||
-        !formData.bookingId
-      ) {
+        !formData.bookingId;
+
+      if (isEditMode ? missingEditFields : missingAddFields) {
         throw new Error("กรุณากรอกข้อมูลให้ครบทุกช่อง");
       }
 
       if (new Date(formData.checkIn) >= new Date(formData.checkOut)) {
         throw new Error("วันที่เช็คอินต้องไม่อยู่หลังวันที่เช็คเอาท์");
+      }
+
+      if (isEditMode && editModeBooking) {
+        const response = await axios.patch(
+          `${API_URL}/bookings/editBooking/${editModeBooking.bookingId}`,
+          {
+            booking: {
+              name: formData.name,
+              checkIn: formData.checkIn,
+              checkOut: formData.checkOut,
+              platformId: formData.platformId,
+              note: formData.note,
+            },
+          },
+          { withCredentials: true },
+        );
+
+        if (response.data.booking) {
+          onUpdated?.(formatBookingDates(response.data.booking));
+        }
+        onClose?.();
+        return;
       }
 
       const response = await axios.post(
@@ -264,12 +300,26 @@ const AddBooking = ({
   return (
     <form className="addBooking__wrapper">
       <h1 className="addBooking__title">
-        {mode === "add" ? "เพิ่มการจองใหม่" : "แก้การจอง"}
+        {mode === "add" ? "เพิ่มการจองใหม่" : "แก้ไขการจอง"}
       </h1>
-      {/* <p className="addBooking__description">
-        Note: ถ้าผู้ใช้เลือกช่องทางการจอง Booking หรือ Hostel,
-        ระบบจะกำหนดช่องทางการชำระเงินโดยอัตโนมัติ
-      </p> */}
+      {reminderIsOpen && (
+        <div className="editBooking__reminder">
+          <div className="editBooking__textAndIcon">
+            <i className="bx bx-message-dots" />
+            <p>
+              เมื่อยืดวันที่ Check-In ระบบจะเพิ่มวันช่วงพักห้องแรกโดยอัตโนมัติ
+              <br />
+              เมื่อยืดวันที่ Check-Out
+              ระบบจะเพิ่มวันช่วงพักห้องท้ายสุดโดยอัตโนมัติเช่นกัน
+            </p>
+          </div>
+          <i
+            className="bx bx-x editBooking__closeReminder"
+            onClick={() => setReminderIsOpen(false)}
+          />
+        </div>
+      )}
+
       <div className="addBooking__grid">
         <div>
           <p className="addBooking__label">ชื่อ-สกุล</p>
@@ -284,8 +334,8 @@ const AddBooking = ({
         </div>
         <div>
           <div className="addBooking__labels">
-            <p className="addBooking__label">Check In</p>
-            <p className="addBooking__label">Check Out</p>
+            <p className="addBooking__label">Check-In</p>
+            <p className="addBooking__label">Check-Out</p>
           </div>
           <div className="addBooking__dateInputs">
             <input
@@ -309,28 +359,30 @@ const AddBooking = ({
             />
           </div>
         </div>
-        <div>
-          <p className="addBooking__label">ห้อง</p>
-          {/* <input
-            className="boxInput"
-            type="text"
-            value={formData.roomId}
-            placeholder="เช่น Pottery 1"
-            onChange={(e) => formDataChangeHandler("roomId", e.target.value)}
-          /> */}
-          <Select<OptionType>
-            styles={customStyles<OptionType>()}
-            classNamePrefix="rs"
-            placeholder="เช่น Veranda 1"
-            options={roomIdOptions}
-            value={roomIdOptions.find(
-              (option) => option.value === formData.roomId,
-            )}
-            onChange={(option: SingleValue<OptionType>) =>
-              formDataChangeHandler("roomId", option?.value || "")
-            }
-          />
-        </div>
+        {!isEditMode && (
+          <div>
+            <p className="addBooking__label">ห้อง</p>
+            {/* <input
+              className="boxInput"
+              type="text"
+              value={formData.roomId}
+              placeholder="เช่น Pottery 1"
+              onChange={(e) => formDataChangeHandler("roomId", e.target.value)}
+            /> */}
+            <Select<OptionType>
+              styles={customStyles<OptionType>()}
+              classNamePrefix="rs"
+              placeholder="เช่น Veranda 1"
+              options={roomIdOptions}
+              value={roomIdOptions.find(
+                (option) => option.value === formData.roomId,
+              )}
+              onChange={(option: SingleValue<OptionType>) =>
+                formDataChangeHandler("roomId", option?.value || "")
+              }
+            />
+          </div>
+        )}
         <div>
           <p className="addBooking__label">ช่องทางการจอง</p>
           <Select<OptionType>
@@ -350,44 +402,52 @@ const AddBooking = ({
           />
         </div>
 
-        <div>
-          <p className="addBooking__label">ราคา (฿)</p>
-          <input
-            className="boxInput"
-            type="number"
-            value={formData.price}
-            placeholder="เช่น 1000"
-            onChange={(e) => formDataChangeHandler("price", e.target.value)}
-          />
-        </div>
-        <div>
-          <p className="addBooking__label">จ่ายผ่าน</p>
-          <Select<OptionType>
-            styles={customStyles<OptionType>()}
-            classNamePrefix="rs"
-            options={paymentMethodOptions}
-            placeholder="เลือกช่องทางการชำระเงิน"
-            formatOptionLabel={formatPaymentMethodLabel}
-            value={
-              paymentMethodOptions.find(
-                (option) => option.value === formData.paymentMethod,
-              ) || null
-            }
-            onChange={(option: SingleValue<OptionType>) =>
-              formDataChangeHandler("paymentMethod", option?.value || "")
-            }
-          />
-        </div>
-        <div>
-          <p className="addBooking__label">Booking ID / Confirmation Number</p>
-          <input
-            className="boxInput"
-            type="text"
-            value={formData.bookingId}
-            placeholder="เช่น 4012345678"
-            onChange={(e) => formDataChangeHandler("bookingId", e.target.value)}
-          />
-        </div>
+        {!isEditMode && (
+          <>
+            <div>
+              <p className="addBooking__label">ราคา (฿)</p>
+              <input
+                className="boxInput"
+                type="number"
+                value={formData.price}
+                placeholder="เช่น 1000"
+                onChange={(e) => formDataChangeHandler("price", e.target.value)}
+              />
+            </div>
+            <div>
+              <p className="addBooking__label">จ่ายผ่าน</p>
+              <Select<OptionType>
+                styles={customStyles<OptionType>()}
+                classNamePrefix="rs"
+                options={paymentMethodOptions}
+                placeholder="เลือกช่องทางการชำระเงิน"
+                formatOptionLabel={formatPaymentMethodLabel}
+                value={
+                  paymentMethodOptions.find(
+                    (option) => option.value === formData.paymentMethod,
+                  ) || null
+                }
+                onChange={(option: SingleValue<OptionType>) =>
+                  formDataChangeHandler("paymentMethod", option?.value || "")
+                }
+              />
+            </div>
+            <div>
+              <p className="addBooking__label">
+                Booking ID / Confirmation Number
+              </p>
+              <input
+                className="boxInput"
+                type="text"
+                value={formData.bookingId}
+                placeholder="เช่น 4012345678"
+                onChange={(e) =>
+                  formDataChangeHandler("bookingId", e.target.value)
+                }
+              />
+            </div>
+          </>
+        )}
         <div>
           <p className="addBooking__label">Note</p>
           <input
@@ -399,26 +459,37 @@ const AddBooking = ({
           />
         </div>
       </div>
+      {!isEditMode && (
+        <ActionButton
+          text="DEBUG | Dummy Data"
+          icon="bx-test"
+          onClick={fillDummyData}
+          className="addBooking__submit"
+        />
+      )}
       <ActionButton
-        text="DEBUG | Dummy Data"
-        icon="bx-test"
-        onClick={fillDummyData}
-        className="addBooking__submit"
-      />
-      <ActionButton
-        text="เพิ่มการจอง"
-        icon="bx-plus"
+        text={isEditMode ? "บันทึกการแก้ไข" : "เพิ่มการจอง"}
+        icon={isEditMode ? "bx-edit" : "bx-plus"}
         highlight
         disabled={submitting}
         onClick={() =>
           toast.promise(submitHandler(), {
-            loading: `กำลังบันทึกการจองของ ${formData.name}`,
-            success: `การจองของ ${formData.name} ถูกเพิ่มเรียบร้อยแล้ว`,
+            loading: isEditMode
+              ? `กำลังแก้ไขการจองของ ${formData.name}`
+              : `กำลังบันทึกการจองของ ${formData.name}`,
+            success: isEditMode
+              ? `การจองของ ${formData.name} ถูกแก้ไขเรียบร้อยแล้ว`
+              : `การจองของ ${formData.name} ถูกเพิ่มเรียบร้อยแล้ว`,
             error: (err) => {
               if (err.response?.status === 409) {
                 return err.response.data.message;
               }
-              return "เกิดข้อผิดพลาดในการเพิ่มการจอง";
+              return (
+                err.response?.data?.message ||
+                (isEditMode
+                  ? "เกิดข้อผิดพลาดในการแก้ไขการจอง"
+                  : "เกิดข้อผิดพลาดในการเพิ่มการจอง")
+              );
             },
           })
         }

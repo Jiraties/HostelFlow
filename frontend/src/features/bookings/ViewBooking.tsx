@@ -10,6 +10,7 @@ import Skeleton from "react-loading-skeleton";
 import { Modal } from "@mui/material";
 import ManageRoomStays from "./ManageRoomStays.tsx";
 import AddTransaction from "./AddTransaction.tsx";
+import AddBooking from "./AddBooking.tsx";
 
 const paymentMethodIconMap = {
   OTA: "bx-bank",
@@ -48,6 +49,7 @@ const ViewBooking = ({
 }) => {
   const [data, setData] = useState<booking | null>(booking || null);
   const [manageRoomStaysIsOpen, setManageRoomStaysIsOpen] = useState(false);
+  const [editBookingIsOpen, setEditBookingIsOpen] = useState(false);
   const [addTransactionIsOpen, setAddTransactionIsOpen] = useState(false);
   const [loading, setLoading] = useState(!booking);
 
@@ -237,7 +239,9 @@ const ViewBooking = ({
     return groups;
   }, []);
 
-  const renderPaymentMethod = (transaction: booking["transactions"][number]) => (
+  const renderPaymentMethod = (
+    transaction: booking["transactions"][number],
+  ) => (
     <div style={{ display: "flex", gap: "0.5rem" }}>
       <p
         className={
@@ -306,9 +310,26 @@ const ViewBooking = ({
         <ManageRoomStays
           initialRoomStays={data.roomStays}
           bookingId={data.bookingId}
+          checkIn={data.checkIn}
+          checkOut={data.checkOut}
           onUpdated={(updatedBooking) => {
             setData(updatedBooking);
             setManageRoomStaysIsOpen(false);
+          }}
+        />
+      </Modal>
+      <Modal
+        open={editBookingIsOpen}
+        onClose={() => setEditBookingIsOpen(false)}
+        className="home__modalCenter"
+      >
+        <AddBooking
+          mode="edit"
+          editModeBooking={data}
+          onClose={() => setEditBookingIsOpen(false)}
+          onUpdated={(updatedBooking) => {
+            setData(updatedBooking);
+            setEditBookingIsOpen(false);
           }}
         />
       </Modal>
@@ -395,48 +416,50 @@ const ViewBooking = ({
           </div>
           <div className="viewBooking__mainRight">
             {/* <p>ค่าใช้จ่าย</p> */}
-            <div className="viewBooking__priceList">
-              {groupedTransactions.map(({ transaction, children }, index) => (
-                <div
-                  className="viewBooking__transactionGroup"
-                  style={
-                    index === groupedTransactions.length - 1
-                      ? {}
-                      : { borderBottom: "1px solid #eee" }
-                  }
-                  key={`${transaction.type}-${transaction.amount}-${index}`}
-                >
-                  {isChildTransaction(transaction) ? (
-                    renderChildTransaction(transaction, index)
-                  ) : (
-                    <div className="viewBooking__price">
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: "1rem",
-                          alignItems: "center",
-                        }}
-                      >
-                        <i
-                          className={`bx ${transactionMap[transaction.type].icon} viewBooking__bedIcon`}
+            <div className="viewBooking__transactions">
+              <div className="viewBooking__priceList">
+                {groupedTransactions.map(({ transaction, children }, index) => (
+                  <div
+                    className="viewBooking__transactionGroup"
+                    style={
+                      index === groupedTransactions.length - 1
+                        ? {}
+                        : { borderBottom: "1px solid #eee" }
+                    }
+                    key={`${transaction.type}-${transaction.amount}-${index}`}
+                  >
+                    {isChildTransaction(transaction) ? (
+                      renderChildTransaction(transaction, index)
+                    ) : (
+                      <div className="viewBooking__price">
+                        <div
                           style={{
-                            backgroundColor:
-                              transactionMap[transaction.type].color,
+                            display: "flex",
+                            gap: "1rem",
+                            alignItems: "center",
                           }}
-                        />
-                        <div>
-                          <p className="viewBooking__infoText">
-                            {formatTransactionAmount(transaction)}
-                          </p>
-                          <p>{transactionMap[transaction.type].name}</p>
+                        >
+                          <i
+                            className={`bx ${transactionMap[transaction.type].icon} viewBooking__bedIcon`}
+                            style={{
+                              backgroundColor:
+                                transactionMap[transaction.type].color,
+                            }}
+                          />
+                          <div>
+                            <p className="viewBooking__infoText">
+                              {formatTransactionAmount(transaction)}
+                            </p>
+                            <p>{transactionMap[transaction.type].name}</p>
+                          </div>
                         </div>
+                        {renderPaymentMethod(transaction)}
                       </div>
-                      {renderPaymentMethod(transaction)}
-                    </div>
-                  )}
-                  {children.map(renderChildTransaction)}
-                </div>
-              ))}
+                    )}
+                    {children.map(renderChildTransaction)}
+                  </div>
+                ))}
+              </div>
               <div
                 className="viewBooking__addTransaction"
                 onClick={() => setAddTransactionIsOpen(true)}
@@ -504,7 +527,11 @@ const ViewBooking = ({
         </div>
         <div className="viewBooking__actions">
           <div className="viewBooking__actionsLeft">
-            <ActionButton text="แก้ไข" onClick={() => {}} icon="bx-edit" />
+            <ActionButton
+              text="แก้ไข"
+              icon="bx-edit"
+              onClick={() => setEditBookingIsOpen(true)}
+            />
             <ActionButton
               text="ลบ"
               onClick={() => removeBookingHandler(data)}

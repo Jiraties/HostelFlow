@@ -13,14 +13,44 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT;
 
+const defaultAllowedOrigins = [
+  "http://localhost:5173",
+  "https://bookings-3wjm.vercel.app",
+];
+const envAllowedOrigins = process.env.ALLOWED_ORIGINS?.split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const allowedOrigins = new Set(
+  envAllowedOrigins?.length ? envAllowedOrigins : defaultAllowedOrigins,
+);
+const vercelPreviewPattern = new RegExp(
+  process.env.ALLOWED_VERCEL_PREVIEW_PATTERN ||
+    "^https://bookings-[a-z0-9-]+\\.vercel\\.app$",
+);
+
 app.use(
   cors({
-    origin: ["http://localhost:5173", "https://bookings-3wjm.vercel.app"],
+    origin(origin, callback) {
+      if (
+        !origin ||
+        allowedOrigins.has(origin) ||
+        vercelPreviewPattern.test(origin)
+      ) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`Origin ${origin} is not allowed by CORS`));
+    },
     credentials: true,
   }),
 );
 app.use(express.json());
 app.use(cookieParser());
+
+app.get("/health", (_req, res) => {
+  res.status(200).json({ status: "ok" });
+});
 
 app.use("/auth", authRouter);
 app.use("/bookings", authMiddleware, bookingsRouter);

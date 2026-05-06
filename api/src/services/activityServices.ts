@@ -7,6 +7,7 @@ export const logActivity = async (
   details: {
     changes?: Record<string, { before: any; after: any }>;
     snapshot?: Record<string, any>;
+    summary?: Record<string, any>;
     success?: boolean;
   },
   bookingId?: string,
