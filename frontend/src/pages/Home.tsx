@@ -4,6 +4,7 @@ import Select from "react-select";
 import type { SingleValue } from "react-select";
 
 import ActionButton from "../components/ActionButton";
+import ModalCloseButton from "../components/ModalCloseButton";
 import Spreadsheet from "../features/dashboard/Spreadsheet";
 import AddBooking from "../features/bookings/AddBooking";
 import toast from "react-hot-toast";
@@ -434,7 +435,10 @@ const Home = ({ status }: { status: HomeStatus }) => {
         className="home__modalCenter"
         onClose={() => setAddBookingIsOpen(false)}
       >
-        <AddBooking appendToBookings={appendToBookings} />
+        <AddBooking
+          appendToBookings={appendToBookings}
+          onClose={() => setAddBookingIsOpen(false)}
+        />
       </Modal>
       <Modal
         open={!!viewBookingBooking}
@@ -443,6 +447,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
       >
         <ViewBooking
           booking={viewBookingBooking as booking}
+          onClose={() => setViewBookingBooking(null)}
           setCheckInIsOpen={setCheckInIsOpen}
           removeBookingHandler={removeBookingHandler}
         />
@@ -456,6 +461,9 @@ const Home = ({ status }: { status: HomeStatus }) => {
       >
         <ConfirmationModal
           booking={confirmationModalIsOpen.booking}
+          onClose={() =>
+            setConfirmationModalIsOpen((prev) => ({ ...prev, isOpen: false }))
+          }
           closeAllModals={closeAllModals}
         />
       </Modal>
@@ -467,6 +475,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
         >
           <CheckIn
             booking={viewBookingBooking}
+            onClose={() => setCheckInIsOpen(false)}
             // fetchBookings={fetchBookings}
             handleCheckInSuccess={handleCheckInSuccess}
           />
@@ -478,6 +487,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
         onClose={() => setFiltersModalIsOpen(false)}
       >
         <div className="home__filtersModal">
+          <ModalCloseButton onClick={() => setFiltersModalIsOpen(false)} />
           <div className="home__filtersModalHeader">
             <h2>ตัวกรอง</h2>
             <i
@@ -542,6 +552,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
             <ActionButton
               text="เพิ่มการจองใหม่"
               icon="bx-plus"
+              className="home__addBookingAction"
               onClick={() => setAddBookingIsOpen(true)}
             />
           </div>
@@ -568,6 +579,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
             <ActionButton
               text="เพิ่มการจองใหม่"
               icon="bx-plus"
+              className="home__addBookingAction"
               onClick={() => setAddBookingIsOpen(true)}
             />
           </div>

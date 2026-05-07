@@ -424,6 +424,11 @@ const Spreadsheet = ({
           key={status}
           rowData={rowData}
           columnDefs={colDefs}
+          defaultColDef={{
+            resizable: true,
+            suppressMovable: false,
+          }}
+          suppressDragLeaveHidesColumns
           theme={myTheme}
           onGridReady={onGridReady}
           autoSizeStrategy={{ type: "fitCellContents" }}

@@ -138,7 +138,10 @@ export default function StatCard({ label, value, loading }: StatCardProps) {
         : "var(--text)";
 
   return (
-    <div style={{ fontFamily: "'IBM Plex Sans Thai', sans-serif" }}>
+    <div
+      className="statCardShell"
+      style={{ fontFamily: "'IBM Plex Sans Thai', sans-serif" }}
+    >
       <div className="statLabel">{label}</div>
 
       <div

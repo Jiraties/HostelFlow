@@ -1,0 +1,27 @@
+.modalCloseButton {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .modalCloseButton {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    width: 2.4rem;
+    height: 2.4rem;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background-color: #f3f3f3;
+    color: var(--text);
+    box-shadow: var(--light-shadow);
+    cursor: pointer;
+  }
+
+  .modalCloseButton i {
+    font-size: 1.6rem;
+  }
+}

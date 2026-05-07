@@ -88,18 +88,21 @@
 }
 
 @media (max-width: 760px) {
+  .ag-cell:has(.bookingStatusCell) {
+    padding: 0;
+  }
+
   .bookingStatusCell {
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 1.9rem;
+    height: 100%;
     gap: 0.35rem;
     min-width: 0;
-    width: 1.9rem;
-    max-width: 100%;
+    width: 100%;
     padding: 0;
-    border-radius: 2rem;
-    margin: 0 auto;
+    border-radius: 0;
+    margin: 0;
   }
 
   .bookingStatusCell i {

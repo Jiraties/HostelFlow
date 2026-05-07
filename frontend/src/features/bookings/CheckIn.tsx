@@ -6,6 +6,7 @@ import countries from "i18n-iso-countries";
 import en from "i18n-iso-countries/langs/en.json";
 import { customStyles } from "../../helpers/selectStyling";
 import ActionButton from "../../components/ActionButton";
+import ModalCloseButton from "../../components/ModalCloseButton";
 import { roomChargeTransaction } from "../../helpers/bookingHelpers";
 import type { OptionType } from "../../helpers/selectStyling";
 import axios from "axios";
@@ -48,9 +49,11 @@ type CheckInPayload = {
 const CheckIn = ({
   booking,
   handleCheckInSuccess,
+  onClose,
 }: {
   booking: booking;
   handleCheckInSuccess: (booking: booking) => void;
+  onClose?: () => void;
 }) => {
   const roomCharge = roomChargeTransaction(booking);
 
@@ -153,6 +156,7 @@ const CheckIn = ({
 
   return (
     <div className="checkIn__wrapper">
+      {onClose && <ModalCloseButton onClick={onClose} />}
       <div>
         <div className="checkIn__header">
           <h1 className="checkIn__title">เช็คอิน {booking.name}</h1>

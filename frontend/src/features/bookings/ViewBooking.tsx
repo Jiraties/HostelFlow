@@ -1,4 +1,5 @@
 import ActionButton from "../../components/ActionButton";
+import ModalCloseButton from "../../components/ModalCloseButton";
 import axios from "axios";
 import Skeleton from "react-loading-skeleton";
 import ManageRoomStays from "./ManageRoomStays.tsx";
@@ -43,11 +44,13 @@ const transactionMap = {
 const ViewBooking = ({
   booking,
   bookingId,
+  onClose,
   removeBookingHandler,
   setCheckInIsOpen,
 }: {
   booking: booking | null;
   bookingId?: string;
+  onClose?: () => void;
   removeBookingHandler: (booking: booking) => void;
   setCheckInIsOpen: (isOpen: boolean) => void;
 }) => {
@@ -90,6 +93,7 @@ const ViewBooking = ({
   if (loading || !data) {
     return (
       <div className="viewBooking__wrapper">
+        {onClose && <ModalCloseButton onClick={onClose} />}
         <div className="viewBooking__top">
           <h1 className="viewBooking__name">
             <Skeleton height={28} width={180} />
@@ -316,6 +320,7 @@ const ViewBooking = ({
           bookingId={data.bookingId}
           checkIn={data.checkIn}
           checkOut={data.checkOut}
+          onClose={() => setManageRoomStaysIsOpen(false)}
           onUpdated={(updatedBooking) => {
             setData(updatedBooking);
             setManageRoomStaysIsOpen(false);
@@ -338,6 +343,7 @@ const ViewBooking = ({
         />
       </Modal>
       <div className="viewBooking__wrapper">
+        {onClose && <ModalCloseButton onClick={onClose} />}
         <div className="viewBooking__top">
           <h1 className="viewBooking__name">
             {data.name.split(" ").map((word) => (

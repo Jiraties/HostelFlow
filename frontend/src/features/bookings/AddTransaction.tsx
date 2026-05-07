@@ -3,6 +3,7 @@ import Select, { type SingleValue } from "react-select";
 import toast from "react-hot-toast";
 import axios from "axios";
 import ActionButton from "../../components/ActionButton";
+import ModalCloseButton from "../../components/ModalCloseButton";
 import { API_URL } from "../../config/api";
 import { formatBookingDates } from "../../helpers/bookingHelpers";
 import { paymentMethodOptions } from "../../helpers/options";
@@ -139,6 +140,7 @@ const AddTransaction = ({
 
   return (
     <div className="addBooking__wrapper addTransaction__wrapper">
+      <ModalCloseButton onClick={onClose} />
       <div className="addTransaction__header">
         <div>
           <h1 className="addBooking__title">เพิ่มรายการใช้จ่าย</h1>

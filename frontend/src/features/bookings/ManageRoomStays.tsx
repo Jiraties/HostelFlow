@@ -5,6 +5,7 @@ import { customStyles } from "../../helpers/selectStyling";
 import { roomIdOptions } from "../../helpers/options";
 import { useState } from "react";
 import ActionButton from "../../components/ActionButton";
+import ModalCloseButton from "../../components/ModalCloseButton";
 import toast from "react-hot-toast";
 import axios from "axios";
 import { API_URL } from "../../config/api";
@@ -25,12 +26,14 @@ const ManageRoomStays = ({
   bookingId,
   checkIn,
   checkOut,
+  onClose,
   onUpdated,
 }: {
   initialRoomStays: roomStay[];
   bookingId: string;
   checkIn: string | Date;
   checkOut: string | Date;
+  onClose?: () => void;
   onUpdated?: (booking: booking) => void;
 }) => {
   const normalizeDate = (date: string) => {
@@ -106,6 +109,7 @@ const ManageRoomStays = ({
 
   return (
     <div className="addBooking__wrapper">
+      {onClose && <ModalCloseButton onClick={onClose} />}
       <div>
         <h1 className="addBooking__title">จัดการช่วงการเข้าพัก</h1>
       </div>

@@ -370,7 +370,10 @@ const Main = () => {
         className="home__modalCenter"
         onClose={() => setAddBookingIsOpen(false)}
       >
-        <AddBooking appendToBookings={appendToBookings} />
+        <AddBooking
+          appendToBookings={appendToBookings}
+          onClose={() => setAddBookingIsOpen(false)}
+        />
       </Modal>
 
       <header className="home__header">

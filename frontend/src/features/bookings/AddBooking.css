@@ -1,4 +1,5 @@
 .addBooking__wrapper {
+  position: relative;
   background-color: var(--background);
   border-radius: 1rem;
   width: min(50rem, calc(100vw - 2rem));

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import ActionButton from "../../components/ActionButton";
+import ModalCloseButton from "../../components/ModalCloseButton";
 import "./AddBooking.css";
 import Select, { type SingleValue } from "react-select";
 import { useAuth } from "../../context/AuthContext";
@@ -293,6 +294,7 @@ const AddBooking = ({
 
   return (
     <form className="addBooking__wrapper">
+      {onClose && <ModalCloseButton onClick={onClose} />}
       <h1 className="addBooking__title">
         {mode === "add" ? "เพิ่มการจองใหม่" : "แก้ไขการจอง"}
       </h1>

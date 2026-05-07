@@ -18,6 +18,7 @@
 }
 
 .timeline {
+  --timeline-room-column-width: 10rem;
   display: grid;
   min-width: max-content;
   border-radius: 2rem;
@@ -204,12 +205,26 @@
     border-radius: 1.25rem;
   }
 
+  .timeline {
+    --timeline-room-column-width: 5.75rem;
+  }
+
   .timeline__item {
     padding: 0.75rem;
   }
 
+  .timeline__roomIdItem {
+    padding: 0.5rem 0.4rem;
+  }
+
+  .timeline__roomIdItem p,
+  .timeline__roomIdItem {
+    font-size: 0.78rem;
+    line-height: 1.1;
+  }
+
   .timeline__dateItem {
-    scroll-margin-left: 7rem;
+    scroll-margin-left: 5.75rem;
   }
 
   .home__skeletonModal {

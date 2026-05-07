@@ -14,6 +14,10 @@
   margin-bottom: 0.5rem;
 }
 
+.statCardShell {
+  min-width: 0;
+}
+
 /* 🔥 Important: fixed height prevents layout shift */
 .statValue {
   font-size: 2.5rem;
@@ -61,4 +65,11 @@
 .statSkeleton {
   width: 80px;
   height: 2.5rem;
+}
+
+@media (max-width: 760px) {
+  .statCardShell {
+    flex: 0 0 auto;
+    min-height: 5.5rem;
+  }
 }

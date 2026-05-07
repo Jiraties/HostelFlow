@@ -1,4 +1,5 @@
 .confirmationModal {
+  position: relative;
   padding: 2rem;
   background-color: #fff;
   border-radius: 1rem;

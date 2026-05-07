@@ -347,6 +347,7 @@ const Calendar = () => {
         <ViewBooking
           booking={null}
           bookingId={viewBookingBooking?.bookingId}
+          onClose={() => setViewBookingBooking(null)}
           setCheckInIsOpen={() => {}}
           removeBookingHandler={removeBookingHandler}
         />
@@ -360,6 +361,9 @@ const Calendar = () => {
       >
         <ConfirmationModal
           booking={confirmationModalIsOpen.booking}
+          onClose={() =>
+            setConfirmationModalIsOpen((prev) => ({ ...prev, isOpen: false }))
+          }
           closeAllModals={closeAllModals}
         />
       </Modal>
@@ -371,6 +375,7 @@ const Calendar = () => {
         <AddBooking
           appendToBookings={appendToBookings}
           clickInfo={addBookingClickInfo}
+          onClose={() => setAddBookingIsOpen(false)}
         />
       </Modal>
       <header className="home__header">
@@ -421,7 +426,7 @@ const Calendar = () => {
         <div
           className="timeline"
           style={{
-            gridTemplateColumns: `10rem repeat(${getDateInMonth(year, month)}, 4rem)`,
+            gridTemplateColumns: `var(--timeline-room-column-width, 10rem) repeat(${getDateInMonth(year, month)}, 4rem)`,
             gridTemplateRows: `repeat(${rooms.length + 1}, 3rem)`,
           }}
         >

@@ -1,4 +1,5 @@
 import ActionButton from "./ActionButton";
+import ModalCloseButton from "./ModalCloseButton";
 import "./ConfirmationModal.css";
 import type { booking } from "../types/bookingTypes";
 import axios from "axios";
@@ -7,9 +8,11 @@ import { API_URL } from "../config/api";
 
 const ConfirmationModal = ({
   booking,
+  onClose,
   closeAllModals,
 }: {
   booking: booking | null;
+  onClose?: () => void;
   closeAllModals: () => void;
 }) => {
   const handleRemoveBooking = async () => {
@@ -26,13 +29,19 @@ const ConfirmationModal = ({
       );
       // toast.success("ลบการจองของ " + booking.name + " สำเร็จ");
       closeAllModals();
-    } catch (err: any) {
-      throw new Error(err.response.data.error);
+    } catch (err: unknown) {
+      const message =
+        axios.isAxiosError<{ error?: string }>(err) && err.response?.data.error
+          ? err.response.data.error
+          : "เกิดข้อผิดพลาดในการลบการจอง";
+
+      throw new Error(message);
     }
   };
 
   return (
     <div className="confirmationModal">
+      {onClose && <ModalCloseButton onClick={onClose} />}
       <div className="confirmationModal__text">
         <h1 className="confirmationModal__headerText">
           คุณแน่ใจหรือไม่ว่าจะ<strong>ลบการจองของ</strong> <br />
