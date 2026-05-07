@@ -27,7 +27,6 @@ import type { booking } from "../types/bookingTypes";
 import type { OptionType } from "../helpers/selectStyling";
 
 import "./Home.css";
-import CheckIn from "../features/bookings/CheckIn";
 
 type HomeStatus = "arrivals" | "departures" | "master";
 
@@ -80,7 +79,6 @@ const Home = ({ status }: { status: HomeStatus }) => {
   const [bookings, setBookings] = useState<booking[]>([]);
   const [occupancy, setOccupancy] = useState<number>(0);
   const [loading, setLoading] = useState(true);
-  const [checkInIsOpen, setCheckInIsOpen] = useState(false);
   const [filtersModalIsOpen, setFiltersModalIsOpen] = useState(false);
   const [confirmationModalIsOpen, setConfirmationModalIsOpen] = useState<{
     isOpen: boolean;
@@ -324,7 +322,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
     setConfirmationModalIsOpen({ isOpen: true, booking });
   };
 
-  const handleCheckInSuccess = (booking: booking) => {
+  const handleViewBookingUpdated = (booking: booking) => {
     const formattedBooking = formatBookingDates(booking);
 
     setViewBookingBooking(formattedBooking);
@@ -335,7 +333,6 @@ const Home = ({ status }: { status: HomeStatus }) => {
           : prevBooking,
       ),
     );
-    setCheckInIsOpen(false);
     fetchBookings();
   };
 
@@ -398,8 +395,9 @@ const Home = ({ status }: { status: HomeStatus }) => {
           menuPortalTarget={document.body}
           options={roomIdOptions}
           value={
-            roomIdOptions.find((option) => option.value === masterFilters.room) ||
-            null
+            roomIdOptions.find(
+              (option) => option.value === masterFilters.room,
+            ) || null
           }
           onChange={(option: SingleValue<OptionType>) =>
             updateMasterFilter("room", option?.value || "")
@@ -448,7 +446,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
         <ViewBooking
           booking={viewBookingBooking as booking}
           onClose={() => setViewBookingBooking(null)}
-          setCheckInIsOpen={setCheckInIsOpen}
+          onUpdated={handleViewBookingUpdated}
           removeBookingHandler={removeBookingHandler}
         />
       </Modal>
@@ -467,20 +465,6 @@ const Home = ({ status }: { status: HomeStatus }) => {
           closeAllModals={closeAllModals}
         />
       </Modal>
-      {viewBookingBooking && (
-        <Modal
-          open={checkInIsOpen}
-          className="home__modalCenter"
-          onClose={() => setCheckInIsOpen(false)}
-        >
-          <CheckIn
-            booking={viewBookingBooking}
-            onClose={() => setCheckInIsOpen(false)}
-            // fetchBookings={fetchBookings}
-            handleCheckInSuccess={handleCheckInSuccess}
-          />
-        </Modal>
-      )}
       <Modal
         open={filtersModalIsOpen}
         className="home__modalCenter"
@@ -495,16 +479,18 @@ const Home = ({ status }: { status: HomeStatus }) => {
               onClick={() => setFiltersModalIsOpen(false)}
             />
           </div>
-          <div className="home__mobileFilters">{renderMasterFilterFields()}</div>
+          <div className="home__mobileFilters">
+            {renderMasterFilterFields()}
+          </div>
         </div>
       </Modal>
       <header className="home__header">
         <div>
           <h1>
             {status === "arrivals"
-              ? "Arrivals |"
+              ? "เช็คอินวันนี้ |"
               : status === "departures"
-                ? "Departures |"
+                ? "เช็คเอาท์วันนี้ |"
                 : ""}{" "}
             {fullFormattedDate}
           </h1>
@@ -541,7 +527,9 @@ const Home = ({ status }: { status: HomeStatus }) => {
       </header>
       {isMaster && (
         <section className="home__masterControls">
-          <div className="home__masterFilters">{renderMasterFilterFields()}</div>
+          <div className="home__masterFilters">
+            {renderMasterFilterFields()}
+          </div>
           <div className="home__masterActions">
             <ActionButton
               text="ตัวกรอง"
@@ -585,20 +573,28 @@ const Home = ({ status }: { status: HomeStatus }) => {
           </div>
         </div>
       )}
-      <Spreadsheet
-        bookings={bookings}
-        loading={loading}
-        status={status}
-        masterRange={
-          isMaster
-            ? {
-                from: masterFilters.from,
-                to: masterFilters.to,
-              }
-            : undefined
-        }
-        setViewBookingBooking={setViewBookingBooking}
-      />
+      <div className="home__gridArea">
+        <Spreadsheet
+          bookings={bookings}
+          loading={loading}
+          status={status}
+          masterRange={
+            isMaster
+              ? {
+                  from: masterFilters.from,
+                  to: masterFilters.to,
+                }
+              : undefined
+          }
+          setViewBookingBooking={setViewBookingBooking}
+        />
+        <ActionButton
+          text="เพิ่มการจองใหม่"
+          icon="bx-plus"
+          className="home__gridFab"
+          onClick={() => setAddBookingIsOpen(true)}
+        />
+      </div>
       {/* <button onClick={logoutHandler}>logout</button> */}
     </main>
   );

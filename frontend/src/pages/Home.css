@@ -144,6 +144,18 @@
   align-items: center;
 }
 
+.home__gridArea {
+  position: relative;
+  min-width: 0;
+  min-height: 22rem;
+  height: 100%;
+  flex: 1 1 auto;
+}
+
+.home__gridFab {
+  display: none;
+}
+
 .home__action:hover {
   transition-duration: 0.2s;
   transform: scale(1.05);
@@ -275,15 +287,24 @@
   }
 
   .home__addBookingAction.home__action {
-    position: fixed;
-    right: max(1rem, env(safe-area-inset-right));
-    bottom: calc(5.35rem + env(safe-area-inset-bottom));
+    display: none;
+  }
+
+  .home__gridFab.home__action {
+    position: absolute;
+    right: 1rem;
+    bottom: 1rem;
     z-index: 20;
-    flex: 0 0 auto;
-    width: max-content;
-    max-width: calc(100vw - 2rem);
-    justify-content: center;
-    white-space: nowrap;
+    display: grid;
+    place-items: center;
+    width: 3.25rem;
+    height: 3.25rem;
+    padding: 0;
+    border-radius: 50%;
+  }
+
+  .home__gridFab p {
+    display: none;
   }
 
   .home__masterControls {

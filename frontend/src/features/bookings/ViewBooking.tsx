@@ -6,6 +6,7 @@ import ManageRoomStays from "./ManageRoomStays.tsx";
 import AddTransaction from "./AddTransaction.tsx";
 import AddBooking from "./AddBooking.tsx";
 import PassportView from "./PassportView.tsx";
+import CheckIn from "./CheckIn.tsx";
 
 import { useState, useEffect } from "react";
 import { API_URL } from "../../config/api.ts";
@@ -45,19 +46,20 @@ const ViewBooking = ({
   booking,
   bookingId,
   onClose,
+  onUpdated,
   removeBookingHandler,
-  setCheckInIsOpen,
 }: {
   booking: booking | null;
   bookingId?: string;
   onClose?: () => void;
+  onUpdated?: (booking: booking) => void;
   removeBookingHandler: (booking: booking) => void;
-  setCheckInIsOpen: (isOpen: boolean) => void;
 }) => {
   const [data, setData] = useState<booking | null>(booking || null);
   const [manageRoomStaysIsOpen, setManageRoomStaysIsOpen] = useState(false);
   const [editBookingIsOpen, setEditBookingIsOpen] = useState(false);
   const [addTransactionIsOpen, setAddTransactionIsOpen] = useState(false);
+  const [checkInIsOpen, setCheckInIsOpen] = useState(false);
   const [loading, setLoading] = useState(!booking);
 
   useEffect(() => {
@@ -293,8 +295,29 @@ const ViewBooking = ({
     </div>
   );
 
+  const updateBooking = (updatedBooking: booking) => {
+    const formattedBooking = formatBookingDates(updatedBooking);
+
+    setData(formattedBooking);
+    onUpdated?.(formattedBooking);
+  };
+
   return (
     <>
+      <Modal
+        open={checkInIsOpen}
+        className="home__modalCenter"
+        onClose={() => setCheckInIsOpen(false)}
+      >
+        <CheckIn
+          booking={data}
+          onClose={() => setCheckInIsOpen(false)}
+          handleCheckInSuccess={(updatedBooking) => {
+            updateBooking(updatedBooking);
+            setCheckInIsOpen(false);
+          }}
+        />
+      </Modal>
       <Modal
         open={addTransactionIsOpen}
         onClose={() => setAddTransactionIsOpen(false)}
@@ -305,7 +328,7 @@ const ViewBooking = ({
           guestName={data.name}
           onClose={() => setAddTransactionIsOpen(false)}
           onUpdated={(updatedBooking) => {
-            setData(updatedBooking);
+            updateBooking(updatedBooking);
             setAddTransactionIsOpen(false);
           }}
         />
@@ -322,7 +345,7 @@ const ViewBooking = ({
           checkOut={data.checkOut}
           onClose={() => setManageRoomStaysIsOpen(false)}
           onUpdated={(updatedBooking) => {
-            setData(updatedBooking);
+            updateBooking(updatedBooking);
             setManageRoomStaysIsOpen(false);
           }}
         />
@@ -337,7 +360,7 @@ const ViewBooking = ({
           editModeBooking={data}
           onClose={() => setEditBookingIsOpen(false)}
           onUpdated={(updatedBooking) => {
-            setData(updatedBooking);
+            updateBooking(updatedBooking);
             setEditBookingIsOpen(false);
           }}
         />

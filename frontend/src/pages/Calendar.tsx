@@ -348,7 +348,7 @@ const Calendar = () => {
           booking={null}
           bookingId={viewBookingBooking?.bookingId}
           onClose={() => setViewBookingBooking(null)}
-          setCheckInIsOpen={() => {}}
+          onUpdated={() => getRooms()}
           removeBookingHandler={removeBookingHandler}
         />
       </Modal>
