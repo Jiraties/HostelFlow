@@ -313,7 +313,7 @@
 @media (max-width: 720px) {
   .main__statsGrid,
   .main__adminStatsGrid {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
   }
 
   .main__adminSection,

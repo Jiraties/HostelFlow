@@ -1,4 +1,4 @@
-
+import type { booking } from "../types/bookingTypes";
 
 export const dummyBooking: booking = {
   name: "Ananya Prasert",
@@ -14,8 +14,8 @@ export const dummyBooking: booking = {
   roomStays: [
     {
       roomId: "Balcony",
-      from: new Date("2026-04-15T00:00:00.000+00:00"),
-      to: new Date("2026-04-18T00:00:00.000+00:00"),
+      from: "2026-04-15T00:00:00.000+00:00",
+      to: "2026-04-18T00:00:00.000+00:00",
     },
   ],
 

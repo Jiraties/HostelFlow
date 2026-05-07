@@ -151,7 +151,7 @@ const AddBooking = ({
       "Wicker 6",
     ];
 
-    const platforms = platformOptions.map((p) => p.value);
+    const platforms = platformOptions.map((p) => p.value as PlatformId);
     const payments = paymentMethodOptions.map((p) => p.value);
 
     const random = <T,>(arr: T[]): T =>
@@ -185,20 +185,14 @@ const AddBooking = ({
     });
   };
 
-  const formatOptionLabel = ({
-    label,
-    color,
-  }: {
-    label: string;
-    color: string;
-  }) => (
+  const formatOptionLabel = ({ label, color }: OptionType) => (
     <div style={{ display: "flex", alignItems: "center" }}>
       <span
         style={{
           width: "10px",
           height: "10px",
           borderRadius: "50%",
-          backgroundColor: color,
+          backgroundColor: color || "transparent",
           display: "inline-block",
           marginRight: "8px",
         }}

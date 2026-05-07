@@ -1,5 +1,5 @@
 import { AgGridProvider, AgGridReact } from "ag-grid-react";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AllCommunityModule } from "ag-grid-community";
 import { themeQuartz } from "ag-grid-community";
 import type {
@@ -29,9 +29,8 @@ type SeparatorRow = {
 
 type SpreadsheetRow = booking | SeparatorRow;
 
-const isSeparatorRow = (
-  row: SpreadsheetRow | undefined,
-): row is SeparatorRow => !!row && "__separator" in row;
+const isSeparatorRow = (row: SpreadsheetRow | undefined): row is SeparatorRow =>
+  !!row && "__separator" in row;
 
 const separatorDateKey = (date: Date) => {
   const year = date.getFullYear();
@@ -95,6 +94,41 @@ const platformCell = (params: ICellRendererParams<SpreadsheetRow, string>) => {
   );
 };
 
+const bookingStatusMap = {
+  booked: {
+    label: "ยังไม่ Check-In",
+    icon: "bx-user-x",
+    className: "bookingStatusCell--booked",
+  },
+  checkedIn: {
+    label: "Check-In แล้ว",
+    icon: "bx-user-check",
+    className: "bookingStatusCell--checkedIn",
+  },
+  checkedOut: {
+    label: "Check-Out แล้ว",
+    icon: "bx-log-out",
+    className: "bookingStatusCell--checkedOut",
+  },
+};
+
+const statusCell = (params: ICellRendererParams<SpreadsheetRow, string>) => {
+  const status = params.value as keyof typeof bookingStatusMap | undefined;
+  const statusMeta = status ? bookingStatusMap[status] : undefined;
+
+  if (!statusMeta) return null;
+
+  return (
+    <div
+      className={`bookingStatusCell ${statusMeta.className}`}
+      title={statusMeta.label}
+    >
+      <i className={`bx ${statusMeta.icon}`} aria-hidden="true" />
+      <span>{statusMeta.label}</span>
+    </div>
+  );
+};
+
 const CustomLoadingOverlay = () => {
   return (
     <div className="custom-loading">
@@ -124,7 +158,18 @@ const Spreadsheet = ({
   const isMaster = status === "master";
   const gridApiRef = useRef<GridApi<SpreadsheetRow> | null>(null);
   const hasScrolledToTodayRef = useRef(false);
+  const [isMobile, setIsMobile] = useState(false);
   const todayKey = separatorDateKey(new Date());
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 760px)");
+    const syncIsMobile = () => setIsMobile(mediaQuery.matches);
+
+    syncIsMobile();
+    mediaQuery.addEventListener("change", syncIsMobile);
+
+    return () => mediaQuery.removeEventListener("change", syncIsMobile);
+  }, []);
 
   const dateValueFormater = (
     params: ValueFormatterParams<SpreadsheetRow, Date>,
@@ -208,8 +253,12 @@ const Spreadsheet = ({
         isToday: true,
       });
       rows.sort((a, b) => {
-        const aDateKey = isSeparatorRow(a) ? a.dateKey : separatorDateKey(a.checkIn);
-        const bDateKey = isSeparatorRow(b) ? b.dateKey : separatorDateKey(b.checkIn);
+        const aDateKey = isSeparatorRow(a)
+          ? a.dateKey
+          : separatorDateKey(a.checkIn);
+        const bDateKey = isSeparatorRow(b)
+          ? b.dateKey
+          : separatorDateKey(b.checkIn);
 
         return aDateKey.localeCompare(bDateKey);
       });
@@ -241,102 +290,113 @@ const Spreadsheet = ({
     scrollToTodaySeparator();
   }, [scrollToTodaySeparator]);
 
-  const colDefs = useMemo<ColDef<SpreadsheetRow>[]>(
-    () => [
-    { field: "name", headerName: "ชื่อ", filter: true },
-    {
-      field: "checkIn",
-      valueFormatter: dateValueFormater,
-    },
-    {
-      field: "checkOut",
-      valueFormatter: dateValueFormater,
-    },
-    { field: "nights", headerName: "คืน" },
-    {
-      valueGetter: (params: ValueGetterParams<SpreadsheetRow>) => {
-        if (isSeparatorRow(params.data)) return "";
-        return params.data?.roomStays?.map((roomStay) => roomStay.roomId).join(", ") || "";
+  const colDefs = useMemo<ColDef<SpreadsheetRow>[]>(() => {
+    const columns: ColDef<SpreadsheetRow>[] = [
+      { field: "name", headerName: "ชื่อ", filter: true },
+      {
+        field: "checkIn",
+        valueFormatter: dateValueFormater,
       },
-      headerName: "ห้อง",
-      filter: true,
-    },
-    {
-      field: "platformId",
-      headerName: "ช่องทางการจอง",
-      filter: true,
-      cellRenderer: platformCell,
-    },
-    {
-      headerName: "ค่าห้อง",
-      maxWidth: 130,
-      valueGetter: (params: ValueGetterParams<SpreadsheetRow>) => {
-        if (isSeparatorRow(params.data)) return undefined;
-        return params.data?.transactions?.find(
-          (transaction) => transaction.type === "roomCharge",
-        )?.amount;
+      {
+        field: "checkOut",
+        valueFormatter: dateValueFormater,
       },
-      valueFormatter: (
-        params: ValueFormatterParams<SpreadsheetRow, number | undefined>,
-      ) =>
-        params.value == null
-          ? ""
-          : new Intl.NumberFormat("th-TH", {
-              style: "currency",
-              currency: "THB",
-              minimumFractionDigits: 0,
-              currencyDisplay: "code",
-            }).format(params.value),
-    },
-    {
-      valueGetter: (params: ValueGetterParams<SpreadsheetRow>) => {
-        if (isSeparatorRow(params.data)) return "";
-        return params.data?.transactions?.find(
-          (transaction) => transaction.type === "roomCharge",
-        )?.paymentMethod;
-      },
-      headerName: "ช่องทางการจ่าย",
-      filter: true,
-      cellClassRules: {
-        red: (param: CellClassParams<SpreadsheetRow>) =>
-          param.value === "Unpaid",
-      },
-    },
-    { field: "bookingId", headerName: "Booking ID", sortable: false },
-    {
-      field: "checkedInByStaffUsername",
-      headerName: "เช็คอินโดย",
-    },
-    { field: "note", sortable: false },
-    {
-      field: "status",
-      headerName: "สถานะ Check-In",
-      pinned: "right",
-      maxWidth: 130,
-      cellClassRules: {
-        notCheckedIn: (param: CellClassParams<SpreadsheetRow>) => {
-          return param.value === "booked";
+      { field: "nights", headerName: "คืน" },
+      {
+        valueGetter: (params: ValueGetterParams<SpreadsheetRow>) => {
+          if (isSeparatorRow(params.data)) return "";
+          return (
+            params.data?.roomStays
+              ?.map((roomStay) => roomStay.roomId)
+              .join(", ") || ""
+          );
         },
-        checkedIn: (param: CellClassParams<SpreadsheetRow>) => {
-          return param.value === "checkedIn";
+        headerName: "ห้อง",
+        filter: true,
+      },
+      {
+        field: "platformId",
+        headerName: "ช่องทางการจอง",
+        filter: true,
+        cellRenderer: platformCell,
+      },
+      {
+        headerName: "ค่าห้อง",
+        maxWidth: 130,
+        valueGetter: (params: ValueGetterParams<SpreadsheetRow>) => {
+          if (isSeparatorRow(params.data)) return undefined;
+          return params.data?.transactions?.find(
+            (transaction) => transaction.type === "roomCharge",
+          )?.amount;
         },
-        checkedOut: (param: CellClassParams<SpreadsheetRow>) => {
-          return param.value === "checkedOut";
+        valueFormatter: (
+          params: ValueFormatterParams<SpreadsheetRow, number | undefined>,
+        ) =>
+          params.value == null
+            ? ""
+            : new Intl.NumberFormat("th-TH", {
+                style: "currency",
+                currency: "THB",
+                minimumFractionDigits: 0,
+                currencyDisplay: "code",
+              }).format(params.value),
+      },
+      {
+        valueGetter: (params: ValueGetterParams<SpreadsheetRow>) => {
+          if (isSeparatorRow(params.data)) return "";
+          return params.data?.transactions?.find(
+            (transaction) => transaction.type === "roomCharge",
+          )?.paymentMethod;
+        },
+        headerName: "ช่องทางการจ่าย",
+        filter: true,
+        cellClassRules: {
+          red: (param: CellClassParams<SpreadsheetRow>) =>
+            param.value === "Unpaid",
         },
       },
-      valueFormatter: (
-        params: ValueFormatterParams<SpreadsheetRow, string | undefined>,
-      ) => {
-        if (params.value === "booked") return "ยังไม่ Check-In";
-        if (params.value === "checkedIn") return "Check-In แล้ว";
-        if (params.value === "checkedOut") return "Check-Out แล้ว";
-        return "";
+      { field: "bookingId", headerName: "Booking ID", sortable: false },
+      {
+        field: "checkInByStaffUsername",
+        headerName: "เช็คอินโดย",
       },
-      sort: isMaster ? undefined : "asc",
-    },
-    ],
-    [isMaster],
-  );
+      { field: "note", sortable: false },
+      {
+        field: "status",
+        headerName: isMobile ? "" : "สถานะ Check-In",
+        pinned: "right",
+        width: isMobile ? 56 : undefined,
+        minWidth: isMobile ? 56 : undefined,
+        maxWidth: isMobile ? 56 : 130,
+        cellRenderer: isMobile ? statusCell : undefined,
+        cellClassRules: {
+          notCheckedIn: (param: CellClassParams<SpreadsheetRow>) => {
+            return !isMobile && param.value === "booked";
+          },
+          checkedIn: (param: CellClassParams<SpreadsheetRow>) => {
+            return !isMobile && param.value === "checkedIn";
+          },
+          checkedOut: (param: CellClassParams<SpreadsheetRow>) => {
+            return !isMobile && param.value === "checkedOut";
+          },
+        },
+        valueFormatter: (
+          params: ValueFormatterParams<SpreadsheetRow, string | undefined>,
+        ) => {
+          if (!params.value) return "";
+
+          const statusMeta =
+            bookingStatusMap[params.value as keyof typeof bookingStatusMap];
+
+          if (statusMeta) return statusMeta.label;
+          return "";
+        },
+        sort: isMaster ? undefined : "asc",
+      },
+    ];
+
+    return columns;
+  }, [isMaster, isMobile]);
 
   const onRowDoubleClicked = (event: RowClickedEvent<SpreadsheetRow>) => {
     if (!event.data || isSeparatorRow(event.data)) return;

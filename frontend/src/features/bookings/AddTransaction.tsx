@@ -37,7 +37,6 @@ const addTransactionPaymentMethodOptions = paymentMethodOptions.filter(
 
 const AddTransaction = ({
   bookingId,
-  guestName,
   onClose,
   onUpdated,
 }: {

@@ -1,0 +1,73 @@
+.passportView {
+  min-height: 10rem;
+  border-radius: 1rem;
+  box-shadow: var(--light-shadow);
+  margin-top: 0.5rem;
+}
+
+.passportView__hidden {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: #eee;
+  flex-direction: column;
+  gap: 0.5rem;
+  transition-duration: 0.2s;
+  cursor: pointer;
+  padding: 1rem;
+  text-align: center;
+}
+
+.passportView__hidden:hover {
+  transform: scale(1.025);
+}
+
+.passportView__hidden p,
+.passportView__hidden i {
+  color: #4c4c4c;
+}
+
+.passportView__hidden i {
+  font-size: 2rem;
+}
+
+.passportView__hidden .passportView__error {
+  color: var(--red);
+  font-size: 0.9rem;
+}
+
+.passportView__nonHidden {
+  background-color: #fff;
+  padding: 1rem;
+}
+
+.passportView__content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.passportView__row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid #eee;
+}
+
+.passportView__row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.passportView__row span {
+  color: #777;
+  font-size: 0.9rem;
+}
+
+.passportView__row p {
+  color: var(--text);
+  font-size: 1.15rem;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}

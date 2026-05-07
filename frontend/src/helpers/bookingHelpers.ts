@@ -27,7 +27,7 @@ export const calculateNights = (checkIn: Date, checkOut: Date) => {
     checkOut.getDate(),
   );
 
-  const diff = end - start;
+  const diff = end.getTime() - start.getTime();
   return diff / 86400000;
 };
 

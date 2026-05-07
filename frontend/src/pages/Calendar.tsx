@@ -50,7 +50,6 @@ const Calendar = () => {
   const [month, setMonth] = useState(today.getMonth()); // JS MONTH 0=Jan 1=Feb 4=May
   const [year, setYear] = useState(today.getFullYear());
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [loading, setLoading] = useState(false);
   const [viewBookingBooking, setViewBookingBooking] = useState<booking | null>(
     null,
   );

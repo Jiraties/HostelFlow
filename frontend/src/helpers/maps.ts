@@ -1,10 +1,12 @@
+import type { PlatformId } from "../types/bookingTypes";
+
 type platformMapItem = {
   label: string;
   color: string;
   logo: string;
 };
 
-export const platformMap: platformMapItem[] = {
+export const platformMap: Record<PlatformId, platformMapItem> = {
   BOOK: {
     label: "Booking.com",
     color: "#003580",

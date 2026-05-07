@@ -75,9 +75,17 @@
   display: none;
 }
 
+.home__masterFiltersInner {
+  display: contents;
+}
+
 .home__masterActions {
   flex: 0 0 auto;
   padding-bottom: 1.25rem;
+}
+
+.home__mobileFilterAction {
+  display: none;
 }
 
 .home__dateFilter,
@@ -150,6 +158,32 @@
   justify-content: center;
 }
 
+.home__filtersModal {
+  width: min(30rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  background-color: var(--background);
+  border-radius: 0.75rem;
+  box-shadow: var(--main-shadow);
+  padding: 1.25rem;
+  outline: none;
+}
+
+.home__filtersModalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.home__filtersModalHeader i {
+  flex: 0 0 auto;
+  font-size: 1.75rem;
+  color: var(--primary-color);
+  cursor: pointer;
+}
+
 .home__refreshIcon {
   font-size: 1.5rem;
   cursor: pointer;
@@ -195,13 +229,18 @@
   }
 
   .home__headerProfile {
-    justify-content: space-between;
+    display: none;
   }
 
   .home__stats {
-    display: grid;
-    grid-template-columns: 1fr;
+    display: flex;
+    overflow-y: scroll;
     gap: 1rem;
+    flex-wrap: nowrap;
+  }
+
+  .statLabel {
+    font-size: 0.9rem;
   }
 
   .home__statsAndActions {
@@ -219,11 +258,33 @@
   }
 
   .home__masterFilters {
-    padding-bottom: 1rem;
+    display: none;
   }
 
   .home__masterActions {
+    display: flex;
+    gap: 1rem;
     padding-bottom: 1rem;
+  }
+
+  .home__masterActions .home__action {
+    flex: 1 1 0;
+    justify-content: center;
+  }
+
+  .home__mobileFilterAction {
+    display: flex;
+  }
+
+  .home__mobileFilters .home__masterFiltersInner {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .home__mobileFilters .home__dateFilter,
+  .home__mobileFilters .home__filterField {
+    flex: none;
   }
 }
 

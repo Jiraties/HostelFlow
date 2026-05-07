@@ -15,7 +15,7 @@ export type TransactionType =
   | "extraBed"
   | "cardSurcharge";
 
-interface EncryptedField {
+export interface EncryptedField {
   cipherText: string;
   iv: string;
   authTag: string;

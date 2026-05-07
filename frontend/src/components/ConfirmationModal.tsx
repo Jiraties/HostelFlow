@@ -15,7 +15,6 @@ const ConfirmationModal = ({
   const handleRemoveBooking = async () => {
     if (!booking) {
       throw new Error("No booking selected");
-      return;
     }
 
     try {
@@ -49,8 +48,8 @@ const ConfirmationModal = ({
           className="confirmationModal__button"
           onClick={() =>
             toast.promise(handleRemoveBooking(), {
-              loading: `กำลังลบการจองของ ${booking.name}`,
-              success: "ลบการจองของ " + booking.name + " สำเร็จ",
+              loading: `กำลังลบการจองของ ${booking?.name || ""}`,
+              success: "ลบการจองของ " + (booking?.name || "") + " สำเร็จ",
               error: (err) => {
                 if (err.response?.status === 409) {
                   return err.response.data.message;

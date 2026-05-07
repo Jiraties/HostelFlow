@@ -86,3 +86,44 @@
     transform: rotate(360deg);
   }
 }
+
+@media (max-width: 760px) {
+  .bookingStatusCell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 1.9rem;
+    gap: 0.35rem;
+    min-width: 0;
+    width: 1.9rem;
+    max-width: 100%;
+    padding: 0;
+    border-radius: 2rem;
+    margin: 0 auto;
+  }
+
+  .bookingStatusCell i {
+    flex: 0 0 auto;
+    font-size: 1.25rem;
+    line-height: 1;
+  }
+
+  .bookingStatusCell span {
+    display: none;
+  }
+
+  .bookingStatusCell--booked {
+    background-color: var(--light-red);
+    color: var(--red);
+  }
+
+  .bookingStatusCell--checkedIn {
+    background-color: rgba(30, 203, 131, 0.1);
+    color: var(--green);
+  }
+
+  .bookingStatusCell--checkedOut {
+    background-color: rgb(255, 242, 230);
+    color: orange;
+  }
+}

@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.addTransaction = exports.manageRoomStays = exports.getBookingById = exports.getMonthCalendar = exports.checkIn = exports.removeBooking = exports.getMasterBookings = exports.getAdminDashboardStats = exports.getTodayBookings = exports.editBooking = exports.newBooking = void 0;
+exports.getPassportData = exports.addTransaction = exports.manageRoomStays = exports.getBookingById = exports.getMonthCalendar = exports.checkIn = exports.removeBooking = exports.getMasterBookings = exports.getAdminDashboardStats = exports.getTodayBookings = exports.editBooking = exports.newBooking = void 0;
 const booking_1 = __importDefault(require("../models/booking"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const crypto_1 = __importDefault(require("crypto"));
@@ -22,11 +22,7 @@ const ADD_TRANSACTION_TYPES = [
     "joinTour",
     "extraBed",
 ];
-const PAYMENT_METHODS = [
-    "Cash",
-    "Card",
-    "Transfer",
-];
+const PAYMENT_METHODS = ["Cash", "Card", "Transfer"];
 const calculateCardSurcharge = (amount) => Number((amount * CARD_SURCHARGE_RATE).toFixed(2));
 const buildTransactionsWithCardSurcharge = (transaction) => {
     const transactions = [transaction];
@@ -243,7 +239,10 @@ const editBooking = async (req, res) => {
                     before: existingBooking.platformId,
                     after: booking.platformId,
                 },
-                note: { before: existingBooking.note || "", after: booking.note || "" },
+                note: {
+                    before: existingBooking.note || "",
+                    after: booking.note || "",
+                },
                 roomStays: {
                     before: existingBooking.roomStays,
                     after: correctedRoomStays,
@@ -888,4 +887,51 @@ const addTransaction = async (req, res) => {
     }
 };
 exports.addTransaction = addTransaction;
+const getPassportData = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        if (!bookingId)
+            return res.status(400).json({
+                error: "MISSING",
+                message: "กรุณากรอก BookingId ใน Params",
+            });
+        if (!process.env.CRYPTO_SECRET) {
+            throw new Error("CRYPTO_SECRET Missing");
+        }
+        const booking = await booking_1.default.findOne({
+            bookingId,
+            status: {
+                $in: ["checkedIn", "checkedOut"],
+            },
+        })
+            .select("passport")
+            .lean();
+        if (!booking?.passport?.nationality ||
+            !booking.passport.passportNo ||
+            !booking.passport.passportName) {
+            return res.status(404).json({
+                error: "NOT_FOUND",
+                message: "ไม่พบข้อมูล Passport",
+            });
+        }
+        const decrypt = ({ cipherText, iv, authTag }) => {
+            const key = Buffer.from(process.env.CRYPTO_SECRET, "hex");
+            const decipher = crypto_1.default.createDecipheriv("aes-256-gcm", key, Buffer.from(iv, "hex"));
+            decipher.setAuthTag(Buffer.from(authTag, "hex"));
+            let decrypted = decipher.update(cipherText, "hex", "utf8");
+            decrypted += decipher.final("utf8");
+            return decrypted;
+        };
+        const passportData = {
+            nationality: booking.passport.nationality,
+            passportNo: decrypt(booking.passport.passportNo),
+            passportName: decrypt(booking.passport.passportName),
+        };
+        res.status(200).json({ passportData });
+    }
+    catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+exports.getPassportData = getPassportData;
 //# sourceMappingURL=booking.js.map

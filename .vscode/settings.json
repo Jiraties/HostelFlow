@@ -1,3 +1,20 @@
 {
-    "postman.settings.dotenv-detection-notification-visibility": false
+  "postman.settings.dotenv-detection-notification-visibility": false,
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/api/dist/**": true,
+    "**/api/node_modules/**": true,
+    "**/frontend/dist/**": true,
+    "**/frontend/node_modules/**": true,
+    "**/frontend/node_modules/.tmp/**": true,
+    "**/frontend/node_modules/.vite/**": true
+  },
+  "search.exclude": {
+    "**/api/dist": true,
+    "**/api/node_modules": true,
+    "**/frontend/dist": true,
+    "**/frontend/node_modules": true
+  },
+  "typescript.tsserver.maxTsServerMemory": 4096
 }

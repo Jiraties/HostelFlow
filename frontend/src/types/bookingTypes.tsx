@@ -40,7 +40,7 @@ export interface transcation {
   amount: number;
 }
 
-export interface booking extends Document {
+export interface booking {
   name: string;
   roomStays: roomStay[];
   checkIn: Date;

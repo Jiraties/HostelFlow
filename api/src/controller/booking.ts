@@ -11,6 +11,7 @@ import type {
   Status,
   transcation,
   TransactionType,
+  EncryptedField,
 } from "../models/booking";
 import { dateRangeText, toInputDate } from "../helpers/dateHelpers";
 
@@ -1203,6 +1204,69 @@ export const addTransaction = async (
       message: "เพิ่มรายการใช้จ่ายสำเร็จ",
       booking: updatedBooking,
     });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+};
+
+export const getPassportData = async (req: Request, res: Response) => {
+  try {
+    const { bookingId } = req.params;
+
+    if (!bookingId)
+      return res.status(400).json({
+        error: "MISSING",
+        message: "กรุณากรอก BookingId ใน Params",
+      });
+
+    if (!process.env.CRYPTO_SECRET) {
+      throw new Error("CRYPTO_SECRET Missing");
+    }
+
+    const booking = await Booking.findOne({
+      bookingId,
+      status: {
+        $in: ["checkedIn", "checkedOut"],
+      },
+    })
+      .select("passport")
+      .lean();
+
+    if (
+      !booking?.passport?.nationality ||
+      !booking.passport.passportNo ||
+      !booking.passport.passportName
+    ) {
+      return res.status(404).json({
+        error: "NOT_FOUND",
+        message: "ไม่พบข้อมูล Passport",
+      });
+    }
+
+    const decrypt = ({ cipherText, iv, authTag }: EncryptedField) => {
+      const key = Buffer.from(process.env.CRYPTO_SECRET!, "hex");
+
+      const decipher = crypto.createDecipheriv(
+        "aes-256-gcm",
+        key,
+        Buffer.from(iv, "hex"),
+      );
+
+      decipher.setAuthTag(Buffer.from(authTag, "hex"));
+
+      let decrypted = decipher.update(cipherText, "hex", "utf8");
+      decrypted += decipher.final("utf8");
+
+      return decrypted;
+    };
+
+    const passportData = {
+      nationality: booking.passport.nationality,
+      passportNo: decrypt(booking.passport.passportNo),
+      passportName: decrypt(booking.passport.passportName),
+    };
+
+    res.status(200).json({ passportData });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

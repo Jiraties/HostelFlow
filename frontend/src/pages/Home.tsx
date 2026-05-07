@@ -80,6 +80,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
   const [occupancy, setOccupancy] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [checkInIsOpen, setCheckInIsOpen] = useState(false);
+  const [filtersModalIsOpen, setFiltersModalIsOpen] = useState(false);
   const [confirmationModalIsOpen, setConfirmationModalIsOpen] = useState<{
     isOpen: boolean;
     booking: booking | null;
@@ -354,6 +355,78 @@ const Home = ({ status }: { status: HomeStatus }) => {
     return () => window.clearTimeout(timeoutId);
   }, [fetchBookingsWithFilters, isMaster, masterFilters]);
 
+  const renderMasterFilterFields = () => (
+    <div className="home__masterFiltersInner">
+      <div className="home__dateFilter">
+        <div className="home__filterLabels">
+          <p className="home__filterLabel">จากวันที่</p>
+          <p className="home__filterLabel">ถึงวันที่</p>
+        </div>
+        <div className="home__dateInputs">
+          <input
+            type="date"
+            value={masterFilters.from}
+            onChange={(e) => updateMasterFilter("from", e.target.value)}
+            className="boxInput home__dateInput"
+          />
+          <input
+            type="date"
+            value={masterFilters.to}
+            onChange={(e) => updateMasterFilter("to", e.target.value)}
+            className="boxInput home__dateInput"
+          />
+        </div>
+      </div>
+      <div className="home__filterField">
+        <p className="home__filterLabel">ชื่อ</p>
+        <input
+          className="boxInput home__filterInput"
+          type="text"
+          value={masterFilters.name}
+          placeholder="ค้นหาชื่อแขก"
+          onChange={(e) => updateMasterFilter("name", e.target.value)}
+        />
+      </div>
+      <div className="home__filterField">
+        <p className="home__filterLabel">ห้อง</p>
+        <Select<OptionType>
+          styles={customStyles<OptionType>()}
+          classNamePrefix="rs"
+          placeholder="ทุกห้อง"
+          isClearable
+          menuPortalTarget={document.body}
+          options={roomIdOptions}
+          value={
+            roomIdOptions.find((option) => option.value === masterFilters.room) ||
+            null
+          }
+          onChange={(option: SingleValue<OptionType>) =>
+            updateMasterFilter("room", option?.value || "")
+          }
+        />
+      </div>
+      <div className="home__filterField">
+        <p className="home__filterLabel">ช่องทางการจอง</p>
+        <Select<OptionType>
+          styles={customStyles<OptionType>()}
+          classNamePrefix="rs"
+          placeholder="ทุกช่องทาง"
+          isClearable
+          menuPortalTarget={document.body}
+          options={platformOptions}
+          value={
+            platformOptions.find(
+              (option) => option.value === masterFilters.channel,
+            ) || null
+          }
+          onChange={(option: SingleValue<OptionType>) =>
+            updateMasterFilter("channel", option?.value || "")
+          }
+        />
+      </div>
+    </div>
+  );
+
   return (
     <main className="home">
       <Modal
@@ -399,6 +472,22 @@ const Home = ({ status }: { status: HomeStatus }) => {
           />
         </Modal>
       )}
+      <Modal
+        open={filtersModalIsOpen}
+        className="home__modalCenter"
+        onClose={() => setFiltersModalIsOpen(false)}
+      >
+        <div className="home__filtersModal">
+          <div className="home__filtersModalHeader">
+            <h2>ตัวกรอง</h2>
+            <i
+              className="bx bx-x"
+              onClick={() => setFiltersModalIsOpen(false)}
+            />
+          </div>
+          <div className="home__mobileFilters">{renderMasterFilterFields()}</div>
+        </div>
+      </Modal>
       <header className="home__header">
         <div>
           <h1>
@@ -442,77 +531,14 @@ const Home = ({ status }: { status: HomeStatus }) => {
       </header>
       {isMaster && (
         <section className="home__masterControls">
-          <div className="home__masterFilters">
-            <div className="home__dateFilter">
-              <div className="home__filterLabels">
-                <p className="home__filterLabel">จากวันที่</p>
-                <p className="home__filterLabel">ถึงวันที่</p>
-              </div>
-              <div className="home__dateInputs">
-                <input
-                  type="date"
-                  value={masterFilters.from}
-                  onChange={(e) => updateMasterFilter("from", e.target.value)}
-                  className="boxInput home__dateInput"
-                />
-                <input
-                  type="date"
-                  value={masterFilters.to}
-                  onChange={(e) => updateMasterFilter("to", e.target.value)}
-                  className="boxInput home__dateInput"
-                />
-              </div>
-            </div>
-            <div className="home__filterField">
-              <p className="home__filterLabel">ชื่อ</p>
-              <input
-                className="boxInput home__filterInput"
-                type="text"
-                value={masterFilters.name}
-                placeholder="ค้นหาชื่อแขก"
-                onChange={(e) => updateMasterFilter("name", e.target.value)}
-              />
-            </div>
-            <div className="home__filterField">
-              <p className="home__filterLabel">ห้อง</p>
-              <Select<OptionType>
-                styles={customStyles<OptionType>()}
-                classNamePrefix="rs"
-                placeholder="ทุกห้อง"
-                isClearable
-                menuPortalTarget={document.body}
-                options={roomIdOptions}
-                value={
-                  roomIdOptions.find(
-                    (option) => option.value === masterFilters.room,
-                  ) || null
-                }
-                onChange={(option: SingleValue<OptionType>) =>
-                  updateMasterFilter("room", option?.value || "")
-                }
-              />
-            </div>
-            <div className="home__filterField">
-              <p className="home__filterLabel">ช่องทางการจอง</p>
-              <Select<OptionType>
-                styles={customStyles<OptionType>()}
-                classNamePrefix="rs"
-                placeholder="ทุกช่องทาง"
-                isClearable
-                menuPortalTarget={document.body}
-                options={platformOptions}
-                value={
-                  platformOptions.find(
-                    (option) => option.value === masterFilters.channel,
-                  ) || null
-                }
-                onChange={(option: SingleValue<OptionType>) =>
-                  updateMasterFilter("channel", option?.value || "")
-                }
-              />
-            </div>
-          </div>
+          <div className="home__masterFilters">{renderMasterFilterFields()}</div>
           <div className="home__masterActions">
+            <ActionButton
+              text="ตัวกรอง"
+              icon="bx-filter-alt"
+              className="home__mobileFilterAction"
+              onClick={() => setFiltersModalIsOpen(true)}
+            />
             <ActionButton
               text="เพิ่มการจองใหม่"
               icon="bx-plus"
@@ -534,11 +560,11 @@ const Home = ({ status }: { status: HomeStatus }) => {
             ))}
           </div>
           <div className="home__actions">
-            <ActionButton
+            {/* <ActionButton
               text="เรียกเก็บเงิน"
               icon="bx-dollar"
               onClick={() => {}}
-            />
+            /> */}
             <ActionButton
               text="เพิ่มการจองใหม่"
               icon="bx-plus"

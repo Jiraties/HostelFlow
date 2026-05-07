@@ -17,5 +17,6 @@ bookingsRouter.put("/checkIn/:bookingId", booking_1.checkIn);
 bookingsRouter.patch("/manageRoomStays/:bookingId", booking_1.manageRoomStays);
 bookingsRouter.get("/getMonthCalendar", booking_1.getMonthCalendar);
 bookingsRouter.get("/getBookingById/:bookingId", booking_1.getBookingById);
+bookingsRouter.get("/getPassportData/:bookingId", booking_1.getPassportData);
 exports.default = bookingsRouter;
 //# sourceMappingURL=bookings.js.map

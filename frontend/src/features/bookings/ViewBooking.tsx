@@ -1,16 +1,20 @@
-import { useState, useEffect } from "react";
 import ActionButton from "../../components/ActionButton";
-import type { booking } from "../../types/bookingTypes";
-import "./ViewBooking.css";
 import axios from "axios";
-import { API_URL } from "../../config/api.ts";
-import { platformMap } from "../../helpers/maps.ts";
-import { formatBookingDates, isSameDay } from "../../helpers/bookingHelpers.ts";
 import Skeleton from "react-loading-skeleton";
-import { Modal } from "@mui/material";
 import ManageRoomStays from "./ManageRoomStays.tsx";
 import AddTransaction from "./AddTransaction.tsx";
 import AddBooking from "./AddBooking.tsx";
+import PassportView from "./PassportView.tsx";
+
+import { useState, useEffect } from "react";
+import { API_URL } from "../../config/api.ts";
+import { platformMap } from "../../helpers/maps.ts";
+import { formatBookingDates, isSameDay } from "../../helpers/bookingHelpers.ts";
+import { Modal } from "@mui/material";
+
+import type { booking } from "../../types/bookingTypes";
+
+import "./ViewBooking.css";
 
 const paymentMethodIconMap = {
   OTA: "bx-bank",
@@ -42,7 +46,7 @@ const ViewBooking = ({
   removeBookingHandler,
   setCheckInIsOpen,
 }: {
-  booking: booking;
+  booking: booking | null;
   bookingId?: string;
   removeBookingHandler: (booking: booking) => void;
   setCheckInIsOpen: (isOpen: boolean) => void;
@@ -352,7 +356,7 @@ const ViewBooking = ({
                 statusDeterminer(data.status, "classname")
               }
             >
-              <div className="viewBooking__statusDot"></div>
+              <div className="viewBooking__statusDot" />
               <p className="viewBooking__statusText">
                 {statusDeterminer(data.status, "text")}
               </p>
@@ -398,13 +402,12 @@ const ViewBooking = ({
             </div>
 
             <div className="viewBooking__item">
-              <span className="viewBooking__label">ห้อง: </span>
-              <p className="viewBooking__infoText">{roomsName}</p>
-            </div>
-
-            <div className="viewBooking__item">
               <span className="viewBooking__label">Booking No: </span>
               <p className="viewBooking__infoText">{data.bookingId}</p>
+            </div>
+            <div className="viewBooking__item">
+              <span className="viewBooking__label">ห้อง: </span>
+              <p className="viewBooking__infoText">{roomsName}</p>
             </div>
 
             <div className="viewBooking__item">
@@ -413,6 +416,8 @@ const ViewBooking = ({
               </span>
               <p className="viewBooking__infoText">{data.staffUsername}</p>
             </div>
+
+            <PassportView bookingId={data.bookingId} />
           </div>
           <div className="viewBooking__mainRight">
             {/* <p>ค่าใช้จ่าย</p> */}
