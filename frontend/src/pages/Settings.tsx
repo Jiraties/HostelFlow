@@ -35,6 +35,7 @@ const transactionLabelMap = {
   deposit: "รับมัดจำ",
   adjustment: "ปรับราคา",
   depositRefund: "คืนมัดจำ",
+  cancellationRefund: "คืนเงินยกเลิก",
   towel: "ผ้าเช็ดตัว",
   motorbike: "มอเตอร์ไซค์",
   slowBoat: "Slow Boat",

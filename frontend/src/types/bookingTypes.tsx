@@ -1,11 +1,14 @@
 export type PlatformId = "BOOK" | "HOST" | "TRAV" | "AGOD" | "WALK";
 type PaymentMethod = "OTA" | "Cash" | "Card" | "Transfer" | "Unpaid";
-type Status = "booked" | "checkedIn" | "checkedOut";
+type Status = "booked" | "checkedIn" | "checkedOut" | "cancelled";
+type CancellationType = "refundable" | "non_refundable" | null;
+type RoomReleaseStatus = "released" | "blocked";
 type TransactionType =
   | "roomCharge"
   | "deposit"
   | "adjustment"
   | "depositRefund"
+  | "cancellationRefund"
   | "towel"
   | "motorbike"
   | "slowBoat"
@@ -32,6 +35,15 @@ interface Passport {
   passportName?: EncryptedField;
 }
 
+interface Cancellation {
+  cancellationType: CancellationType;
+  roomReleaseStatus: RoomReleaseStatus;
+  refundAmount: number;
+  keptAmount: number;
+  cancelledAt: Date;
+  cancelledByStaffUsername: string;
+}
+
 export interface transcation {
   type: TransactionType;
   paymentMethod: PaymentMethod;
@@ -56,6 +68,7 @@ export interface booking {
   checkInByStaffUsername?: string | null;
 
   passport?: Passport;
+  cancellation?: Cancellation;
   note?: string;
 }
 

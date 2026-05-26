@@ -8,7 +8,7 @@ import AddBooking from "./AddBooking.tsx";
 import PassportView from "./PassportView.tsx";
 import CheckIn from "./CheckIn.tsx";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { API_URL } from "../../config/api.ts";
 import { platformMap } from "../../helpers/maps.ts";
 import { formatBookingDates, isSameDay } from "../../helpers/bookingHelpers.ts";
@@ -17,6 +17,7 @@ import { Modal } from "@mui/material";
 import type { booking } from "../../types/bookingTypes";
 
 import "./ViewBooking.css";
+import Cancellation from "./Cancellation.tsx";
 
 const paymentMethodIconMap = {
   OTA: "bx-bank",
@@ -30,6 +31,11 @@ const transactionMap = {
   deposit: { icon: "bx-wallet", name: "รับมัดจำ", color: "#facc15" },
   adjustment: { icon: "bx-edit-alt", name: "ปรับราคา", color: "#a78bfa" },
   depositRefund: { icon: "bx-undo", name: "คืนมัดจำ", color: "#f87171" },
+  cancellationRefund: {
+    icon: "bx-calendar-x",
+    name: "คืนเงินยกเลิก",
+    color: "#fb7185",
+  },
   towel: { icon: "bx-bath", name: "ผ้าเช็ดตัว", color: "#38bdf8" },
   motorbike: { icon: "bx-cycling", name: "มอเตอร์ไซค์", color: "#fb923c" },
   slowBoat: { icon: "bx-water", name: "Slow Boat", color: "#2dd4bf" },
@@ -59,8 +65,54 @@ const ViewBooking = ({
   const [manageRoomStaysIsOpen, setManageRoomStaysIsOpen] = useState(false);
   const [editBookingIsOpen, setEditBookingIsOpen] = useState(false);
   const [addTransactionIsOpen, setAddTransactionIsOpen] = useState(false);
+  const [cancellationIsOpen, setCancellationIsOpen] = useState(false);
   const [checkInIsOpen, setCheckInIsOpen] = useState(false);
   const [loading, setLoading] = useState(!booking);
+  const [showTransactionOverflowAlert, setShowTransactionOverflowAlert] =
+    useState(false);
+  const [
+    transactionOverflowAlertDismissed,
+    setTransactionOverflowAlertDismissed,
+  ] = useState(false);
+  const priceListRef = useRef<HTMLDivElement | null>(null);
+
+  const updateTransactionOverflowAlert = () => {
+    const priceList = priceListRef.current;
+    if (!priceList) return;
+
+    const hasHiddenTransactions =
+      priceList.scrollHeight > priceList.clientHeight + 1;
+    const isAtTop = priceList.scrollTop < 4;
+
+    setShowTransactionOverflowAlert(
+      hasHiddenTransactions && isAtTop && !transactionOverflowAlertDismissed,
+    );
+  };
+
+  const scrollToHiddenTransactions = () => {
+    const priceList = priceListRef.current;
+    if (!priceList) return;
+
+    setTransactionOverflowAlertDismissed(true);
+    setShowTransactionOverflowAlert(false);
+    priceList.scrollBy({
+      top: priceList.clientHeight * 0.8,
+      behavior: "smooth",
+    });
+  };
+
+  const handleTransactionListScroll = () => {
+    const priceList = priceListRef.current;
+    if (!priceList) return;
+
+    if (priceList.scrollTop >= 4) {
+      setTransactionOverflowAlertDismissed(true);
+      setShowTransactionOverflowAlert(false);
+      return;
+    }
+
+    updateTransactionOverflowAlert();
+  };
 
   useEffect(() => {
     if (!booking) return;
@@ -91,6 +143,14 @@ const ViewBooking = ({
 
     fetchBooking();
   }, [bookingId, data]);
+
+  useEffect(() => {
+    const animationFrame = requestAnimationFrame(
+      updateTransactionOverflowAlert,
+    );
+
+    return () => cancelAnimationFrame(animationFrame);
+  }, [data?.transactions.length, transactionOverflowAlertDismissed]);
 
   if (loading || !data) {
     return (
@@ -182,20 +242,36 @@ const ViewBooking = ({
   const statusDeterminer = (status: string, usedFor: string) => {
     const checkInIsToday = isSameDay(new Date(), new Date(data.checkIn));
 
-    if (status === "booked" && !checkInIsToday) {
-      return usedFor === "classname" ? "booked" : "จองแล้ว";
-    }
-    if (status === "booked" && checkInIsToday) {
-      return usedFor === "classname" ? "notCheckedIn" : "ยังไม่ Check-In";
-    }
-    if (status === "checkedIn") {
-      return usedFor === "classname" ? "checkedIn" : "Check-In แล้ว";
-    }
-    if (status === "checkedOut") {
-      return usedFor === "classname" ? "checkedOut" : "Check-Out แล้ว";
-    }
+    switch (status) {
+      case "booked":
+        if (checkInIsToday) {
+          return usedFor === "classname" ? "notCheckedIn" : "ยังไม่ Check-In";
+        }
 
-    return usedFor === "classname" ? "unknown" : status;
+        return usedFor === "classname" ? "booked" : "จองแล้ว";
+      case "checkedIn":
+        return usedFor === "classname" ? "checkedIn" : "Check-In แล้ว";
+      case "checkedOut":
+        return usedFor === "classname" ? "checkedOut" : "Check-Out แล้ว";
+      case "cancelled":
+        return usedFor === "classname" ? "cancelled" : "ถูกยกเลิก";
+      default:
+        return usedFor === "classname" ? "unknown" : status;
+    }
+  };
+
+  const roomReleaseStatusDeterminer = (
+    status: "released" | "blocked",
+    usedFor: string,
+  ) => {
+    switch (status) {
+      case "released":
+        return usedFor === "classname" ? "released" : "เปิดให้จอง";
+      case "blocked":
+        return usedFor === "classname" ? "blocked" : "ไม่เปิดให้จอง";
+      default:
+        return usedFor === "classname" ? "unknown" : "";
+    }
   };
 
   const roomsName = data.roomStays
@@ -206,14 +282,16 @@ const ViewBooking = ({
     transaction: booking["transactions"][number],
   ) => {
     const amountText = transaction.amount.toLocaleString("th-TH");
-    return transaction.type === "depositRefund"
+    return transaction.type === "depositRefund" ||
+      transaction.type === "cancellationRefund"
       ? `-${amountText} บาท`
       : `${amountText} บาท`;
   };
 
   const isChildTransaction = (transaction: booking["transactions"][number]) =>
     transaction.type === "cardSurcharge" ||
-    transaction.type === "depositRefund";
+    transaction.type === "depositRefund" ||
+    transaction.type === "cancellationRefund";
 
   const groupedTransactions = data.transactions.reduce<
     {
@@ -239,6 +317,23 @@ const ViewBooking = ({
 
       if (depositGroup) {
         depositGroup.children.push(transaction);
+      } else {
+        groups.push({ transaction, children: [] });
+      }
+      return groups;
+    }
+
+    if (transaction.type === "cancellationRefund") {
+      const paidGroup = [...groups]
+        .reverse()
+        .find(
+          (group) =>
+            !isChildTransaction(group.transaction) &&
+            group.transaction.paymentMethod === transaction.paymentMethod,
+        );
+
+      if (paidGroup) {
+        paidGroup.children.push(transaction);
       } else {
         groups.push({ transaction, children: [] });
       }
@@ -304,6 +399,20 @@ const ViewBooking = ({
 
   return (
     <>
+      <Modal
+        open={cancellationIsOpen}
+        className="home__modalCenter"
+        onClose={() => setCancellationIsOpen(false)}
+      >
+        <Cancellation
+          booking={data}
+          onClose={() => setCancellationIsOpen(false)}
+          onUpdated={(updatedBooking) => {
+            updateBooking(updatedBooking);
+            setCancellationIsOpen(false);
+          }}
+        />
+      </Modal>
       <Modal
         open={checkInIsOpen}
         className="home__modalCenter"
@@ -379,17 +488,45 @@ const ViewBooking = ({
             <h1>
               {roomsName} <br />
             </h1>
-            <div
-              className={
-                "viewBooking__statusBadge " +
-                statusDeterminer(data.status, "classname")
-              }
-            >
-              <div className="viewBooking__statusDot" />
-              <p className="viewBooking__statusText">
-                {statusDeterminer(data.status, "text")}
-              </p>
-            </div>
+            {data.status === "cancelled" &&
+            data.cancellation?.roomReleaseStatus ? (
+              <div className="viewBooking__statusBadge viewBooking__splitStatusBadge">
+                <div className="viewBooking__splitStatusMain cancelled">
+                  <div className="viewBooking__statusDot" />
+                  <p className="viewBooking__statusText">
+                    {statusDeterminer(data.status, "text")}
+                  </p>
+                </div>
+                <div
+                  className={
+                    "viewBooking__splitStatusMeta " +
+                    roomReleaseStatusDeterminer(
+                      data.cancellation.roomReleaseStatus,
+                      "classname",
+                    )
+                  }
+                >
+                  <p className="viewBooking__statusText">
+                    {roomReleaseStatusDeterminer(
+                      data.cancellation.roomReleaseStatus,
+                      "text",
+                    )}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div
+                className={
+                  "viewBooking__statusBadge " +
+                  statusDeterminer(data.status, "classname")
+                }
+              >
+                <div className="viewBooking__statusDot" />
+                <p className="viewBooking__statusText">
+                  {statusDeterminer(data.status, "text")}
+                </p>
+              </div>
+            )}
           </div>
         </div>
         <div className="viewBooking__main">
@@ -451,48 +588,68 @@ const ViewBooking = ({
           <div className="viewBooking__mainRight">
             {/* <p>ค่าใช้จ่าย</p> */}
             <div className="viewBooking__transactions">
-              <div className="viewBooking__priceList">
-                {groupedTransactions.map(({ transaction, children }, index) => (
-                  <div
-                    className="viewBooking__transactionGroup"
-                    style={
-                      index === groupedTransactions.length - 1
-                        ? {}
-                        : { borderBottom: "1px solid #eee" }
-                    }
-                    key={`${transaction.type}-${transaction.amount}-${index}`}
-                  >
-                    {isChildTransaction(transaction) ? (
-                      renderChildTransaction(transaction, index)
-                    ) : (
-                      <div className="viewBooking__price">
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: "1rem",
-                            alignItems: "center",
-                          }}
-                        >
-                          <i
-                            className={`bx ${transactionMap[transaction.type].icon} viewBooking__bedIcon`}
-                            style={{
-                              backgroundColor:
-                                transactionMap[transaction.type].color,
-                            }}
-                          />
-                          <div>
-                            <p className="viewBooking__infoText">
-                              {formatTransactionAmount(transaction)}
-                            </p>
-                            <p>{transactionMap[transaction.type].name}</p>
+              <div className="viewBooking__priceListWrap">
+                <div
+                  className="viewBooking__priceList"
+                  ref={priceListRef}
+                  onScroll={handleTransactionListScroll}
+                >
+                  {groupedTransactions.map(
+                    ({ transaction, children }, index) => (
+                      <div
+                        className="viewBooking__transactionGroup"
+                        style={
+                          index === groupedTransactions.length - 1
+                            ? {}
+                            : { borderBottom: "1px solid #eee" }
+                        }
+                        key={`${transaction.type}-${transaction.amount}-${index}`}
+                      >
+                        {isChildTransaction(transaction) ? (
+                          renderChildTransaction(transaction, index)
+                        ) : (
+                          <div className="viewBooking__price">
+                            <div
+                              style={{
+                                display: "flex",
+                                gap: "1rem",
+                                alignItems: "center",
+                              }}
+                            >
+                              <i
+                                className={`bx ${transactionMap[transaction.type].icon} viewBooking__bedIcon`}
+                                style={{
+                                  backgroundColor:
+                                    transactionMap[transaction.type].color,
+                                }}
+                              />
+                              <div>
+                                <p className="viewBooking__infoText">
+                                  {formatTransactionAmount(transaction)}
+                                </p>
+                                <p>{transactionMap[transaction.type].name}</p>
+                              </div>
+                            </div>
+                            {renderPaymentMethod(transaction)}
                           </div>
-                        </div>
-                        {renderPaymentMethod(transaction)}
+                        )}
+                        {children.map(renderChildTransaction)}
                       </div>
-                    )}
-                    {children.map(renderChildTransaction)}
+                    ),
+                  )}
+                </div>
+                {showTransactionOverflowAlert && (
+                  <div className="viewBooking__transactionsOverayAlert">
+                    <button
+                      className="viewBooking__transactionsOverflowButton"
+                      type="button"
+                      onClick={scrollToHiddenTransactions}
+                    >
+                      <span>ยังมีรายการเพิ่มเติม</span>
+                      <i className="bx bx-chevron-down" />
+                    </button>
                   </div>
-                ))}
+                )}
               </div>
               <div
                 className="viewBooking__addTransaction"
@@ -571,11 +728,15 @@ const ViewBooking = ({
               onClick={() => removeBookingHandler(data)}
               icon="bx-trash"
             />
-            <ActionButton
-              text="ยกเลิก"
-              onClick={() => {}}
-              icon="bx-calendar-x"
-            />
+            {data.status === "booked" && (
+              <ActionButton
+                text="ยกเลิก"
+                onClick={() => {
+                  setCancellationIsOpen(true);
+                }}
+                icon="bx-calendar-x"
+              />
+            )}
           </div>
           {data.status === "booked" && (
             <ActionButton

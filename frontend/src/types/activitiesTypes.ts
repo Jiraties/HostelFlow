@@ -13,6 +13,7 @@ export type TransactionType =
   | "deposit"
   | "adjustment"
   | "depositRefund"
+  | "cancellationRefund"
   | "towel"
   | "motorbike"
   | "slowBoat"

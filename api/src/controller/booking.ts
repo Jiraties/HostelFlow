@@ -30,6 +30,12 @@ const ADD_TRANSACTION_TYPES: TransactionType[] = [
   "extraBed",
 ];
 const PAYMENT_METHODS: PaymentMethod[] = ["Cash", "Card", "Transfer"];
+const ROOM_BLOCKING_BOOKING_FILTER = {
+  $or: [
+    { status: { $ne: "cancelled" } },
+    { "cancellation.roomReleaseStatus": "blocked" },
+  ],
+};
 
 const calculateCardSurcharge = (amount: number) =>
   Number((amount * CARD_SURCHARGE_RATE).toFixed(2));
@@ -108,6 +114,7 @@ export const newBooking = async (
 
     // find bookings that have same room && checkout greater than new checkin && checkin less than new checkout
     const overlappingBooking = await Booking.findOne({
+      ...ROOM_BLOCKING_BOOKING_FILTER,
       roomStays: {
         $elemMatch: {
           roomId: booking.roomId,
@@ -280,6 +287,7 @@ export const editBooking = async (
 
     const conflictingBookings = await Booking.find({
       bookingId: { $ne: bookingId },
+      ...ROOM_BLOCKING_BOOKING_FILTER,
       roomStays: {
         $elemMatch: {
           roomId: { $in: roomIds },
@@ -370,11 +378,13 @@ export const getTodayBookings = async (req: Request, res: Response) => {
     switch (type) {
       case "arrivals":
         bookings = await Booking.find({
+          status: { $ne: "cancelled" },
           checkIn: { $gte: startOfToday, $lt: startOfTomorrow },
         });
         break;
       case "departures":
         bookings = await Booking.find({
+          status: { $ne: "cancelled" },
           checkOut: { $gte: startOfToday, $lt: startOfTomorrow },
         });
         break;
@@ -868,6 +878,7 @@ export const getMonthCalendar = async (req: Request, res: Response) => {
     const endingDate = new Date(parsedYear, parsedMonth + 1, 1); // 1st day of next month
 
     const monthOfBookings = await Booking.find({
+      ...ROOM_BLOCKING_BOOKING_FILTER,
       checkIn: { $lt: endingDate },
       checkOut: { $gt: startingDate },
     });
@@ -1038,6 +1049,7 @@ export const manageRoomStays = async (req: Request, res: Response) => {
 
     const conflictingBookings = await Booking.find({
       bookingId: { $ne: bookingId },
+      ...ROOM_BLOCKING_BOOKING_FILTER,
 
       roomStays: {
         $elemMatch: {
@@ -1267,6 +1279,126 @@ export const getPassportData = async (req: Request, res: Response) => {
     };
 
     res.status(200).json({ passportData });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+};
+
+export const cancelBooking = async (req: Request, res: Response) => {
+  try {
+    const { bookingId } = req.params;
+    const { cancellationType, reopenRoom } = req.body;
+    const cancelledByStaffUsername = req.user?.username;
+    const validCancellationTypes = ["refundable", "non_refundable"];
+
+    if (!bookingId)
+      return res.status(400).json({
+        error: "MISSING",
+        message: "กรุณากรอก BookingId ใน Params",
+      });
+
+    if (typeof reopenRoom !== "boolean")
+      return res.status(400).json({
+        error: "INVALID_PAYLOAD",
+        message: "กรุณากรอกข้อมูลให้ครบและถูกต้อง",
+      });
+
+    if (!cancelledByStaffUsername) {
+      return res.status(401).json({
+        error: "NOT_AUTHORIZED",
+        message: "กรุณาเข้าสู่ระบบใหม่",
+      });
+    }
+
+    const existingBooking = await Booking.findOne({ bookingId });
+
+    if (!existingBooking)
+      return res.status(404).json({ message: "ไม่พบ Booking" });
+    if (existingBooking.status !== "booked")
+      return res.status(409).json({
+        message: "สามารถยกเลิกได้เฉพาะ Booking ที่ยังไม่ได้ Check-In",
+      });
+
+    const paidByMethod = existingBooking.transactions.reduce(
+      (totals, transaction) => {
+        if (transaction.paymentMethod === "Unpaid") return totals;
+        totals.set(
+          transaction.paymentMethod,
+          (totals.get(transaction.paymentMethod) || 0) + transaction.amount,
+        );
+        return totals;
+      },
+      new Map<PaymentMethod, number>(),
+    );
+    const paidAmount = Array.from(paidByMethod.values()).reduce(
+      (sum, amount) => sum + amount,
+      0,
+    );
+    const hasReceivedPayment = paidAmount > 0;
+
+    if (
+      hasReceivedPayment &&
+      (typeof cancellationType !== "string" ||
+        !validCancellationTypes.includes(cancellationType))
+    )
+      return res.status(400).json({
+        error: "INVALID_PAYLOAD",
+        message: "กรุณาระบุประเภทการยกเลิกให้ถูกต้อง",
+      });
+
+    const refundAmount =
+      hasReceivedPayment && cancellationType === "refundable" ? paidAmount : 0;
+    const keptAmount =
+      hasReceivedPayment && cancellationType === "non_refundable"
+        ? paidAmount
+        : 0;
+    const refundTransactions: transcation[] =
+      refundAmount > 0
+        ? Array.from(paidByMethod.entries()).map(([paymentMethod, amount]) => ({
+            type: "cancellationRefund",
+            paymentMethod,
+            amount,
+          }))
+        : [];
+
+    const updatedBooking = await Booking.findOneAndUpdate(
+      { bookingId, status: "booked" },
+      {
+        $set: {
+          status: "cancelled",
+          cancellation: {
+            cancellationType: hasReceivedPayment ? cancellationType : null,
+            roomReleaseStatus: reopenRoom ? "released" : "blocked",
+            refundAmount,
+            keptAmount,
+            cancelledAt: new Date(),
+            cancelledByStaffUsername,
+          },
+        },
+        ...(refundTransactions.length > 0
+          ? {
+              $push: {
+                transactions: {
+                  $each: refundTransactions,
+                },
+              },
+            }
+          : {}),
+      },
+      { new: true },
+    );
+
+    if (!updatedBooking) {
+      return res.status(404).json({
+        error: "NOT_FOUND",
+        message: "ไม่พบการจอง",
+      });
+    }
+
+    res.status(200).json({
+      message: "ยกเลิกการจองเรียบร้อย",
+      booking: updatedBooking,
+    });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

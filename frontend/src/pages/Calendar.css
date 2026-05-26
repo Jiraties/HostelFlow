@@ -12,7 +12,7 @@
   width: 100%;
   overflow-x: auto;
   box-shadow: var(--main-shadow);
-  border-radius: 2rem;
+  border-radius: 1rem;
   min-width: 0;
   scrollbar-width: thin;
 }

@@ -110,6 +110,11 @@ const bookingStatusMap = {
     icon: "bx-log-out",
     className: "bookingStatusCell--checkedOut",
   },
+  cancelled: {
+    label: "ถูกยกเลิก",
+    icon: "bx-calendar-x",
+    className: "bookingStatusCell--cancelled",
+  },
 };
 
 const statusCell = (params: ICellRendererParams<SpreadsheetRow, string>) => {
@@ -378,6 +383,9 @@ const Spreadsheet = ({
           },
           checkedOut: (param: CellClassParams<SpreadsheetRow>) => {
             return !isMobile && param.value === "checkedOut";
+          },
+          cancelled: (param: CellClassParams<SpreadsheetRow>) => {
+            return !isMobile && param.value === "cancelled";
           },
         },
         valueFormatter: (

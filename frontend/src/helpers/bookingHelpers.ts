@@ -45,7 +45,7 @@ export const isSameDay = (d1: Date, d2: Date) =>
 
 type Booking = {
   name: string;
-  status: "booked" | "checkedIn" | "checkedOut";
+  status: "booked" | "checkedIn" | "checkedOut" | "cancelled";
   bookingId: string;
   from: Date;
   to: Date;

@@ -15,6 +15,7 @@ bookingsRouter.get("/getMasterBookings", booking_1.getMasterBookings);
 bookingsRouter.delete("/removeBooking/:bookingId", booking_1.removeBooking);
 bookingsRouter.put("/checkIn/:bookingId", booking_1.checkIn);
 bookingsRouter.patch("/manageRoomStays/:bookingId", booking_1.manageRoomStays);
+bookingsRouter.patch("/cancelBooking/:bookingId", booking_1.cancelBooking);
 bookingsRouter.get("/getMonthCalendar", booking_1.getMonthCalendar);
 bookingsRouter.get("/getBookingById/:bookingId", booking_1.getBookingById);
 bookingsRouter.get("/getPassportData/:bookingId", booking_1.getPassportData);

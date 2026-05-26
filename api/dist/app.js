@@ -12,6 +12,7 @@ const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const authMiddleware_1 = __importDefault(require("./middleware/authMiddleware"));
 const bookings_1 = __importDefault(require("./routes/bookings"));
 const activities_1 = __importDefault(require("./routes/activities"));
+const documents_1 = __importDefault(require("./routes/documents"));
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 const port = process.env.PORT;
@@ -44,6 +45,7 @@ app.get("/health", (_req, res) => {
 });
 app.use("/auth", auth_1.default);
 app.use("/bookings", authMiddleware_1.default, bookings_1.default);
+app.use("/documents", authMiddleware_1.default, documents_1.default);
 app.use("/activities", authMiddleware_1.default, activities_1.default);
 mongoose_1.default
     .connect(process.env.MONGO_URI || "")

@@ -17,6 +17,7 @@ const transactionSchema = new mongoose_1.default.Schema({
             "deposit",
             "adjustment",
             "depositRefund",
+            "cancellationRefund",
             "towel",
             "motorbike",
             "slowBoat",
@@ -41,6 +42,7 @@ const transactionSchema = new mongoose_1.default.Schema({
             "deposit",
             "adjustment",
             "depositRefund",
+            "cancellationRefund",
             "towel",
             "motorbike",
             "slowBoat",
@@ -51,6 +53,22 @@ const transactionSchema = new mongoose_1.default.Schema({
     },
     amount: { type: Number },
 });
+const cancellationSchema = new mongoose_1.default.Schema({
+    cancellationType: {
+        type: String,
+        enum: ["refundable", "non_refundable", null],
+        default: null,
+    },
+    roomReleaseStatus: {
+        type: String,
+        enum: ["released", "blocked"],
+        required: true,
+    },
+    refundAmount: { type: Number, default: 0 },
+    keptAmount: { type: Number, default: 0 },
+    cancelledAt: { type: Date, required: true },
+    cancelledByStaffUsername: { type: String, required: true },
+}, { _id: false });
 const bookingSchema = new mongoose_1.default.Schema({
     name: { type: String },
     roomStays: [roomStaySchema],
@@ -63,7 +81,7 @@ const bookingSchema = new mongoose_1.default.Schema({
     bookingId: { type: String, unique: true },
     status: {
         type: String,
-        enum: ["booked", "checkedIn", "checkedOut"],
+        enum: ["booked", "checkedIn", "checkedOut", "cancelled"],
         default: "booked",
     },
     checkInByStaffUsername: { type: String, default: null },
@@ -82,6 +100,7 @@ const bookingSchema = new mongoose_1.default.Schema({
             authTag: { type: String },
         },
     },
+    cancellation: cancellationSchema,
 });
 exports.default = mongoose_1.default.model("Booking", bookingSchema);
 //# sourceMappingURL=booking.js.map

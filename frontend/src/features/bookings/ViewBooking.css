@@ -15,6 +15,55 @@
   scrollbar-width: thin;
 }
 
+.viewBooking__transactionsOverayAlert {
+  position: absolute;
+  display: flex;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: auto;
+  padding: 2.25rem 1rem 0.8rem;
+  align-items: flex-end;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 1;
+  background: linear-gradient(
+    to top,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(255, 255, 255, 0.82) 25%,
+    rgba(255, 255, 255, 0) 100%
+  );
+}
+
+.viewBooking__transactionsOverflowButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: none;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999rem;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: var(--light-shadow);
+  font: inherit;
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+  pointer-events: auto;
+  transition:
+    background-color 0.2s,
+    border-color 0.2s,
+    transform 0.2s;
+}
+
+.viewBooking__transactionsOverflowButton:hover {
+  transform: scale(1.02);
+}
+
+.viewBooking__transactionsOverflowButton i {
+  font-size: 1.15rem;
+  color: var(--primary-color);
+  line-height: 1;
+}
+
 .viewBooking__wrapper::-webkit-scrollbar,
 .viewBooking__mainLeft::-webkit-scrollbar,
 .viewBooking__priceList::-webkit-scrollbar {
@@ -74,6 +123,27 @@
   border-radius: 2rem;
 }
 
+.viewBooking__splitStatusBadge {
+  background-color: #fff;
+  box-shadow: inset 0 0 0 1px #eee;
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.viewBooking__splitStatusMain,
+.viewBooking__splitStatusMeta {
+  align-items: center;
+  display: flex;
+  gap: 0.7rem;
+  padding: 0.6rem 0.8rem;
+}
+
+.viewBooking__splitStatusMeta {
+  color: var(--text);
+  border-left: 1px solid #eee;
+}
+
 .viewBooking__statusDot {
   width: 0.5rem;
   height: 0.5rem;
@@ -94,6 +164,10 @@
   color: var(--green);
 }
 
+.checkedIn div {
+  background-color: var(--green);
+}
+
 .checkedOut div {
   background-color: orange;
 }
@@ -103,8 +177,29 @@
   color: orange;
 }
 
-.checkedIn div {
+.cancelled {
+  background-color: #fee2e2;
+  color: #dc2626;
+}
+
+.cancelled div {
+  background-color: #dc2626;
+}
+
+.released {
+  color: var(--text);
+}
+
+.released div {
   background-color: var(--green);
+}
+
+.blocked {
+  color: var(--text);
+}
+
+.blocked div {
+  background-color: var(--red);
 }
 
 .booked {
@@ -170,8 +265,14 @@
 }
 
 .viewBooking__transactions {
+  position: relative;
   box-shadow: var(--main-shadow);
   border-radius: 1rem;
+  overflow: hidden;
+}
+
+.viewBooking__priceListWrap {
+  position: relative;
 }
 
 .viewBooking__priceList {

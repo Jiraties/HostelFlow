@@ -2,12 +2,15 @@ import mongoose from "mongoose";
 
 export type PlatformId = "BOOK" | "HOST" | "TRAV" | "AGOD" | "WALK";
 export type PaymentMethod = "OTA" | "Cash" | "Card" | "Transfer" | "Unpaid";
-export type Status = "booked" | "checkedIn" | "checkedOut";
+export type Status = "booked" | "checkedIn" | "checkedOut" | "cancelled";
+export type CancellationType = "refundable" | "non_refundable" | null;
+export type RoomReleaseStatus = "released" | "blocked";
 export type TransactionType =
   | "roomCharge"
   | "deposit"
   | "adjustment"
   | "depositRefund"
+  | "cancellationRefund"
   | "towel"
   | "motorbike"
   | "slowBoat"
@@ -40,6 +43,15 @@ export interface transcation {
   reasonOfAdjustment?: "rounding";
   relatedTransactionType?: Exclude<TransactionType, "cardSurcharge">;
   amount: number;
+}
+
+interface Cancellation {
+  cancellationType: CancellationType;
+  roomReleaseStatus: RoomReleaseStatus;
+  refundAmount: number;
+  keptAmount: number;
+  cancelledAt: Date;
+  cancelledByStaffUsername: string;
 }
 
 // export interface booking extends Document {
@@ -78,6 +90,7 @@ export interface booking extends Document {
   checkInByStaffUsername?: string | null;
 
   passport?: Passport;
+  cancellation?: Cancellation;
   note?: string;
 }
 
@@ -95,6 +108,7 @@ const transactionSchema = new mongoose.Schema({
       "deposit",
       "adjustment",
       "depositRefund",
+      "cancellationRefund",
       "towel",
       "motorbike",
       "slowBoat",
@@ -119,6 +133,7 @@ const transactionSchema = new mongoose.Schema({
       "deposit",
       "adjustment",
       "depositRefund",
+      "cancellationRefund",
       "towel",
       "motorbike",
       "slowBoat",
@@ -129,6 +144,26 @@ const transactionSchema = new mongoose.Schema({
   },
   amount: { type: Number },
 });
+
+const cancellationSchema = new mongoose.Schema(
+  {
+    cancellationType: {
+      type: String,
+      enum: ["refundable", "non_refundable", null],
+      default: null,
+    },
+    roomReleaseStatus: {
+      type: String,
+      enum: ["released", "blocked"],
+      required: true,
+    },
+    refundAmount: { type: Number, default: 0 },
+    keptAmount: { type: Number, default: 0 },
+    cancelledAt: { type: Date, required: true },
+    cancelledByStaffUsername: { type: String, required: true },
+  },
+  { _id: false },
+);
 
 const bookingSchema = new mongoose.Schema({
   name: { type: String },
@@ -146,7 +181,7 @@ const bookingSchema = new mongoose.Schema({
 
   status: {
     type: String,
-    enum: ["booked", "checkedIn", "checkedOut"],
+    enum: ["booked", "checkedIn", "checkedOut", "cancelled"],
     default: "booked",
   },
 
@@ -168,6 +203,8 @@ const bookingSchema = new mongoose.Schema({
       authTag: { type: String },
     },
   },
+
+  cancellation: cancellationSchema,
 });
 
 export default mongoose.model<booking>("Booking", bookingSchema);

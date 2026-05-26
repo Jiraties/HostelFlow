@@ -129,4 +129,9 @@
     background-color: rgb(255, 242, 230);
     color: orange;
   }
+
+  .bookingStatusCell--cancelled {
+    background-color: #fee2e2;
+    color: #dc2626;
+  }
 }

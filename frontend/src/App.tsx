@@ -13,6 +13,7 @@ import NotFound from "./pages/NotFound";
 import Settings from "./pages/Settings";
 import Calendar from "./pages/Calendar";
 import Main from "./pages/Main";
+import Documents from "./pages/Documents";
 
 function App() {
   const { isAuthenticated, login } = useAuth();
@@ -72,6 +73,7 @@ function App() {
             <Route path="/master" element={<Home status="master" />} />
             <Route path="/calendar" element={<Calendar />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/documents" element={<Documents />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </div>

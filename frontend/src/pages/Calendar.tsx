@@ -26,6 +26,7 @@ type CalendarBooking = {
   to: Date;
   bookingId: string;
   platformId: PlatformId;
+  status: booking["status"];
 };
 
 type Room = {
@@ -220,7 +221,10 @@ const Calendar = () => {
           style={{
             gridColumn: `${startingDate + 2} / span ${span}`,
             gridRow,
-            backgroundColor: platformMap[booking.platformId].color,
+            backgroundColor:
+              booking.status === "cancelled"
+                ? "#9ca3af"
+                : platformMap[booking.platformId].color,
             borderTopLeftRadius: continuesBefore ? 0 : "0.5rem",
             borderBottomLeftRadius: continuesBefore ? 0 : "0.5rem",
             borderTopRightRadius: continuesAfter ? 0 : "0.5rem",
@@ -271,6 +275,7 @@ const Calendar = () => {
               to: new Date(formattedBooking.roomStays[0].to),
               bookingId: formattedBooking.bookingId,
               platformId: formattedBooking.platformId,
+              status: formattedBooking.status,
             },
           ],
         };
