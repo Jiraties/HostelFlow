@@ -41,27 +41,79 @@
 }
 
 .addTransaction__cardPreview {
-  border: 1px solid #eee;
-  border-radius: 0.6rem;
-  padding: 1rem 1.2rem;
-  display: grid;
-  gap: 0.8rem;
+  padding: 1rem;
+  box-shadow: var(--main-shadow);
+  border-radius: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 }
 
-.addTransaction__cardPreview div {
+.addTransaction__cardPreviewList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.addTransaction__cardPreviewRow {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
 }
 
+.addTransaction__cardPreviewRow p:last-child {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.addTransaction__paymentTag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 1rem;
+  margin-left: 0.5rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.addTransaction__paymentTag.card {
+  background-color: #fce8e6;
+  color: #d93025;
+}
+
 .addTransaction__cardPreview p {
-  color: #777;
+  color: var(--text);
 }
 
 .addTransaction__cardPreviewTotal {
-  border-top: 1px solid #eee;
-  padding-top: 0.8rem;
+  border-top: 1px solid #d2d2d2;
+  padding-top: 1rem;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.addTransaction__cardPreviewBreakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.addTransaction__cardPreviewTotalRow {
+  display: flex;
+  flex-direction: column;
+  padding-right: 1rem;
+  min-width: 0;
+}
+
+.addTransaction__cardPreviewTotalText {
+  font-size: 1.5rem;
+  font-weight: 400;
 }
 
 .addTransaction__actions {
@@ -70,4 +122,16 @@
   justify-content: flex-end;
   gap: 1rem;
   flex-wrap: wrap;
+}
+
+@media (max-width: 480px) {
+  .addTransaction__cardPreviewRow {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .addTransaction__cardPreviewRow p:last-child {
+    text-align: left;
+  }
 }

@@ -14,9 +14,10 @@ import Settings from "./pages/Settings";
 import Calendar from "./pages/Calendar";
 import Main from "./pages/Main";
 import Documents from "./pages/Documents";
+import Manage from "./pages/Manage";
 
 function App() {
-  const { isAuthenticated, login } = useAuth();
+  const { isAuthenticated, login, user } = useAuth();
   const [checkingAuth, setCheckingAuth] = useState(true);
 
   useEffect(() => {
@@ -68,6 +69,7 @@ function App() {
           <Sidebar />
           <Routes>
             <Route path="/" element={<Main />} />
+            {user?.admin && <Route path="/manage" element={<Manage />} />}
             <Route path="/arrivals" element={<Home status="arrivals" />} />
             <Route path="/departures" element={<Home status="departures" />} />
             <Route path="/master" element={<Home status="master" />} />

@@ -7,5 +7,7 @@ const express_1 = __importDefault(require("express"));
 const activities_1 = require("../controller/activities");
 const activitiesRouter = express_1.default.Router();
 activitiesRouter.get("/recentActivities", activities_1.recentActivities);
+activitiesRouter.get("/admin", activities_1.adminActivities);
+activitiesRouter.get("/admin/stats", activities_1.adminActivityStats);
 exports.default = activitiesRouter;
 //# sourceMappingURL=activities.js.map

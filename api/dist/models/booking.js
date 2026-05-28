@@ -56,8 +56,8 @@ const transactionSchema = new mongoose_1.default.Schema({
 const cancellationSchema = new mongoose_1.default.Schema({
     cancellationType: {
         type: String,
-        enum: ["refundable", "non_refundable", null],
-        default: null,
+        enum: ["refundable", "non_refundable", "no_payment_received"],
+        required: true,
     },
     roomReleaseStatus: {
         type: String,

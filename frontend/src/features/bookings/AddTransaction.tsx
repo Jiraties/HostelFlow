@@ -204,17 +204,28 @@ const AddTransaction = ({
 
         {shouldShowCardSurcharge && validAmount > 0 && (
           <div className="addTransaction__cardPreview">
-            <div>
-              <p>ยอดรายการ</p>
-              <strong>{formatCurrency(validAmount)} บาท</strong>
-            </div>
-            <div>
-              <p>ค่าธรรมเนียมบัตร 3%</p>
-              <strong>{formatCurrency(cardSurcharge)} บาท</strong>
+            <div className="addTransaction__cardPreviewList">
+              <div className="addTransaction__cardPreviewRow">
+                <p>ยอดรายการ</p>
+                <p>{formatCurrency(validAmount)} บาท</p>
+              </div>
+              <div className="addTransaction__cardPreviewRow">
+                <p>
+                  ค่าธรรมเนียมบัตร 3%{" "}
+                  <span className="addTransaction__paymentTag card">Card</span>
+                </p>
+                <p>{formatCurrency(cardSurcharge)} บาท</p>
+              </div>
             </div>
             <div className="addTransaction__cardPreviewTotal">
-              <p>ยอดที่ต้องเก็บจากลูกค้า</p>
-              <strong>{formatCurrency(totalGuestPays)} บาท</strong>
+              <div className="addTransaction__cardPreviewBreakdown">
+                <div className="addTransaction__cardPreviewTotalRow">
+                  <p>ยอดที่ต้องเก็บจากลูกค้า</p>
+                  <p className="addTransaction__cardPreviewTotalText">
+                    {formatCurrency(totalGuestPays)} บาท
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         )}

@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.logout = exports.me = exports.login = exports.createUser = void 0;
+exports.logout = exports.me = exports.login = exports.resetUserPassword = exports.adminCreateUser = exports.listUsers = exports.createUser = void 0;
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const user_1 = __importDefault(require("../models/user"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
@@ -31,6 +31,109 @@ const createUser = async (req, res, next) => {
     }
 };
 exports.createUser = createUser;
+const sanitizeUser = (user) => ({
+    userId: String(user._id),
+    username: user.username,
+    name: user.name,
+    admin: user.admin,
+});
+const listUsers = async (req, res) => {
+    try {
+        if (!req.user?.admin) {
+            return res.status(403).json({
+                message: "เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถดูผู้ใช้ได้",
+            });
+        }
+        const users = await user_1.default.find({})
+            .select("_id username name admin")
+            .sort({ username: 1 });
+        res.status(200).json({ users: users.map(sanitizeUser) });
+    }
+    catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+exports.listUsers = listUsers;
+const adminCreateUser = async (req, res) => {
+    try {
+        if (!req.user?.admin) {
+            return res.status(403).json({
+                message: "เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถสร้างผู้ใช้ได้",
+            });
+        }
+        const { username, password, admin = false, name } = req.body;
+        if (!username || !password || !name) {
+            return res.status(400).json({
+                message: "กรุณากรอกชื่อผู้ใช้ ชื่อพนักงาน และรหัสผ่านให้ครบ",
+            });
+        }
+        const existingUser = await user_1.default.findOne({ username });
+        if (existingUser) {
+            return res.status(409).json({
+                message: "ชื่อผู้ใช้นี้ถูกใช้งานแล้ว",
+            });
+        }
+        const hashedPassword = await bcrypt_1.default.hash(password, 10);
+        const user = await user_1.default.create({
+            username,
+            password: hashedPassword,
+            admin: Boolean(admin),
+            name,
+        });
+        await (0, activityServices_1.logActivity)(req.user.username, "CREATE_USER", {
+            summary: {
+                createdUsername: username,
+                createdName: name,
+                admin: Boolean(admin),
+            },
+        });
+        res.status(201).json({
+            message: "สร้างผู้ใช้เรียบร้อยแล้ว",
+            user: sanitizeUser(user),
+        });
+    }
+    catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+exports.adminCreateUser = adminCreateUser;
+const resetUserPassword = async (req, res) => {
+    try {
+        if (!req.user?.admin) {
+            return res.status(403).json({
+                message: "เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถเปลี่ยนรหัสผ่านได้",
+            });
+        }
+        const { userId } = req.params;
+        const { password } = req.body;
+        if (!userId || !password) {
+            return res.status(400).json({
+                message: "กรุณาระบุผู้ใช้และรหัสผ่านใหม่",
+            });
+        }
+        const hashedPassword = await bcrypt_1.default.hash(password, 10);
+        const user = await user_1.default.findByIdAndUpdate(userId, { $set: { password: hashedPassword } }, { new: true }).select("_id username name admin");
+        if (!user) {
+            return res.status(404).json({
+                message: "ไม่พบผู้ใช้",
+            });
+        }
+        await (0, activityServices_1.logActivity)(req.user.username, "RESET_USER_PASSWORD", {
+            summary: {
+                resetUsername: user.username,
+                resetName: user.name,
+            },
+        });
+        res.status(200).json({
+            message: "เปลี่ยนรหัสผ่านเรียบร้อยแล้ว",
+            user: sanitizeUser(user),
+        });
+    }
+    catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+exports.resetUserPassword = resetUserPassword;
 const login = async (req, res, next) => {
     try {
         console.log("LOGGIN IN! ");

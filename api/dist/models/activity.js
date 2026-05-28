@@ -19,6 +19,8 @@ const activitySchema = new mongoose_1.default.Schema({
             "CHECK_IN",
             "MANAGE_ROOM_STAYS",
             "ADD_TRANSACTION",
+            "CREATE_USER",
+            "RESET_USER_PASSWORD",
         ],
     },
     details: {

@@ -6,7 +6,9 @@ export type actionType =
   | "EDIT_BOOKING"
   | "CHECK_IN"
   | "MANAGE_ROOM_STAYS"
-  | "ADD_TRANSACTION";
+  | "ADD_TRANSACTION"
+  | "CREATE_USER"
+  | "RESET_USER_PASSWORD";
 
 export type TransactionType =
   | "roomCharge"
@@ -37,51 +39,42 @@ export interface roomStay {
   to: string | Date;
 }
 
-export type activity =
-  | {
-      staffUsername: string;
-      action: "LOGIN" | "LOGOUT";
-      details: {
-        success: boolean;
+export interface activity {
+  staffUsername: string;
+  action: actionType;
+  details: {
+    success?: boolean;
+    changes?: Record<string, { before: unknown; after: unknown }> & {
+      transactions?: {
+        before: transaction[];
+        after: transaction[];
       };
-      timestamp: Date;
-    }
-  | {
-      staffUsername: string;
-      action:
-        | "NEW_BOOKING"
-        | "REMOVE_BOOKING"
-        | "EDIT_BOOKING"
-        | "CHECK_IN"
-        | "MANAGE_ROOM_STAYS"
-        | "ADD_TRANSACTION";
-      details: {
-        changes?: Record<string, { before: unknown; after: unknown }> & {
-          transactions?: {
-            before: transaction[];
-            after: transaction[];
-          };
-          roomStays?: {
-            before: roomStay[];
-            after: roomStay[];
-          };
-        };
-        summary?: {
-          addedTransactions?: transaction[];
-          beforeRoomStays?: roomStay[];
-          afterRoomStays?: roomStay[];
-        };
-        snapshot?: {
-          name: string;
-          checkIn: Date;
-          checkOut: Date;
-          platformId: "BOOK" | "HSTL" | "TRVL" | "AGDA";
-          roomId: string;
-          price: number;
-          paymentMethod: PaymentMethod;
-          bookingId: string;
-        };
+      roomStays?: {
+        before: roomStay[];
+        after: roomStay[];
       };
-      timestamp: Date;
+    };
+    summary?: {
+      addedTransactions?: transaction[];
+      beforeRoomStays?: roomStay[];
+      afterRoomStays?: roomStay[];
+      createdUsername?: string;
+      createdName?: string;
+      resetUsername?: string;
+      resetName?: string;
+      [key: string]: unknown;
+    };
+    snapshot?: {
+      name: string;
+      checkIn: Date;
+      checkOut: Date;
+      platformId: "BOOK" | "HSTL" | "TRVL" | "AGDA";
+      roomId: string;
+      price: number;
+      paymentMethod: PaymentMethod;
       bookingId: string;
     };
+  };
+  timestamp: Date;
+  bookingId?: string;
+}

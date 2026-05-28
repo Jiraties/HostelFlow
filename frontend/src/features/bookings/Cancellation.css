@@ -34,7 +34,7 @@
 .cancellation__paymentConfirmationList {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.35rem;
 }
 
 .cancellation__paymentRow {
@@ -44,9 +44,15 @@
   gap: 1rem;
 }
 
+.cancellation__paymentRow p:last-child {
+  text-align: right;
+  white-space: nowrap;
+}
+
 .cancellation__paymentTag {
   border-radius: 1rem;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   font-size: 0.75rem;
   font-weight: 600;
   margin-left: 0.5rem;
@@ -79,6 +85,7 @@
   border-top: 1px solid #d2d2d2;
   display: flex;
   flex-direction: row;
+  align-items: center;
   justify-content: space-between;
   gap: 1rem;
 }
@@ -98,6 +105,7 @@
   display: flex;
   flex-direction: column;
   padding-right: 1rem;
+  min-width: 0;
 }
 
 .cancellation__totalRow > p:first-child {
@@ -107,6 +115,7 @@
 .cancellation__totalRowFlex {
   display: flex;
   gap: 1.5rem;
+  flex-wrap: wrap;
 }
 
 .cancellation__paymentConfirmationTotalText {
@@ -181,6 +190,19 @@
     align-items: flex-start;
     flex-direction: column;
     gap: 0.25rem;
+  }
+
+  .cancellation__paymentRow p:last-child {
+    text-align: left;
+  }
+
+  .cancellation__paymentConfirmationTotal {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .cancellation__totalRowFlex {
+    flex-direction: column;
   }
 
   .cancellation__paymentConfirmationTotalText {

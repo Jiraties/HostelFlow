@@ -11,11 +11,15 @@ import type { booking } from "../../types/bookingTypes";
 import "./AddBooking.css";
 import "./Cancellation.css";
 
-type CancellationType = "refundable" | "non_refundable";
+type CancellationType =
+  | "refundable"
+  | "non_refundable"
+  | "no_payment_received";
 
 const cancellationTypeOptions: OptionType[] = [
   { value: "refundable", label: "คืนเงิน" },
   { value: "non_refundable", label: "ไม่คืนเงิน" },
+  { value: "no_payment_received", label: "ยังไม่ได้รับเงิน" },
 ];
 
 const formatCurrency = (amount: number) =>
@@ -82,10 +86,20 @@ const Cancellation = ({
     hasReceivedPayment && cancellationType === "non_refundable"
       ? paidBreakdown.paidTotal
       : 0;
+  const effectiveCancellationType = hasReceivedPayment
+    ? cancellationType
+    : "no_payment_received";
+  const availableCancellationTypeOptions = hasReceivedPayment
+    ? cancellationTypeOptions.filter(
+        (option) => option.value !== "no_payment_received",
+      )
+    : cancellationTypeOptions.filter(
+        (option) => option.value === "no_payment_received",
+      );
 
   const selectedCancellationType =
     cancellationTypeOptions.find(
-      (option) => option.value === cancellationType,
+      (option) => option.value === effectiveCancellationType,
     ) || null;
 
   const submitHandler = async () => {
@@ -95,14 +109,11 @@ const Cancellation = ({
     try {
       const payload: {
         reopenRoom: boolean;
-        cancellationType?: CancellationType;
+        cancellationType: CancellationType;
       } = {
         reopenRoom,
+        cancellationType: effectiveCancellationType,
       };
-
-      if (hasReceivedPayment) {
-        payload.cancellationType = cancellationType;
-      }
 
       const response = await axios.patch(
         `${API_URL}/bookings/cancelBooking/${booking.bookingId}`,
@@ -127,22 +138,21 @@ const Cancellation = ({
 
       <section className="cancellation__section">
         <div className="addBooking__grid">
-          {hasReceivedPayment && (
-            <div>
-              <p className="addBooking__label">ประเภทการยกเลิก</p>
-              <Select<OptionType>
-                styles={customStyles<OptionType>()}
-                classNamePrefix="rs"
-                options={cancellationTypeOptions}
-                value={selectedCancellationType}
-                onChange={(option: SingleValue<OptionType>) =>
-                  setCancellationType(
-                    (option?.value as CancellationType) || "refundable",
-                  )
-                }
-              />
-            </div>
-          )}
+          <div>
+            <p className="addBooking__label">ประเภทการยกเลิก</p>
+            <Select<OptionType>
+              styles={customStyles<OptionType>()}
+              classNamePrefix="rs"
+              options={availableCancellationTypeOptions}
+              value={selectedCancellationType}
+              isDisabled={!hasReceivedPayment}
+              onChange={(option: SingleValue<OptionType>) =>
+                setCancellationType(
+                  (option?.value as CancellationType) || "refundable",
+                )
+              }
+            />
+          </div>
           <div>
             <p className="addBooking__label">สถานะห้องหลังยกเลิก</p>
             <div className="cancellation__segmentedControl">
@@ -175,6 +185,7 @@ const Cancellation = ({
       </section>
 
       <section className="cancellation__section">
+        <p className="addBooking__label">สรุปยอดการยกเลิก</p>
         <div className="cancellation__paymentConfirmation">
           <div className="cancellation__paymentConfirmationList">
             {hasReceivedPayment ? (
@@ -241,7 +252,8 @@ const Cancellation = ({
               loading: `กำลังยกเลิกการจองของ ${booking.name}`,
               success: `ยกเลิกการจองของ ${booking.name} เรียบร้อยแล้ว`,
               error: (err) =>
-                err.response?.data?.message || "เกิดข้อผิดพลาดในการยกเลิกการจอง",
+                err.response?.data?.message ||
+                "เกิดข้อผิดพลาดในการยกเลิกการจอง",
             })
           }
         />

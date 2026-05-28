@@ -20,6 +20,14 @@ const actionMap = {
     icon: "bx-dollar",
     text: "เพิ่มรายการใช้จ่าย",
   },
+  CREATE_USER: {
+    icon: "bx-user-plus",
+    text: "สร้างผู้ใช้",
+  },
+  RESET_USER_PASSWORD: {
+    icon: "bx-key",
+    text: "เปลี่ยนรหัสผ่าน",
+  },
   LOGOUT: {
     icon: "bx-arrow-out-right-square-half",
     text: "ออกจากระบบ",

@@ -266,8 +266,10 @@ const ViewBooking = ({
   ) => {
     switch (status) {
       case "released":
+        if (usedFor === "icon") return "bx-door-open";
         return usedFor === "classname" ? "released" : "เปิดให้จอง";
       case "blocked":
+        if (usedFor === "icon") return "bx-lock-alt";
         return usedFor === "classname" ? "blocked" : "ไม่เปิดให้จอง";
       default:
         return usedFor === "classname" ? "unknown" : "";
@@ -490,8 +492,8 @@ const ViewBooking = ({
             </h1>
             {data.status === "cancelled" &&
             data.cancellation?.roomReleaseStatus ? (
-              <div className="viewBooking__statusBadge viewBooking__splitStatusBadge">
-                <div className="viewBooking__splitStatusMain cancelled">
+              <div className="viewBooking__statusGroup">
+                <div className="viewBooking__statusBadge cancelled">
                   <div className="viewBooking__statusDot" />
                   <p className="viewBooking__statusText">
                     {statusDeterminer(data.status, "text")}
@@ -499,13 +501,22 @@ const ViewBooking = ({
                 </div>
                 <div
                   className={
-                    "viewBooking__splitStatusMeta " +
+                    "viewBooking__roomReleaseBadge " +
                     roomReleaseStatusDeterminer(
                       data.cancellation.roomReleaseStatus,
                       "classname",
                     )
                   }
                 >
+                  <i
+                    className={
+                      "bx " +
+                      roomReleaseStatusDeterminer(
+                        data.cancellation.roomReleaseStatus,
+                        "icon",
+                      )
+                    }
+                  />
                   <p className="viewBooking__statusText">
                     {roomReleaseStatusDeterminer(
                       data.cancellation.roomReleaseStatus,

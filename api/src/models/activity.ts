@@ -8,7 +8,9 @@ export type actionType =
   | "EDIT_BOOKING"
   | "CHECK_IN"
   | "MANAGE_ROOM_STAYS"
-  | "ADD_TRANSACTION";
+  | "ADD_TRANSACTION"
+  | "CREATE_USER"
+  | "RESET_USER_PASSWORD";
 
 export type activity =
   | {
@@ -27,7 +29,9 @@ export type activity =
         | "EDIT_BOOKING"
         | "CHECK_IN"
         | "MANAGE_ROOM_STAYS"
-        | "ADD_TRANSACTION";
+        | "ADD_TRANSACTION"
+        | "CREATE_USER"
+        | "RESET_USER_PASSWORD";
       details: {
         changes?: Record<string, { before: any; after: any }>;
         snapshot?: {
@@ -61,6 +65,8 @@ const activitySchema = new mongoose.Schema({
       "CHECK_IN",
       "MANAGE_ROOM_STAYS",
       "ADD_TRANSACTION",
+      "CREATE_USER",
+      "RESET_USER_PASSWORD",
     ],
   },
   details: {

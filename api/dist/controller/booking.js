@@ -951,7 +951,7 @@ const cancelBooking = async (req, res) => {
         const { bookingId } = req.params;
         const { cancellationType, reopenRoom } = req.body;
         const cancelledByStaffUsername = req.user?.username;
-        const validCancellationTypes = ["refundable", "non_refundable"];
+        const paidCancellationTypes = ["refundable", "non_refundable"];
         if (!bookingId)
             return res.status(400).json({
                 error: "MISSING",
@@ -985,7 +985,7 @@ const cancelBooking = async (req, res) => {
         const hasReceivedPayment = paidAmount > 0;
         if (hasReceivedPayment &&
             (typeof cancellationType !== "string" ||
-                !validCancellationTypes.includes(cancellationType)))
+                !paidCancellationTypes.includes(cancellationType)))
             return res.status(400).json({
                 error: "INVALID_PAYLOAD",
                 message: "กรุณาระบุประเภทการยกเลิกให้ถูกต้อง",
@@ -1005,7 +1005,9 @@ const cancelBooking = async (req, res) => {
             $set: {
                 status: "cancelled",
                 cancellation: {
-                    cancellationType: hasReceivedPayment ? cancellationType : null,
+                    cancellationType: hasReceivedPayment
+                        ? cancellationType
+                        : "no_payment_received",
                     roomReleaseStatus: reopenRoom ? "released" : "blocked",
                     refundAmount,
                     keptAmount,

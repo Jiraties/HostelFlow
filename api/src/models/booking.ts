@@ -3,7 +3,10 @@ import mongoose from "mongoose";
 export type PlatformId = "BOOK" | "HOST" | "TRAV" | "AGOD" | "WALK";
 export type PaymentMethod = "OTA" | "Cash" | "Card" | "Transfer" | "Unpaid";
 export type Status = "booked" | "checkedIn" | "checkedOut" | "cancelled";
-export type CancellationType = "refundable" | "non_refundable" | null;
+export type CancellationType =
+  | "refundable"
+  | "non_refundable"
+  | "no_payment_received";
 export type RoomReleaseStatus = "released" | "blocked";
 export type TransactionType =
   | "roomCharge"
@@ -149,8 +152,8 @@ const cancellationSchema = new mongoose.Schema(
   {
     cancellationType: {
       type: String,
-      enum: ["refundable", "non_refundable", null],
-      default: null,
+      enum: ["refundable", "non_refundable", "no_payment_received"],
+      required: true,
     },
     roomReleaseStatus: {
       type: String,

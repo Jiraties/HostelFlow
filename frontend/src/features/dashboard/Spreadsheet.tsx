@@ -111,7 +111,7 @@ const bookingStatusMap = {
     className: "bookingStatusCell--checkedOut",
   },
   cancelled: {
-    label: "ถูกยกเลิก",
+    label: "ยกเลิก",
     icon: "bx-calendar-x",
     className: "bookingStatusCell--cancelled",
   },
