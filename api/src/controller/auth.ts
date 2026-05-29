@@ -29,6 +29,7 @@ export const createUser = async (
       password: hashedPassword,
       admin,
       name,
+      profilePictureUrl: "/uploads/default.jpg",
     });
 
     await user.save();
@@ -44,11 +45,13 @@ const sanitizeUser = (user: {
   username: string;
   name: string;
   admin: boolean;
+  profilePictureUrl?: string;
 }) => ({
   userId: String(user._id),
   username: user.username,
   name: user.name,
   admin: user.admin,
+  profilePictureUrl: user.profilePictureUrl || "/uploads/default.jpg",
 });
 
 export const listUsers = async (req: Request, res: Response) => {
@@ -60,7 +63,7 @@ export const listUsers = async (req: Request, res: Response) => {
     }
 
     const users = await User.find({})
-      .select("_id username name admin")
+      .select("_id username name admin profilePictureUrl")
       .sort({ username: 1 });
 
     res.status(200).json({ users: users.map(sanitizeUser) });
@@ -139,7 +142,7 @@ export const resetUserPassword = async (req: Request, res: Response) => {
       userId,
       { $set: { password: hashedPassword } },
       { new: true },
-    ).select("_id username name admin");
+    ).select("_id username name admin profilePictureUrl");
 
     if (!user) {
       return res.status(404).json({
@@ -209,6 +212,7 @@ export const login = async (
         username: user.username,
         name: user.name,
         admin: user.admin,
+        profilePictureUrl: user.profilePictureUrl,
       },
     });
 
@@ -233,6 +237,7 @@ export const me = async (req: Request, res: Response, next: NextFunction) => {
         username: user.username,
         name: user.name,
         admin: user.admin,
+        profilePictureUrl: user.profilePictureUrl,
       },
       message: "Successfully fetched user info",
     });
@@ -255,4 +260,38 @@ export const logout = (req: Request, res: Response) => {
 
   logActivity(req.user?.username, "LOGOUT", { success: true });
   console.log("Logged Out");
+};
+
+export const setProfilePicture = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
+
+    if (!req.file) return res.status(400).json({ message: "กรุณาอัปโหลดภาพ" });
+
+    const profilePictureUrl = `/uploads/profile-pictures/${req.file.filename}`;
+
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user.userId,
+      {
+        $set: {
+          profilePictureUrl,
+        },
+      },
+      { new: true },
+    );
+
+    if (!updatedUser) return res.status(404).json({ message: "ไม่พบผู้ใช้" });
+
+    return res.status(200).json({
+      message: "อัปเดตรูปโปรไฟล์เรียบร้อยแล้ว",
+      user: {
+        username: updatedUser.username,
+        name: updatedUser.name,
+        admin: updatedUser.admin,
+        profilePictureUrl: updatedUser.profilePictureUrl,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ message: (err as Error).message });
+  }
 };

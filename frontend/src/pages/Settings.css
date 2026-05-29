@@ -68,6 +68,12 @@
   font-weight: 500;
 }
 
+.settings__activityHeader {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
 .settings__activityDetails {
   padding: 1rem;
   box-shadow: var(--main-shadow);

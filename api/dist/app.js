@@ -13,6 +13,7 @@ const authMiddleware_1 = __importDefault(require("./middleware/authMiddleware"))
 const bookings_1 = __importDefault(require("./routes/bookings"));
 const activities_1 = __importDefault(require("./routes/activities"));
 const documents_1 = __importDefault(require("./routes/documents"));
+const path_1 = __importDefault(require("path"));
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 const port = process.env.PORT;
@@ -40,6 +41,7 @@ app.use((0, cors_1.default)({
 }));
 app.use(express_1.default.json());
 app.use((0, cookie_parser_1.default)());
+app.use("/uploads", express_1.default.static(path_1.default.join(process.cwd(), "uploads")));
 app.get("/health", (_req, res) => {
     res.status(200).json({ status: "ok" });
 });

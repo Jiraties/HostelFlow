@@ -5,6 +5,7 @@ export interface userType extends Document {
   password: string;
   admin: boolean;
   name: string;
+  profilePictureUrl: string;
 }
 
 const userSchema = new mongoose.Schema({
@@ -12,6 +13,7 @@ const userSchema = new mongoose.Schema({
   name: { type: String },
   password: { type: String },
   admin: { type: Boolean },
+  profilePictureUrl: { type: String, default: "/uploads/default.jpg" },
 });
 
 export default mongoose.model<userType>("User", userSchema);

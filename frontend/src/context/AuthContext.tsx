@@ -4,6 +4,7 @@ interface userType {
   username: string;
   admin: boolean;
   name: string;
+  profilePictureUrl?: string;
 }
 
 type AuthContextType = {

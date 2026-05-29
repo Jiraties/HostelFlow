@@ -22,6 +22,16 @@
   color: var(--primary-color);
 }
 
+.home__actionIconOnly {
+  justify-content: center;
+  width: 3.35rem;
+  height: 3.35rem;
+  min-width: 3.35rem;
+  min-height: 3.35rem;
+  padding: 0;
+  border-radius: 50%;
+}
+
 .home__actionHighlight {
   background-color: var(--primary-color);
   color: #fff;
@@ -43,5 +53,13 @@
 @media (max-width: 520px) {
   .home__action {
     padding: 0.85rem 1rem;
+  }
+
+  .home__actionIconOnly {
+    width: 3rem;
+    height: 3rem;
+    min-width: 3rem;
+    min-height: 3rem;
+    padding: 0;
   }
 }

@@ -7,21 +7,40 @@ import {
   logout,
   me,
   resetUserPassword,
+  setProfilePicture,
 } from "../controller/auth";
 import authMiddleware from "../middleware/authMiddleware";
+import multer from "multer";
 
 const authRouter = express.Router();
+
+const imageOnlyFilter: multer.Options["fileFilter"] = (req, file, cb) => {
+  if (!file.mimetype.startsWith("image/")) {
+    return cb(new Error("Only image files are allowed"));
+  }
+
+  cb(null, true);
+};
+
+const upload = multer({
+  dest: "uploads/profile-pictures",
+
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: imageOnlyFilter,
+});
 
 authRouter.post("/createUser", createUser);
 authRouter.get("/users", authMiddleware, listUsers);
 authRouter.post("/admin/createUser", authMiddleware, adminCreateUser);
-authRouter.patch(
-  "/users/:userId/password",
-  authMiddleware,
-  resetUserPassword,
-);
+authRouter.patch("/users/:userId/password", authMiddleware, resetUserPassword);
 authRouter.post("/login", login);
 authRouter.post("/logout", authMiddleware, logout);
 authRouter.get("/me", authMiddleware, me);
+authRouter.patch(
+  "/me/profile-picture",
+  authMiddleware,
+  upload.single("profilePicture"),
+  setProfilePicture,
+);
 
 export default authRouter;

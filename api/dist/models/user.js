@@ -9,6 +9,7 @@ const userSchema = new mongoose_1.default.Schema({
     name: { type: String },
     password: { type: String },
     admin: { type: Boolean },
+    profilePictureUrl: { type: String, default: "/uploads/default.jpg" },
 });
 exports.default = mongoose_1.default.model("User", userSchema);
 //# sourceMappingURL=user.js.map

@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.logout = exports.me = exports.login = exports.resetUserPassword = exports.adminCreateUser = exports.listUsers = exports.createUser = void 0;
+exports.setProfilePicture = exports.logout = exports.me = exports.login = exports.resetUserPassword = exports.adminCreateUser = exports.listUsers = exports.createUser = void 0;
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const user_1 = __importDefault(require("../models/user"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
@@ -22,6 +22,7 @@ const createUser = async (req, res, next) => {
             password: hashedPassword,
             admin,
             name,
+            profilePictureUrl: "/uploads/default.jpg",
         });
         await user.save();
         res.status(201).json({ message: "User created successfully" });
@@ -36,6 +37,7 @@ const sanitizeUser = (user) => ({
     username: user.username,
     name: user.name,
     admin: user.admin,
+    profilePictureUrl: user.profilePictureUrl || "/uploads/default.jpg",
 });
 const listUsers = async (req, res) => {
     try {
@@ -45,7 +47,7 @@ const listUsers = async (req, res) => {
             });
         }
         const users = await user_1.default.find({})
-            .select("_id username name admin")
+            .select("_id username name admin profilePictureUrl")
             .sort({ username: 1 });
         res.status(200).json({ users: users.map(sanitizeUser) });
     }
@@ -112,7 +114,7 @@ const resetUserPassword = async (req, res) => {
             });
         }
         const hashedPassword = await bcrypt_1.default.hash(password, 10);
-        const user = await user_1.default.findByIdAndUpdate(userId, { $set: { password: hashedPassword } }, { new: true }).select("_id username name admin");
+        const user = await user_1.default.findByIdAndUpdate(userId, { $set: { password: hashedPassword } }, { new: true }).select("_id username name admin profilePictureUrl");
         if (!user) {
             return res.status(404).json({
                 message: "ไม่พบผู้ใช้",
@@ -165,6 +167,7 @@ const login = async (req, res, next) => {
                 username: user.username,
                 name: user.name,
                 admin: user.admin,
+                profilePictureUrl: user.profilePictureUrl,
             },
         });
         (0, activityServices_1.logActivity)(username, "LOGIN", { success: true });
@@ -187,6 +190,7 @@ const me = async (req, res, next) => {
                 username: user.username,
                 name: user.name,
                 admin: user.admin,
+                profilePictureUrl: user.profilePictureUrl,
             },
             message: "Successfully fetched user info",
         });
@@ -209,4 +213,33 @@ const logout = (req, res) => {
     console.log("Logged Out");
 };
 exports.logout = logout;
+const setProfilePicture = async (req, res) => {
+    try {
+        if (!req.user)
+            return res.status(401).json({ message: "Unauthorized" });
+        if (!req.file)
+            return res.status(400).json({ message: "กรุณาอัปโหลดภาพ" });
+        const profilePictureUrl = `/uploads/profile-pictures/${req.file.filename}`;
+        const updatedUser = await user_1.default.findByIdAndUpdate(req.user.userId, {
+            $set: {
+                profilePictureUrl,
+            },
+        }, { new: true });
+        if (!updatedUser)
+            return res.status(404).json({ message: "ไม่พบผู้ใช้" });
+        return res.status(200).json({
+            message: "อัปเดตรูปโปรไฟล์เรียบร้อยแล้ว",
+            user: {
+                username: updatedUser.username,
+                name: updatedUser.name,
+                admin: updatedUser.admin,
+                profilePictureUrl: updatedUser.profilePictureUrl,
+            },
+        });
+    }
+    catch (err) {
+        return res.status(500).json({ message: err.message });
+    }
+};
+exports.setProfilePicture = setProfilePicture;
 //# sourceMappingURL=auth.js.map

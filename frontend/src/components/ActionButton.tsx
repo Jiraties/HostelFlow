@@ -15,17 +15,20 @@ const ActionButton = ({
   highlight?: boolean;
   disabled?: boolean;
 }) => {
+  const isIconOnly = text.trim().length === 0;
+
   return (
     <div
       className={
         "home__action " +
         className +
+        (isIconOnly ? " home__actionIconOnly" : "") +
         (highlight ? " home__actionHighlight" : "") +
         (disabled ? " home__actionDisabled" : "")
       }
       onClick={disabled ? () => {} : onClick}
     >
-      <p>{text}</p>
+      {!isIconOnly && <p>{text}</p>}
       <i className={`bx ${icon}`} />
     </div>
   );

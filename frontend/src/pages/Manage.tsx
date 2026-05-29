@@ -5,6 +5,7 @@ import type { actionType, activity } from "../types/activitiesTypes";
 import "./Manage.css";
 import { useAuth } from "../context/AuthContext";
 import { Link } from "react-router";
+import ActionButton from "../components/ActionButton";
 
 type StaffUser = {
   userId: string;
@@ -212,7 +213,7 @@ const Manage = () => {
                 ? `${lastUpdated.getHours()}:${lastUpdated
                     .getMinutes()
                     .toString()
-                    .padStart(2, "0")}`
+                    .padStart(2, "0")}
                 : "--:--"}
             </p> */}
             <i
@@ -241,6 +242,33 @@ const Manage = () => {
           </Link>
         </div>
       </header>
+
+      <section>
+        <div className="manage__users">
+          {users.map((user) => (
+            <div className="manage__user">
+              <img
+                src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR3m972e8FEvBi7ETC03avlJcZDg8nT9dWLSw&s"
+                alt=""
+              />
+              <div className="manage__userInfo">
+                <div>
+                  <h3>{user.name}</h3>
+                  <p>{user.admin ? "Admin" : "Staff"}</p>
+                </div>
+                <div className="manage__userActions">
+                  <ActionButton text="" icon="bx-key" onClick={() => {}} />
+                  <ActionButton
+                    text="ประวัติ"
+                    icon="bx-history"
+                    onClick={() => {}}
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
     </main>
   );
 };

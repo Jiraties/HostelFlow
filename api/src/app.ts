@@ -8,6 +8,7 @@ import authMiddleware from "./middleware/authMiddleware";
 import bookingsRouter from "./routes/bookings";
 import activitiesRouter from "./routes/activities";
 import documentsRouter from "./routes/documents";
+import path from "path";
 
 dotenv.config();
 
@@ -48,6 +49,7 @@ app.use(
 );
 app.use(express.json());
 app.use(cookieParser());
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 app.get("/health", (_req, res) => {
   res.status(200).json({ status: "ok" });
