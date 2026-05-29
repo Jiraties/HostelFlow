@@ -3,13 +3,18 @@
   flex-direction: column;
   gap: 2rem;
   padding: 2.5rem;
+  height: 100vh;
   min-width: 0;
+  overflow: hidden;
 }
 
 .settings__grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 2rem;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: visible;
 }
 
 .settings__list {
@@ -17,6 +22,9 @@
   background-color: var(--background);
   border-radius: 1rem;
   box-shadow: var(--main-shadow);
+  display: flex;
+  gap: 1rem;
+  flex-direction: column;
 }
 
 .settings__item {
@@ -45,8 +53,8 @@
   display: flex;
   flex-direction: column;
 
-  height: 50rem;
-  overflow-y: scroll;
+  min-height: 0;
+  overflow-y: auto;
   scrollbar-color: #e0e0e0 #fff;
   scrollbar-width: thin;
 }
@@ -90,19 +98,91 @@
   color: var(--primary-color);
 }
 
+.settings__activityStatus {
+  padding: 1rem 0;
+  text-align: center;
+  color: #777;
+}
+
+.settings__activityLoadMore {
+  height: 1px;
+}
+
+.settings__profile {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.settings__adminTag {
+  font-size: 0.8rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 10rem;
+  margin-left: 0.2rem;
+  color: var(--primary-color);
+  background-color: #51d1dc20;
+}
+
+.settings__profilePicture {
+  display: block;
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.settings__profilePicture--wrapper {
+  position: relative;
+  display: block;
+  flex: 0 0 auto;
+  height: 5rem;
+  width: 5rem;
+  overflow: hidden;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: var(--main-shadow);
+}
+
+.settings__profilePicture--upload {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.settings__profilePictureOverlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background-color: #00000070;
+  font-size: 1.5rem;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.settings__profilePicture--wrapper:hover .settings__profilePictureOverlay,
+.settings__profilePicture--wrapper:focus-within
+  .settings__profilePictureOverlay {
+  opacity: 1;
+}
+
 @media (max-width: 980px) {
   .settings__grid {
     grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .settings__activities {
-    height: auto;
-    max-height: 60vh;
+    max-height: none;
   }
 }
 
 @media (max-width: 640px) {
   .settings {
+    height: 100dvh;
     padding: 1rem;
     gap: 1.25rem;
   }

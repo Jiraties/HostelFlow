@@ -2,11 +2,6 @@
   gap: 1.5rem;
 }
 
-.main__lastUpdated {
-  display: flex;
-  gap: 0.3rem;
-}
-
 .main__actions {
   display: flex;
   flex-wrap: wrap;

@@ -1,8 +1,10 @@
 import axios from "axios";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router";
 import { API_URL } from "../../config/api";
 import type { activity, roomStay, transaction } from "../../types/activitiesTypes";
+
+const ACTIVITY_PAGE_SIZE = 10;
 
 const actionMap = {
   NEW_BOOKING: { icon: "bx-plus", text: "เพิ่ม Booking" },
@@ -126,29 +128,109 @@ const ActivityHeader = ({ item }: { item: activity }) => {
 
 const RecentActivities = () => {
   const [activities, setActivities] = useState<activity[]>([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState("");
+  const activitiesRef = useRef<HTMLDivElement>(null);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
 
-  useEffect(() => {
-    let ignore = false;
+  const fetchActivities = useCallback(
+    async (pageToFetch: number, replace = false) => {
+      if (replace) {
+        setLoading(true);
+      } else {
+        setLoadingMore(true);
+      }
+      setError("");
 
-    const fetchActivities = async () => {
       const fetchedActivities = await axios.get(
         `${API_URL}/activities/recentActivities`,
-        { withCredentials: true },
+        {
+          params: {
+            page: pageToFetch,
+            limit: ACTIVITY_PAGE_SIZE,
+          },
+          withCredentials: true,
+        },
       );
 
-      if (!ignore) setActivities(fetchedActivities.data.activities);
-    };
+      const nextPageActivities = fetchedActivities.data.activities as activity[];
+      const totalActivityCount = fetchedActivities.data
+        .totalActivitycount as number;
 
-    void fetchActivities();
+      setActivities((prev) => {
+        const nextActivities = replace
+          ? nextPageActivities
+          : [...prev, ...nextPageActivities];
+
+        setHasMore(
+          nextActivities.length < totalActivityCount &&
+            nextPageActivities.length > 0,
+        );
+
+        return nextActivities;
+      });
+
+      setLoading(false);
+      setLoadingMore(false);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    setPage(1);
+    fetchActivities(1, true).catch(() => {
+      setError("ไม่สามารถโหลดประวัติได้");
+      setLoading(false);
+      setLoadingMore(false);
+    });
+  }, [fetchActivities, location]);
+
+  useEffect(() => {
+    if (page === 1) return;
+
+    fetchActivities(page).catch(() => {
+      setError("ไม่สามารถโหลดประวัติเพิ่มได้");
+      setLoadingMore(false);
+    });
+  }, [fetchActivities, page]);
+
+  useEffect(() => {
+    const loadMoreElement = loadMoreRef.current;
+    const scrollRoot = activitiesRef.current;
+
+    if (!loadMoreElement || !scrollRoot || loading || loadingMore || !hasMore) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setPage((prev) => prev + 1);
+        }
+      },
+      {
+        root: scrollRoot,
+        rootMargin: "0px 0px 128px 0px",
+      },
+    );
+
+    observer.observe(loadMoreElement);
 
     return () => {
-      ignore = true;
+      observer.disconnect();
     };
-  }, [location]);
+  }, [hasMore, loading, loadingMore]);
 
   return (
-    <div className="settings__activities">
+    <div className="settings__activities" ref={activitiesRef}>
+      {loading && (
+        <div className="settings__activityStatus">กำลังโหลดประวัติ...</div>
+      )}
+
       {activities.map((item) => {
         if (item.action === "NEW_BOOKING" || item.action === "REMOVE_BOOKING") {
           return (
@@ -247,6 +329,14 @@ const RecentActivities = () => {
           </div>
         );
       })}
+
+      {error && <div className="settings__activityStatus">{error}</div>}
+      {loadingMore && (
+        <div className="settings__activityStatus">กำลังโหลดเพิ่มเติม...</div>
+      )}
+      {hasMore && !loading && (
+        <div className="settings__activityLoadMore" ref={loadMoreRef} />
+      )}
     </div>
   );
 };

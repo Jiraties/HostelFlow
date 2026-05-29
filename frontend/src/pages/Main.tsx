@@ -1,6 +1,6 @@
 import axios from "axios";
 import { Modal } from "@mui/material";
-import { Link, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
 import toast from "react-hot-toast";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -16,6 +16,7 @@ import {
 
 import ActionButton from "../components/ActionButton";
 import AddBooking from "../features/bookings/AddBooking";
+import PageHeader from "../components/PageHeader";
 import StatCard from "../features/dashboard/StatCard";
 import { useAuth } from "../context/AuthContext";
 import { formatBookingsDates } from "../helpers/bookingHelpers";
@@ -376,45 +377,11 @@ const Main = () => {
         />
       </Modal>
 
-      <header className="home__header">
-        <div>
-          <h1>หน้าแรก | {fullFormattedDate}</h1>
-          <div className="main__lastUpdated">
-            <p>
-              ข้อมูลอัปเดตล่าสุดเมื่อ{" "}
-              {lastUpdated
-                ? `${lastUpdated.getHours()}:${lastUpdated
-                    .getMinutes()
-                    .toString()
-                    .padStart(2, "0")}`
-                : "--:--"}
-            </p>
-            <i
-              className="bx bx-refresh home__refreshIcon"
-              onClick={() => {
-                toast.promise(refreshDashboard(), {
-                  loading: "กำลังอัปเดตข้อมูล...",
-                  success: "อัปเดตข้อมูลสำเร็จ",
-                  error: "เกิดข้อผิดพลาดในการอัปเดตข้อมูล",
-                });
-              }}
-            />
-          </div>
-        </div>
-
-        <div className="home__headerProfile">
-          <p>
-            {user?.name} <strong>{"  " + (user?.admin ? " Admin" : "")}</strong>
-          </p>
-          <Link to={"/settings"}>
-            <img
-              className="home__profileImg"
-              src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR3m972e8FEvBi7ETC03avlJcZDg8nT9dWLSw&s"
-              alt="profilePicture"
-            />
-          </Link>
-        </div>
-      </header>
+      <PageHeader
+        title={`หน้าแรก | ${fullFormattedDate}`}
+        lastUpdated={lastUpdated}
+        onRefresh={refreshDashboard}
+      />
 
       <section className="main__actions">
         <ActionButton

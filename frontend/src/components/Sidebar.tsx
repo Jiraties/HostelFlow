@@ -13,12 +13,6 @@ const Sidebar = () => {
     ? [
         { id: 1, label: "หน้าแรก", link: "/", icon: "bx-home" },
         {
-          id: 99,
-          label: "จัดการ",
-          link: "/manage",
-          icon: "bx-group",
-        },
-        {
           id: 2,
           label: "เช็คอินวันนี้",
           link: "/arrivals",
@@ -30,10 +24,10 @@ const Sidebar = () => {
           link: "/departures",
           icon: "bx-arrow-from-left",
         },
-        { id: 4, label: "รายการจองทั้งหมด", link: "/master", icon: "bx-table" },
         { id: 5, label: "ตารางการจอง", link: "/calendar", icon: "bx-calendar" },
+        { id: 4, label: "รายการจองทั้งหมด", link: "/master", icon: "bx-table" },
         { id: 6, label: "เอกสาร", link: "/documents", icon: "bx-article" },
-        // { id: 7, label: "สถิติ", link: "/stats", icon: "bx-bar-chart-big" },
+        { id: 99, label: "จัดการ", link: "/manage", icon: "bx-group" },
         {
           id: 8,
           label: "ตั้งค่า และ ประวัติ",

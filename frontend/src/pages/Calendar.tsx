@@ -1,15 +1,13 @@
 import ConfirmationModal from "../components/ConfirmationModal.tsx";
 import ViewBooking from "../features/bookings/ViewBooking";
 import AddBooking from "../features/bookings/AddBooking.tsx";
+import PageHeader from "../components/PageHeader.tsx";
 import axios from "axios";
-import toast from "react-hot-toast";
 
 import type { booking, PlatformId } from "../types/bookingTypes";
 import { platformMap } from "../helpers/maps.ts";
 
 import { useEffect, useMemo, useState, useRef } from "react";
-import { Link } from "react-router";
-import { useAuth } from "../context/AuthContext";
 import { Modal } from "@mui/material";
 import { calculateNights } from "../helpers/bookingHelpers";
 import { useLocation } from "react-router";
@@ -37,7 +35,6 @@ type Room = {
 const Calendar = () => {
   const today = new Date();
 
-  const { user } = useAuth();
   const timelineRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const [addBookingIsOpen, setAddBookingIsOpen] = useState(false);
@@ -383,9 +380,9 @@ const Calendar = () => {
           onClose={() => setAddBookingIsOpen(false)}
         />
       </Modal>
-      <header className="home__header">
-        <div>
-          <h1 className="calendar__monthSelector">
+      <PageHeader
+        title={
+          <span className="calendar__monthSelector">
             <i className="bx bx-caret-left" onClick={() => previousMonth()} />
             {new Intl.DateTimeFormat("th-TH", {
               day: undefined,
@@ -394,38 +391,11 @@ const Calendar = () => {
               calendar: "gregory",
             }).format(new Date(year, month, 1))}
             <i className="bx bx-caret-right" onClick={() => nextMonth()} />
-          </h1>
-          <div style={{ display: "flex", gap: "0.3rem", marginTop: "0.5rem" }}>
-            <p>
-              ข้อมูลอัปเดตล่าสุดเมื่อ {lastUpdated?.getHours()}:
-              {lastUpdated?.getMinutes().toString().padStart(2, "0")}
-            </p>
-            <i
-              className="bx bx-refresh home__refreshIcon"
-              onClick={() => {
-                toast.promise(getRooms, {
-                  loading: "กำลังอัปเดตข้อมูล...",
-                  success: "อัปเดตข้อมูลสำเร็จ",
-                  error: "เกิดข้อผิดพลาดในการอัปเดตข้อมูล",
-                });
-              }}
-            />
-          </div>
-        </div>
-
-        <div className="home__headerProfile">
-          <p>
-            {user?.name} <strong>{"  " + user?.admin && "Admin"}</strong>
-          </p>
-          <Link to={"/settings"}>
-            <img
-              className="home__profileImg"
-              src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR3m972e8FEvBi7ETC03avlJcZDg8nT9dWLSw&s"
-              alt="profilePicture"
-            />
-          </Link>
-        </div>
-      </header>
+          </span>
+        }
+        lastUpdated={lastUpdated}
+        onRefresh={getRooms}
+      />
 
       <div className="timeline__wrapper" ref={timelineRef}>
         <div

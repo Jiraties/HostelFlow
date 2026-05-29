@@ -6,44 +6,6 @@
   min-width: 0;
 }
 
-.home__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  min-width: 0;
-}
-
-.home__header h1 {
-  font-weight: 600;
-}
-
-/* .home__header p {
-  color: #777;
-} */
-
-.home__headerProfile img {
-  height: 3rem;
-  width: 3rem;
-  object-fit: cover;
-  border-radius: 10rem;
-}
-
-.home__headerProfile {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.home__headerProfile strong {
-  font-size: 0.8rem;
-  padding: 0.4rem 0.75rem;
-  border-radius: 10rem;
-  margin-left: 0.2rem;
-  color: var(--primary-color);
-  background-color: #51d1dc20;
-}
-
 .home__stats {
   display: flex;
   gap: 24px;
@@ -211,28 +173,11 @@
   cursor: pointer;
 }
 
-.home__refreshIcon {
-  font-size: 1.5rem;
-  cursor: pointer;
-  transition-duration: 0.1s;
-}
-
-.home__refreshIcon:active {
-  transform: rotate(120deg);
-}
-
-.home__profileImg:hover {
-  transition-duration: 0.2s;
-
-  transform: scale(1.1);
-}
-
 @media (max-width: 1080px) {
   .home {
     padding: 2rem;
   }
 
-  .home__header,
   .home__statsAndActions {
     align-items: flex-start;
     gap: 1rem;
@@ -249,14 +194,9 @@
     gap: 1.5rem;
   }
 
-  .home__header,
   .home__statsAndActions {
     flex-direction: column;
     align-items: stretch;
-  }
-
-  .home__headerProfile {
-    display: none;
   }
 
   .home__stats {
@@ -363,11 +303,6 @@
   .home {
     padding: 1rem;
     gap: 1.25rem;
-  }
-
-  .home__headerProfile img {
-    width: 3rem;
-    height: 3rem;
   }
 
   .home__dateFilter {

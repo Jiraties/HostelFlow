@@ -5,6 +5,7 @@ import type { SingleValue } from "react-select";
 
 import ActionButton from "../components/ActionButton";
 import ModalCloseButton from "../components/ModalCloseButton";
+import PageHeader from "../components/PageHeader";
 import Spreadsheet from "../features/dashboard/Spreadsheet";
 import AddBooking from "../features/bookings/AddBooking";
 import toast from "react-hot-toast";
@@ -13,8 +14,7 @@ import ConfirmationModal from "../components/ConfirmationModal";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Modal } from "@mui/material";
-import { useAuth } from "../context/AuthContext";
-import { Link, useLocation } from "react-router";
+import { useLocation } from "react-router";
 import {
   formatBookingDates,
   formatBookingsDates,
@@ -69,7 +69,6 @@ const getFetchErrorMessage = (err: unknown) => {
 };
 
 const Home = ({ status }: { status: HomeStatus }) => {
-  const { user } = useAuth();
   const location = useLocation();
   const isMaster = status === "master";
   const [addBookingIsOpen, setAddBookingIsOpen] = useState(false);
@@ -484,47 +483,11 @@ const Home = ({ status }: { status: HomeStatus }) => {
           </div>
         </div>
       </Modal>
-      <header className="home__header">
-        <div>
-          <h1>
-            {status === "arrivals"
-              ? "เช็คอินวันนี้ |"
-              : status === "departures"
-                ? "เช็คเอาท์วันนี้ |"
-                : ""}{" "}
-            {fullFormattedDate}
-          </h1>
-          <div style={{ display: "flex", gap: "0.3rem" }}>
-            <p>
-              ข้อมูลอัปเดตล่าสุดเมื่อ {lastUpdated?.getHours()}:
-              {lastUpdated?.getMinutes().toString().padStart(2, "0")}
-            </p>
-            <i
-              className="bx bx-refresh home__refreshIcon"
-              onClick={() => {
-                toast.promise(fetchBookings(), {
-                  loading: "กำลังอัปเดตข้อมูล...",
-                  success: "อัปเดตข้อมูลสำเร็จ",
-                  error: "เกิดข้อผิดพลาดในการอัปเดตข้อมูล",
-                });
-              }}
-            />
-          </div>
-        </div>
-
-        <div className="home__headerProfile">
-          <p>
-            {user?.name} <strong>{"  " + (user?.admin ? " Admin" : "")}</strong>
-          </p>
-          <Link to={"/settings"}>
-            <img
-              className="home__profileImg"
-              src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR3m972e8FEvBi7ETC03avlJcZDg8nT9dWLSw&s"
-              alt="profilePicture"
-            />
-          </Link>
-        </div>
-      </header>
+      <PageHeader
+        title={`${status === "arrivals" ? "เช็คอินวันนี้ | " : status === "departures" ? "เช็คเอาท์วันนี้ | " : ""}${fullFormattedDate}`}
+        lastUpdated={lastUpdated}
+        onRefresh={fetchBookings}
+      />
       {isMaster && (
         <section className="home__masterControls">
           <div className="home__masterFilters">

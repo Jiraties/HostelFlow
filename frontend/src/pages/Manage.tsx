@@ -3,15 +3,15 @@ import axios from "axios";
 import { API_URL } from "../config/api";
 import type { actionType, activity } from "../types/activitiesTypes";
 import "./Manage.css";
-import { useAuth } from "../context/AuthContext";
-import { Link } from "react-router";
 import ActionButton from "../components/ActionButton";
+import PageHeader from "../components/PageHeader";
 
 type StaffUser = {
   userId: string;
   username: string;
   name: string;
   admin: boolean;
+  profilePictureUrl: string;
 };
 
 type ActivityStats = {
@@ -61,7 +61,6 @@ const Manage = () => {
   const [users, setUsers] = useState<StaffUser[]>([]);
   const [activities, setActivities] = useState<activity[]>([]);
   const [stats, setStats] = useState<ActivityStats | null>(null);
-  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [creatingUser, setCreatingUser] = useState(false);
   const [resettingUserId, setResettingUserId] = useState<string | null>(null);
@@ -203,58 +202,22 @@ const Manage = () => {
 
   return (
     <main className="manage">
-      <header className="home__header">
-        <div>
-          <h1>จัดการ Staff</h1>
-          <div className="main__lastUpdated">
-            {/* <p>
-              ข้อมูลอัปเดตล่าสุดเมื่อ{" "}
-              {lastUpdated
-                ? `${lastUpdated.getHours()}:${lastUpdated
-                    .getMinutes()
-                    .toString()
-                    .padStart(2, "0")}
-                : "--:--"}
-            </p> */}
-            <i
-              className="bx bx-refresh home__refreshIcon"
-              //   onClick={() => {
-              //     toast.promise(() => {}, {
-              //       loading: "กำลังอัปเดตข้อมูล...",
-              //       success: "อัปเดตข้อมูลสำเร็จ",
-              //       error: "เกิดข้อผิดพลาดในการอัปเดตข้อมูล",
-              //     });
-              //   }}
-            />
-          </div>
-        </div>
-
-        <div className="home__headerProfile">
-          <p>
-            {user?.name} <strong>{"  " + (user?.admin ? " Admin" : "")}</strong>
-          </p>
-          <Link to={"/settings"}>
-            <img
-              className="home__profileImg"
-              src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR3m972e8FEvBi7ETC03avlJcZDg8nT9dWLSw&s"
-              alt="profilePicture"
-            />
-          </Link>
-        </div>
-      </header>
+      <PageHeader title="จัดการ Staff" onRefresh={fetchManageData} />
 
       <section>
         <div className="manage__users">
           {users.map((user) => (
             <div className="manage__user">
-              <img
-                src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR3m972e8FEvBi7ETC03avlJcZDg8nT9dWLSw&s"
-                alt=""
-              />
+              <img src={API_URL + user.profilePictureUrl} alt="" />
               <div className="manage__userInfo">
                 <div>
-                  <h3>{user.name}</h3>
-                  <p>{user.admin ? "Admin" : "Staff"}</p>
+                  <h3>
+                    {user.name}{" "}
+                    {user.admin && (
+                      <span className="settings__adminTag">Admin</span>
+                    )}
+                  </h3>
+                  <p>@{user.username}</p>
                 </div>
                 <div className="manage__userActions">
                   <ActionButton text="" icon="bx-key" onClick={() => {}} />
