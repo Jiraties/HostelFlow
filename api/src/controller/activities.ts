@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import Activity from "../models/activity";
 import type { actionType } from "../models/activity";
+import User from "../models/user";
 
 const buildActivityQuery = (query: Request["query"]) => {
   const activityQuery: Record<string, unknown> = {};
@@ -42,6 +43,22 @@ export const recentActivities = async (
   next: NextFunction,
 ) => {
   try {
+    let staffUsername = req.user?.username;
+
+    if (req.params.userId) {
+      if (!req.user?.admin) {
+        return res.status(403).json({ error: "Admin only" });
+      }
+
+      const user = await User.findById(req.params.userId);
+
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      staffUsername = user.username;
+    }
+
     const page: number = Number(req.query.page) || 1;
     const limit: number = Number(req.query.limit) || 10;
     const skip = (page - 1) * limit;
@@ -49,14 +66,14 @@ export const recentActivities = async (
     if (limit > 20) throw new Error("Max limit is 20");
 
     const fetchedActivities = await Activity.find({
-      staffUsername: req.user?.username,
+      staffUsername,
     })
       .sort({ timestamp: -1 })
       .skip(skip)
       .limit(limit);
 
     const totalActivitycount = await Activity.countDocuments({
-      staffUsername: req.user?.username,
+      staffUsername,
     });
 
     res
@@ -82,7 +99,10 @@ export const adminActivities = async (req: Request, res: Response) => {
     const activityQuery = buildActivityQuery(req.query);
 
     const [activities, totalActivityCount] = await Promise.all([
-      Activity.find(activityQuery).sort({ timestamp: -1 }).skip(skip).limit(limit),
+      Activity.find(activityQuery)
+        .sort({ timestamp: -1 })
+        .skip(skip)
+        .limit(limit),
       Activity.countDocuments(activityQuery),
     ]);
 
@@ -107,7 +127,11 @@ export const adminActivityStats = async (req: Request, res: Response) => {
 
     const today = new Date();
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    const startOfNextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    const startOfNextMonth = new Date(
+      today.getFullYear(),
+      today.getMonth() + 1,
+      1,
+    );
     const activityQuery = buildActivityQuery({
       ...req.query,
       from:

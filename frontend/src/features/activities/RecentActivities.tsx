@@ -2,7 +2,11 @@ import axios from "axios";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router";
 import { API_URL } from "../../config/api";
-import type { activity, roomStay, transaction } from "../../types/activitiesTypes";
+import type {
+  activity,
+  roomStay,
+  transaction,
+} from "../../types/activitiesTypes";
 
 const ACTIVITY_PAGE_SIZE = 10;
 
@@ -126,7 +130,7 @@ const ActivityHeader = ({ item }: { item: activity }) => {
   );
 };
 
-const RecentActivities = () => {
+const RecentActivities = ({ userId }: { userId?: string }) => {
   const [activities, setActivities] = useState<activity[]>([]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
@@ -146,8 +150,13 @@ const RecentActivities = () => {
       }
       setError("");
 
+      //       activitiesRouter.get("/recentActivities", recentActivities);
+      // activitiesRouter.get("/users/:userId/recentActivities", recentActivities);
+
       const fetchedActivities = await axios.get(
-        `${API_URL}/activities/recentActivities`,
+        userId
+          ? `${API_URL}/activities/users/${userId}/recentActivities`
+          : `${API_URL}/activities/recentActivities`,
         {
           params: {
             page: pageToFetch,
@@ -157,7 +166,8 @@ const RecentActivities = () => {
         },
       );
 
-      const nextPageActivities = fetchedActivities.data.activities as activity[];
+      const nextPageActivities = fetchedActivities.data
+        .activities as activity[];
       const totalActivityCount = fetchedActivities.data
         .totalActivitycount as number;
 

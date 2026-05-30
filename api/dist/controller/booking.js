@@ -29,6 +29,34 @@ const ROOM_BLOCKING_BOOKING_FILTER = {
         { "cancellation.roomReleaseStatus": "blocked" },
     ],
 };
+const BUSINESS_TIME_ZONE = "Asia/Bangkok";
+const BANGKOK_UTC_OFFSET_HOURS = 7;
+const getBusinessDateParts = (date = new Date()) => {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: BUSINESS_TIME_ZONE,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+    }).formatToParts(date);
+    return {
+        year: Number(parts.find((part) => part.type === "year")?.value),
+        month: Number(parts.find((part) => part.type === "month")?.value),
+        day: Number(parts.find((part) => part.type === "day")?.value),
+    };
+};
+const getBusinessDateStart = (year, month, day) => new Date(Date.UTC(year, month - 1, day, -BANGKOK_UTC_OFFSET_HOURS, 0, 0, 0));
+const getBusinessDayBounds = (date = new Date()) => {
+    const { year, month, day } = getBusinessDateParts(date);
+    const start = getBusinessDateStart(year, month, day);
+    const end = new Date(start.getTime() + 86400000);
+    return { start, end };
+};
+const getBusinessMonthBounds = (date = new Date()) => {
+    const { year, month } = getBusinessDateParts(date);
+    const start = getBusinessDateStart(year, month, 1);
+    const end = getBusinessDateStart(year, month + 1, 1);
+    return { start, end };
+};
 const calculateCardSurcharge = (amount) => Number((amount * CARD_SURCHARGE_RATE).toFixed(2));
 const buildTransactionsWithCardSurcharge = (transaction) => {
     const transactions = [transaction];
@@ -46,10 +74,8 @@ const buildTransactionsWithCardSurcharge = (transaction) => {
     return transactions;
 };
 const formatLocalDateKey = (date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
+    const { year, month, day } = getBusinessDateParts(date);
+    return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 };
 const roomChargeRevenue = (booking) => booking.transactions.reduce((sum, transaction) => {
     if (transaction.type !== "roomCharge")
@@ -269,10 +295,7 @@ const editBooking = async (req, res) => {
 exports.editBooking = editBooking;
 const getTodayBookings = async (req, res) => {
     const { type } = req.params;
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-    const startOfTomorrow = new Date(startOfToday);
-    startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+    const { start: startOfToday, end: startOfTomorrow } = getBusinessDayBounds();
     try {
         let bookings = [];
         switch (type) {
@@ -308,12 +331,8 @@ const getAdminDashboardStats = async (req, res) => {
         });
     }
     const today = new Date();
-    const startOfToday = new Date(today);
-    startOfToday.setHours(0, 0, 0, 0);
-    const startOfTomorrow = new Date(startOfToday);
-    startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
-    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    const startOfNextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+    const { start: startOfToday, end: startOfTomorrow } = getBusinessDayBounds(today);
+    const { start: startOfMonth, end: startOfNextMonth } = getBusinessMonthBounds(today);
     try {
         const [todayArrivals, monthBookings, unpaidBookings, occupancy] = await Promise.all([
             booking_1.default.find({

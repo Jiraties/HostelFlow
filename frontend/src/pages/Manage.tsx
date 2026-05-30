@@ -1,10 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
-import { API_URL } from "../config/api";
-import type { actionType, activity } from "../types/activitiesTypes";
 import "./Manage.css";
+
+import axios from "axios";
 import ActionButton from "../components/ActionButton";
 import PageHeader from "../components/PageHeader";
+import ViewActivities from "../features/activities/ViewActivities";
+
+import { useEffect, useMemo, useState } from "react";
+import { API_URL } from "../config/api";
+import { Modal } from "@mui/material";
+import type { actionType, activity } from "../types/activitiesTypes";
 
 type StaffUser = {
   userId: string;
@@ -63,8 +67,10 @@ const Manage = () => {
   const [stats, setStats] = useState<ActivityStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [creatingUser, setCreatingUser] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [resettingUserId, setResettingUserId] = useState<string | null>(null);
   const [newUserForm, setNewUserForm] = useState<NewUserForm>(emptyNewUserForm);
+  const [user, setUser] = useState<StaffUser | null>(null);
   const [resetPasswords, setResetPasswords] = useState<Record<string, string>>(
     {},
   );
@@ -82,6 +88,7 @@ const Manage = () => {
     setUsers(usersResponse.data.users);
     setActivities(activitiesResponse.data.activities);
     setStats(statsResponse.data);
+    setLastUpdated(new Date());
   };
 
   useEffect(() => {
@@ -103,6 +110,7 @@ const Manage = () => {
         setUsers(usersResponse.data.users);
         setActivities(activitiesResponse.data.activities);
         setStats(statsResponse.data);
+        setLastUpdated(new Date());
       } finally {
         if (!ignore) setLoading(false);
       }
@@ -202,29 +210,49 @@ const Manage = () => {
 
   return (
     <main className="manage">
-      <PageHeader title="จัดการ Staff" onRefresh={fetchManageData} />
+      <Modal
+        open={!!user}
+        className="home__modalCenter"
+        onClose={() => setUser(null)}
+      >
+        <>{user && <ViewActivities userId={user.userId} name={user.name} />}</>
+      </Modal>
+
+      <PageHeader
+        title="จัดการ Staff"
+        onRefresh={fetchManageData}
+        lastUpdated={lastUpdated}
+      />
+
+      <section className="main__actions">
+        <ActionButton
+          text="เพิ่มผู้ใช้ใหม่"
+          icon="bx-user-plus"
+          onClick={() => {}}
+        />
+      </section>
 
       <section>
         <div className="manage__users">
-          {users.map((user) => (
+          {users.map((staffUser) => (
             <div className="manage__user">
-              <img src={API_URL + user.profilePictureUrl} alt="" />
+              <img src={API_URL + staffUser.profilePictureUrl} alt="" />
               <div className="manage__userInfo">
                 <div>
                   <h3>
-                    {user.name}{" "}
-                    {user.admin && (
+                    {staffUser.name}{" "}
+                    {staffUser.admin && (
                       <span className="settings__adminTag">Admin</span>
                     )}
                   </h3>
-                  <p>@{user.username}</p>
+                  <p>@{staffUser.username}</p>
                 </div>
                 <div className="manage__userActions">
                   <ActionButton text="" icon="bx-key" onClick={() => {}} />
                   <ActionButton
                     text="ประวัติ"
                     icon="bx-history"
-                    onClick={() => {}}
+                    onClick={() => setUser(staffUser)}
                   />
                 </div>
               </div>
