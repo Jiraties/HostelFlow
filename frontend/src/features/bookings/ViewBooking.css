@@ -187,6 +187,13 @@
   background-color: #dc2626;
 }
 
+.viewBooking__lateCheckInAction {
+}
+
+.viewBooking__lateCheckInAction i {
+  color: #facc15;
+}
+
 .released {
   color: var(--text);
 }
@@ -362,7 +369,14 @@
   justify-content: space-between;
 }
 
-.viewBooking__actionsLeft {
+.viewBooking__noShowAction {
+}
+
+.viewBooking__noShowAction i {
+  color: var(--red);
+}
+
+.viewBooking__actionsRow {
   display: flex;
   gap: 1rem;
   flex-wrap: wrap;

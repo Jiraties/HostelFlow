@@ -89,7 +89,22 @@
 }
 
 .main__adminStatCard {
+  position: relative;
   overflow: hidden;
+}
+
+.main__adminStatCard--fill::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--admin-stat-fill, 0%);
+  background-color: color-mix(in srgb, var(--primary-color) 18%, #fff);
+  content: "";
+  transition: width 0.45s ease;
+}
+
+.main__adminStatCard--fill > * {
+  position: relative;
+  z-index: 1;
 }
 
 .main__adminStatCard > div,

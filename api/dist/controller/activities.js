@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.adminActivityStats = exports.adminActivities = exports.recentActivities = void 0;
 const activity_1 = __importDefault(require("../models/activity"));
+const user_1 = __importDefault(require("../models/user"));
 const buildActivityQuery = (query) => {
     const activityQuery = {};
     const { staffUsername, action, from, to } = query;
@@ -34,19 +35,30 @@ const buildActivityQuery = (query) => {
 };
 const recentActivities = async (req, res, next) => {
     try {
+        let staffUsername = req.user?.username;
+        if (req.params.userId) {
+            if (!req.user?.admin) {
+                return res.status(403).json({ error: "Admin only" });
+            }
+            const user = await user_1.default.findById(req.params.userId);
+            if (!user) {
+                return res.status(404).json({ error: "User not found" });
+            }
+            staffUsername = user.username;
+        }
         const page = Number(req.query.page) || 1;
         const limit = Number(req.query.limit) || 10;
         const skip = (page - 1) * limit;
         if (limit > 20)
             throw new Error("Max limit is 20");
         const fetchedActivities = await activity_1.default.find({
-            staffUsername: req.user?.username,
+            staffUsername,
         })
             .sort({ timestamp: -1 })
             .skip(skip)
             .limit(limit);
         const totalActivitycount = await activity_1.default.countDocuments({
-            staffUsername: req.user?.username,
+            staffUsername,
         });
         res
             .status(200)
@@ -70,7 +82,10 @@ const adminActivities = async (req, res) => {
         const skip = (page - 1) * limit;
         const activityQuery = buildActivityQuery(req.query);
         const [activities, totalActivityCount] = await Promise.all([
-            activity_1.default.find(activityQuery).sort({ timestamp: -1 }).skip(skip).limit(limit),
+            activity_1.default.find(activityQuery)
+                .sort({ timestamp: -1 })
+                .skip(skip)
+                .limit(limit),
             activity_1.default.countDocuments(activityQuery),
         ]);
         res.status(200).json({

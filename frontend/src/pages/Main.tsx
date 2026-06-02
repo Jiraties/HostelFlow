@@ -19,7 +19,10 @@ import AddBooking from "../features/bookings/AddBooking";
 import PageHeader from "../components/PageHeader";
 import StatCard from "../features/dashboard/StatCard";
 import { useAuth } from "../context/AuthContext";
-import { formatBookingsDates } from "../helpers/bookingHelpers";
+import {
+  formatBookingsDates,
+  truncateDecimal,
+} from "../helpers/bookingHelpers";
 import { platformMap } from "../helpers/maps";
 import { API_URL } from "../config/api";
 
@@ -312,6 +315,9 @@ const Main = () => {
     (booking) => roomChargeTransaction(booking)?.paymentMethod === "Unpaid",
   ).length;
   const depositToReturn = getDepositToReturn(departures);
+  const occupancyRatePercent = adminStats
+    ? truncateDecimal(adminStats.occupancyRate * 100, 2)
+    : 0;
   const statCards = [
     {
       label: "เช็คอินวันนี้",
@@ -353,8 +359,10 @@ const Main = () => {
         //   value: adminStats.unpaidAmount,
         // },
         {
-          label: "อัตราเข้าพัก (%)",
-          value: Math.round(adminStats.occupancyRate * 100),
+          label: "อัตราเข้าพัก",
+          value: occupancyRatePercent,
+          suffix: "%",
+          fillPercent: Math.min(Math.max(occupancyRatePercent, 0), 100),
         },
       ]
     : [];
@@ -436,11 +444,24 @@ const Main = () => {
                   { label: "อัตราเข้าพัก (%)", value: 0 },
                 ]
             ).map((stat) => (
-              <div className="main__adminStatCard" key={stat.label}>
+              <div
+                className={`main__adminStatCard${
+                  "fillPercent" in stat ? " main__adminStatCard--fill" : ""
+                }`}
+                key={stat.label}
+                style={
+                  "fillPercent" in stat
+                    ? ({
+                        "--admin-stat-fill": `${stat.fillPercent}%`,
+                      } as React.CSSProperties)
+                    : undefined
+                }
+              >
                 <StatCard
                   label={stat.label}
                   value={stat.value}
                   loading={adminLoading && !adminStats}
+                  suffix={"suffix" in stat ? stat.suffix : undefined}
                 />
               </div>
             ))}

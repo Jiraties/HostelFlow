@@ -7,6 +7,7 @@ interface StatCardProps {
   label: string;
   value: number;
   loading: boolean;
+  suffix?: string;
 }
 
 function AnimatedDigit({
@@ -85,7 +86,12 @@ function AnimatedDigit({
   );
 }
 
-export default function StatCard({ label, value, loading }: StatCardProps) {
+export default function StatCard({
+  label,
+  value,
+  loading,
+  suffix = "",
+}: StatCardProps) {
   const prevValue = useRef<number>(0); // ✅ start from 0
   const [direction, setDirection] = useState<"up" | "down">("up");
   const [flash, setFlash] = useState<"green" | "red" | null>(null);
@@ -174,6 +180,7 @@ export default function StatCard({ label, value, loading }: StatCardProps) {
             ),
           )
         )}
+        {!loading && suffix && <span className="statSuffix">{suffix}</span>}
       </div>
     </div>
   );

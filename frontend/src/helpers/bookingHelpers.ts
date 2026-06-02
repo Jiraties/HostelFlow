@@ -112,3 +112,8 @@ export const formatBookingDates = (booking: booking) => ({
   checkIn: new Date(booking.checkIn),
   checkOut: new Date(booking.checkOut),
 });
+
+export function truncateDecimal(number: number, digits: number) {
+  const multiplier = Math.pow(10, digits);
+  return Math.trunc(number * multiplier) / multiplier;
+}

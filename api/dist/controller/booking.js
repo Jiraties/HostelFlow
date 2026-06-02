@@ -10,7 +10,13 @@ const crypto_1 = __importDefault(require("crypto"));
 const activityServices_1 = require("../services/activityServices");
 const dateHelpers_1 = require("../helpers/dateHelpers");
 dotenv_1.default.config();
-const TOTAL_ROOM_COUNT = 46;
+const TOTAL_GUEST_CAPACITY = 52;
+const ROOM_GUEST_CAPACITY = {
+    Balcony: 2,
+    Window: 2,
+    "Pottery 1": 3,
+    "Pottery 2": 3,
+};
 const CARD_SURCHARGE_RATE = 0.03;
 const ADD_TRANSACTION_TYPES = [
     "deposit",
@@ -56,6 +62,30 @@ const getBusinessMonthBounds = (date = new Date()) => {
     const start = getBusinessDateStart(year, month, 1);
     const end = getBusinessDateStart(year, month + 1, 1);
     return { start, end };
+};
+const getRoomGuestCapacity = (roomId) => ROOM_GUEST_CAPACITY[roomId] ?? 1;
+const getGuestsInHouse = async (date = new Date()) => {
+    const { start, end } = getBusinessDayBounds(date);
+    const checkedInBookings = await booking_1.default.find({
+        status: "checkedIn",
+        roomStays: {
+            $elemMatch: {
+                from: { $lt: end },
+                to: { $gt: start },
+            },
+        },
+    })
+        .select("roomStays")
+        .lean();
+    return checkedInBookings.reduce((bookingTotal, booking) => bookingTotal +
+        booking.roomStays.reduce((roomTotal, roomStay) => {
+            const stayFrom = new Date(roomStay.from);
+            const stayTo = new Date(roomStay.to);
+            const stayIsActiveToday = stayFrom < end && stayTo > start;
+            return stayIsActiveToday
+                ? roomTotal + getRoomGuestCapacity(roomStay.roomId)
+                : roomTotal;
+        }, 0), 0);
 };
 const calculateCardSurcharge = (amount) => Number((amount * CARD_SURCHARGE_RATE).toFixed(2));
 const buildTransactionsWithCardSurcharge = (transaction) => {
@@ -316,7 +346,7 @@ const getTodayBookings = async (req, res) => {
                     .status(400)
                     .json({ error: "Please specify the type of query" });
         }
-        const occupancy = await booking_1.default.countDocuments({ status: "checkedIn" });
+        const occupancy = await getGuestsInHouse();
         res.status(200).json({ bookings, occupancy });
     }
     catch (err) {
@@ -350,7 +380,7 @@ const getAdminDashboardStats = async (req, res) => {
                     },
                 },
             }),
-            booking_1.default.countDocuments({ status: "checkedIn" }),
+            getGuestsInHouse(today),
         ]);
         const todayExpectedRevenue = todayArrivals.reduce((sum, booking) => sum + roomChargeRevenue(booking), 0);
         const monthRoomRevenue = monthBookings.reduce((sum, booking) => sum + roomChargeRevenue(booking), 0);
@@ -380,7 +410,7 @@ const getAdminDashboardStats = async (req, res) => {
             monthRoomRevenue,
             monthBookings: monthBookings.length,
             unpaidAmount,
-            occupancyRate: occupancy / TOTAL_ROOM_COUNT,
+            occupancyRate: occupancy / TOTAL_GUEST_CAPACITY,
             channelMix,
             revenueSeries,
         });
@@ -431,7 +461,7 @@ const getMasterBookings = async (req, res) => {
             checkOut: 1,
             name: 1,
         });
-        const occupancy = await booking_1.default.countDocuments({ status: "checkedIn" });
+        const occupancy = await getGuestsInHouse();
         res.status(200).json({ bookings, occupancy });
     }
     catch (err) {

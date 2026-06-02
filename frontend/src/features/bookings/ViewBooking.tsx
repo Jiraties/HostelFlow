@@ -239,8 +239,18 @@ const ViewBooking = ({
     );
   }
 
+  const today = new Date();
+  const checkInDate = new Date(data.checkIn);
+  const checkInIsBeforeToday =
+    new Date(
+      checkInDate.getFullYear(),
+      checkInDate.getMonth(),
+      checkInDate.getDate(),
+    ) < new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const isLateCheckIn = data.status === "booked" && checkInIsBeforeToday;
+
   const statusDeterminer = (status: string, usedFor: string) => {
-    const checkInIsToday = isSameDay(new Date(), new Date(data.checkIn));
+    const checkInIsToday = isSameDay(today, checkInDate);
 
     switch (status) {
       case "booked":
@@ -728,7 +738,7 @@ const ViewBooking = ({
           </div>
         </div>
         <div className="viewBooking__actions">
-          <div className="viewBooking__actionsLeft">
+          <div className="viewBooking__actionsRow">
             <ActionButton
               text="แก้ไข"
               icon="bx-edit"
@@ -749,14 +759,35 @@ const ViewBooking = ({
               />
             )}
           </div>
-          {data.status === "booked" && (
-            <ActionButton
-              text="Check In"
-              onClick={() => setCheckInIsOpen(true)}
-              icon="bx-check-circle"
-              highlight
-            />
-          )}
+          <div className="viewBooking__actionsRow">
+            {data.status === "booked" && (
+              <ActionButton
+                text={isLateCheckIn ? "Late Check In" : "Check In"}
+                onClick={() => setCheckInIsOpen(true)}
+                icon="bx-check-circle"
+                className={
+                  isLateCheckIn ? "viewBooking__lateCheckInAction" : ""
+                }
+                highlight={!isLateCheckIn}
+              />
+            )}
+            {isLateCheckIn && (
+              <ActionButton
+                text="No-Show"
+                className="viewBooking__noShowAction"
+                onClick={() => setCheckInIsOpen(true)}
+                icon="bx-x"
+              />
+            )}
+            {data.status === "checkedIn" && (
+              <ActionButton
+                text="Check Out"
+                onClick={() => setCheckInIsOpen(true)}
+                icon="bx-door-open"
+                highlight
+              />
+            )}
+          </div>{" "}
         </div>
       </div>
     </>

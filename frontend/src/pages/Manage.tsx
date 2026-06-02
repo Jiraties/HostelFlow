@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 import { API_URL } from "../config/api";
 import { Modal } from "@mui/material";
 import type { actionType, activity } from "../types/activitiesTypes";
+import CreateNewUser from "../components/CreateNewUser";
 
 type StaffUser = {
   userId: string;
@@ -66,6 +67,7 @@ const Manage = () => {
   const [activities, setActivities] = useState<activity[]>([]);
   const [stats, setStats] = useState<ActivityStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [createNewUserIsOpen, setCreateNewUserIsOpen] = useState(false);
   const [creatingUser, setCreatingUser] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [resettingUserId, setResettingUserId] = useState<string | null>(null);
@@ -217,6 +219,19 @@ const Manage = () => {
       >
         <>{user && <ViewActivities userId={user.userId} name={user.name} />}</>
       </Modal>
+      <Modal
+        open={createNewUserIsOpen}
+        className="home__modalCenter"
+        onClose={() => setCreateNewUserIsOpen(false)}
+      >
+        <CreateNewUser
+          form={newUserForm}
+          onChange={updateNewUserForm}
+          onClose={() => setCreateNewUserIsOpen(false)}
+          onSubmit={createUserHandler}
+          submitting={creatingUser}
+        />
+      </Modal>
 
       <PageHeader
         title="จัดการ Staff"
@@ -226,9 +241,11 @@ const Manage = () => {
 
       <section className="main__actions">
         <ActionButton
-          text="เพิ่มผู้ใช้ใหม่"
+          text="สร้างบัญชีผู้ใช้ใหม่"
           icon="bx-user-plus"
-          onClick={() => {}}
+          onClick={() => {
+            setCreateNewUserIsOpen(true);
+          }}
         />
       </section>
 

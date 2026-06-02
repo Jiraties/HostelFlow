@@ -17,7 +17,13 @@ import { dateRangeText, toInputDate } from "../helpers/dateHelpers";
 
 dotenv.config();
 
-const TOTAL_ROOM_COUNT = 46;
+const TOTAL_GUEST_CAPACITY = 52;
+const ROOM_GUEST_CAPACITY: Record<string, number> = {
+  Balcony: 2,
+  Window: 2,
+  "Pottery 1": 3,
+  "Pottery 2": 3,
+};
 const CARD_SURCHARGE_RATE = 0.03;
 const ADD_TRANSACTION_TYPES: TransactionType[] = [
   "deposit",
@@ -71,6 +77,38 @@ const getBusinessMonthBounds = (date = new Date()) => {
   const end = getBusinessDateStart(year, month + 1, 1);
 
   return { start, end };
+};
+
+const getRoomGuestCapacity = (roomId: string) => ROOM_GUEST_CAPACITY[roomId] ?? 1;
+
+const getGuestsInHouse = async (date = new Date()) => {
+  const { start, end } = getBusinessDayBounds(date);
+  const checkedInBookings = await Booking.find({
+    status: "checkedIn",
+    roomStays: {
+      $elemMatch: {
+        from: { $lt: end },
+        to: { $gt: start },
+      },
+    },
+  })
+    .select("roomStays")
+    .lean();
+
+  return checkedInBookings.reduce(
+    (bookingTotal, booking) =>
+      bookingTotal +
+      booking.roomStays.reduce((roomTotal, roomStay) => {
+        const stayFrom = new Date(roomStay.from);
+        const stayTo = new Date(roomStay.to);
+        const stayIsActiveToday = stayFrom < end && stayTo > start;
+
+        return stayIsActiveToday
+          ? roomTotal + getRoomGuestCapacity(roomStay.roomId)
+          : roomTotal;
+      }, 0),
+    0,
+  );
 };
 
 const calculateCardSurcharge = (amount: number) =>
@@ -427,7 +465,7 @@ export const getTodayBookings = async (req: Request, res: Response) => {
           .json({ error: "Please specify the type of query" });
     }
 
-    const occupancy = await Booking.countDocuments({ status: "checkedIn" });
+    const occupancy = await getGuestsInHouse();
 
     res.status(200).json({ bookings, occupancy });
   } catch (err) {
@@ -466,7 +504,7 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
             },
           },
         }),
-        Booking.countDocuments({ status: "checkedIn" }),
+        getGuestsInHouse(today),
       ]);
 
     const todayExpectedRevenue = todayArrivals.reduce(
@@ -526,7 +564,7 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
       monthRoomRevenue,
       monthBookings: monthBookings.length,
       unpaidAmount,
-      occupancyRate: occupancy / TOTAL_ROOM_COUNT,
+      occupancyRate: occupancy / TOTAL_GUEST_CAPACITY,
       channelMix,
       revenueSeries,
     });
@@ -588,7 +626,7 @@ export const getMasterBookings = async (req: Request, res: Response) => {
       checkOut: 1,
       name: 1,
     });
-    const occupancy = await Booking.countDocuments({ status: "checkedIn" });
+    const occupancy = await getGuestsInHouse();
 
     res.status(200).json({ bookings, occupancy });
   } catch (err) {

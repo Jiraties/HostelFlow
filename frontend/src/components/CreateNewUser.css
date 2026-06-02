@@ -1,0 +1,5 @@
+.createNewUser__roleToggle .cancellation__segment--active,
+.createNewUser__roleToggle
+  .cancellation__segment:first-child.cancellation__segment--active {
+  color: var(--primary-color);
+}
