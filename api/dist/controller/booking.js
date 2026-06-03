@@ -422,7 +422,7 @@ const getAdminDashboardStats = async (req, res) => {
 exports.getAdminDashboardStats = getAdminDashboardStats;
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const getMasterBookings = async (req, res) => {
-    const { from, to, name, room, channel } = req.query;
+    const { from, to, name, bookingId, room, channel } = req.query;
     if (!from || !to) {
         return res.status(400).json({
             message: "Please specify from and to dates",
@@ -449,6 +449,9 @@ const getMasterBookings = async (req, res) => {
         };
         if (typeof name === "string" && name.trim()) {
             query.name = { $regex: escapeRegex(name.trim()), $options: "i" };
+        }
+        if (typeof bookingId === "string" && bookingId.trim()) {
+            query.bookingId = { $regex: escapeRegex(bookingId.trim()), $options: "i" };
         }
         if (typeof room === "string" && room.trim()) {
             query["roomStays.roomId"] = room.trim();

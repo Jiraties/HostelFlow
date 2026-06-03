@@ -3,9 +3,13 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getBookingsReport = void 0;
+exports.getImmigrationReport = exports.getImmigrationReportStatus = exports.getBookingsReport = void 0;
 const exceljs_1 = __importDefault(require("exceljs"));
 const booking_1 = __importDefault(require("../models/booking"));
+const crypto_1 = __importDefault(require("crypto"));
+const path_1 = __importDefault(require("path"));
+const passportHelpers_1 = require("../helpers/passportHelpers");
+const dateHelpers_1 = require("../helpers/dateHelpers");
 const platformMap = {
     BOOK: { label: "Booking.com", color: "003580" },
     HOST: { label: "Hostelworld", color: "F15A24" },
@@ -56,6 +60,18 @@ const formatInputDate = (date) => {
 const transactionTotal = (transactions, type) => transactions
     .filter((transaction) => !type || transaction.type === type)
     .reduce((sum, transaction) => sum + (transaction.amount || 0), 0);
+const immigrationMonthQuery = (month) => {
+    if (!/^\d{4}-\d{2}$/.test(month))
+        return null;
+    const [year, monthNumber] = month.split("-").map(Number);
+    const firstDayOfNextMonth = new Date(year, monthNumber, 1);
+    const firstDayOfMonth = new Date(year, monthNumber - 1, 1);
+    return {
+        checkIn: { $lt: firstDayOfNextMonth },
+        checkOut: { $gt: firstDayOfMonth },
+    };
+};
+const passportInfoIsComplete = (passport) => !!passport?.nationality && !!passport.passportName && !!passport.passportNo;
 const cellBorder = {
     top: { style: "thin", color: { argb: "FFE5E7EB" } },
     left: { style: "thin", color: { argb: "FFE5E7EB" } },
@@ -177,7 +193,10 @@ const getBookingsReport = async (req, res) => {
             applyRowSpacing(row);
             applyImportantCellStyle(row);
             applyStatusCellStyle(row, booking.status);
-            platformCell.font = { color: { argb: `FF${platform.color}` }, bold: true };
+            platformCell.font = {
+                color: { argb: `FF${platform.color}` },
+                bold: true,
+            };
             platformCell.alignment = { vertical: "middle", horizontal: "center" };
             transactions
                 .filter((transaction) => transaction.type !== "roomCharge")
@@ -235,4 +254,123 @@ const getBookingsReport = async (req, res) => {
     }
 };
 exports.getBookingsReport = getBookingsReport;
+const getImmigrationReportStatus = async (req, res) => {
+    try {
+        const month = req.query.month;
+        const query = immigrationMonthQuery(month);
+        if (!query) {
+            return res.status(400).json({ message: "Invalid month format" });
+        }
+        const bookings = await booking_1.default.find(query)
+            .select("bookingId name passport checkOut")
+            .sort({
+            checkIn: 1,
+            name: 1,
+        })
+            .lean();
+        const missingBookings = bookings
+            .filter((booking) => !passportInfoIsComplete(booking.passport))
+            .map((booking) => ({
+            bookingId: booking.bookingId,
+            name: booking.name,
+            checkOut: booking.checkOut,
+        }));
+        res.status(200).json({
+            total: bookings.length,
+            complete: bookings.length - missingBookings.length,
+            missing: missingBookings.length,
+            missingBookings,
+        });
+    }
+    catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Failed to fetch immigration status" });
+    }
+};
+exports.getImmigrationReportStatus = getImmigrationReportStatus;
+const getImmigrationReport = async (req, res) => {
+    try {
+        const month = req.query.month;
+        const query = immigrationMonthQuery(month);
+        if (!query) {
+            return res.status(400).json({ message: "Invalid month format" });
+        }
+        const bookings = await booking_1.default.find(query)
+            .select("bookingId name passport checkOut")
+            .sort({
+            checkIn: 1,
+            name: 1,
+        });
+        if (bookings.length === 0)
+            return res.status(400).json({ message: "ไม่พบรายการจองในเดือนที่กำหนด" });
+        console.log(bookings.length);
+        const workbook = new exceljs_1.default.Workbook();
+        const templatePath = path_1.default.resolve(process.cwd(), "uploads", "document-templates", "Immigration.xlsx");
+        await workbook.xlsx.readFile(templatePath);
+        const sheet = workbook.getWorksheet("แบบแจ้งที่พัก Inform Accom");
+        if (!sheet)
+            return res.status(404).json({ message: "ไม่พบ template ตม" });
+        const nationalitySheet = workbook.getWorksheet(passportHelpers_1.nationalitySheetName);
+        if (!nationalitySheet) {
+            return res.status(404).json({ message: "ไม่พบ worksheet สัญชาติ" });
+        }
+        const startRow = 2;
+        bookings.forEach((booking, index) => {
+            const row = sheet.getRow(startRow + index);
+            let formattedPassport = {
+                nationality: "",
+                passportNo: "",
+                passportName: "",
+            };
+            const rawPassport = booking.passport;
+            const decrypt = ({ cipherText, iv, authTag }) => {
+                const key = Buffer.from(process.env.CRYPTO_SECRET, "hex");
+                const decipher = crypto_1.default.createDecipheriv("aes-256-gcm", key, Buffer.from(iv, "hex"));
+                decipher.setAuthTag(Buffer.from(authTag, "hex"));
+                let decrypted = decipher.update(cipherText, "hex", "utf8");
+                decrypted += decipher.final("utf8");
+                return decrypted;
+            };
+            if (rawPassport?.nationality &&
+                rawPassport.passportName &&
+                rawPassport.passportNo) {
+                formattedPassport = {
+                    nationality: (0, passportHelpers_1.formatNationalityToIcao)(rawPassport.nationality, nationalitySheet),
+                    passportNo: decrypt(rawPassport.passportNo),
+                    passportName: decrypt(rawPassport.passportName),
+                };
+            }
+            const splittedPassportName = (0, passportHelpers_1.splitPassportName)(formattedPassport.passportName);
+            const missingPassportInfo = !formattedPassport.passportName ||
+                !formattedPassport.passportNo ||
+                !formattedPassport.nationality;
+            if (missingPassportInfo) {
+                const missingCell = row.getCell(1);
+                missingCell.value = `MISSING ${booking.name} ${booking.bookingId}`;
+                missingCell.font = {
+                    ...missingCell.font,
+                    color: { argb: "FFFF0000" },
+                };
+            }
+            else {
+                row.getCell(1).value = splittedPassportName.firstName;
+                row.getCell(2).value = splittedPassportName.middleName;
+                row.getCell(3).value = splittedPassportName.lastName;
+            }
+            row.getCell(5).value = formattedPassport.passportNo;
+            row.getCell(6).value = formattedPassport.nationality;
+            row.getCell(8).value = (0, dateHelpers_1.formatDateAD)(booking.checkOut);
+            row.commit();
+        });
+        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        res.setHeader("Content-Disposition", `attachment; filename=immigration-${month}.xlsx`);
+        await workbook.xlsx.write(res);
+        res.end();
+    }
+    catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Failed to create immigration report" });
+    }
+};
+exports.getImmigrationReport = getImmigrationReport;
 //# sourceMappingURL=documents.js.map

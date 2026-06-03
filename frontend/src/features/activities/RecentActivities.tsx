@@ -31,6 +31,18 @@ const actionMap = {
     icon: "bx-key",
     text: "เปลี่ยนรหัสผ่าน",
   },
+  UPDATE_USER: {
+    icon: "bx-user-cog",
+    text: "แก้ไขผู้ใช้",
+  },
+  DEACTIVATE_USER: {
+    icon: "bx-user-x",
+    text: "ปิดใช้งานผู้ใช้",
+  },
+  REACTIVATE_USER: {
+    icon: "bx-user-check",
+    text: "เปิดใช้งานผู้ใช้",
+  },
   LOGOUT: {
     icon: "bx-arrow-out-right-square-half",
     text: "ออกจากระบบ",

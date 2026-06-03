@@ -22,6 +22,7 @@ const upload = (0, multer_1.default)({
 authRouter.post("/createUser", auth_1.createUser);
 authRouter.get("/users", authMiddleware_1.default, auth_1.listUsers);
 authRouter.post("/admin/createUser", authMiddleware_1.default, auth_1.adminCreateUser);
+authRouter.patch("/users/:userId", authMiddleware_1.default, auth_1.updateUser);
 authRouter.patch("/users/:userId/password", authMiddleware_1.default, auth_1.resetUserPassword);
 authRouter.post("/login", auth_1.login);
 authRouter.post("/logout", authMiddleware_1.default, auth_1.logout);

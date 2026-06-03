@@ -34,6 +34,7 @@ type MasterFilters = {
   from: string;
   to: string;
   name: string;
+  bookingId: string;
   room: string;
   channel: string;
 };
@@ -48,13 +49,17 @@ const formatInputDate = (date: Date) => {
 
 const getDefaultMasterFilters = (): MasterFilters => {
   const today = new Date();
-  const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-  const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  const thirtyDaysAgo = new Date(today);
+  const thirtyDaysFromNow = new Date(today);
+
+  thirtyDaysAgo.setDate(today.getDate() - 30);
+  thirtyDaysFromNow.setDate(today.getDate() + 30);
 
   return {
-    from: formatInputDate(firstDayOfMonth),
-    to: formatInputDate(lastDayOfMonth),
+    from: formatInputDate(thirtyDaysAgo),
+    to: formatInputDate(thirtyDaysFromNow),
     name: "",
+    bookingId: "",
     room: "",
     channel: "",
   };
@@ -382,6 +387,16 @@ const Home = ({ status }: { status: HomeStatus }) => {
           value={masterFilters.name}
           placeholder="ค้นหาชื่อแขก"
           onChange={(e) => updateMasterFilter("name", e.target.value)}
+        />
+      </div>
+      <div className="home__filterField">
+        <p className="home__filterLabel">Booking ID</p>
+        <input
+          className="boxInput home__filterInput"
+          type="text"
+          value={masterFilters.bookingId}
+          placeholder="ค้นหา Booking ID"
+          onChange={(e) => updateMasterFilter("bookingId", e.target.value)}
         />
       </div>
       <div className="home__filterField">

@@ -104,29 +104,6 @@
   text-align: center;
 }
 
-.documents__segmentedControl {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  overflow: hidden;
-  border-radius: 0.75rem;
-  box-shadow: var(--main-shadow);
-}
-
-.documents__segment {
-  font-family: "IBM Plex Sans Thai", sans-serif;
-  padding: 1rem;
-  border: 0;
-  background-color: var(--background);
-  cursor: pointer;
-  font-weight: 500;
-  color: #555;
-}
-
-.documents__segment--active {
-  color: var(--primary-color);
-  background-color: color-mix(in srgb, var(--primary-color) 12%, #fff);
-}
-
 .documents__tm30Status {
   overflow: hidden;
   border-radius: 0.75rem;
@@ -316,7 +293,4 @@
     border-bottom: 1px solid #e7e7e7;
   }
 
-  .documents__segmentedControl {
-    grid-template-columns: 1fr;
-  }
 }

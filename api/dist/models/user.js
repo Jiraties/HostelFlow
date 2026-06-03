@@ -9,6 +9,7 @@ const userSchema = new mongoose_1.default.Schema({
     name: { type: String },
     password: { type: String },
     admin: { type: Boolean },
+    active: { type: Boolean, default: true },
     profilePictureUrl: { type: String, default: "/uploads/default.jpg" },
 });
 exports.default = mongoose_1.default.model("User", userSchema);

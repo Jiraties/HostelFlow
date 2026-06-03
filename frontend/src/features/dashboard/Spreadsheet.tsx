@@ -360,7 +360,12 @@ const Spreadsheet = ({
             param.value === "Unpaid",
         },
       },
-      { field: "bookingId", headerName: "Booking ID", sortable: false },
+      {
+        field: "bookingId",
+        headerName: "Booking ID",
+        filter: true,
+        sortable: false,
+      },
       {
         field: "checkInByStaffUsername",
         headerName: "เช็คอินโดย",

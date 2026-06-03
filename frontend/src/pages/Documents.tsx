@@ -6,7 +6,7 @@ import ActionButton from "../components/ActionButton";
 import PageHeader from "../components/PageHeader";
 
 import axios from "axios";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { customStyles } from "../helpers/selectStyling";
 import { API_URL } from "../config/api";
 import { paymentMethodOptions, platformOptions } from "../helpers/options";
@@ -15,25 +15,25 @@ import type { SingleValue } from "react-select";
 import type { OptionType } from "../helpers/selectStyling";
 
 type DocumentFilters = {
-  from: string;
-  to: string;
   bookingMonth: string;
+  tm30Month: string;
+  hotelMonth: string;
   bookingChannel: string;
   bookingStatus: string;
   paymentMethod: string;
-  tm30Type: "daily" | "guestList";
-  checkInDate: string;
-  nationality: string;
   reportType: string;
   roomGroup: string;
 };
 
-const formatInputDate = (date: Date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
+type ImmigrationReportStatus = {
+  total: number;
+  complete: number;
+  missing: number;
+  missingBookings: {
+    bookingId: string;
+    name: string;
+    checkOut: string;
+  }[];
 };
 
 const formatInputMonth = (date: Date) => {
@@ -43,16 +43,15 @@ const formatInputMonth = (date: Date) => {
   return `${year}-${month}`;
 };
 
-const formatThaiDate = (value: string) => {
-  const [year, month, day] = value.split("-").map(Number);
-  if (!year || !month || !day) return "";
+const formatThaiMonth = (value: string) => {
+  const [year, month] = value.split("-").map(Number);
+  if (!year || !month) return "";
 
   return new Intl.DateTimeFormat("th-TH", {
     calendar: "gregory",
-    day: "numeric",
-    month: "short",
+    month: "long",
     year: "numeric",
-  }).format(new Date(year, month - 1, day));
+  }).format(new Date(year, month - 1, 1));
 };
 
 const bookingStatusOptions = [
@@ -60,15 +59,6 @@ const bookingStatusOptions = [
   { value: "booked", label: "ยังไม่ Check-In" },
   { value: "checkedIn", label: "Check-In แล้ว" },
   { value: "checkedOut", label: "Check-Out แล้ว" },
-];
-
-const nationalityOptions = [
-  { value: "all", label: "ทั้งหมด" },
-  { value: "TH", label: "ไทย" },
-  { value: "US", label: "สหรัฐอเมริกา" },
-  { value: "JP", label: "ญี่ปุ่น" },
-  { value: "CN", label: "จีน" },
-  { value: "EU", label: "ยุโรป" },
 ];
 
 const reportTypeOptions = [
@@ -97,21 +87,21 @@ const nationalityStats = [
 
 const Documents = () => {
   const today = new Date();
-  const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-  const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  const currentMonth = formatInputMonth(today);
   const [filters, setFilters] = useState<DocumentFilters>({
-    from: formatInputDate(firstDayOfMonth),
-    to: formatInputDate(lastDayOfMonth),
-    bookingMonth: formatInputMonth(today),
+    bookingMonth: currentMonth,
+    tm30Month: currentMonth,
+    hotelMonth: currentMonth,
     bookingChannel: "",
     bookingStatus: "all",
     paymentMethod: "all",
-    tm30Type: "daily",
-    checkInDate: formatInputDate(today),
-    nationality: "all",
     reportType: "dailySummary",
     roomGroup: "all",
   });
+  const [immigrationStatus, setImmigrationStatus] =
+    useState<ImmigrationReportStatus | null>(null);
+  const [immigrationStatusLoading, setImmigrationStatusLoading] =
+    useState(false);
   const fullFormattedDate = new Intl.DateTimeFormat("th-TH", {
     day: "numeric",
     month: "long",
@@ -183,6 +173,94 @@ const Documents = () => {
       console.error(err);
       toast.error("ไม่สามารถส่งออกรายงานการจองได้");
     }
+  };
+
+  const getImmigrationReport = async () => {
+    if (immigrationStatus?.missing) {
+      const shouldContinue = window.confirm(
+        `ยังมีข้อมูล Passport ขาด ${immigrationStatus.missing} รายการ ต้องการส่งออกต่อหรือไม่?`,
+      );
+
+      if (!shouldContinue) return;
+    }
+
+    try {
+      const response = await axios.get(
+        `${API_URL}/documents/getImmigrationReport`,
+        {
+          params: {
+            month: filters.tm30Month,
+          },
+          responseType: "blob",
+          withCredentials: true,
+        },
+      );
+
+      const downloadUrl = URL.createObjectURL(response.data);
+      const link = document.createElement("a");
+
+      link.href = downloadUrl;
+      link.download = `tm30-${filters.tm30Month}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(downloadUrl);
+      toast.success("ส่งออกไฟล์ ตม. สำเร็จ");
+    } catch (err) {
+      console.error(err);
+      toast.error("ไม่สามารถส่งออกรายงานการจองได้");
+    }
+  };
+
+  useEffect(() => {
+    let ignore = false;
+
+    const getImmigrationReportStatus = async () => {
+      setImmigrationStatusLoading(true);
+
+      try {
+        const response = await axios.get<ImmigrationReportStatus>(
+          `${API_URL}/documents/getImmigrationReportStatus`,
+          {
+            params: {
+              month: filters.tm30Month,
+            },
+            withCredentials: true,
+          },
+        );
+
+        if (!ignore) setImmigrationStatus(response.data);
+      } catch (err) {
+        console.error(err);
+        if (!ignore) {
+          setImmigrationStatus(null);
+          toast.error("ไม่สามารถโหลดสถานะข้อมูล Passport ได้");
+        }
+      } finally {
+        if (!ignore) setImmigrationStatusLoading(false);
+      }
+    };
+
+    getImmigrationReportStatus();
+
+    return () => {
+      ignore = true;
+    };
+  }, [filters.tm30Month]);
+
+  const showMissingImmigrationDetails = () => {
+    if (!immigrationStatus?.missingBookings.length) return;
+
+    toast(
+      immigrationStatus.missingBookings
+        .slice(0, 5)
+        .map((booking) => `${booking.name} (${booking.bookingId})`)
+        .join("\n") +
+        (immigrationStatus.missingBookings.length > 5
+          ? `\nและอีก ${immigrationStatus.missingBookings.length - 5} รายการ`
+          : ""),
+      { duration: 8000 },
+    );
   };
 
   return (
@@ -290,47 +368,15 @@ const Documents = () => {
             สร้างไฟล์ข้อมูลผู้เข้าพักสำหรับส่งสำนักงานตรวจคนเข้าเมือง
           </p>
 
-          <div className="documents__segmentedControl">
-            <button
-              type="button"
-              className={
-                filters.tm30Type === "daily"
-                  ? "documents__segment documents__segment--active"
-                  : "documents__segment"
-              }
-              onClick={() => updateFilter("tm30Type", "daily")}
-            >
-              รายวัน (TM30)
-            </button>
-            <button
-              type="button"
-              className={
-                filters.tm30Type === "guestList"
-                  ? "documents__segment documents__segment--active"
-                  : "documents__segment"
-              }
-              onClick={() => updateFilter("tm30Type", "guestList")}
-            >
-              รายชื่อเข้าพัก
-            </button>
-          </div>
-
           <div className="documents__form">
             <div>
-              <p className="documents__label">วันที่เข้าพัก</p>
+              <p className="documents__label">เดือนเข้าพัก</p>
               <input
-                type="date"
-                value={filters.checkInDate}
-                onChange={(e) => updateFilter("checkInDate", e.target.value)}
+                type="month"
+                value={filters.tm30Month}
+                onChange={(e) => updateFilter("tm30Month", e.target.value)}
                 className="boxInput"
               />
-            </div>
-
-            <div>
-              <p className="documents__label">สัญชาติ</p>
-              {renderSelect(nationalityOptions, filters.nationality, (value) =>
-                updateFilter("nationality", value),
-              )}
             </div>
           </div>
 
@@ -338,15 +384,25 @@ const Documents = () => {
             <div className="documents__statusRow documents__statusRow--success">
               <i className="bx bx-check" />
               <p>
-                ข้อมูลหนังสือเดินทางครบถ้วน
-                <strong>18 / 22 รายการ</strong>
+                {immigrationStatusLoading
+                  ? "กำลังตรวจสอบข้อมูลหนังสือเดินทาง"
+                  : "ข้อมูลหนังสือเดินทางครบถ้วน"}
+                <strong>
+                  {immigrationStatus
+                    ? `${immigrationStatus.complete} / ${immigrationStatus.total} รายการ`
+                    : "- / - รายการ"}
+                </strong>
               </p>
             </div>
-            <div className="documents__statusRow documents__statusRow--warning">
-              <i className="bx bx-error" />
-              <p>ขาดข้อมูล Passport 4 รายการ</p>
-              <button type="button">ดูรายละเอียด</button>
-            </div>
+            {!!immigrationStatus?.missing && (
+              <div className="documents__statusRow documents__statusRow--warning">
+                <i className="bx bx-error" />
+                <p>ขาดข้อมูล Passport {immigrationStatus.missing} รายการ</p>
+                <button type="button" onClick={showMissingImmigrationDetails}>
+                  ดูรายละเอียด
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="documents__actions">
@@ -355,13 +411,7 @@ const Documents = () => {
               icon="bx-download"
               highlight
               className="documents__action documents__action--blue"
-              onClick={() => handleAction("ตม.30", "export")}
-            />
-            <ActionButton
-              text="ดูตัวอย่าง"
-              icon="bx-show"
-              className="documents__action"
-              onClick={() => handleAction("ตม.30", "preview")}
+              onClick={getImmigrationReport}
             />
           </div>
         </div>
@@ -386,21 +436,13 @@ const Documents = () => {
 
           <div className="documents__form">
             <div>
-              <p className="documents__label">ช่วงวันที่</p>
-              <div className="home__dateInputs documents__dateInputs">
-                <input
-                  type="date"
-                  value={filters.from}
-                  onChange={(e) => updateFilter("from", e.target.value)}
-                  className="boxInput home__dateInput"
-                />
-                <input
-                  type="date"
-                  value={filters.to}
-                  onChange={(e) => updateFilter("to", e.target.value)}
-                  className="boxInput home__dateInput"
-                />
-              </div>
+              <p className="documents__label">เดือน</p>
+              <input
+                type="month"
+                value={filters.hotelMonth}
+                onChange={(e) => updateFilter("hotelMonth", e.target.value)}
+                className="boxInput"
+              />
             </div>
 
             <div>
@@ -423,10 +465,7 @@ const Documents = () => {
 
           <div className="documents__hotelStats">
             <div className="documents__hotelStatsHeader">
-              <p>
-                สรุปสถิติ ({formatThaiDate(filters.from)} -{" "}
-                {formatThaiDate(filters.to)})
-              </p>
+              <p>สรุปสถิติ ({formatThaiMonth(filters.hotelMonth)})</p>
               <p>
                 ผู้เข้าพักทั้งหมด <strong>22</strong>
               </p>

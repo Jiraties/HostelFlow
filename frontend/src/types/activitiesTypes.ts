@@ -8,7 +8,10 @@ export type actionType =
   | "MANAGE_ROOM_STAYS"
   | "ADD_TRANSACTION"
   | "CREATE_USER"
-  | "RESET_USER_PASSWORD";
+  | "RESET_USER_PASSWORD"
+  | "UPDATE_USER"
+  | "DEACTIVATE_USER"
+  | "REACTIVATE_USER";
 
 export type TransactionType =
   | "roomCharge"

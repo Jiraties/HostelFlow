@@ -45,12 +45,14 @@ const sanitizeUser = (user: {
   username: string;
   name: string;
   admin: boolean;
+  active?: boolean;
   profilePictureUrl?: string;
 }) => ({
   userId: String(user._id),
   username: user.username,
   name: user.name,
   admin: user.admin,
+  active: user.active !== false,
   profilePictureUrl: user.profilePictureUrl || "/uploads/default.jpg",
 });
 
@@ -63,7 +65,7 @@ export const listUsers = async (req: Request, res: Response) => {
     }
 
     const users = await User.find({})
-      .select("_id username name admin profilePictureUrl")
+      .select("_id username name admin active profilePictureUrl")
       .sort({ username: 1 });
 
     res.status(200).json({ users: users.map(sanitizeUser) });
@@ -100,6 +102,7 @@ export const adminCreateUser = async (req: Request, res: Response) => {
       username,
       password: hashedPassword,
       admin: Boolean(admin),
+      active: true,
       name,
     });
 
@@ -142,7 +145,7 @@ export const resetUserPassword = async (req: Request, res: Response) => {
       userId,
       { $set: { password: hashedPassword } },
       { new: true },
-    ).select("_id username name admin profilePictureUrl");
+    ).select("_id username name admin active profilePictureUrl");
 
     if (!user) {
       return res.status(404).json({
@@ -166,6 +169,110 @@ export const resetUserPassword = async (req: Request, res: Response) => {
   }
 };
 
+export const updateUser = async (req: Request, res: Response) => {
+  try {
+    if (!req.user?.admin) {
+      return res.status(403).json({
+        message: "เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถแก้ไขผู้ใช้ได้",
+      });
+    }
+
+    const { userId } = req.params;
+    const { name, admin, active } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ message: "กรุณาระบุผู้ใช้" });
+    }
+
+    const existingUser = await User.findById(userId);
+    if (!existingUser) {
+      return res.status(404).json({ message: "ไม่พบผู้ใช้" });
+    }
+
+    const isSelf = req.user.userId === userId;
+    if (isSelf && admin === false) {
+      return res.status(400).json({
+        message: "ไม่สามารถถอดสิทธิ์ Admin ของตัวเองได้",
+      });
+    }
+
+    if (isSelf && active === false) {
+      return res.status(400).json({
+        message: "ไม่สามารถปิดใช้งานบัญชีตัวเองได้",
+      });
+    }
+
+    const updates: Partial<{
+      name: string;
+      admin: boolean;
+      active: boolean;
+    }> = {};
+    const changes: Record<string, { before: unknown; after: unknown }> = {};
+
+    if (typeof name === "string") {
+      const trimmedName = name.trim();
+      if (!trimmedName) {
+        return res.status(400).json({ message: "กรุณากรอกชื่อพนักงาน" });
+      }
+
+      if (trimmedName !== existingUser.name) {
+        updates.name = trimmedName;
+        changes.name = { before: existingUser.name, after: trimmedName };
+      }
+    }
+
+    if (typeof admin === "boolean" && admin !== existingUser.admin) {
+      updates.admin = admin;
+      changes.admin = { before: existingUser.admin, after: admin };
+    }
+
+    const existingActive = existingUser.active !== false;
+    if (typeof active === "boolean" && active !== existingActive) {
+      updates.active = active;
+      changes.active = { before: existingActive, after: active };
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(200).json({
+        message: "ไม่มีข้อมูลที่เปลี่ยนแปลง",
+        user: sanitizeUser(existingUser),
+      });
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { $set: updates },
+      { new: true },
+    ).select("_id username name admin active profilePictureUrl");
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: "ไม่พบผู้ใช้" });
+    }
+
+    const action =
+      updates.active === false
+        ? "DEACTIVATE_USER"
+        : updates.active === true
+          ? "REACTIVATE_USER"
+          : "UPDATE_USER";
+
+    await logActivity(req.user.username, action, {
+      changes,
+      summary: {
+        targetUsername: updatedUser.username,
+        targetName: updatedUser.name,
+      },
+    });
+
+    res.status(200).json({
+      message: "อัปเดตผู้ใช้เรียบร้อยแล้ว",
+      user: sanitizeUser(updatedUser),
+    });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+};
+
 export const login = async (
   req: Request,
   res: Response,
@@ -181,6 +288,13 @@ export const login = async (
     const user = await User.findOne({ username });
     if (!user)
       return res.status(401).json({ error: "อีเมลหรือรหัสผ่านไม่ถูกต้อง" });
+
+    if (user.active === false) {
+      logActivity(username, "LOGIN", { success: false });
+      return res.status(403).json({
+        error: "บัญชีผู้ใช้นี้ถูกปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ",
+      });
+    }
 
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) {
@@ -209,9 +323,11 @@ export const login = async (
     res.status(200).json({
       message: "Logged In Successfully.",
       user: {
+        userId: String(user._id),
         username: user.username,
         name: user.name,
         admin: user.admin,
+        active: true,
         profilePictureUrl: user.profilePictureUrl,
       },
     });
@@ -234,9 +350,11 @@ export const me = async (req: Request, res: Response, next: NextFunction) => {
 
     res.status(200).json({
       user: {
+        userId: String(user._id),
         username: user.username,
         name: user.name,
         admin: user.admin,
+        active: user.active !== false,
         profilePictureUrl: user.profilePictureUrl,
       },
       message: "Successfully fetched user info",

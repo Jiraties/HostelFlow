@@ -10,14 +10,11 @@ import { API_URL } from "../config/api";
 import { Modal } from "@mui/material";
 import type { actionType, activity } from "../types/activitiesTypes";
 import CreateNewUser from "../components/CreateNewUser";
+import ManageUser from "../components/ManageUser";
+import { useAuth } from "../context/AuthContext";
+import type { ManagedStaffUser } from "../components/ManageUser";
 
-type StaffUser = {
-  userId: string;
-  username: string;
-  name: string;
-  admin: boolean;
-  profilePictureUrl: string;
-};
+type StaffUser = ManagedStaffUser;
 
 type ActivityStats = {
   totalActions: number;
@@ -41,6 +38,9 @@ const actionMap = {
   ADD_TRANSACTION: { icon: "bx-dollar", text: "เพิ่มรายการใช้จ่าย" },
   CREATE_USER: { icon: "bx-user-plus", text: "สร้างผู้ใช้" },
   RESET_USER_PASSWORD: { icon: "bx-key", text: "เปลี่ยนรหัสผ่าน" },
+  UPDATE_USER: { icon: "bx-user-cog", text: "แก้ไขผู้ใช้" },
+  DEACTIVATE_USER: { icon: "bx-user-x", text: "ปิดใช้งานผู้ใช้" },
+  REACTIVATE_USER: { icon: "bx-user-check", text: "เปิดใช้งานผู้ใช้" },
   LOGIN: { icon: "bx-arrow-in-right-square-half", text: "เข้าสู่ระบบ" },
   LOGOUT: { icon: "bx-arrow-out-right-square-half", text: "ออกจากระบบ" },
 } satisfies Record<actionType, { icon: string; text: string }>;
@@ -63,6 +63,7 @@ const formatDateTime = (date: string | Date) =>
   });
 
 const Manage = () => {
+  const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<StaffUser[]>([]);
   const [activities, setActivities] = useState<activity[]>([]);
   const [stats, setStats] = useState<ActivityStats | null>(null);
@@ -70,12 +71,13 @@ const Manage = () => {
   const [createNewUserIsOpen, setCreateNewUserIsOpen] = useState(false);
   const [creatingUser, setCreatingUser] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [resettingUserId, setResettingUserId] = useState<string | null>(null);
   const [newUserForm, setNewUserForm] = useState<NewUserForm>(emptyNewUserForm);
   const [user, setUser] = useState<StaffUser | null>(null);
-  const [resetPasswords, setResetPasswords] = useState<Record<string, string>>(
-    {},
-  );
+  const [managedUser, setManagedUser] = useState<StaffUser | null>(null);
+  const [savingUserId, setSavingUserId] = useState<string | null>(null);
+  const [resettingPasswordUserId, setResettingPasswordUserId] = useState<
+    string | null
+  >(null);
 
   const fetchManageData = async () => {
     const [usersResponse, activitiesResponse, statsResponse] =
@@ -168,24 +170,35 @@ const Manage = () => {
     }
   };
 
-  const resetPasswordHandler = async (user: StaffUser) => {
-    const password = resetPasswords[user.userId];
-
-    if (!password) {
-      throw new Error("กรุณากรอกรหัสผ่านใหม่");
+  const updateUserHandler = async (
+    user: StaffUser,
+    updates: { name: string; admin: boolean; active: boolean },
+  ) => {
+    setSavingUserId(user.userId);
+    try {
+      const response = await axios.patch(
+        `${API_URL}/auth/users/${user.userId}`,
+        updates,
+        { withCredentials: true },
+      );
+      await fetchManageData();
+      setManagedUser(response.data.user);
+    } finally {
+      setSavingUserId(null);
     }
+  };
 
-    setResettingUserId(user.userId);
+  const resetPasswordHandler = async (user: StaffUser, password: string) => {
+    setResettingPasswordUserId(user.userId);
     try {
       await axios.patch(
         `${API_URL}/auth/users/${user.userId}/password`,
         { password },
         { withCredentials: true },
       );
-      setResetPasswords((prev) => ({ ...prev, [user.userId]: "" }));
       await fetchManageData();
     } finally {
-      setResettingUserId(null);
+      setResettingPasswordUserId(null);
     }
   };
 
@@ -199,9 +212,6 @@ const Manage = () => {
     loading,
     newUserForm,
     resetPasswordHandler,
-    resetPasswords,
-    resettingUserId,
-    setResetPasswords,
     statCards,
     stats,
     updateNewUserForm,
@@ -218,6 +228,29 @@ const Manage = () => {
         onClose={() => setUser(null)}
       >
         <>{user && <ViewActivities userId={user.userId} name={user.name} />}</>
+      </Modal>
+      <Modal
+        open={!!managedUser}
+        className="home__modalCenter"
+        onClose={() => setManagedUser(null)}
+      >
+        <>
+          {managedUser && (
+            <ManageUser
+              user={managedUser}
+              currentUserId={currentUser?.userId}
+              onClose={() => setManagedUser(null)}
+              onSave={(updates) => updateUserHandler(managedUser, updates)}
+              onResetPassword={(password) =>
+                resetPasswordHandler(managedUser, password)
+              }
+              saving={savingUserId === managedUser.userId}
+              resettingPassword={
+                resettingPasswordUserId === managedUser.userId
+              }
+            />
+          )}
+        </>
       </Modal>
       <Modal
         open={createNewUserIsOpen}
@@ -252,7 +285,12 @@ const Manage = () => {
       <section>
         <div className="manage__users">
           {users.map((staffUser) => (
-            <div className="manage__user">
+            <div
+              className={
+                "manage__user" + (!staffUser.active ? " manage__user--inactive" : "")
+              }
+              key={staffUser.userId}
+            >
               <img src={API_URL + staffUser.profilePictureUrl} alt="" />
               <div className="manage__userInfo">
                 <div>
@@ -261,11 +299,18 @@ const Manage = () => {
                     {staffUser.admin && (
                       <span className="settings__adminTag">Admin</span>
                     )}
+                    {!staffUser.active && (
+                      <span className="manage__inactiveTag">Inactive</span>
+                    )}
                   </h3>
                   <p>@{staffUser.username}</p>
                 </div>
                 <div className="manage__userActions">
-                  <ActionButton text="" icon="bx-key" onClick={() => {}} />
+                  <ActionButton
+                    text=""
+                    icon="bx-cog"
+                    onClick={() => setManagedUser(staffUser)}
+                  />
                   <ActionButton
                     text="ประวัติ"
                     icon="bx-history"

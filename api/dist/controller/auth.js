@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.setProfilePicture = exports.logout = exports.me = exports.login = exports.resetUserPassword = exports.adminCreateUser = exports.listUsers = exports.createUser = void 0;
+exports.setProfilePicture = exports.logout = exports.me = exports.login = exports.updateUser = exports.resetUserPassword = exports.adminCreateUser = exports.listUsers = exports.createUser = void 0;
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const user_1 = __importDefault(require("../models/user"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
@@ -37,6 +37,7 @@ const sanitizeUser = (user) => ({
     username: user.username,
     name: user.name,
     admin: user.admin,
+    active: user.active !== false,
     profilePictureUrl: user.profilePictureUrl || "/uploads/default.jpg",
 });
 const listUsers = async (req, res) => {
@@ -47,7 +48,7 @@ const listUsers = async (req, res) => {
             });
         }
         const users = await user_1.default.find({})
-            .select("_id username name admin profilePictureUrl")
+            .select("_id username name admin active profilePictureUrl")
             .sort({ username: 1 });
         res.status(200).json({ users: users.map(sanitizeUser) });
     }
@@ -80,6 +81,7 @@ const adminCreateUser = async (req, res) => {
             username,
             password: hashedPassword,
             admin: Boolean(admin),
+            active: true,
             name,
         });
         await (0, activityServices_1.logActivity)(req.user.username, "CREATE_USER", {
@@ -114,7 +116,7 @@ const resetUserPassword = async (req, res) => {
             });
         }
         const hashedPassword = await bcrypt_1.default.hash(password, 10);
-        const user = await user_1.default.findByIdAndUpdate(userId, { $set: { password: hashedPassword } }, { new: true }).select("_id username name admin profilePictureUrl");
+        const user = await user_1.default.findByIdAndUpdate(userId, { $set: { password: hashedPassword } }, { new: true }).select("_id username name admin active profilePictureUrl");
         if (!user) {
             return res.status(404).json({
                 message: "ไม่พบผู้ใช้",
@@ -136,6 +138,86 @@ const resetUserPassword = async (req, res) => {
     }
 };
 exports.resetUserPassword = resetUserPassword;
+const updateUser = async (req, res) => {
+    try {
+        if (!req.user?.admin) {
+            return res.status(403).json({
+                message: "เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถแก้ไขผู้ใช้ได้",
+            });
+        }
+        const { userId } = req.params;
+        const { name, admin, active } = req.body;
+        if (!userId) {
+            return res.status(400).json({ message: "กรุณาระบุผู้ใช้" });
+        }
+        const existingUser = await user_1.default.findById(userId);
+        if (!existingUser) {
+            return res.status(404).json({ message: "ไม่พบผู้ใช้" });
+        }
+        const isSelf = req.user.userId === userId;
+        if (isSelf && admin === false) {
+            return res.status(400).json({
+                message: "ไม่สามารถถอดสิทธิ์ Admin ของตัวเองได้",
+            });
+        }
+        if (isSelf && active === false) {
+            return res.status(400).json({
+                message: "ไม่สามารถปิดใช้งานบัญชีตัวเองได้",
+            });
+        }
+        const updates = {};
+        const changes = {};
+        if (typeof name === "string") {
+            const trimmedName = name.trim();
+            if (!trimmedName) {
+                return res.status(400).json({ message: "กรุณากรอกชื่อพนักงาน" });
+            }
+            if (trimmedName !== existingUser.name) {
+                updates.name = trimmedName;
+                changes.name = { before: existingUser.name, after: trimmedName };
+            }
+        }
+        if (typeof admin === "boolean" && admin !== existingUser.admin) {
+            updates.admin = admin;
+            changes.admin = { before: existingUser.admin, after: admin };
+        }
+        const existingActive = existingUser.active !== false;
+        if (typeof active === "boolean" && active !== existingActive) {
+            updates.active = active;
+            changes.active = { before: existingActive, after: active };
+        }
+        if (Object.keys(updates).length === 0) {
+            return res.status(200).json({
+                message: "ไม่มีข้อมูลที่เปลี่ยนแปลง",
+                user: sanitizeUser(existingUser),
+            });
+        }
+        const updatedUser = await user_1.default.findByIdAndUpdate(userId, { $set: updates }, { new: true }).select("_id username name admin active profilePictureUrl");
+        if (!updatedUser) {
+            return res.status(404).json({ message: "ไม่พบผู้ใช้" });
+        }
+        const action = updates.active === false
+            ? "DEACTIVATE_USER"
+            : updates.active === true
+                ? "REACTIVATE_USER"
+                : "UPDATE_USER";
+        await (0, activityServices_1.logActivity)(req.user.username, action, {
+            changes,
+            summary: {
+                targetUsername: updatedUser.username,
+                targetName: updatedUser.name,
+            },
+        });
+        res.status(200).json({
+            message: "อัปเดตผู้ใช้เรียบร้อยแล้ว",
+            user: sanitizeUser(updatedUser),
+        });
+    }
+    catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+exports.updateUser = updateUser;
 const login = async (req, res, next) => {
     try {
         console.log("LOGGIN IN! ");
@@ -145,6 +227,12 @@ const login = async (req, res, next) => {
         const user = await user_1.default.findOne({ username });
         if (!user)
             return res.status(401).json({ error: "อีเมลหรือรหัสผ่านไม่ถูกต้อง" });
+        if (user.active === false) {
+            (0, activityServices_1.logActivity)(username, "LOGIN", { success: false });
+            return res.status(403).json({
+                error: "บัญชีผู้ใช้นี้ถูกปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ",
+            });
+        }
         const valid = await bcrypt_1.default.compare(password, user.password);
         if (!valid) {
             (0, activityServices_1.logActivity)(username, "LOGIN", { success: false });
@@ -164,9 +252,11 @@ const login = async (req, res, next) => {
         res.status(200).json({
             message: "Logged In Successfully.",
             user: {
+                userId: String(user._id),
                 username: user.username,
                 name: user.name,
                 admin: user.admin,
+                active: true,
                 profilePictureUrl: user.profilePictureUrl,
             },
         });
@@ -187,9 +277,11 @@ const me = async (req, res, next) => {
             throw new Error("Token authorized but user not found.");
         res.status(200).json({
             user: {
+                userId: String(user._id),
                 username: user.username,
                 name: user.name,
                 admin: user.admin,
+                active: user.active !== false,
                 profilePictureUrl: user.profilePictureUrl,
             },
             message: "Successfully fetched user info",

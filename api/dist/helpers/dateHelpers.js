@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.toInputDate = exports.dateRangeText = void 0;
+exports.formatDateAD = exports.toInputDate = exports.dateRangeText = void 0;
 const dateRangeText = (from, to) => {
     const formatDay = (date) => new Intl.DateTimeFormat("th-TH", { day: "numeric" }).format(date);
     const formatMonth = (date) => new Intl.DateTimeFormat("th-TH", { month: "short" }).format(date);
@@ -19,4 +19,11 @@ const toInputDate = (date) => {
     return `${year}-${month}-${day}`;
 };
 exports.toInputDate = toInputDate;
+const formatDateAD = (date) => {
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+};
+exports.formatDateAD = formatDateAD;
 //# sourceMappingURL=dateHelpers.js.map

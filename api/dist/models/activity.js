@@ -21,6 +21,9 @@ const activitySchema = new mongoose_1.default.Schema({
             "ADD_TRANSACTION",
             "CREATE_USER",
             "RESET_USER_PASSWORD",
+            "UPDATE_USER",
+            "DEACTIVATE_USER",
+            "REACTIVATE_USER",
         ],
     },
     details: {

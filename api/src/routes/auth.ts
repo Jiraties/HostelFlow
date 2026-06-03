@@ -8,6 +8,7 @@ import {
   me,
   resetUserPassword,
   setProfilePicture,
+  updateUser,
 } from "../controller/auth";
 import authMiddleware from "../middleware/authMiddleware";
 import multer from "multer";
@@ -32,6 +33,7 @@ const upload = multer({
 authRouter.post("/createUser", createUser);
 authRouter.get("/users", authMiddleware, listUsers);
 authRouter.post("/admin/createUser", authMiddleware, adminCreateUser);
+authRouter.patch("/users/:userId", authMiddleware, updateUser);
 authRouter.patch("/users/:userId/password", authMiddleware, resetUserPassword);
 authRouter.post("/login", login);
 authRouter.post("/logout", authMiddleware, logout);

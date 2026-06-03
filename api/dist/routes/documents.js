@@ -7,5 +7,7 @@ const express_1 = __importDefault(require("express"));
 const documents_1 = require("../controller/documents");
 const documentsRouter = express_1.default.Router();
 documentsRouter.get("/getBookingsReport", documents_1.getBookingsReport);
+documentsRouter.get("/getImmigrationReport", documents_1.getImmigrationReport);
+documentsRouter.get("/getImmigrationReportStatus", documents_1.getImmigrationReportStatus);
 exports.default = documentsRouter;
 //# sourceMappingURL=documents.js.map

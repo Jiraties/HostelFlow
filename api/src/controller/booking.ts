@@ -577,7 +577,7 @@ const escapeRegex = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export const getMasterBookings = async (req: Request, res: Response) => {
-  const { from, to, name, room, channel } = req.query;
+  const { from, to, name, bookingId, room, channel } = req.query;
 
   if (!from || !to) {
     return res.status(400).json({
@@ -611,6 +611,10 @@ export const getMasterBookings = async (req: Request, res: Response) => {
 
     if (typeof name === "string" && name.trim()) {
       query.name = { $regex: escapeRegex(name.trim()), $options: "i" };
+    }
+
+    if (typeof bookingId === "string" && bookingId.trim()) {
+      query.bookingId = { $regex: escapeRegex(bookingId.trim()), $options: "i" };
     }
 
     if (typeof room === "string" && room.trim()) {

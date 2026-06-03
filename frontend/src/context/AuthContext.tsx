@@ -1,8 +1,10 @@
 import { createContext, useContext, useState } from "react";
 
 interface userType {
+  userId?: string;
   username: string;
   admin: boolean;
+  active?: boolean;
   name: string;
   profilePictureUrl?: string;
 }
