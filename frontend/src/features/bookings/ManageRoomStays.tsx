@@ -3,7 +3,7 @@ import "./ManageRoomStays.css";
 import type { OptionType } from "../../helpers/selectStyling";
 import { customStyles } from "../../helpers/selectStyling";
 import { roomIdOptions } from "../../helpers/options";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ActionButton from "../../components/ActionButton";
 import ModalCloseButton from "../../components/ModalCloseButton";
 import toast from "react-hot-toast";
@@ -28,6 +28,7 @@ const ManageRoomStays = ({
   checkOut,
   onClose,
   onUpdated,
+  onDirtyChange,
 }: {
   initialRoomStays: roomStay[];
   bookingId: string;
@@ -35,6 +36,7 @@ const ManageRoomStays = ({
   checkOut: string | Date;
   onClose?: () => void;
   onUpdated?: (booking: booking) => void;
+  onDirtyChange?: (isDirty: boolean) => void;
 }) => {
   const normalizeDate = (date: string) => {
     if (!date) return "";
@@ -51,15 +53,29 @@ const ManageRoomStays = ({
       to: index === stays.length - 1 ? bookingCheckOut : stay.to,
     }));
 
-  const [roomStays, setRoomStays] = useState<roomStay[]>(() =>
-    applyBookingBoundaries(
-      initialRoomStays.map((stay) => ({
-        ...stay,
-        from: stay.from ? normalizeDate(stay.from) : "",
-        to: stay.to ? normalizeDate(stay.to) : "",
-      })),
-    ),
+  const initialManagedRoomStays = useMemo(
+    () =>
+      applyBookingBoundaries(
+        initialRoomStays.map((stay) => ({
+          ...stay,
+          from: stay.from ? normalizeDate(stay.from) : "",
+          to: stay.to ? normalizeDate(stay.to) : "",
+        })),
+      ),
+    [initialRoomStays, bookingCheckIn, bookingCheckOut],
   );
+
+  const [roomStays, setRoomStays] = useState<roomStay[]>(
+    initialManagedRoomStays,
+  );
+
+  useEffect(() => {
+    onDirtyChange?.(
+      JSON.stringify(roomStays) !== JSON.stringify(initialManagedRoomStays),
+    );
+
+    return () => onDirtyChange?.(false);
+  }, [initialManagedRoomStays, onDirtyChange, roomStays]);
 
   const addEmptyRoomStay = () => {
     if (roomStays.length + 1 > 5)

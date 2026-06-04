@@ -50,10 +50,12 @@ const CheckIn = ({
   booking,
   handleCheckInSuccess,
   onClose,
+  onDirtyChange,
 }: {
   booking: booking;
   handleCheckInSuccess: (booking: booking) => void;
   onClose?: () => void;
+  onDirtyChange?: (isDirty: boolean) => void;
 }) => {
   const roomCharge = roomChargeTransaction(booking);
 
@@ -73,6 +75,34 @@ const CheckIn = ({
   useEffect(() => {
     setReceivedCash(String(roomCharge.amount));
   }, [roomCharge.amount]);
+
+  useEffect(() => {
+    onDirtyChange?.(
+      Boolean(
+        nationality ||
+          passportName ||
+          passportNo ||
+          deposit !== 200 ||
+          unpaidPaymentPaymentMethod !== "Cash" ||
+          confirmedPayment ||
+          roundingAdjustment ||
+          receivedCash !== String(roomCharge.amount),
+      ),
+    );
+
+    return () => onDirtyChange?.(false);
+  }, [
+    confirmedPayment,
+    deposit,
+    nationality,
+    onDirtyChange,
+    passportName,
+    passportNo,
+    receivedCash,
+    roomCharge.amount,
+    roundingAdjustment,
+    unpaidPaymentPaymentMethod,
+  ]);
 
   const formatCurrency = (num: number) =>
     new Intl.NumberFormat("en-US", {

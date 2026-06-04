@@ -1,5 +1,6 @@
 import ActionButton from "../../components/ActionButton";
 import ModalCloseButton from "../../components/ModalCloseButton";
+import UnsavedChangesModal from "../../components/UnsavedChangesModal";
 import axios from "axios";
 import Skeleton from "react-loading-skeleton";
 import ManageRoomStays from "./ManageRoomStays.tsx";
@@ -12,6 +13,7 @@ import { useState, useEffect, useRef } from "react";
 import { API_URL } from "../../config/api.ts";
 import { platformMap } from "../../helpers/maps.ts";
 import { formatBookingDates, isSameDay } from "../../helpers/bookingHelpers.ts";
+import { requestUnsavedModalClose } from "../../helpers/modalGuards.ts";
 import { Modal } from "@mui/material";
 
 import type { booking } from "../../types/bookingTypes";
@@ -67,6 +69,14 @@ const ViewBooking = ({
   const [addTransactionIsOpen, setAddTransactionIsOpen] = useState(false);
   const [cancellationIsOpen, setCancellationIsOpen] = useState(false);
   const [checkInIsOpen, setCheckInIsOpen] = useState(false);
+  const [manageRoomStaysIsDirty, setManageRoomStaysIsDirty] = useState(false);
+  const [editBookingIsDirty, setEditBookingIsDirty] = useState(false);
+  const [addTransactionIsDirty, setAddTransactionIsDirty] = useState(false);
+  const [cancellationIsDirty, setCancellationIsDirty] = useState(false);
+  const [checkInIsDirty, setCheckInIsDirty] = useState(false);
+  const [pendingUnsavedClose, setPendingUnsavedClose] = useState<
+    (() => void) | null
+  >(null);
   const [loading, setLoading] = useState(!booking);
   const [showTransactionOverflowAlert, setShowTransactionOverflowAlert] =
     useState(false);
@@ -414,11 +424,19 @@ const ViewBooking = ({
       <Modal
         open={cancellationIsOpen}
         className="home__modalCenter"
-        onClose={() => setCancellationIsOpen(false)}
+        onClose={() =>
+          requestUnsavedModalClose(
+            cancellationIsDirty,
+            () => setCancellationIsOpen(false),
+            () =>
+              setPendingUnsavedClose(() => () => setCancellationIsOpen(false)),
+          )
+        }
       >
         <Cancellation
           booking={data}
           onClose={() => setCancellationIsOpen(false)}
+          onDirtyChange={setCancellationIsDirty}
           onUpdated={(updatedBooking) => {
             updateBooking(updatedBooking);
             setCancellationIsOpen(false);
@@ -428,11 +446,18 @@ const ViewBooking = ({
       <Modal
         open={checkInIsOpen}
         className="home__modalCenter"
-        onClose={() => setCheckInIsOpen(false)}
+        onClose={() =>
+          requestUnsavedModalClose(
+            checkInIsDirty,
+            () => setCheckInIsOpen(false),
+            () => setPendingUnsavedClose(() => () => setCheckInIsOpen(false)),
+          )
+        }
       >
         <CheckIn
           booking={data}
           onClose={() => setCheckInIsOpen(false)}
+          onDirtyChange={setCheckInIsDirty}
           handleCheckInSuccess={(updatedBooking) => {
             updateBooking(updatedBooking);
             setCheckInIsOpen(false);
@@ -441,13 +466,23 @@ const ViewBooking = ({
       </Modal>
       <Modal
         open={addTransactionIsOpen}
-        onClose={() => setAddTransactionIsOpen(false)}
+        onClose={() =>
+          requestUnsavedModalClose(
+            addTransactionIsDirty,
+            () => setAddTransactionIsOpen(false),
+            () =>
+              setPendingUnsavedClose(
+                () => () => setAddTransactionIsOpen(false),
+              ),
+          )
+        }
         className="home__modalCenter"
       >
         <AddTransaction
           bookingId={data.bookingId}
           guestName={data.name}
           onClose={() => setAddTransactionIsOpen(false)}
+          onDirtyChange={setAddTransactionIsDirty}
           onUpdated={(updatedBooking) => {
             updateBooking(updatedBooking);
             setAddTransactionIsOpen(false);
@@ -456,7 +491,16 @@ const ViewBooking = ({
       </Modal>
       <Modal
         open={manageRoomStaysIsOpen}
-        onClose={() => setManageRoomStaysIsOpen(false)}
+        onClose={() =>
+          requestUnsavedModalClose(
+            manageRoomStaysIsDirty,
+            () => setManageRoomStaysIsOpen(false),
+            () =>
+              setPendingUnsavedClose(
+                () => () => setManageRoomStaysIsOpen(false),
+              ),
+          )
+        }
         className="home__modalCenter"
       >
         <ManageRoomStays
@@ -465,6 +509,7 @@ const ViewBooking = ({
           checkIn={data.checkIn}
           checkOut={data.checkOut}
           onClose={() => setManageRoomStaysIsOpen(false)}
+          onDirtyChange={setManageRoomStaysIsDirty}
           onUpdated={(updatedBooking) => {
             updateBooking(updatedBooking);
             setManageRoomStaysIsOpen(false);
@@ -473,16 +518,37 @@ const ViewBooking = ({
       </Modal>
       <Modal
         open={editBookingIsOpen}
-        onClose={() => setEditBookingIsOpen(false)}
+        onClose={() =>
+          requestUnsavedModalClose(
+            editBookingIsDirty,
+            () => setEditBookingIsOpen(false),
+            () =>
+              setPendingUnsavedClose(() => () => setEditBookingIsOpen(false)),
+          )
+        }
         className="home__modalCenter"
       >
         <AddBooking
           mode="edit"
           editModeBooking={data}
           onClose={() => setEditBookingIsOpen(false)}
+          onDirtyChange={setEditBookingIsDirty}
           onUpdated={(updatedBooking) => {
             updateBooking(updatedBooking);
             setEditBookingIsOpen(false);
+          }}
+        />
+      </Modal>
+      <Modal
+        open={!!pendingUnsavedClose}
+        className="home__modalCenter"
+        onClose={() => setPendingUnsavedClose(null)}
+      >
+        <UnsavedChangesModal
+          onClose={() => setPendingUnsavedClose(null)}
+          onDiscard={() => {
+            pendingUnsavedClose?.();
+            setPendingUnsavedClose(null);
           }}
         />
       </Modal>

@@ -16,6 +16,7 @@ import {
 
 import ActionButton from "../components/ActionButton";
 import AddBooking from "../features/bookings/AddBooking";
+import UnsavedChangesModal from "../components/UnsavedChangesModal";
 import PageHeader from "../components/PageHeader";
 import StatCard from "../features/dashboard/StatCard";
 import { useAuth } from "../context/AuthContext";
@@ -25,6 +26,7 @@ import {
 } from "../helpers/bookingHelpers";
 import { platformMap } from "../helpers/maps";
 import { API_URL } from "../config/api";
+import { requestUnsavedModalClose } from "../helpers/modalGuards";
 
 import type { booking, PlatformId } from "../types/bookingTypes";
 
@@ -244,6 +246,10 @@ const Main = () => {
     null,
   );
   const [addBookingIsOpen, setAddBookingIsOpen] = useState(false);
+  const [addBookingIsDirty, setAddBookingIsDirty] = useState(false);
+  const [pendingUnsavedClose, setPendingUnsavedClose] = useState<
+    (() => void) | null
+  >(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const fullFormattedDate = new Intl.DateTimeFormat("th-TH", {
@@ -377,11 +383,31 @@ const Main = () => {
       <Modal
         open={addBookingIsOpen}
         className="home__modalCenter"
-        onClose={() => setAddBookingIsOpen(false)}
+        onClose={() =>
+          requestUnsavedModalClose(
+            addBookingIsDirty,
+            () => setAddBookingIsOpen(false),
+            () => setPendingUnsavedClose(() => () => setAddBookingIsOpen(false)),
+          )
+        }
       >
         <AddBooking
           appendToBookings={appendToBookings}
           onClose={() => setAddBookingIsOpen(false)}
+          onDirtyChange={setAddBookingIsDirty}
+        />
+      </Modal>
+      <Modal
+        open={!!pendingUnsavedClose}
+        className="home__modalCenter"
+        onClose={() => setPendingUnsavedClose(null)}
+      >
+        <UnsavedChangesModal
+          onClose={() => setPendingUnsavedClose(null)}
+          onDiscard={() => {
+            pendingUnsavedClose?.();
+            setPendingUnsavedClose(null);
+          }}
         />
       </Modal>
 

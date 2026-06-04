@@ -438,6 +438,11 @@
   font-weight: 400;
 }
 
+.viewBooking__actionsLeft {
+  display: flex;
+  gap: 1rem;
+}
+
 .viewBooking__roomStay--dates {
   display: inline-flex;
   border-radius: 0.75rem;

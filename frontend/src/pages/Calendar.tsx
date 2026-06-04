@@ -1,4 +1,5 @@
 import ConfirmationModal from "../components/ConfirmationModal.tsx";
+import UnsavedChangesModal from "../components/UnsavedChangesModal.tsx";
 import ViewBooking from "../features/bookings/ViewBooking";
 import AddBooking from "../features/bookings/AddBooking.tsx";
 import PageHeader from "../components/PageHeader.tsx";
@@ -13,6 +14,7 @@ import { calculateNights } from "../helpers/bookingHelpers";
 import { useLocation } from "react-router";
 import { formatBookingDates } from "../helpers/bookingHelpers";
 import { API_URL } from "../config/api.ts";
+import { requestUnsavedModalClose } from "../helpers/modalGuards";
 import { formatLocalDate, isSameDay } from "../helpers/bookingHelpers";
 // import { dummyBooking } from "./test.tsx";
 
@@ -38,6 +40,10 @@ const Calendar = () => {
   const timelineRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const [addBookingIsOpen, setAddBookingIsOpen] = useState(false);
+  const [addBookingIsDirty, setAddBookingIsDirty] = useState(false);
+  const [pendingUnsavedClose, setPendingUnsavedClose] = useState<
+    (() => void) | null
+  >(null);
   const [addBookingClickInfo, setAddBookingClickInfo] = useState<{
     checkIn: string | null;
     roomId: string | null;
@@ -372,12 +378,32 @@ const Calendar = () => {
       <Modal
         open={addBookingIsOpen}
         className="home__modalCenter"
-        onClose={() => setAddBookingIsOpen(false)}
+        onClose={() =>
+          requestUnsavedModalClose(
+            addBookingIsDirty,
+            () => setAddBookingIsOpen(false),
+            () => setPendingUnsavedClose(() => () => setAddBookingIsOpen(false)),
+          )
+        }
       >
         <AddBooking
           appendToBookings={appendToBookings}
           clickInfo={addBookingClickInfo}
           onClose={() => setAddBookingIsOpen(false)}
+          onDirtyChange={setAddBookingIsDirty}
+        />
+      </Modal>
+      <Modal
+        open={!!pendingUnsavedClose}
+        className="home__modalCenter"
+        onClose={() => setPendingUnsavedClose(null)}
+      >
+        <UnsavedChangesModal
+          onClose={() => setPendingUnsavedClose(null)}
+          onDiscard={() => {
+            pendingUnsavedClose?.();
+            setPendingUnsavedClose(null);
+          }}
         />
       </Modal>
       <PageHeader

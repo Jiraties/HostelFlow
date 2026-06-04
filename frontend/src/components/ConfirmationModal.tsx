@@ -10,10 +10,22 @@ const ConfirmationModal = ({
   booking,
   onClose,
   closeAllModals,
+  variant = "deleteBooking",
+  title,
+  description,
+  confirmText,
+  confirmIcon,
+  onConfirm,
 }: {
-  booking: booking | null;
+  booking?: booking | null;
   onClose?: () => void;
-  closeAllModals: () => void;
+  closeAllModals?: () => void;
+  variant?: "deleteBooking" | "discardChanges";
+  title?: React.ReactNode;
+  description?: string;
+  confirmText?: string;
+  confirmIcon?: string;
+  onConfirm?: () => void;
 }) => {
   const handleRemoveBooking = async () => {
     if (!booking) {
@@ -28,7 +40,7 @@ const ConfirmationModal = ({
         },
       );
       // toast.success("ลบการจองของ " + booking.name + " สำเร็จ");
-      closeAllModals();
+      closeAllModals?.();
     } catch (err: unknown) {
       const message =
         axios.isAxiosError<{ error?: string }>(err) && err.response?.data.error
@@ -39,31 +51,65 @@ const ConfirmationModal = ({
     }
   };
 
+  const isDiscardChanges = variant === "discardChanges";
+  const resolvedTitle =
+    title ||
+    (isDiscardChanges ? (
+      <>
+        คุณแน่ใจหรือไม่ว่าจะออก มีข้อมูลที่<strong>ยังไม่ได้บันทึก</strong>
+      </>
+    ) : (
+      <>
+        คุณแน่ใจหรือไม่ว่าจะ<strong>ลบการจองของ</strong> <br />
+        {booking?.name}?
+      </>
+    ));
+  const resolvedDescription =
+    description ||
+    (isDiscardChanges
+      ? "ถ้าออกตอนนี้ ข้อมูลที่กรอกไว้จะหายไป"
+      : "การลบจะไม่สามารถนำคืนได้");
+  const resolvedConfirmText =
+    confirmText || (isDiscardChanges ? "ออกโดยไม่บันทึก" : "ลบ");
+  const resolvedConfirmIcon =
+    confirmIcon || (isDiscardChanges ? "bx-log-out" : "bx-trash");
+  const confirmHandler = isDiscardChanges
+    ? async () => {
+        onConfirm?.();
+      }
+    : handleRemoveBooking;
+
   return (
     <div className="confirmationModal">
       {onClose && <ModalCloseButton onClick={onClose} />}
       <div className="confirmationModal__text">
-        <h1 className="confirmationModal__headerText">
-          คุณแน่ใจหรือไม่ว่าจะ<strong>ลบการจองของ</strong> <br />
-          {booking?.name}?
-        </h1>
-        <p>การลบจะไม่สามารถนำคืนได้</p>
+        <h1 className="confirmationModal__headerText">{resolvedTitle}</h1>
+        <p>{resolvedDescription}</p>
       </div>
       <div className="confirmationModal__actions">
         <ActionButton
-          text="ลบ"
-          icon="bx-trash"
-          highlight
-          className="confirmationModal__button"
+          text={resolvedConfirmText}
+          icon={resolvedConfirmIcon}
+          highlight={!isDiscardChanges}
+          className={
+            "confirmationModal__button" +
+            (isDiscardChanges
+              ? " confirmationModal__button--destructiveOutline"
+              : "")
+          }
           onClick={() =>
-            toast.promise(handleRemoveBooking(), {
+            toast.promise(confirmHandler(), {
               loading: `กำลังลบการจองของ ${booking?.name || ""}`,
-              success: "ลบการจองของ " + (booking?.name || "") + " สำเร็จ",
+              success: isDiscardChanges
+                ? "ออกจากฟอร์มแล้ว"
+                : "ลบการจองของ " + (booking?.name || "") + " สำเร็จ",
               error: (err) => {
                 if (err.response?.status === 409) {
                   return err.response.data.message;
                 }
-                return "เกิดข้อผิดพลาดในการลบการจอง";
+                return isDiscardChanges
+                  ? "ไม่สามารถออกจากฟอร์มได้"
+                  : "เกิดข้อผิดพลาดในการลบการจอง";
               },
             })
           }

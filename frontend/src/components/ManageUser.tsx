@@ -3,7 +3,9 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import ActionButton from "./ActionButton";
 import ModalCloseButton from "./ModalCloseButton";
+import UnsavedChangesModal from "./UnsavedChangesModal";
 import { API_URL } from "../config/api";
+import { requestUnsavedModalClose } from "../helpers/modalGuards";
 import "../features/bookings/AddBooking.css";
 import "../features/bookings/Cancellation.css";
 import "../features/bookings/ViewBooking.css";
@@ -36,14 +38,7 @@ type ManageUserProps = {
 
 const userStatusText = (user: ManagedStaffUser) => {
   if (!user.active) return "Inactive";
-  if (user.admin) return "Admin";
-  return "Staff";
-};
-
-const userStatusClass = (user: ManagedStaffUser) => {
-  if (!user.active) return "notCheckedIn";
-  if (user.admin) return "checkedIn";
-  return "booked";
+  return "Active";
 };
 
 const EditUserModal = ({
@@ -52,12 +47,14 @@ const EditUserModal = ({
   onClose,
   onSave,
   saving,
+  onDirtyChange,
 }: {
   user: ManagedStaffUser;
   isSelf: boolean;
   onClose: () => void;
   onSave: (updates: UserUpdate) => Promise<void>;
   saving: boolean;
+  onDirtyChange?: (isDirty: boolean) => void;
 }) => {
   const [name, setName] = useState(user.name);
   const [admin, setAdmin] = useState(user.admin);
@@ -68,6 +65,14 @@ const EditUserModal = ({
     setAdmin(user.admin);
     setActive(user.active);
   }, [user]);
+
+  useEffect(() => {
+    onDirtyChange?.(
+      name !== user.name || admin !== user.admin || active !== user.active,
+    );
+
+    return () => onDirtyChange?.(false);
+  }, [active, admin, name, onDirtyChange, user.active, user.admin, user.name]);
 
   const saveHandler = async () => {
     if (!name.trim()) throw new Error("กรุณากรอกชื่อพนักงาน");
@@ -83,7 +88,17 @@ const EditUserModal = ({
   return (
     <form className="addBooking__wrapper manageUserModal">
       <ModalCloseButton onClick={onClose} />
-      <h1 className="addBooking__title">แก้ไขผู้ใช้</h1>
+      <div className="manageUserModal__header">
+        <h1 className="addBooking__title">แก้ไขผู้ใช้</h1>
+        {isSelf && (
+          <div className="manageUser__guardNote">
+            <i className="bx bx-message-bubble-exclamation" />
+            <p>
+              คุณไม่สามารถปิดใช้งานบัญชีตัวเองหรือถอดสิทธิ์ Admin ของตัวเองได้
+            </p>
+          </div>
+        )}
+      </div>
 
       <div className="manageUserModal__form">
         <div>
@@ -156,31 +171,26 @@ const EditUserModal = ({
             </button>
           </div>
         </div>
-
-        {isSelf && (
-          <p className="manageUser__guardNote">
-            คุณไม่สามารถปิดใช้งานบัญชีตัวเองหรือถอดสิทธิ์ Admin ของตัวเองได้
-          </p>
-        )}
       </div>
 
-      <ActionButton
-        text="บันทึก"
-        icon="bx-save"
-        highlight
-        disabled={saving}
-        className="manageUser__fullAction"
-        onClick={() =>
-          toast.promise(saveHandler(), {
-            loading: "กำลังบันทึกข้อมูลผู้ใช้",
-            success: "บันทึกข้อมูลผู้ใช้เรียบร้อยแล้ว",
-            error: (err) =>
-              err.response?.data?.message ||
-              err.message ||
-              "ไม่สามารถบันทึกข้อมูลผู้ใช้ได้",
-          })
-        }
-      />
+      <div className="manageUserModal__actions">
+        <ActionButton
+          text="บันทึก"
+          icon="bx-save"
+          highlight
+          disabled={saving}
+          onClick={() =>
+            toast.promise(saveHandler(), {
+              loading: "กำลังบันทึกข้อมูลผู้ใช้",
+              success: "บันทึกข้อมูลผู้ใช้เรียบร้อยแล้ว",
+              error: (err) =>
+                err.response?.data?.message ||
+                err.message ||
+                "ไม่สามารถบันทึกข้อมูลผู้ใช้ได้",
+            })
+          }
+        />
+      </div>
     </form>
   );
 };
@@ -190,11 +200,13 @@ const ResetPasswordModal = ({
   onClose,
   onResetPassword,
   resettingPassword,
+  onDirtyChange,
 }: {
   user: ManagedStaffUser;
   onClose: () => void;
   onResetPassword: (password: string) => Promise<void>;
   resettingPassword: boolean;
+  onDirtyChange?: (isDirty: boolean) => void;
 }) => {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -203,6 +215,12 @@ const ResetPasswordModal = ({
     setPassword("");
     setConfirmPassword("");
   }, [user]);
+
+  useEffect(() => {
+    onDirtyChange?.(Boolean(password || confirmPassword));
+
+    return () => onDirtyChange?.(false);
+  }, [confirmPassword, onDirtyChange, password]);
 
   const resetPasswordHandler = async () => {
     if (!password) throw new Error("กรุณากรอกรหัสผ่านใหม่");
@@ -218,10 +236,10 @@ const ResetPasswordModal = ({
       <h1 className="addBooking__title">รีเซ็ตรหัสผ่าน</h1>
 
       <div className="manageUserModal__form">
-        <div className="manageUserModal__target">
+        {/* <div className="manageUserModal__target">
           <p>{user.name}</p>
           <span>@{user.username}</span>
-        </div>
+        </div> */}
         <div>
           <p className="addBooking__label">รหัสผ่านใหม่</p>
           <input
@@ -244,23 +262,24 @@ const ResetPasswordModal = ({
         </div>
       </div>
 
-      <ActionButton
-        text="รีเซ็ตรหัสผ่าน"
-        icon="bx-key"
-        highlight
-        disabled={resettingPassword}
-        className="manageUser__fullAction"
-        onClick={() =>
-          toast.promise(resetPasswordHandler(), {
-            loading: "กำลังรีเซ็ตรหัสผ่าน",
-            success: "รีเซ็ตรหัสผ่านเรียบร้อยแล้ว",
-            error: (err) =>
-              err.response?.data?.message ||
-              err.message ||
-              "ไม่สามารถรีเซ็ตรหัสผ่านได้",
-          })
-        }
-      />
+      <div className="manageUserModal__actions">
+        <ActionButton
+          text="รีเซ็ตรหัสผ่าน"
+          icon="bx-key"
+          highlight
+          disabled={resettingPassword}
+          onClick={() =>
+            toast.promise(resetPasswordHandler(), {
+              loading: "กำลังรีเซ็ตรหัสผ่าน",
+              success: "รีเซ็ตรหัสผ่านเรียบร้อยแล้ว",
+              error: (err) =>
+                err.response?.data?.message ||
+                err.message ||
+                "ไม่สามารถรีเซ็ตรหัสผ่านได้",
+            })
+          }
+        />
+      </div>
     </form>
   );
 };
@@ -276,6 +295,11 @@ const ManageUser = ({
 }: ManageUserProps) => {
   const [editModalIsOpen, setEditModalIsOpen] = useState(false);
   const [passwordModalIsOpen, setPasswordModalIsOpen] = useState(false);
+  const [editModalIsDirty, setEditModalIsDirty] = useState(false);
+  const [passwordModalIsDirty, setPasswordModalIsDirty] = useState(false);
+  const [pendingUnsavedClose, setPendingUnsavedClose] = useState<
+    (() => void) | null
+  >(null);
   const isSelf = currentUserId === user.userId;
 
   return (
@@ -284,14 +308,31 @@ const ManageUser = ({
         <ModalCloseButton onClick={onClose} />
         <div className="manageUser__top">
           <div>
-            <h1 className="manageUser__name">
-              {user.name.split(" ").map((word) => (
-                <span key={word}>
-                  {word} <br />
+            <div className="manageUser__nameRow">
+              <h1 className="manageUser__name">
+                {user.name}{" "}
+                {user.admin && (
+                  <span className="settings__adminTag">Admin</span>
+                )}
+              </h1>
+              {isSelf && (
+                <span className="settings__adminTag manageUser__selfTag">
+                  You
                 </span>
-              ))}
-            </h1>
-            <p className="manageUser__username">@{user.username}</p>
+              )}
+            </div>
+            <div className="manageUser__usernameRow">
+              <p className="manageUser__username">@{user.username}</p>
+              <div className="manageUser__activeStatus">
+                <span
+                  className={
+                    "manageUser__activeDot" +
+                    (user.active ? " manageUser__activeDot--active" : "")
+                  }
+                />
+                <p>{userStatusText(user)}</p>
+              </div>
+            </div>
           </div>
           <div className="manageUser__statusArea">
             <img
@@ -299,11 +340,6 @@ const ManageUser = ({
               src={API_URL + user.profilePictureUrl}
               alt=""
             />
-            <div className={"viewBooking__statusBadge " + userStatusClass(user)}>
-              <div className="viewBooking__statusDot" />
-              <p className="viewBooking__statusText">{userStatusText(user)}</p>
-            </div>
-            {isSelf && <span className="manageUser__selfTag">You</span>}
           </div>
         </div>
 
@@ -343,7 +379,10 @@ const ManageUser = ({
                 </div>
                 <i className="bx bx-chevron-right" />
               </button>
-              <button type="button" onClick={() => setPasswordModalIsOpen(true)}>
+              <button
+                type="button"
+                onClick={() => setPasswordModalIsOpen(true)}
+              >
                 <div className="manageUser__actionMain">
                   <i className="bx bx-key viewBooking__bedIcon" />
                   <div>
@@ -361,7 +400,13 @@ const ManageUser = ({
       <Modal
         open={editModalIsOpen}
         className="home__modalCenter"
-        onClose={() => setEditModalIsOpen(false)}
+        onClose={() =>
+          requestUnsavedModalClose(
+            editModalIsDirty,
+            () => setEditModalIsOpen(false),
+            () => setPendingUnsavedClose(() => () => setEditModalIsOpen(false)),
+          )
+        }
       >
         <EditUserModal
           user={user}
@@ -369,19 +414,41 @@ const ManageUser = ({
           onClose={() => setEditModalIsOpen(false)}
           onSave={onSave}
           saving={saving}
+          onDirtyChange={setEditModalIsDirty}
         />
       </Modal>
 
       <Modal
         open={passwordModalIsOpen}
         className="home__modalCenter"
-        onClose={() => setPasswordModalIsOpen(false)}
+        onClose={() =>
+          requestUnsavedModalClose(
+            passwordModalIsDirty,
+            () => setPasswordModalIsOpen(false),
+            () =>
+              setPendingUnsavedClose(() => () => setPasswordModalIsOpen(false)),
+          )
+        }
       >
         <ResetPasswordModal
           user={user}
           onClose={() => setPasswordModalIsOpen(false)}
           onResetPassword={onResetPassword}
           resettingPassword={resettingPassword}
+          onDirtyChange={setPasswordModalIsDirty}
+        />
+      </Modal>
+      <Modal
+        open={!!pendingUnsavedClose}
+        className="home__modalCenter"
+        onClose={() => setPendingUnsavedClose(null)}
+      >
+        <UnsavedChangesModal
+          onClose={() => setPendingUnsavedClose(null)}
+          onDiscard={() => {
+            pendingUnsavedClose?.();
+            setPendingUnsavedClose(null);
+          }}
         />
       </Modal>
     </>

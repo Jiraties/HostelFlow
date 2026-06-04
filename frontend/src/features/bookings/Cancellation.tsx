@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Select, { type SingleValue } from "react-select";
 import axios from "axios";
 import toast from "react-hot-toast";
@@ -36,10 +36,12 @@ const Cancellation = ({
   booking,
   onClose,
   onUpdated,
+  onDirtyChange,
 }: {
   booking: booking;
   onClose?: () => void;
   onUpdated?: (booking: booking) => void;
+  onDirtyChange?: (isDirty: boolean) => void;
 }) => {
   const paidBreakdown = useMemo(() => {
     const breakdown = new Map<string, number>();
@@ -101,6 +103,12 @@ const Cancellation = ({
     cancellationTypeOptions.find(
       (option) => option.value === effectiveCancellationType,
     ) || null;
+
+  useEffect(() => {
+    onDirtyChange?.(cancellationType !== "refundable" || reopenRoom !== true);
+
+    return () => onDirtyChange?.(false);
+  }, [cancellationType, onDirtyChange, reopenRoom]);
 
   const submitHandler = async () => {
     if (submitting) return;

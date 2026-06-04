@@ -21,6 +21,15 @@
   background-color: var(--red);
 }
 
+.confirmationModal__button--destructiveOutline {
+  background-color: #fff;
+  color: #000;
+}
+
+.confirmationModal__button--destructiveOutline i {
+  color: var(--red);
+}
+
 .confirmationModal strong {
   color: var(--red);
   font-weight: 500;

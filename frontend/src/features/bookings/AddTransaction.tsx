@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Select, { type SingleValue } from "react-select";
 import toast from "react-hot-toast";
 import axios from "axios";
@@ -40,11 +40,13 @@ const AddTransaction = ({
   bookingId,
   onClose,
   onUpdated,
+  onDirtyChange,
 }: {
   bookingId: string;
   guestName: string;
   onClose: () => void;
   onUpdated?: (booking: booking) => void;
+  onDirtyChange?: (isDirty: boolean) => void;
 }) => {
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState<AddTransactionFormData>({
@@ -52,6 +54,14 @@ const AddTransaction = ({
     paymentMethod: "",
     amount: "",
   });
+
+  useEffect(() => {
+    onDirtyChange?.(
+      Boolean(formData.type || formData.paymentMethod || formData.amount),
+    );
+
+    return () => onDirtyChange?.(false);
+  }, [formData, onDirtyChange]);
 
   const formDataChangeHandler = (
     field: keyof AddTransactionFormData,

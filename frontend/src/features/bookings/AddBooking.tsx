@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ActionButton from "../../components/ActionButton";
 import ModalCloseButton from "../../components/ModalCloseButton";
 import "./AddBooking.css";
@@ -40,12 +40,14 @@ const AddBooking = ({
   onUpdated,
   onClose,
   clickInfo,
+  onDirtyChange,
 }: {
   mode?: "add" | "edit";
   editModeBooking?: booking;
   appendToBookings?: (booking: booking) => void;
   onUpdated?: (booking: booking) => void;
   onClose?: () => void;
+  onDirtyChange?: (isDirty: boolean) => void;
   clickInfo?: {
     checkIn: string | null;
     roomId: string | null;
@@ -57,7 +59,7 @@ const AddBooking = ({
   const [reminderIsOpen, setReminderIsOpen] = useState(
     mode === "edit" && editModeBooking && editModeBooking?.roomStays.length > 1,
   );
-  const [formData, setFormData] = useState<BookingFormData>(() => {
+  const initialFormData = useMemo<BookingFormData>(() => {
     if (editModeBooking) {
       const roomCharge = editModeBooking.transactions.find(
         (t) => t.type === "roomCharge",
@@ -89,7 +91,14 @@ const AddBooking = ({
       staffUsername: user?.username || "",
       note: "",
     };
-  });
+  }, [clickInfo?.checkIn, clickInfo?.roomId, editModeBooking, user?.username]);
+  const [formData, setFormData] = useState<BookingFormData>(initialFormData);
+
+  useEffect(() => {
+    onDirtyChange?.(JSON.stringify(formData) !== JSON.stringify(initialFormData));
+
+    return () => onDirtyChange?.(false);
+  }, [formData, initialFormData, onDirtyChange]);
 
   const fillDummyData = () => {
     if (submitting) return;

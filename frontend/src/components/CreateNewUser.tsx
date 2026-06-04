@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import ActionButton from "./ActionButton";
 import ModalCloseButton from "./ModalCloseButton";
@@ -19,14 +19,30 @@ const CreateNewUser = ({
   onClose,
   onSubmit,
   submitting,
+  onDirtyChange,
 }: {
   form: NewUserForm;
   onChange: (field: keyof NewUserForm, value: string | boolean) => void;
   onClose: () => void;
   onSubmit: () => Promise<void>;
   submitting: boolean;
+  onDirtyChange?: (isDirty: boolean) => void;
 }) => {
   const [confirmPassword, setConfirmPassword] = useState("");
+
+  useEffect(() => {
+    onDirtyChange?.(
+      Boolean(
+        form.username ||
+          form.name ||
+          form.password ||
+          form.admin ||
+          confirmPassword,
+      ),
+    );
+
+    return () => onDirtyChange?.(false);
+  }, [confirmPassword, form, onDirtyChange]);
 
   const submitHandler = async () => {
     if (form.password !== confirmPassword) {

@@ -11,6 +11,7 @@ import AddBooking from "../features/bookings/AddBooking";
 import toast from "react-hot-toast";
 import ViewBooking from "../features/bookings/ViewBooking";
 import ConfirmationModal from "../components/ConfirmationModal";
+import UnsavedChangesModal from "../components/UnsavedChangesModal";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Modal } from "@mui/material";
@@ -22,6 +23,7 @@ import {
 import { platformOptions, roomIdOptions } from "../helpers/options";
 import { customStyles } from "../helpers/selectStyling";
 import { API_URL } from "../config/api";
+import { requestUnsavedModalClose } from "../helpers/modalGuards";
 
 import type { booking } from "../types/bookingTypes";
 import type { OptionType } from "../helpers/selectStyling";
@@ -77,6 +79,10 @@ const Home = ({ status }: { status: HomeStatus }) => {
   const location = useLocation();
   const isMaster = status === "master";
   const [addBookingIsOpen, setAddBookingIsOpen] = useState(false);
+  const [addBookingIsDirty, setAddBookingIsDirty] = useState(false);
+  const [pendingUnsavedClose, setPendingUnsavedClose] = useState<
+    (() => void) | null
+  >(null);
   const [viewBookingBooking, setViewBookingBooking] = useState<booking | null>(
     null,
   );
@@ -445,11 +451,31 @@ const Home = ({ status }: { status: HomeStatus }) => {
       <Modal
         open={addBookingIsOpen}
         className="home__modalCenter"
-        onClose={() => setAddBookingIsOpen(false)}
+        onClose={() =>
+          requestUnsavedModalClose(
+            addBookingIsDirty,
+            () => setAddBookingIsOpen(false),
+            () => setPendingUnsavedClose(() => () => setAddBookingIsOpen(false)),
+          )
+        }
       >
         <AddBooking
           appendToBookings={appendToBookings}
           onClose={() => setAddBookingIsOpen(false)}
+          onDirtyChange={setAddBookingIsDirty}
+        />
+      </Modal>
+      <Modal
+        open={!!pendingUnsavedClose}
+        className="home__modalCenter"
+        onClose={() => setPendingUnsavedClose(null)}
+      >
+        <UnsavedChangesModal
+          onClose={() => setPendingUnsavedClose(null)}
+          onDiscard={() => {
+            pendingUnsavedClose?.();
+            setPendingUnsavedClose(null);
+          }}
         />
       </Modal>
       <Modal

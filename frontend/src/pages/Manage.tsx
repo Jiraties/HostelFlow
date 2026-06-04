@@ -13,6 +13,8 @@ import CreateNewUser from "../components/CreateNewUser";
 import ManageUser from "../components/ManageUser";
 import { useAuth } from "../context/AuthContext";
 import type { ManagedStaffUser } from "../components/ManageUser";
+import { requestUnsavedModalClose } from "../helpers/modalGuards";
+import UnsavedChangesModal from "../components/UnsavedChangesModal";
 
 type StaffUser = ManagedStaffUser;
 
@@ -69,6 +71,10 @@ const Manage = () => {
   const [stats, setStats] = useState<ActivityStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [createNewUserIsOpen, setCreateNewUserIsOpen] = useState(false);
+  const [createNewUserIsDirty, setCreateNewUserIsDirty] = useState(false);
+  const [pendingUnsavedClose, setPendingUnsavedClose] = useState<
+    (() => void) | null
+  >(null);
   const [creatingUser, setCreatingUser] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [newUserForm, setNewUserForm] = useState<NewUserForm>(emptyNewUserForm);
@@ -255,7 +261,16 @@ const Manage = () => {
       <Modal
         open={createNewUserIsOpen}
         className="home__modalCenter"
-        onClose={() => setCreateNewUserIsOpen(false)}
+        onClose={() =>
+          requestUnsavedModalClose(
+            createNewUserIsDirty,
+            () => setCreateNewUserIsOpen(false),
+            () =>
+              setPendingUnsavedClose(() => () =>
+                setCreateNewUserIsOpen(false),
+              ),
+          )
+        }
       >
         <CreateNewUser
           form={newUserForm}
@@ -263,6 +278,20 @@ const Manage = () => {
           onClose={() => setCreateNewUserIsOpen(false)}
           onSubmit={createUserHandler}
           submitting={creatingUser}
+          onDirtyChange={setCreateNewUserIsDirty}
+        />
+      </Modal>
+      <Modal
+        open={!!pendingUnsavedClose}
+        className="home__modalCenter"
+        onClose={() => setPendingUnsavedClose(null)}
+      >
+        <UnsavedChangesModal
+          onClose={() => setPendingUnsavedClose(null)}
+          onDiscard={() => {
+            pendingUnsavedClose?.();
+            setPendingUnsavedClose(null);
+          }}
         />
       </Modal>
 
