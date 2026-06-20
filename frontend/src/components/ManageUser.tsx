@@ -307,7 +307,7 @@ const ManageUser = ({
       <div className="manageUser__wrapper">
         <ModalCloseButton onClick={onClose} />
         <div className="manageUser__top">
-          <div>
+          <div className="manageUser__nameAndUsername">
             <div className="manageUser__nameRow">
               <h1 className="manageUser__name">
                 {user.name}{" "}
@@ -371,7 +371,7 @@ const ManageUser = ({
             <div className="manageUser__actionPanel">
               <button type="button" onClick={() => setEditModalIsOpen(true)}>
                 <div className="manageUser__actionMain">
-                  <i className="bx bx-user-cog viewBooking__bedIcon" />
+                  <i className="bx bx-cog viewBooking__bedIcon" />
                   <div>
                     <p className="viewBooking__infoText">แก้ไขข้อมูลผู้ใช้</p>
                     <p>{userStatusText(user)}</p>

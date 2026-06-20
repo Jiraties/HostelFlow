@@ -36,6 +36,7 @@ const actionMap = {
   REMOVE_BOOKING: { icon: "bx-trash", text: "ลบ Booking" },
   EDIT_BOOKING: { icon: "bx-edit", text: "แก้ไข Booking" },
   CHECK_IN: { icon: "bx-check-circle", text: "Check-In" },
+  CHECK_OUT: { icon: "bx-door-open", text: "Check-Out" },
   MANAGE_ROOM_STAYS: { icon: "bx-calendar-cog", text: "แก้ช่วงการเข้าพัก" },
   ADD_TRANSACTION: { icon: "bx-dollar", text: "เพิ่มรายการใช้จ่าย" },
   CREATE_USER: { icon: "bx-user-plus", text: "สร้างผู้ใช้" },

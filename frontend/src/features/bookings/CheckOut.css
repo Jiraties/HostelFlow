@@ -1,0 +1,50 @@
+.checkOut__summary {
+  padding: 1rem;
+  border-radius: 1rem;
+  box-shadow: var(--main-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.checkOut__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+.checkOut__section {
+  margin-top: 1.5rem;
+}
+
+.checkOut__deposit {
+  padding: 1rem;
+  border-radius: 1rem;
+  box-shadow: var(--main-shadow);
+}
+
+.checkOut__earlyReminder {
+  background-color: #f4a90012;
+}
+
+.checkOut__earlyReminder i,
+.checkOut__earlyReminder strong {
+  color: #f4a900;
+}
+
+.checkOut__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 2rem;
+}
+
+@media (max-width: 760px) {
+  .checkOut__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .checkOut__actions .home__action {
+    width: 100%;
+    justify-content: center;
+  }
+}

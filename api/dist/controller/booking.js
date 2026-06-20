@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.cancelBooking = exports.getPassportData = exports.addTransaction = exports.manageRoomStays = exports.getBookingById = exports.getMonthCalendar = exports.checkIn = exports.removeBooking = exports.getMasterBookings = exports.getAdminDashboardStats = exports.getTodayBookings = exports.editBooking = exports.newBooking = void 0;
+exports.cancelBooking = exports.getPassportData = exports.addTransaction = exports.manageRoomStays = exports.getBookingById = exports.getMonthCalendar = exports.checkOut = exports.checkIn = exports.removeBooking = exports.getMasterBookings = exports.getAdminDashboardStats = exports.getTodayBookings = exports.editBooking = exports.newBooking = void 0;
 const booking_1 = __importDefault(require("../models/booking"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const crypto_1 = __importDefault(require("crypto"));
@@ -31,8 +31,9 @@ const ADD_TRANSACTION_TYPES = [
 const PAYMENT_METHODS = ["Cash", "Card", "Transfer"];
 const ROOM_BLOCKING_BOOKING_FILTER = {
     $or: [
-        { status: { $ne: "cancelled" } },
+        { status: { $nin: ["cancelled", "checkedOut"] } },
         { "cancellation.roomReleaseStatus": "blocked" },
+        { "checkout.roomReleaseStatus": "blocked" },
     ],
 };
 const BUSINESS_TIME_ZONE = "Asia/Bangkok";
@@ -682,6 +683,124 @@ const checkIn = async (req, res) => {
     }
 };
 exports.checkIn = checkIn;
+const checkOut = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const { depositReturned, releaseRemainingNights = true } = req.body;
+        const checkedOutByStaffUsername = req.user?.username;
+        if (!bookingId)
+            return res.status(400).json({
+                message: "กรุณาแนบข้อมูล bookingId เพื่อดำเนินการ check-out",
+            });
+        if (typeof depositReturned !== "boolean") {
+            return res.status(400).json({
+                error: "INVALID_PAYLOAD",
+                message: "กรุณายืนยันการคืนมัดจำ",
+            });
+        }
+        if (typeof releaseRemainingNights !== "boolean") {
+            return res.status(400).json({
+                error: "INVALID_PAYLOAD",
+                message: "กรุณาระบุสถานะห้องหลัง check-out ให้ถูกต้อง",
+            });
+        }
+        if (!checkedOutByStaffUsername) {
+            return res.status(401).json({
+                error: "NOT_AUTHORIZED",
+                message: "กรุณาเข้าสู่ระบบใหม่",
+            });
+        }
+        const existingBooking = await booking_1.default.findOne({ bookingId });
+        if (!existingBooking) {
+            return res.status(404).json({
+                message: "ไม่พบ booking นี้",
+            });
+        }
+        if (existingBooking.status !== "checkedIn") {
+            return res.status(409).json({
+                message: "สามารถ check-out ได้เฉพาะ booking ที่ check-in แล้ว",
+            });
+        }
+        const depositAmount = existingBooking.transactions
+            .filter((transaction) => transaction.type === "deposit")
+            .reduce((sum, transaction) => sum + transaction.amount, 0);
+        const refundedDepositAmount = existingBooking.transactions
+            .filter((transaction) => transaction.type === "depositRefund")
+            .reduce((sum, transaction) => sum + transaction.amount, 0);
+        const remainingDepositAmount = Math.max(depositAmount - refundedDepositAmount, 0);
+        if (remainingDepositAmount > 0 && !depositReturned) {
+            return res.status(400).json({
+                error: "DEPOSIT_NOT_CONFIRMED",
+                message: "กรุณายืนยันการคืนมัดจำก่อน check-out",
+            });
+        }
+        const { start: todayStart } = getBusinessDayBounds();
+        const checkOutParts = getBusinessDateParts(existingBooking.checkOut);
+        const checkoutDateStart = getBusinessDateStart(checkOutParts.year, checkOutParts.month, checkOutParts.day);
+        const nightsEarly = Math.max(Math.round((checkoutDateStart.getTime() - todayStart.getTime()) / 86400000), 0);
+        const earlyCheckOut = nightsEarly > 0;
+        const roomReleaseStatus = earlyCheckOut && !releaseRemainingNights ? "blocked" : "released";
+        const refundTransactions = remainingDepositAmount > 0
+            ? [
+                {
+                    type: "depositRefund",
+                    paymentMethod: "Cash",
+                    amount: remainingDepositAmount,
+                },
+            ]
+            : [];
+        const updatedBooking = await booking_1.default.findOneAndUpdate({ bookingId, status: "checkedIn" }, {
+            $set: {
+                status: "checkedOut",
+                checkout: {
+                    roomReleaseStatus,
+                    depositRefundAmount: remainingDepositAmount,
+                    checkedOutAt: new Date(),
+                    checkedOutByStaffUsername,
+                    earlyCheckOut,
+                    nightsEarly,
+                },
+            },
+            ...(refundTransactions.length > 0
+                ? {
+                    $push: {
+                        transactions: {
+                            $each: refundTransactions,
+                        },
+                    },
+                }
+                : {}),
+        }, { new: true });
+        if (!updatedBooking) {
+            return res.status(404).json({
+                message: "ไม่พบ booking นี้",
+            });
+        }
+        res.status(200).json({
+            message: "Check-out สำเร็จ",
+            booking: updatedBooking,
+        });
+        (0, activityServices_1.logActivity)(req.user?.username, "CHECK_OUT", {
+            changes: {
+                status: { before: "checkedIn", after: "checkedOut" },
+                transactions: {
+                    before: existingBooking.transactions,
+                    after: updatedBooking.transactions,
+                },
+            },
+            summary: {
+                depositRefundAmount: remainingDepositAmount,
+                roomReleaseStatus,
+                earlyCheckOut,
+                nightsEarly,
+            },
+        }, String(bookingId));
+    }
+    catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+exports.checkOut = checkOut;
 const getMonthCalendar = async (req, res) => {
     try {
         let { year, month } = req.query;

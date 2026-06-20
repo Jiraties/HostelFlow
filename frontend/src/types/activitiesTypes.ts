@@ -5,6 +5,7 @@ export type actionType =
   | "REMOVE_BOOKING"
   | "EDIT_BOOKING"
   | "CHECK_IN"
+  | "CHECK_OUT"
   | "MANAGE_ROOM_STAYS"
   | "ADD_TRANSACTION"
   | "CREATE_USER"

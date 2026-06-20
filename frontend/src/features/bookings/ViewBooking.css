@@ -194,6 +194,10 @@
   color: #facc15;
 }
 
+.viewBooking__earlyCheckOutAction i {
+  color: #facc15;
+}
+
 .released {
   color: var(--text);
 }

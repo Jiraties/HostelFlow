@@ -2,6 +2,7 @@ import express from "express";
 import {
   addTransaction,
   checkIn,
+  checkOut,
   editBooking,
   getAdminDashboardStats,
   getBookingById,
@@ -25,6 +26,7 @@ bookingsRouter.get("/getAdminDashboardStats", getAdminDashboardStats);
 bookingsRouter.get("/getMasterBookings", getMasterBookings);
 bookingsRouter.delete("/removeBooking/:bookingId", removeBooking);
 bookingsRouter.put("/checkIn/:bookingId", checkIn);
+bookingsRouter.patch("/checkOut/:bookingId", checkOut);
 bookingsRouter.patch("/manageRoomStays/:bookingId", manageRoomStays);
 bookingsRouter.patch("/cancelBooking/:bookingId", cancelBooking);
 bookingsRouter.get("/getMonthCalendar", getMonthCalendar);

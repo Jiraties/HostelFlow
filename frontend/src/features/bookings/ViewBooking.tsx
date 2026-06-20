@@ -8,6 +8,7 @@ import AddTransaction from "./AddTransaction.tsx";
 import AddBooking from "./AddBooking.tsx";
 import PassportView from "./PassportView.tsx";
 import CheckIn from "./CheckIn.tsx";
+import CheckOut from "./CheckOut.tsx";
 
 import { useState, useEffect, useRef } from "react";
 import { API_URL } from "../../config/api.ts";
@@ -69,11 +70,13 @@ const ViewBooking = ({
   const [addTransactionIsOpen, setAddTransactionIsOpen] = useState(false);
   const [cancellationIsOpen, setCancellationIsOpen] = useState(false);
   const [checkInIsOpen, setCheckInIsOpen] = useState(false);
+  const [checkOutIsOpen, setCheckOutIsOpen] = useState(false);
   const [manageRoomStaysIsDirty, setManageRoomStaysIsDirty] = useState(false);
   const [editBookingIsDirty, setEditBookingIsDirty] = useState(false);
   const [addTransactionIsDirty, setAddTransactionIsDirty] = useState(false);
   const [cancellationIsDirty, setCancellationIsDirty] = useState(false);
   const [checkInIsDirty, setCheckInIsDirty] = useState(false);
+  const [checkOutIsDirty, setCheckOutIsDirty] = useState(false);
   const [pendingUnsavedClose, setPendingUnsavedClose] = useState<
     (() => void) | null
   >(null);
@@ -251,13 +254,33 @@ const ViewBooking = ({
 
   const today = new Date();
   const checkInDate = new Date(data.checkIn);
-  const checkInIsBeforeToday =
-    new Date(
-      checkInDate.getFullYear(),
-      checkInDate.getMonth(),
-      checkInDate.getDate(),
-    ) < new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const isLateCheckIn = data.status === "booked" && checkInIsBeforeToday;
+  const checkOutDate = new Date(data.checkOut);
+  const todayDateOnly = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate(),
+  );
+  const checkInDateOnly = new Date(
+    checkInDate.getFullYear(),
+    checkInDate.getMonth(),
+    checkInDate.getDate(),
+  );
+  const checkOutDateOnly = new Date(
+    checkOutDate.getFullYear(),
+    checkOutDate.getMonth(),
+    checkOutDate.getDate(),
+  );
+  const checkInIsBeforeToday = checkInDateOnly < todayDateOnly;
+  const nightsLate = Math.max(
+    Math.round((todayDateOnly.getTime() - checkInDateOnly.getTime()) / 86400000),
+    0,
+  );
+  const isPastCheckOutDate = todayDateOnly > checkOutDateOnly;
+  const isLateCheckIn =
+    data.status === "booked" && checkInIsBeforeToday && !isPastCheckOutDate;
+  const isNoShow = data.status === "booked" && isPastCheckOutDate;
+  const isEarlyCheckOut =
+    data.status === "checkedIn" && todayDateOnly < checkOutDateOnly;
 
   const statusDeterminer = (status: string, usedFor: string) => {
     const checkInIsToday = isSameDay(today, checkInDate);
@@ -456,11 +479,35 @@ const ViewBooking = ({
       >
         <CheckIn
           booking={data}
+          isLateCheckIn={isLateCheckIn}
+          nightsLate={nightsLate}
           onClose={() => setCheckInIsOpen(false)}
           onDirtyChange={setCheckInIsDirty}
           handleCheckInSuccess={(updatedBooking) => {
             updateBooking(updatedBooking);
             setCheckInIsOpen(false);
+          }}
+        />
+      </Modal>
+      <Modal
+        open={checkOutIsOpen}
+        className="home__modalCenter"
+        onClose={() =>
+          requestUnsavedModalClose(
+            checkOutIsDirty,
+            () => setCheckOutIsOpen(false),
+            () => setPendingUnsavedClose(() => () => setCheckOutIsOpen(false)),
+          )
+        }
+      >
+        <CheckOut
+          booking={data}
+          isEarlyCheckOut={isEarlyCheckOut}
+          onClose={() => setCheckOutIsOpen(false)}
+          onDirtyChange={setCheckOutIsDirty}
+          handleCheckOutSuccess={(updatedBooking) => {
+            updateBooking(updatedBooking);
+            setCheckOutIsOpen(false);
           }}
         />
       </Modal>
@@ -826,7 +873,7 @@ const ViewBooking = ({
             )}
           </div>
           <div className="viewBooking__actionsRow">
-            {data.status === "booked" && (
+            {data.status === "booked" && !isNoShow && (
               <ActionButton
                 text={isLateCheckIn ? "Late Check In" : "Check In"}
                 onClick={() => setCheckInIsOpen(true)}
@@ -837,20 +884,23 @@ const ViewBooking = ({
                 highlight={!isLateCheckIn}
               />
             )}
-            {isLateCheckIn && (
+            {(isLateCheckIn || isNoShow) && (
               <ActionButton
                 text="No-Show"
                 className="viewBooking__noShowAction"
-                onClick={() => setCheckInIsOpen(true)}
+                onClick={() => {}}
                 icon="bx-x"
               />
             )}
             {data.status === "checkedIn" && (
               <ActionButton
-                text="Check Out"
-                onClick={() => setCheckInIsOpen(true)}
+                text={isEarlyCheckOut ? "Early Check Out" : "Check Out"}
+                onClick={() => setCheckOutIsOpen(true)}
                 icon="bx-door-open"
-                highlight
+                className={
+                  isEarlyCheckOut ? "viewBooking__earlyCheckOutAction" : ""
+                }
+                highlight={!isEarlyCheckOut}
               />
             )}
           </div>{" "}

@@ -7,6 +7,7 @@ export type actionType =
   | "REMOVE_BOOKING"
   | "EDIT_BOOKING"
   | "CHECK_IN"
+  | "CHECK_OUT"
   | "MANAGE_ROOM_STAYS"
   | "ADD_TRANSACTION"
   | "CREATE_USER"
@@ -31,6 +32,7 @@ export type activity =
         | "REMOVE_BOOKING"
         | "EDIT_BOOKING"
         | "CHECK_IN"
+        | "CHECK_OUT"
         | "MANAGE_ROOM_STAYS"
         | "ADD_TRANSACTION"
         | "CREATE_USER"
@@ -69,6 +71,7 @@ const activitySchema = new mongoose.Schema({
       "REMOVE_BOOKING",
       "EDIT_BOOKING",
       "CHECK_IN",
+      "CHECK_OUT",
       "MANAGE_ROOM_STAYS",
       "ADD_TRANSACTION",
       "CREATE_USER",

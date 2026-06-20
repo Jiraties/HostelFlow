@@ -12,6 +12,7 @@ import type { OptionType } from "../../helpers/selectStyling";
 import axios from "axios";
 import toast from "react-hot-toast";
 import { API_URL } from "../../config/api";
+import "./CheckOut.css";
 
 countries.registerLocale(en);
 
@@ -48,11 +49,15 @@ type CheckInPayload = {
 
 const CheckIn = ({
   booking,
+  isLateCheckIn,
+  nightsLate,
   handleCheckInSuccess,
   onClose,
   onDirtyChange,
 }: {
   booking: booking;
+  isLateCheckIn?: boolean;
+  nightsLate?: number;
   handleCheckInSuccess: (booking: booking) => void;
   onClose?: () => void;
   onDirtyChange?: (isDirty: boolean) => void;
@@ -190,6 +195,15 @@ const CheckIn = ({
       <div>
         <div className="checkIn__header">
           <h1 className="checkIn__title">เช็คอิน {booking.name}</h1>
+          {isLateCheckIn && (
+            <div className="checkIn__reminder checkOut__earlyReminder">
+              <i className="bx bx-message-bubble-exclamation" />
+              <p>
+                ลูกค้าดังกล่าวเช็คอินล่าช้า{" "}
+                <strong>{nightsLate || 0} คืน</strong>
+              </p>
+            </div>
+          )}
           {roomCharge.paymentMethod === "Unpaid" && (
             <div className="checkIn__reminder">
               <i className="bx bx-message-bubble-exclamation" />
@@ -363,7 +377,7 @@ const CheckIn = ({
                 </div>
 
                 <label className="checkbox">
-                  ยืนยันการทำรายการ
+                  ยืนยันรับเงิน
                   <input
                     type="checkbox"
                     checked={confirmedPayment}

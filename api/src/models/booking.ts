@@ -57,6 +57,15 @@ interface Cancellation {
   cancelledByStaffUsername: string;
 }
 
+interface Checkout {
+  roomReleaseStatus: RoomReleaseStatus;
+  depositRefundAmount: number;
+  checkedOutAt: Date;
+  checkedOutByStaffUsername: string;
+  earlyCheckOut: boolean;
+  nightsEarly: number;
+}
+
 // export interface booking extends Document {
 //   name: string;
 //   checkIn: Date;
@@ -94,6 +103,7 @@ export interface booking extends Document {
 
   passport?: Passport;
   cancellation?: Cancellation;
+  checkout?: Checkout;
   note?: string;
 }
 
@@ -168,6 +178,22 @@ const cancellationSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const checkoutSchema = new mongoose.Schema(
+  {
+    roomReleaseStatus: {
+      type: String,
+      enum: ["released", "blocked"],
+      required: true,
+    },
+    depositRefundAmount: { type: Number, default: 0 },
+    checkedOutAt: { type: Date, required: true },
+    checkedOutByStaffUsername: { type: String, required: true },
+    earlyCheckOut: { type: Boolean, default: false },
+    nightsEarly: { type: Number, default: 0 },
+  },
+  { _id: false },
+);
+
 const bookingSchema = new mongoose.Schema({
   name: { type: String },
 
@@ -208,6 +234,8 @@ const bookingSchema = new mongoose.Schema({
   },
 
   cancellation: cancellationSchema,
+
+  checkout: checkoutSchema,
 });
 
 export default mongoose.model<booking>("Booking", bookingSchema);

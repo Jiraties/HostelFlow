@@ -69,6 +69,18 @@ const cancellationSchema = new mongoose_1.default.Schema({
     cancelledAt: { type: Date, required: true },
     cancelledByStaffUsername: { type: String, required: true },
 }, { _id: false });
+const checkoutSchema = new mongoose_1.default.Schema({
+    roomReleaseStatus: {
+        type: String,
+        enum: ["released", "blocked"],
+        required: true,
+    },
+    depositRefundAmount: { type: Number, default: 0 },
+    checkedOutAt: { type: Date, required: true },
+    checkedOutByStaffUsername: { type: String, required: true },
+    earlyCheckOut: { type: Boolean, default: false },
+    nightsEarly: { type: Number, default: 0 },
+}, { _id: false });
 const bookingSchema = new mongoose_1.default.Schema({
     name: { type: String },
     roomStays: [roomStaySchema],
@@ -101,6 +113,7 @@ const bookingSchema = new mongoose_1.default.Schema({
         },
     },
     cancellation: cancellationSchema,
+    checkout: checkoutSchema,
 });
 exports.default = mongoose_1.default.model("Booking", bookingSchema);
 //# sourceMappingURL=booking.js.map

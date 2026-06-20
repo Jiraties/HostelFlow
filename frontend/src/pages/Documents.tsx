@@ -248,21 +248,6 @@ const Documents = () => {
     };
   }, [filters.tm30Month]);
 
-  const showMissingImmigrationDetails = () => {
-    if (!immigrationStatus?.missingBookings.length) return;
-
-    toast(
-      immigrationStatus.missingBookings
-        .slice(0, 5)
-        .map((booking) => `${booking.name} (${booking.bookingId})`)
-        .join("\n") +
-        (immigrationStatus.missingBookings.length > 5
-          ? `\nและอีก ${immigrationStatus.missingBookings.length - 5} รายการ`
-          : ""),
-      { duration: 8000 },
-    );
-  };
-
   return (
     <main className="home">
       <PageHeader
@@ -398,9 +383,6 @@ const Documents = () => {
               <div className="documents__statusRow documents__statusRow--warning">
                 <i className="bx bx-error" />
                 <p>ขาดข้อมูล Passport {immigrationStatus.missing} รายการ</p>
-                <button type="button" onClick={showMissingImmigrationDetails}>
-                  ดูรายละเอียด
-                </button>
               </div>
             )}
           </div>
