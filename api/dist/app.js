@@ -13,6 +13,7 @@ const authMiddleware_1 = __importDefault(require("./middleware/authMiddleware"))
 const bookings_1 = __importDefault(require("./routes/bookings"));
 const activities_1 = __importDefault(require("./routes/activities"));
 const documents_1 = __importDefault(require("./routes/documents"));
+const finance_1 = __importDefault(require("./routes/finance"));
 const path_1 = __importDefault(require("path"));
 dotenv_1.default.config();
 const app = (0, express_1.default)();
@@ -49,6 +50,7 @@ app.use("/auth", auth_1.default);
 app.use("/bookings", authMiddleware_1.default, bookings_1.default);
 app.use("/documents", authMiddleware_1.default, documents_1.default);
 app.use("/activities", authMiddleware_1.default, activities_1.default);
+app.use("/finance", authMiddleware_1.default, finance_1.default);
 mongoose_1.default
     .connect(process.env.MONGO_URI || "")
     .then(() => console.log("Connected To MongoDB"))

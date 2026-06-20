@@ -82,7 +82,191 @@
   color: #b91c1c;
   background-color: #fee2e2;
   font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.manage__sectionHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+}
+
+.manage__sectionHeader > div {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.manage__sectionHeader i {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background-color: color-mix(in srgb, var(--primary-color) 14%, #fff);
+  color: var(--primary-color);
+  font-size: 1.4rem;
+}
+
+.manage__sectionHeader h2,
+.manage__sectionHeader p {
+  margin: 0;
+}
+
+.manage__sectionHeader p {
+  color: #777;
+  font-size: 0.9rem;
+}
+
+.manage__dateInput {
+  max-width: 12rem;
+}
+
+.manage__finance {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.25rem;
+  border-radius: 2rem;
+  background-color: var(--background);
+  box-shadow: var(--main-shadow);
+}
+
+.manage__financeHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 0 0 auto;
+}
+
+.manage__financeHeaderActions span {
+  display: grid;
+  place-items: center;
+  min-width: 2rem;
+  height: 2rem;
+  padding: 0 0.65rem;
+  border-radius: 2rem;
+  background-color: var(--light-background);
+  color: var(--text);
+  box-sizing: border-box;
+}
+
+.manage__financeGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(24rem, 1.15fr);
+  gap: 1rem;
+}
+
+.manage__financePanel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  min-width: 0;
+  padding: 1.25rem;
+  border-radius: 1.5rem;
+  background-color: var(--background);
+  box-shadow: var(--light-shadow);
+  box-sizing: border-box;
+}
+
+.manage__financePanel h3 {
   font-weight: 600;
+  margin: 0;
+}
+
+.manage__financePanel strong {
+  font-weight: 500;
+}
+
+.manage__financePanelHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+}
+
+.manage__financePanelHeader span {
+  display: grid;
+  place-items: center;
+  min-width: 2rem;
+  height: 2rem;
+  padding: 0 0.45rem;
+  border-radius: 2rem;
+  background-color: var(--light-background);
+}
+
+.manage__financeStatsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.manage__financeStatsGrid div {
+  min-width: 0;
+}
+
+.manage__financeStatsGrid p {
+  margin: 0 0 0.3rem;
+  color: #777777;
+  font-size: 0.9rem;
+}
+
+.manage__financeStatsGrid strong {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 1.45rem;
+  font-weight: 500;
+}
+
+.manage__reviewList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.manage__reviewItem {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid #eee;
+}
+
+.manage__reviewItem:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.manage__reviewItem strong,
+.manage__reviewItem p {
+  margin: 0;
+}
+
+.manage__reviewItem p {
+  color: #777;
+  font-size: 0.85rem;
+}
+
+.manage__negative {
+  color: #dc2626;
+}
+
+.manage__dailyCloseList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.manage__dailyCloseList span {
+  padding: 0.3rem 0.6rem;
+  border-radius: 999rem;
+  /* background-color: var(--light-background); */
+  color: #555;
+  font-size: 0.85rem;
 }
 
 @media (max-width: 760px) {
@@ -118,5 +302,36 @@
     gap: 0.5rem;
     justify-content: flex-start;
     flex-wrap: wrap;
+  }
+
+  .manage__finance {
+    padding: 1rem;
+    border-radius: 1.35rem;
+  }
+
+  .manage__sectionHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .manage__dateInput {
+    max-width: none;
+  }
+
+  .manage__financeHeaderActions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .manage__financeGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .manage__financePanel {
+    padding: 1rem;
+  }
+
+  .manage__financeStatsGrid {
+    grid-template-columns: 1fr;
   }
 }

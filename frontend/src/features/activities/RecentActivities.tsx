@@ -16,6 +16,7 @@ const actionMap = {
   EDIT_BOOKING: { icon: "bx-edit", text: "แก้ไข Booking" },
   CHECK_IN: { icon: "bx-check-circle", text: "Check-In" },
   CHECK_OUT: { icon: "bx-door-open", text: "Check-Out" },
+  CANCEL_BOOKING: { icon: "bx-calendar-x", text: "ยกเลิก Booking" },
   MANAGE_ROOM_STAYS: {
     icon: "bx-calendar-cog",
     text: "แก้ช่วงการเข้าพัก",
@@ -51,6 +52,10 @@ const actionMap = {
   LOGIN: {
     icon: "bx-arrow-in-right-square-half",
     text: "เข้าสู่ระบบ",
+  },
+  DAILY_CLOSE: {
+    icon: "bx-cash",
+    text: "ปิดยอดเงินสด",
   },
 } satisfies Record<activity["action"], { icon: string; text: string }>;
 

@@ -411,7 +411,10 @@ const CheckIn = ({
             toast.promise(checkInHandler(), {
               loading: `กำลังเช็คอิน ${booking.name}`,
               success: `เช็คอิน ${booking.name} สำเร็จ`,
-              error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง",
+              error: (err) =>
+                err.response?.data?.message ||
+                err.message ||
+                "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง",
             })
           }
           className="checkIn__confirmAction"

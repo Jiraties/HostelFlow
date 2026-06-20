@@ -8,6 +8,7 @@ import authMiddleware from "./middleware/authMiddleware";
 import bookingsRouter from "./routes/bookings";
 import activitiesRouter from "./routes/activities";
 import documentsRouter from "./routes/documents";
+import financeRouter from "./routes/finance";
 import path from "path";
 
 dotenv.config();
@@ -59,6 +60,7 @@ app.use("/auth", authRouter);
 app.use("/bookings", authMiddleware, bookingsRouter);
 app.use("/documents", authMiddleware, documentsRouter);
 app.use("/activities", authMiddleware, activitiesRouter);
+app.use("/finance", authMiddleware, financeRouter);
 
 mongoose
   .connect(process.env.MONGO_URI || "")

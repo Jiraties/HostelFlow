@@ -272,7 +272,9 @@ const ViewBooking = ({
   );
   const checkInIsBeforeToday = checkInDateOnly < todayDateOnly;
   const nightsLate = Math.max(
-    Math.round((todayDateOnly.getTime() - checkInDateOnly.getTime()) / 86400000),
+    Math.round(
+      (todayDateOnly.getTime() - checkInDateOnly.getTime()) / 86400000,
+    ),
     0,
   );
   const isPastCheckOutDate = todayDateOnly > checkOutDateOnly;
@@ -327,7 +329,8 @@ const ViewBooking = ({
     transaction: booking["transactions"][number],
   ) => {
     const amountText = transaction.amount.toLocaleString("th-TH");
-    return transaction.type === "depositRefund" ||
+    return transaction.direction === "out" ||
+      transaction.type === "depositRefund" ||
       transaction.type === "cancellationRefund"
       ? `-${amountText} บาท`
       : `${amountText} บาท`;
@@ -336,7 +339,8 @@ const ViewBooking = ({
   const isChildTransaction = (transaction: booking["transactions"][number]) =>
     transaction.type === "cardSurcharge" ||
     transaction.type === "depositRefund" ||
-    transaction.type === "cancellationRefund";
+    transaction.type === "cancellationRefund" ||
+    (transaction.type === "adjustment" && Boolean(transaction.relatedTransactionId));
 
   const groupedTransactions = data.transactions.reduce<
     {
@@ -344,6 +348,23 @@ const ViewBooking = ({
       children: booking["transactions"];
     }[]
   >((groups, transaction) => {
+    if (transaction.type === "adjustment" && transaction.relatedTransactionId) {
+      const linkedGroup = groups.find(
+        (group) =>
+          group.transaction._id === transaction.relatedTransactionId ||
+          group.children.some(
+            (child) => child._id === transaction.relatedTransactionId,
+          ),
+      );
+
+      if (linkedGroup) {
+        linkedGroup.children.push(transaction);
+      } else {
+        groups.push({ transaction, children: [] });
+      }
+      return groups;
+    }
+
     if (transaction.type === "cardSurcharge") {
       const lastGroup = groups[groups.length - 1];
 
@@ -414,6 +435,37 @@ const ViewBooking = ({
     </div>
   );
 
+  const renderReviewMeta = (transaction: booking["transactions"][number]) => {
+    const hasReviewFlag =
+      transaction.reviewStatus === "needs_review" ||
+      Boolean(transaction.reviewFlags?.length);
+    const linkedTransaction = transaction.relatedTransactionId
+      ? data.transactions.find(
+          (existingTransaction) =>
+            existingTransaction._id === transaction.relatedTransactionId,
+        )
+      : null;
+
+    const shouldShowNote = transaction.type !== "adjustment" && transaction.note;
+
+    if (!hasReviewFlag && !shouldShowNote && !linkedTransaction) return null;
+
+    return (
+      <div className="viewBooking__transactionMeta">
+        {hasReviewFlag && (
+          <span className="viewBooking__reviewBadge">รอ Admin ตรวจสอบ</span>
+        )}
+        {linkedTransaction && (
+          <span>
+            ปรับจาก {transactionMap[linkedTransaction.type].name} ·{" "}
+            {formatTransactionAmount(linkedTransaction)}
+          </span>
+        )}
+        {shouldShowNote && <span>{transaction.note}</span>}
+      </div>
+    );
+  };
+
   const renderChildTransaction = (
     transaction: booking["transactions"][number],
     index: number,
@@ -429,6 +481,7 @@ const ViewBooking = ({
             {formatTransactionAmount(transaction)}
           </p>
           <p>{transactionMap[transaction.type].name}</p>
+          {renderReviewMeta(transaction)}
         </div>
       </div>
       {renderPaymentMethod(transaction)}
@@ -528,6 +581,7 @@ const ViewBooking = ({
         <AddTransaction
           bookingId={data.bookingId}
           guestName={data.name}
+          transactions={data.transactions}
           onClose={() => setAddTransactionIsOpen(false)}
           onDirtyChange={setAddTransactionIsDirty}
           onUpdated={(updatedBooking) => {
@@ -762,6 +816,7 @@ const ViewBooking = ({
                                   {formatTransactionAmount(transaction)}
                                 </p>
                                 <p>{transactionMap[transaction.type].name}</p>
+                                {renderReviewMeta(transaction)}
                               </div>
                             </div>
                             {renderPaymentMethod(transaction)}

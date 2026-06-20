@@ -1,6 +1,8 @@
 export type PlatformId = "BOOK" | "HOST" | "TRAV" | "AGOD" | "WALK";
 type PaymentMethod = "OTA" | "Cash" | "Card" | "Transfer" | "Unpaid";
 type Status = "booked" | "checkedIn" | "checkedOut" | "cancelled";
+type TransactionDirection = "in" | "out" | "neutral";
+type TransactionReviewStatus = "none" | "needs_review" | "reviewed";
 type CancellationType =
   | "refundable"
   | "non_refundable"
@@ -48,11 +50,27 @@ interface Cancellation {
 }
 
 export interface transcation {
+  _id?: string;
   type: TransactionType;
   paymentMethod: PaymentMethod;
   reasonOfAdjustment?: "rounding";
   relatedTransactionType?: Exclude<TransactionType, "cardSurcharge">;
+  relatedTransactionId?: string;
   amount: number;
+  direction?: TransactionDirection;
+  createdBy?: string;
+  createdAt?: string | Date;
+  sourceAction?:
+    | "NEW_BOOKING"
+    | "CHECK_IN"
+    | "CHECK_OUT"
+    | "ADD_TRANSACTION"
+    | "CANCEL_BOOKING"
+    | "SYSTEM_MIGRATION";
+  note?: string;
+  reference?: string;
+  reviewFlags?: string[];
+  reviewStatus?: TransactionReviewStatus;
 }
 
 export interface booking {

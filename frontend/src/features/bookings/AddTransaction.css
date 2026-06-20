@@ -40,6 +40,38 @@
   gap: 1.2rem;
 }
 
+.addTransaction__directionControl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid #eee;
+  border-radius: 0.75rem;
+  background-color: #f7f7f7;
+}
+
+.addTransaction__directionButton {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 2.9rem;
+  border: 0;
+  background: transparent;
+  color: #666;
+  font: inherit;
+  cursor: pointer;
+}
+
+.addTransaction__directionButton:first-child {
+  border-right: 1px solid #eee;
+}
+
+.addTransaction__directionButton--active {
+  background-color: var(--primary-color);
+  color: #fff;
+  font-weight: 700;
+}
+
 .addTransaction__cardPreview {
   padding: 1rem;
   box-shadow: var(--main-shadow);

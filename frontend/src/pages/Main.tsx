@@ -91,6 +91,43 @@ type AdminDashboardStats = {
   }>;
 };
 
+type FinanceSummary = {
+  cashIn: number;
+  cashOut: number;
+  refunds: number;
+  unpaidBalance: number;
+};
+
+type DailyClose = {
+  businessDate: string;
+  staffUsername: string;
+  openingCash: number;
+  expectedCash: number;
+  actualCash: number;
+  variance: number;
+  cashIn: number;
+  cashOut: number;
+  note?: string;
+  createdAt?: string | Date;
+  staff?: {
+    username: string;
+    name?: string;
+    profilePictureUrl?: string;
+  };
+  closedBy?: {
+    username: string;
+    name?: string;
+    profilePictureUrl?: string;
+  };
+};
+
+type ReconciliationData = {
+  businessDate: string;
+  threshold: number;
+  summary: FinanceSummary;
+  dailyCloses: DailyClose[];
+};
+
 const formatCompactNumber = (value: number) =>
   new Intl.NumberFormat("th-TH", {
     notation: "compact",
@@ -98,6 +135,29 @@ const formatCompactNumber = (value: number) =>
   }).format(value);
 
 const formatCurrency = (value: number) => `${value.toLocaleString("th-TH")} ฿`;
+
+const todayInputValue = () => {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+};
+
+const formatMoney = (value: number) =>
+  value.toLocaleString("th-TH", {
+    minimumFractionDigits: value % 1 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  });
+
+const formatCloseTime = (date?: string | Date) =>
+  date
+    ? new Date(date).toLocaleTimeString("th-TH", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "";
 
 const RevenueLineChart = ({
   series,
@@ -245,6 +305,14 @@ const Main = () => {
   const [adminStats, setAdminStats] = useState<AdminDashboardStats | null>(
     null,
   );
+  const [cashCloseLoading, setCashCloseLoading] = useState(false);
+  const [cashCloseSaving, setCashCloseSaving] = useState(false);
+  const [reconciliation, setReconciliation] =
+    useState<ReconciliationData | null>(null);
+  const [cashCloseDate, setCashCloseDate] = useState(todayInputValue());
+  const [openingCash, setOpeningCash] = useState("0");
+  const [actualCash, setActualCash] = useState("");
+  const [closeNote, setCloseNote] = useState("");
   const [addBookingIsOpen, setAddBookingIsOpen] = useState(false);
   const [addBookingIsDirty, setAddBookingIsDirty] = useState(false);
   const [pendingUnsavedClose, setPendingUnsavedClose] = useState<
@@ -304,10 +372,38 @@ const Main = () => {
     }
   }, [user?.admin]);
 
+  const fetchCashClose = useCallback(async () => {
+    setCashCloseLoading(true);
+    try {
+      const response = await axios.get(`${API_URL}/finance/reconciliation`, {
+        params: { date: cashCloseDate },
+        withCredentials: true,
+      });
+
+      setReconciliation(response.data);
+
+      const ownClose = response.data.dailyCloses?.find(
+        (dailyClose: DailyClose) => dailyClose.staffUsername === user?.username,
+      );
+
+      if (ownClose) {
+        setOpeningCash(String(ownClose.openingCash));
+        setActualCash(String(ownClose.actualCash));
+        setCloseNote(ownClose.note || "");
+      }
+    } catch (err) {
+      setReconciliation(null);
+      toast.error(getFetchErrorMessage(err));
+    } finally {
+      setCashCloseLoading(false);
+    }
+  }, [cashCloseDate, user?.username]);
+
   const refreshDashboard = useCallback(async () => {
     await fetchDailyOps();
     await fetchAdminStats();
-  }, [fetchAdminStats, fetchDailyOps]);
+    await fetchCashClose();
+  }, [fetchAdminStats, fetchCashClose, fetchDailyOps]);
 
   useEffect(() => {
     fetchDailyOps().catch((err) => toast.error(getFetchErrorMessage(err)));
@@ -316,6 +412,54 @@ const Main = () => {
   useEffect(() => {
     fetchAdminStats();
   }, [fetchAdminStats]);
+
+  useEffect(() => {
+    fetchCashClose();
+  }, [fetchCashClose]);
+
+  const expectedCash =
+    Number(openingCash || 0) +
+    (reconciliation?.summary.cashIn || 0) -
+    (reconciliation?.summary.cashOut || 0);
+  const cashVariance =
+    actualCash === "" ? 0 : Number(actualCash || 0) - expectedCash;
+  const cashVarianceNeedsNote =
+    reconciliation && Math.abs(cashVariance) > reconciliation.threshold;
+  const dailyCloseIsComplete = Boolean(
+    reconciliation?.dailyCloses?.some(
+      (dailyClose) => dailyClose.staffUsername === user?.username,
+    ),
+  );
+  const latestDailyClose = reconciliation?.dailyCloses?.[0];
+  const latestDailyClosePerson =
+    latestDailyClose?.closedBy || latestDailyClose?.staff;
+
+  const submitCashClose = async () => {
+    if (actualCash === "") {
+      throw new Error("กรุณากรอกยอดเงินสดที่นับได้");
+    }
+
+    if (cashVarianceNeedsNote && !closeNote.trim()) {
+      throw new Error("กรุณาระบุหมายเหตุเมื่อยอดเงินสดไม่ตรงกัน");
+    }
+
+    setCashCloseSaving(true);
+    try {
+      await axios.post(
+        `${API_URL}/finance/daily-close`,
+        {
+          businessDate: cashCloseDate,
+          openingCash: Number(openingCash || 0),
+          actualCash: Number(actualCash || 0),
+          note: closeNote.trim(),
+        },
+        { withCredentials: true },
+      );
+      await fetchCashClose();
+    } finally {
+      setCashCloseSaving(false);
+    }
+  };
 
   const unpaidArrivals = arrivals.filter(
     (booking) => roomChargeTransaction(booking)?.paymentMethod === "Unpaid",
@@ -387,7 +531,8 @@ const Main = () => {
           requestUnsavedModalClose(
             addBookingIsDirty,
             () => setAddBookingIsOpen(false),
-            () => setPendingUnsavedClose(() => () => setAddBookingIsOpen(false)),
+            () =>
+              setPendingUnsavedClose(() => () => setAddBookingIsOpen(false)),
           )
         }
       >
@@ -447,6 +592,132 @@ const Main = () => {
             <StatCard label={stat.label} value={stat.value} loading={loading} />
           </div>
         ))}
+      </section>
+
+      <section className="main__cashCloseSection">
+        <div className="main__sectionHeader">
+          <div>
+            <i className="bx bx-currency-notes" />
+            <h2>ปิดยอดเงินสด</h2>
+          </div>
+          {latestDailyClose ? (
+            <div className="main__cashCloseStatus">
+              <img
+                src={
+                  API_URL +
+                  (latestDailyClosePerson?.profilePictureUrl ||
+                    "/uploads/default.jpg")
+                }
+                alt=""
+              />
+
+              <span>{formatCloseTime(latestDailyClose.createdAt)}</span>
+              <p>บันทึกแล้ว</p>
+            </div>
+          ) : (
+            <span>วันนี้</span>
+          )}
+        </div>
+
+        <div className="main__cashCloseGrid">
+          <div className="main__cashCloseSummary">
+            <div>
+              <p>รับเงินสด</p>
+              <strong>
+                {cashCloseLoading
+                  ? "-"
+                  : `${formatMoney(reconciliation?.summary.cashIn || 0)} ฿`}
+              </strong>
+            </div>
+            <div>
+              <p>จ่ายเงินสด</p>
+              <strong>
+                {cashCloseLoading
+                  ? "-"
+                  : `${formatMoney(reconciliation?.summary.cashOut || 0)} ฿`}
+              </strong>
+            </div>
+            <div>
+              <p>ยอดเงินสดคาดไว้</p>
+              <strong>{formatMoney(expectedCash)} ฿</strong>
+            </div>
+            <div>
+              <p>ส่วนต่าง</p>
+              <strong
+                className={
+                  cashVariance < 0 ? "main__cashCloseVariance--negative" : ""
+                }
+              >
+                {formatMoney(cashVariance)} ฿
+              </strong>
+            </div>
+          </div>
+
+          <div className="main__cashCloseForm">
+            <label>
+              <span>วันที่</span>
+              <input
+                className="boxInput"
+                type="date"
+                value={cashCloseDate}
+                onChange={(event) => setCashCloseDate(event.target.value)}
+              />
+            </label>
+            <label>
+              <span>เงินสดตั้งต้น</span>
+              <input
+                className="boxInput"
+                type="number"
+                value={openingCash}
+                onChange={(event) => setOpeningCash(event.target.value)}
+              />
+            </label>
+            <label>
+              <span>เงินสดที่นับได้</span>
+              <input
+                className="boxInput"
+                type="number"
+                value={actualCash}
+                placeholder="ยอดในลิ้นชัก"
+                onChange={(event) => setActualCash(event.target.value)}
+              />
+            </label>
+            {cashVarianceNeedsNote && (
+              <label className="main__cashCloseNote">
+                <span>หมายเหตุยอดต่าง</span>
+                <input
+                  className="boxInput"
+                  type="text"
+                  value={closeNote}
+                  placeholder="เช่น เงินทอนตั้งต้นไม่ตรง"
+                  onChange={(event) => setCloseNote(event.target.value)}
+                />
+              </label>
+            )}
+            <ActionButton
+              text={dailyCloseIsComplete ? "อัปเดตปิดยอด" : "ปิดยอด"}
+              icon="bx-save"
+              highlight
+              disabled={cashCloseSaving || cashCloseLoading}
+              onClick={() =>
+                toast.promise(submitCashClose(), {
+                  loading: "กำลังบันทึกปิดยอดเงินสด",
+                  success: "บันทึกปิดยอดเงินสดเรียบร้อย",
+                  error: (err) => {
+                    if (axios.isAxiosError(err)) {
+                      return (
+                        err.response?.data?.message ||
+                        "เกิดข้อผิดพลาดในการบันทึกปิดยอด"
+                      );
+                    }
+                    if (err instanceof Error) return err.message;
+                    return "เกิดข้อผิดพลาดในการบันทึกปิดยอด";
+                  },
+                })
+              }
+            />
+          </div>
+        </div>
       </section>
 
       {user?.admin && (adminStats || adminLoading) && (

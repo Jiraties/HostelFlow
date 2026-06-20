@@ -3,6 +3,15 @@ import mongoose from "mongoose";
 export type PlatformId = "BOOK" | "HOST" | "TRAV" | "AGOD" | "WALK";
 export type PaymentMethod = "OTA" | "Cash" | "Card" | "Transfer" | "Unpaid";
 export type Status = "booked" | "checkedIn" | "checkedOut" | "cancelled";
+export type TransactionDirection = "in" | "out" | "neutral";
+export type TransactionReviewStatus = "none" | "needs_review" | "reviewed";
+export type SourceAction =
+  | "NEW_BOOKING"
+  | "CHECK_IN"
+  | "CHECK_OUT"
+  | "ADD_TRANSACTION"
+  | "CANCEL_BOOKING"
+  | "SYSTEM_MIGRATION";
 export type CancellationType =
   | "refundable"
   | "non_refundable"
@@ -41,11 +50,21 @@ interface Passport {
 }
 
 export interface transcation {
+  _id?: string;
   type: TransactionType;
   paymentMethod: PaymentMethod;
   reasonOfAdjustment?: "rounding";
   relatedTransactionType?: Exclude<TransactionType, "cardSurcharge">;
+  relatedTransactionId?: string;
   amount: number;
+  direction?: TransactionDirection;
+  createdBy?: string;
+  createdAt?: Date;
+  sourceAction?: SourceAction;
+  note?: string;
+  reference?: string;
+  reviewFlags?: string[];
+  reviewStatus?: TransactionReviewStatus;
 }
 
 interface Cancellation {
@@ -155,7 +174,34 @@ const transactionSchema = new mongoose.Schema({
     ],
     required: false,
   },
+  relatedTransactionId: { type: String },
   amount: { type: Number },
+  direction: {
+    type: String,
+    enum: ["in", "out", "neutral"],
+    required: false,
+  },
+  createdBy: { type: String },
+  createdAt: { type: Date, default: Date.now },
+  sourceAction: {
+    type: String,
+    enum: [
+      "NEW_BOOKING",
+      "CHECK_IN",
+      "CHECK_OUT",
+      "ADD_TRANSACTION",
+      "CANCEL_BOOKING",
+      "SYSTEM_MIGRATION",
+    ],
+  },
+  note: { type: String },
+  reference: { type: String },
+  reviewFlags: [{ type: String }],
+  reviewStatus: {
+    type: String,
+    enum: ["none", "needs_review", "reviewed"],
+    default: "none",
+  },
 });
 
 const cancellationSchema = new mongoose.Schema(

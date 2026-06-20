@@ -10,6 +10,7 @@ const crypto_1 = __importDefault(require("crypto"));
 const path_1 = __importDefault(require("path"));
 const passportHelpers_1 = require("../helpers/passportHelpers");
 const dateHelpers_1 = require("../helpers/dateHelpers");
+const financeHelpers_1 = require("../helpers/financeHelpers");
 const platformMap = {
     BOOK: { label: "Booking.com", color: "003580" },
     HOST: { label: "Hostelworld", color: "F15A24" },
@@ -59,7 +60,10 @@ const formatInputDate = (date) => {
 };
 const transactionTotal = (transactions, type) => transactions
     .filter((transaction) => !type || transaction.type === type)
-    .reduce((sum, transaction) => sum + (transaction.amount || 0), 0);
+    .reduce((sum, transaction) => sum + (0, financeHelpers_1.transactionSignedAmount)(transaction), 0);
+const roomChargeTotal = (transactions) => transactions
+    .filter((transaction) => transaction.type === "roomCharge")
+    .reduce((sum, transaction) => sum + (0, financeHelpers_1.transactionRevenueAmount)(transaction), 0);
 const immigrationMonthQuery = (month) => {
     if (!/^\d{4}-\d{2}$/.test(month))
         return null;
@@ -183,7 +187,7 @@ const getBookingsReport = async (req, res) => {
                 platformId: platform.label,
                 status: booking.status,
                 rooms: booking.roomStays.map((roomStay) => roomStay.roomId).join(", "),
-                roomCharge: transactionTotal(transactions, "roomCharge"),
+                roomCharge: roomChargeTotal(transactions),
                 total: transactionTotal(transactions),
                 paymentMethods,
                 staffUsername: booking.staffUsername,
@@ -212,7 +216,7 @@ const getBookingsReport = async (req, res) => {
                     status: booking.status,
                     rooms: transactionLabel,
                     roomCharge: "",
-                    total: transaction.amount,
+                    total: (0, financeHelpers_1.transactionSignedAmount)(transaction),
                     paymentMethods: transaction.paymentMethod,
                     staffUsername: booking.staffUsername,
                     note: "",

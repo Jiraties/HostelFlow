@@ -8,6 +8,7 @@ const booking_1 = __importDefault(require("../models/booking"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const crypto_1 = __importDefault(require("crypto"));
 const activityServices_1 = require("../services/activityServices");
+const financeHelpers_1 = require("../helpers/financeHelpers");
 const dateHelpers_1 = require("../helpers/dateHelpers");
 dotenv_1.default.config();
 const TOTAL_GUEST_CAPACITY = 52;
@@ -29,6 +30,15 @@ const ADD_TRANSACTION_TYPES = [
     "extraBed",
 ];
 const PAYMENT_METHODS = ["Cash", "Card", "Transfer"];
+const NEW_BOOKING_PAYMENT_METHODS = [
+    "OTA",
+    "Cash",
+    "Card",
+    "Transfer",
+    "Unpaid",
+];
+const CHECK_IN_PAYMENT_METHODS = ["Cash", "Card", "Transfer"];
+const PLATFORM_IDS = ["BOOK", "HOST", "TRAV", "AGOD", "WALK"];
 const ROOM_BLOCKING_BOOKING_FILTER = {
     $or: [
         { status: { $nin: ["cancelled", "checkedOut"] } },
@@ -89,18 +99,19 @@ const getGuestsInHouse = async (date = new Date()) => {
         }, 0), 0);
 };
 const calculateCardSurcharge = (amount) => Number((amount * CARD_SURCHARGE_RATE).toFixed(2));
-const buildTransactionsWithCardSurcharge = (transaction) => {
-    const transactions = [transaction];
+const buildTransactionsWithCardSurcharge = (transaction, options) => {
+    const transactions = [(0, financeHelpers_1.normalizeTransaction)(transaction, options)];
     if (transaction.paymentMethod === "Card" &&
         transaction.amount > 0 &&
+        (0, financeHelpers_1.transactionDirection)(transaction) === "in" &&
         transaction.type !== "depositRefund" &&
         transaction.type !== "cardSurcharge") {
-        transactions.push({
+        transactions.push((0, financeHelpers_1.normalizeTransaction)({
             type: "cardSurcharge",
             paymentMethod: "Card",
             relatedTransactionType: transaction.type,
             amount: calculateCardSurcharge(transaction.amount),
-        });
+        }, options));
     }
     return transactions;
 };
@@ -111,16 +122,12 @@ const formatLocalDateKey = (date) => {
 const roomChargeRevenue = (booking) => booking.transactions.reduce((sum, transaction) => {
     if (transaction.type !== "roomCharge")
         return sum;
-    if (transaction.paymentMethod === "Unpaid")
-        return sum;
-    return sum + transaction.amount;
+    return sum + (0, financeHelpers_1.transactionRevenueAmount)(transaction);
 }, 0);
 const unpaidRoomChargeAmount = (booking) => booking.transactions.reduce((sum, transaction) => {
     if (transaction.type !== "roomCharge")
         return sum;
-    if (transaction.paymentMethod !== "Unpaid")
-        return sum;
-    return sum + transaction.amount;
+    return sum + (0, financeHelpers_1.transactionUnpaidAmount)(transaction);
 }, 0);
 const calculateNights = (checkIn, checkOut) => {
     const checkInDate = new Date(checkIn + "T00:00:00");
@@ -128,13 +135,50 @@ const calculateNights = (checkIn, checkOut) => {
     const diff = checkOutDate.getTime() - checkInDate.getTime();
     return diff / 86400000;
 };
+const isValidDate = (date) => !Number.isNaN(date.getTime());
+const getBookingBusinessDateStart = (date) => {
+    const parts = getBusinessDateParts(date);
+    return getBusinessDateStart(parts.year, parts.month, parts.day);
+};
 const newBooking = async (req, res, next) => {
     try {
         if (!req.body.booking)
             return res.status(400).json({ message: "ไม่พบข้อมูล booking" });
         const { booking } = req.body;
+        if (!booking.name?.trim() ||
+            !booking.checkIn ||
+            !booking.checkOut ||
+            !booking.platformId ||
+            !booking.roomId?.trim() ||
+            !booking.paymentMethod ||
+            !booking.bookingId?.trim()) {
+            return res.status(400).json({
+                message: "กรุณากรอกข้อมูลให้ครบทุกช่อง",
+            });
+        }
+        if (!PLATFORM_IDS.includes(booking.platformId)) {
+            return res.status(400).json({
+                message: "ช่องทางการจองไม่ถูกต้อง",
+            });
+        }
+        if (!NEW_BOOKING_PAYMENT_METHODS.includes(booking.paymentMethod)) {
+            return res.status(400).json({
+                message: "ช่องทางการชำระเงินไม่ถูกต้อง",
+            });
+        }
+        const roomChargeAmount = Number(booking.price);
+        if (!Number.isFinite(roomChargeAmount) || roomChargeAmount <= 0) {
+            return res.status(400).json({
+                message: "ราคาห้องต้องมากกว่า 0",
+            });
+        }
         const newCheckIn = new Date(booking.checkIn + "T00:00:00");
         const newCheckOut = new Date(booking.checkOut + "T00:00:00");
+        if (!isValidDate(newCheckIn) || !isValidDate(newCheckOut)) {
+            return res.status(400).json({
+                message: "วันที่เช็คอินหรือเช็คเอาท์ไม่ถูกต้อง",
+            });
+        }
         if (newCheckIn >= newCheckOut)
             return res.status(400).json({
                 message: "วันที่เช็คอินต้องไม่อยู่หลังวันที่เช็คเอาท์",
@@ -157,18 +201,18 @@ const newBooking = async (req, res, next) => {
         }
         const roomChargeTransaction = {
             type: "roomCharge",
-            amount: Number(booking.price),
+            amount: roomChargeAmount,
             paymentMethod: booking.paymentMethod,
         };
         const savedBooking = new booking_1.default({
-            name: booking.name,
+            name: booking.name.trim(),
             checkIn: newCheckIn,
             checkOut: newCheckOut,
             nights: calculateNights(booking.checkIn, booking.checkOut),
             platformId: booking.platformId,
             roomStays: [
                 {
-                    roomId: booking.roomId,
+                    roomId: booking.roomId.trim(),
                     from: newCheckIn,
                     to: newCheckOut,
                 },
@@ -179,9 +223,12 @@ const newBooking = async (req, res, next) => {
             // paymentMethod: booking.paymentMethod,
             // deposit: null,
             // depositRepaid: null,
-            transactions: buildTransactionsWithCardSurcharge(roomChargeTransaction),
+            transactions: buildTransactionsWithCardSurcharge(roomChargeTransaction, {
+                createdBy: req.user?.username,
+                sourceAction: "NEW_BOOKING",
+            }),
             staffUsername: booking.staffUsername,
-            bookingId: booking.bookingId,
+            bookingId: booking.bookingId.trim(),
             checkInByStaffUsername: null,
             status: "booked",
         });
@@ -388,6 +435,7 @@ const getAdminDashboardStats = async (req, res) => {
         const unpaidAmount = unpaidBookings.reduce((sum, booking) => sum + unpaidRoomChargeAmount(booking), 0);
         const channelCounts = new Map();
         const revenueByDate = new Map();
+        const monthFinancialSummary = (0, financeHelpers_1.summarizeTransactions)(monthBookings.flatMap((booking) => booking.transactions || []));
         for (let date = new Date(startOfMonth); date <= startOfToday; date.setDate(date.getDate() + 1)) {
             revenueByDate.set(formatLocalDateKey(date), 0);
         }
@@ -411,6 +459,7 @@ const getAdminDashboardStats = async (req, res) => {
             monthRoomRevenue,
             monthBookings: monthBookings.length,
             unpaidAmount,
+            financialSummary: monthFinancialSummary,
             occupancyRate: occupancy / TOTAL_GUEST_CAPACITY,
             channelMix,
             revenueSeries,
@@ -552,7 +601,8 @@ const checkIn = async (req, res) => {
                 message: "กรุณากรอกข้อมูลให้ครบทุกช่อง",
             });
         }
-        if (checkInData.deposit < 0) {
+        const depositAmount = Number(checkInData.deposit);
+        if (!Number.isFinite(depositAmount) || depositAmount < 0) {
             return res.status(400).json({
                 message: "ยอดมัดจำต้องไม่ติดลบ",
             });
@@ -568,10 +618,41 @@ const checkIn = async (req, res) => {
                 message: "booking นี้ไม่สามารถ check-in ซ้ำได้",
             });
         }
+        const { start: todayStart } = getBusinessDayBounds();
+        const checkInDateStart = getBookingBusinessDateStart(existingBooking.checkIn);
+        const checkOutDateStart = getBookingBusinessDateStart(existingBooking.checkOut);
+        if (todayStart < checkInDateStart) {
+            return res.status(409).json({
+                message: "ยังไม่ถึงวันเช็คอินของ booking นี้",
+            });
+        }
+        if (todayStart >= checkOutDateStart) {
+            return res.status(409).json({
+                message: "booking นี้เลยวันเช็คเอาท์แล้ว กรุณาแก้ไขวันที่หรือยกเลิกก่อน check-in",
+            });
+        }
         const hasDeposit = existingBooking.transactions.some((transaction) => transaction.type === "deposit");
         if (hasDeposit) {
             return res.status(409).json({
                 message: "booking นี้มีรายการมัดจำแล้ว",
+            });
+        }
+        const unpaidRoomCharge = existingBooking.transactions.find((transaction) => transaction.type === "roomCharge" &&
+            transaction.paymentMethod === "Unpaid");
+        if (unpaidRoomCharge && !checkInData.unpaidPayment) {
+            return res.status(400).json({
+                message: "กรุณาระบุช่องทางการจ่ายค่าห้อง",
+            });
+        }
+        if (checkInData.unpaidPayment &&
+            !CHECK_IN_PAYMENT_METHODS.includes(checkInData.unpaidPayment.paymentMethod)) {
+            return res.status(400).json({
+                message: "ช่องทางการจ่ายค่าห้องไม่ถูกต้อง",
+            });
+        }
+        if (checkInData.unpaidPayment && !unpaidRoomCharge) {
+            return res.status(400).json({
+                message: "booking นี้ไม่มีค่าห้องค้างชำระ",
             });
         }
         const hashPassport = (passportNo) => {
@@ -599,66 +680,85 @@ const checkIn = async (req, res) => {
             passportName: encrypt(checkInData.passportData.passportName),
         };
         const newTransactions = [
-            {
+            (0, financeHelpers_1.normalizeTransaction)({
                 type: "deposit",
                 paymentMethod: "Cash",
-                amount: checkInData.deposit,
-            },
+                amount: depositAmount,
+            }, {
+                createdBy: req.user?.username,
+                sourceAction: "CHECK_IN",
+            }),
         ];
-        if (checkInData.unpaidPayment?.roundingAdjustment)
-            newTransactions.push({
+        const roundingAdjustment = Number(checkInData.unpaidPayment?.roundingAdjustment || 0);
+        if (!Number.isFinite(roundingAdjustment)) {
+            return res.status(400).json({
+                message: "ยอดปรับเศษเงินไม่ถูกต้อง",
+            });
+        }
+        if (roundingAdjustment)
+            newTransactions.push((0, financeHelpers_1.normalizeTransaction)({
                 type: "adjustment",
                 paymentMethod: "Cash",
-                amount: checkInData.unpaidPayment.roundingAdjustment,
-            });
-        if (checkInData.unpaidPayment) {
-            const unpaidRoomCharge = existingBooking.transactions.find((transaction) => transaction.type === "roomCharge" &&
-                transaction.paymentMethod === "Unpaid");
+                amount: roundingAdjustment,
+                reasonOfAdjustment: "rounding",
+            }, {
+                createdBy: req.user?.username,
+                sourceAction: "CHECK_IN",
+                note: "Rounding adjustment at check-in",
+            }));
+        if (checkInData.unpaidPayment && unpaidRoomCharge) {
             if (checkInData.unpaidPayment.paymentMethod === "Card" &&
                 unpaidRoomCharge) {
-                newTransactions.push({
+                newTransactions.push((0, financeHelpers_1.normalizeTransaction)({
                     type: "cardSurcharge",
                     paymentMethod: "Card",
                     relatedTransactionType: "roomCharge",
                     amount: calculateCardSurcharge(unpaidRoomCharge.amount),
-                });
+                }, {
+                    createdBy: req.user?.username,
+                    sourceAction: "CHECK_IN",
+                }));
             }
-            await booking_1.default.findOneAndUpdate({
-                bookingId,
-                transactions: {
-                    $elemMatch: {
-                        paymentMethod: "Unpaid",
-                        type: "roomCharge",
-                    },
-                },
-            }, {
-                $set: {
-                    "transactions.$[transaction].paymentMethod": checkInData.unpaidPayment.paymentMethod,
-                },
-            }, {
-                arrayFilters: [
-                    {
-                        "transaction.paymentMethod": "Unpaid",
-                        "transaction.type": "roomCharge",
-                    },
-                ],
-            });
         }
-        const updatedBooking = await booking_1.default.findOneAndUpdate({ bookingId, status: "booked" }, {
+        const setFields = {
+            status: "checkedIn",
+            checkInByStaffUsername: req.user?.username,
+            passport: encryptedPassportData,
+        };
+        const updateOptions = { new: true };
+        const updateQuery = { bookingId, status: "booked" };
+        if (checkInData.unpaidPayment) {
+            updateQuery.transactions = {
+                $elemMatch: {
+                    paymentMethod: "Unpaid",
+                    type: "roomCharge",
+                },
+            };
+            setFields["transactions.$[transaction].paymentMethod"] =
+                checkInData.unpaidPayment.paymentMethod;
+            setFields["transactions.$[transaction].direction"] =
+                (0, financeHelpers_1.transactionDirection)({
+                    type: "roomCharge",
+                    paymentMethod: checkInData.unpaidPayment.paymentMethod,
+                });
+            updateOptions.arrayFilters = [
+                {
+                    "transaction.paymentMethod": "Unpaid",
+                    "transaction.type": "roomCharge",
+                },
+            ];
+        }
+        const updatedBooking = await booking_1.default.findOneAndUpdate(updateQuery, {
             $push: {
                 transactions: {
                     $each: newTransactions,
                 },
             },
-            $set: {
-                status: "checkedIn",
-                checkInByStaffUsername: req.user?.username,
-                passport: encryptedPassportData,
-            },
-        }, { new: true });
+            $set: setFields,
+        }, updateOptions);
         if (!updatedBooking) {
-            return res.status(404).json({
-                message: "ไม่พบ booking นี้",
+            return res.status(409).json({
+                message: "booking นี้ไม่สามารถ check-in ซ้ำได้",
             });
         }
         const sanitizedBooking = updatedBooking?.toObject();
@@ -734,6 +834,12 @@ const checkOut = async (req, res) => {
                 message: "กรุณายืนยันการคืนมัดจำก่อน check-out",
             });
         }
+        if (!req.user?.admin && remainingDepositAmount >= financeHelpers_1.LARGE_REFUND_THRESHOLD) {
+            return res.status(403).json({
+                error: "ADMIN_APPROVAL_REQUIRED",
+                message: "ยอดคืนเงินสูง ต้องให้ Admin ดำเนินการ",
+            });
+        }
         const { start: todayStart } = getBusinessDayBounds();
         const checkOutParts = getBusinessDateParts(existingBooking.checkOut);
         const checkoutDateStart = getBusinessDateStart(checkOutParts.year, checkOutParts.month, checkOutParts.day);
@@ -742,11 +848,14 @@ const checkOut = async (req, res) => {
         const roomReleaseStatus = earlyCheckOut && !releaseRemainingNights ? "blocked" : "released";
         const refundTransactions = remainingDepositAmount > 0
             ? [
-                {
+                (0, financeHelpers_1.normalizeTransaction)({
                     type: "depositRefund",
                     paymentMethod: "Cash",
                     amount: remainingDepositAmount,
-                },
+                }, {
+                    createdBy: checkedOutByStaffUsername,
+                    sourceAction: "CHECK_OUT",
+                }),
             ]
             : [];
         const updatedBooking = await booking_1.default.findOneAndUpdate({ bookingId, status: "checkedIn" }, {
@@ -1026,6 +1135,19 @@ const addTransaction = async (req, res) => {
                 message: "ประเภทรายการไม่ถูกต้อง",
             });
         }
+        if (["adjustment", "depositRefund"].includes(transaction.type) &&
+            !transaction.note?.trim()) {
+            return res.status(400).json({
+                error: "NOTE_REQUIRED",
+                message: "กรุณาระบุหมายเหตุสำหรับรายการที่ต้องตรวจสอบ",
+            });
+        }
+        if (transaction.type === "adjustment" && !transaction.relatedTransactionId) {
+            return res.status(400).json({
+                error: "RELATED_TRANSACTION_REQUIRED",
+                message: "กรุณาเลือกรายการเดิมที่ต้องการปรับยอด",
+            });
+        }
         const booking = await booking_1.default.findOne({ bookingId }).lean();
         if (!booking) {
             return res.status(404).json({
@@ -1033,15 +1155,52 @@ const addTransaction = async (req, res) => {
                 message: "ไม่พบ booking นี้",
             });
         }
+        if (!req.user?.admin &&
+            (booking.status === "checkedOut" || booking.status === "cancelled")) {
+            return res.status(403).json({
+                error: "ADMIN_APPROVAL_REQUIRED",
+                message: "รายการหลังปิด Booking ต้องให้ Admin ดำเนินการ",
+            });
+        }
+        if (!req.user?.admin &&
+            transaction.type === "depositRefund" &&
+            amount >= financeHelpers_1.LARGE_REFUND_THRESHOLD) {
+            return res.status(403).json({
+                error: "ADMIN_APPROVAL_REQUIRED",
+                message: "ยอดคืนเงินสูง ต้องให้ Admin ดำเนินการ",
+            });
+        }
+        if (transaction.relatedTransactionId) {
+            const linkedTransactionExists = booking.transactions.some((existingTransaction) => String(existingTransaction._id) === transaction.relatedTransactionId);
+            if (!linkedTransactionExists) {
+                return res.status(400).json({
+                    error: "INVALID_RELATED_TRANSACTION",
+                    message: "ไม่พบรายการที่ต้องการแนบกับการปรับยอด",
+                });
+            }
+        }
         const baseTransaction = {
             type: transaction.type,
             paymentMethod: transaction.paymentMethod,
             amount,
         };
+        if (transaction.direction) {
+            baseTransaction.direction = transaction.direction;
+        }
         if (transaction.reasonOfAdjustment) {
             baseTransaction.reasonOfAdjustment = transaction.reasonOfAdjustment;
         }
-        const newTransactions = buildTransactionsWithCardSurcharge(baseTransaction);
+        if (transaction.relatedTransactionId) {
+            baseTransaction.relatedTransactionId = transaction.relatedTransactionId;
+        }
+        const sameTypeCount = booking.transactions.filter((existingTransaction) => existingTransaction.type === transaction.type).length;
+        const newTransactions = buildTransactionsWithCardSurcharge(baseTransaction, {
+            createdBy: req.user?.username,
+            sourceAction: "ADD_TRANSACTION",
+            note: transaction.note,
+            reference: transaction.reference,
+            sameTypeCount,
+        });
         const updatedBooking = await booking_1.default.findOneAndUpdate({ bookingId }, {
             $push: {
                 transactions: {
@@ -1165,11 +1324,20 @@ const cancelBooking = async (req, res) => {
         const keptAmount = hasReceivedPayment && cancellationType === "non_refundable"
             ? paidAmount
             : 0;
+        if (!req.user?.admin && refundAmount >= financeHelpers_1.LARGE_REFUND_THRESHOLD) {
+            return res.status(403).json({
+                error: "ADMIN_APPROVAL_REQUIRED",
+                message: "ยอดคืนเงินสูง ต้องให้ Admin ดำเนินการ",
+            });
+        }
         const refundTransactions = refundAmount > 0
-            ? Array.from(paidByMethod.entries()).map(([paymentMethod, amount]) => ({
+            ? Array.from(paidByMethod.entries()).map(([paymentMethod, amount]) => (0, financeHelpers_1.normalizeTransaction)({
                 type: "cancellationRefund",
                 paymentMethod,
                 amount,
+            }, {
+                createdBy: cancelledByStaffUsername,
+                sourceAction: "CANCEL_BOOKING",
             }))
             : [];
         const updatedBooking = await booking_1.default.findOneAndUpdate({ bookingId, status: "booked" }, {
@@ -1206,6 +1374,23 @@ const cancelBooking = async (req, res) => {
             message: "ยกเลิกการจองเรียบร้อย",
             booking: updatedBooking,
         });
+        (0, activityServices_1.logActivity)(req.user?.username, "CANCEL_BOOKING", {
+            changes: {
+                status: { before: "booked", after: "cancelled" },
+                transactions: {
+                    before: existingBooking.transactions,
+                    after: updatedBooking.transactions,
+                },
+            },
+            summary: {
+                cancellationType: hasReceivedPayment
+                    ? cancellationType
+                    : "no_payment_received",
+                refundAmount,
+                keptAmount,
+                roomReleaseStatus: reopenRoom ? "released" : "blocked",
+            },
+        }, String(bookingId));
     }
     catch (err) {
         res.status(500).json({ error: err.message });

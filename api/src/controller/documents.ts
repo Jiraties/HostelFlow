@@ -11,6 +11,10 @@ import {
 import type { Request, Response } from "express";
 import type { EncryptedField } from "../models/booking";
 import { formatDateAD } from "../helpers/dateHelpers";
+import {
+  transactionSignedAmount,
+  transactionRevenueAmount,
+} from "../helpers/financeHelpers";
 
 const platformMap: Record<string, { label: string; color: string }> = {
   BOOK: { label: "Booking.com", color: "003580" },
@@ -73,7 +77,22 @@ const transactionTotal = (
 ) =>
   transactions
     .filter((transaction) => !type || transaction.type === type)
-    .reduce((sum, transaction) => sum + (transaction.amount || 0), 0);
+    .reduce(
+      (sum, transaction) =>
+        sum + transactionSignedAmount(transaction as Parameters<typeof transactionSignedAmount>[0]),
+      0,
+    );
+
+const roomChargeTotal = (
+  transactions: { type: string; amount: number; paymentMethod: string }[],
+) =>
+  transactions
+    .filter((transaction) => transaction.type === "roomCharge")
+    .reduce(
+      (sum, transaction) =>
+        sum + transactionRevenueAmount(transaction as Parameters<typeof transactionRevenueAmount>[0]),
+      0,
+    );
 
 const immigrationMonthQuery = (month: string) => {
   if (!/^\d{4}-\d{2}$/.test(month)) return null;
@@ -229,7 +248,7 @@ export const getBookingsReport = async (req: Request, res: Response) => {
         platformId: platform.label,
         status: booking.status,
         rooms: booking.roomStays.map((roomStay) => roomStay.roomId).join(", "),
-        roomCharge: transactionTotal(transactions, "roomCharge"),
+        roomCharge: roomChargeTotal(transactions),
         total: transactionTotal(transactions),
         paymentMethods,
         staffUsername: booking.staffUsername,
@@ -261,7 +280,7 @@ export const getBookingsReport = async (req: Request, res: Response) => {
             status: booking.status,
             rooms: transactionLabel,
             roomCharge: "",
-            total: transaction.amount,
+            total: transactionSignedAmount(transaction),
             paymentMethods: transaction.paymentMethod,
             staffUsername: booking.staffUsername,
             note: "",

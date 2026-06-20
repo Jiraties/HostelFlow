@@ -332,6 +332,26 @@
   font-weight: 500;
 }
 
+.viewBooking__transactionMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.25rem;
+  color: #777;
+  font-size: 0.78rem;
+}
+
+.viewBooking__reviewBadge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.45rem;
+  border-radius: 999rem;
+  background-color: #fff7ed;
+  color: #c2410c;
+  font-weight: 600;
+}
+
 .viewBooking__addTransaction {
   display: flex;
   justify-content: center;

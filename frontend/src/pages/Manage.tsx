@@ -24,6 +24,49 @@ type ActivityStats = {
   byAction: Array<{ action: actionType; count: number }>;
 };
 
+type FinanceSummary = {
+  revenue: number;
+  cashIn: number;
+  cashOut: number;
+  netTotal: number;
+  refunds: number;
+  depositLiability: number;
+  cardSurcharges: number;
+  unpaidBalance: number;
+};
+
+type DailyClose = {
+  businessDate: string;
+  staffUsername: string;
+  openingCash: number;
+  expectedCash: number;
+  actualCash: number;
+  variance: number;
+  cashIn: number;
+  cashOut: number;
+  note?: string;
+};
+
+type ReviewTransaction = {
+  bookingId?: string;
+  guestName?: string;
+  staffUsername?: string;
+  type: string;
+  paymentMethod: string;
+  amount: number;
+  direction?: "in" | "out" | "neutral";
+  reviewFlags?: string[];
+  note?: string;
+};
+
+type ReconciliationData = {
+  businessDate: string;
+  threshold: number;
+  summary: FinanceSummary;
+  transactions: ReviewTransaction[];
+  dailyCloses: DailyClose[];
+};
+
 type NewUserForm = {
   username: string;
   name: string;
@@ -37,6 +80,7 @@ const actionMap = {
   EDIT_BOOKING: { icon: "bx-edit", text: "แก้ไข Booking" },
   CHECK_IN: { icon: "bx-check-circle", text: "Check-In" },
   CHECK_OUT: { icon: "bx-door-open", text: "Check-Out" },
+  CANCEL_BOOKING: { icon: "bx-calendar-x", text: "ยกเลิก Booking" },
   MANAGE_ROOM_STAYS: { icon: "bx-calendar-cog", text: "แก้ช่วงการเข้าพัก" },
   ADD_TRANSACTION: { icon: "bx-dollar", text: "เพิ่มรายการใช้จ่าย" },
   CREATE_USER: { icon: "bx-user-plus", text: "สร้างผู้ใช้" },
@@ -46,6 +90,7 @@ const actionMap = {
   REACTIVATE_USER: { icon: "bx-user-check", text: "เปิดใช้งานผู้ใช้" },
   LOGIN: { icon: "bx-arrow-in-right-square-half", text: "เข้าสู่ระบบ" },
   LOGOUT: { icon: "bx-arrow-out-right-square-half", text: "ออกจากระบบ" },
+  DAILY_CLOSE: { icon: "bx-cash", text: "ปิดยอดเงินสด" },
 } satisfies Record<actionType, { icon: string; text: string }>;
 
 const emptyNewUserForm: NewUserForm = {
@@ -64,6 +109,126 @@ const formatDateTime = (date: string | Date) =>
     minute: "2-digit",
     calendar: "gregory",
   });
+
+const todayInputValue = () => {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+};
+
+const formatMoney = (value: number) =>
+  value.toLocaleString("th-TH", {
+    minimumFractionDigits: value % 1 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  });
+
+const FinanceReconciliation = ({
+  reconciliation,
+  reviewEvents,
+  financeDate,
+  onDateChange,
+}: {
+  reconciliation: ReconciliationData | null;
+  reviewEvents: ReviewTransaction[];
+  financeDate: string;
+  onDateChange: (value: string) => void;
+}) => {
+  const summary = reconciliation?.summary;
+
+  return (
+    <section className="manage__finance">
+      <div className="manage__sectionHeader">
+        <div>
+          <i className="bx bx-currency-notes" />
+          <div>
+            <h2>Daily Cash Close</h2>
+            <p>สรุปยอดเงินสดและรายการที่ควรตรวจประจำวัน</p>
+          </div>
+        </div>
+        <div className="manage__financeHeaderActions">
+          <span>{reconciliation?.dailyCloses.length || 0} การปิดยอด</span>
+          <input
+            className="boxInput manage__dateInput"
+            type="date"
+            value={financeDate}
+            onChange={(event) => onDateChange(event.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="manage__financeGrid">
+        <div className="manage__financePanel">
+          <h3>ยอดวันนี้</h3>
+          <div className="manage__financeStatsGrid">
+            <div>
+              <p>รับเงินสด</p>
+              <strong>{formatMoney(summary?.cashIn || 0)} ฿</strong>
+            </div>
+            <div>
+              <p>จ่ายเงินสด</p>
+              <strong>{formatMoney(summary?.cashOut || 0)} ฿</strong>
+            </div>
+            <div>
+              <p>คืนเงิน</p>
+              <strong>{formatMoney(summary?.refunds || 0)} ฿</strong>
+            </div>
+            <div>
+              <p>Unpaid</p>
+              <strong>{formatMoney(summary?.unpaidBalance || 0)} ฿</strong>
+            </div>
+          </div>
+        </div>
+
+        <div className="manage__financePanel">
+          <div className="manage__financePanelHeader">
+            <h3>รายการที่ควรตรวจ</h3>
+            <span>{reviewEvents.length}</span>
+          </div>
+          <div className="manage__reviewList">
+            {reviewEvents.length === 0 ? (
+              <p>ไม่มีรายการที่ต้องตรวจ</p>
+            ) : (
+              reviewEvents.slice(0, 6).map((transaction, index) => (
+                <div
+                  className="manage__reviewItem"
+                  key={`${transaction.bookingId}-${transaction.type}-${index}`}
+                >
+                  <div>
+                    <strong>
+                      {transaction.guestName || transaction.bookingId}
+                    </strong>
+                    <p>
+                      {transaction.type} · {transaction.paymentMethod} ·{" "}
+                      {transaction.staffUsername || "-"}
+                    </p>
+                  </div>
+                  <span>{formatMoney(transaction.amount)} ฿</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {reconciliation?.dailyCloses.length ? (
+        <div className="manage__dailyCloseList">
+          {reconciliation.dailyCloses.map((dailyClose) => (
+            <span
+              key={`${dailyClose.businessDate}-${dailyClose.staffUsername}`}
+            >
+              {dailyClose.staffUsername}: actual{" "}
+              {formatMoney(dailyClose.actualCash)} ฿ / variance{" "}
+              {formatMoney(dailyClose.variance)} ฿
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+};
 
 const Manage = () => {
   const { user: currentUser } = useAuth();
@@ -85,20 +250,39 @@ const Manage = () => {
   const [resettingPasswordUserId, setResettingPasswordUserId] = useState<
     string | null
   >(null);
+  const [financeDate, setFinanceDate] = useState(todayInputValue());
+  const [reconciliation, setReconciliation] =
+    useState<ReconciliationData | null>(null);
+  const [reviewEvents, setReviewEvents] = useState<ReviewTransaction[]>([]);
 
   const fetchManageData = async () => {
-    const [usersResponse, activitiesResponse, statsResponse] =
-      await Promise.all([
-        axios.get(`${API_URL}/auth/users`, { withCredentials: true }),
-        axios.get(`${API_URL}/activities/admin`, { withCredentials: true }),
-        axios.get(`${API_URL}/activities/admin/stats`, {
-          withCredentials: true,
-        }),
-      ]);
+    const [
+      usersResponse,
+      activitiesResponse,
+      statsResponse,
+      reconciliationResponse,
+      reviewEventsResponse,
+    ] = await Promise.all([
+      axios.get(`${API_URL}/auth/users`, { withCredentials: true }),
+      axios.get(`${API_URL}/activities/admin`, { withCredentials: true }),
+      axios.get(`${API_URL}/activities/admin/stats`, {
+        withCredentials: true,
+      }),
+      axios.get(`${API_URL}/finance/reconciliation`, {
+        params: { date: financeDate },
+        withCredentials: true,
+      }),
+      axios.get(`${API_URL}/finance/review-events`, {
+        params: { date: financeDate },
+        withCredentials: true,
+      }),
+    ]);
 
     setUsers(usersResponse.data.users);
     setActivities(activitiesResponse.data.activities);
     setStats(statsResponse.data);
+    setReconciliation(reconciliationResponse.data);
+    setReviewEvents(reviewEventsResponse.data.transactions);
     setLastUpdated(new Date());
   };
 
@@ -108,19 +292,34 @@ const Manage = () => {
     const load = async () => {
       setLoading(true);
       try {
-        const [usersResponse, activitiesResponse, statsResponse] =
-          await Promise.all([
-            axios.get(`${API_URL}/auth/users`, { withCredentials: true }),
-            axios.get(`${API_URL}/activities/admin`, { withCredentials: true }),
-            axios.get(`${API_URL}/activities/admin/stats`, {
-              withCredentials: true,
-            }),
-          ]);
+        const [
+          usersResponse,
+          activitiesResponse,
+          statsResponse,
+          reconciliationResponse,
+          reviewEventsResponse,
+        ] = await Promise.all([
+          axios.get(`${API_URL}/auth/users`, { withCredentials: true }),
+          axios.get(`${API_URL}/activities/admin`, { withCredentials: true }),
+          axios.get(`${API_URL}/activities/admin/stats`, {
+            withCredentials: true,
+          }),
+          axios.get(`${API_URL}/finance/reconciliation`, {
+            params: { date: financeDate },
+            withCredentials: true,
+          }),
+          axios.get(`${API_URL}/finance/review-events`, {
+            params: { date: financeDate },
+            withCredentials: true,
+          }),
+        ]);
 
         if (ignore) return;
         setUsers(usersResponse.data.users);
         setActivities(activitiesResponse.data.activities);
         setStats(statsResponse.data);
+        setReconciliation(reconciliationResponse.data);
+        setReviewEvents(reviewEventsResponse.data.transactions);
         setLastUpdated(new Date());
       } finally {
         if (!ignore) setLoading(false);
@@ -132,7 +331,7 @@ const Manage = () => {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [financeDate]);
 
   const mostActiveStaff = stats?.byStaff[0];
   const mostCommonAction = stats?.byAction[0];
@@ -252,9 +451,7 @@ const Manage = () => {
                 resetPasswordHandler(managedUser, password)
               }
               saving={savingUserId === managedUser.userId}
-              resettingPassword={
-                resettingPasswordUserId === managedUser.userId
-              }
+              resettingPassword={resettingPasswordUserId === managedUser.userId}
             />
           )}
         </>
@@ -267,9 +464,7 @@ const Manage = () => {
             createNewUserIsDirty,
             () => setCreateNewUserIsOpen(false),
             () =>
-              setPendingUnsavedClose(() => () =>
-                setCreateNewUserIsOpen(false),
-              ),
+              setPendingUnsavedClose(() => () => setCreateNewUserIsOpen(false)),
           )
         }
       >
@@ -312,12 +507,20 @@ const Manage = () => {
         />
       </section>
 
+      <FinanceReconciliation
+        reconciliation={reconciliation}
+        reviewEvents={reviewEvents}
+        financeDate={financeDate}
+        onDateChange={setFinanceDate}
+      />
+
       <section>
         <div className="manage__users">
           {users.map((staffUser) => (
             <div
               className={
-                "manage__user" + (!staffUser.active ? " manage__user--inactive" : "")
+                "manage__user" +
+                (!staffUser.active ? " manage__user--inactive" : "")
               }
               key={staffUser.userId}
             >

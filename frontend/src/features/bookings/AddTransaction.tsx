@@ -14,11 +14,15 @@ import "./AddTransaction.css";
 type Transaction = booking["transactions"][number];
 type TransactionType = Transaction["type"];
 type PaymentMethod = Transaction["paymentMethod"];
+type AdjustmentDirection = "in" | "out";
 
 type AddTransactionFormData = {
   type: TransactionType | "";
   paymentMethod: PaymentMethod | "";
   amount: string;
+  note: string;
+  relatedTransactionId: string;
+  adjustmentDirection: AdjustmentDirection;
 };
 
 const transactionTypeOptions: OptionType[] = [
@@ -38,12 +42,14 @@ const addTransactionPaymentMethodOptions = paymentMethodOptions.filter(
 
 const AddTransaction = ({
   bookingId,
+  transactions,
   onClose,
   onUpdated,
   onDirtyChange,
 }: {
   bookingId: string;
   guestName: string;
+  transactions: Transaction[];
   onClose: () => void;
   onUpdated?: (booking: booking) => void;
   onDirtyChange?: (isDirty: boolean) => void;
@@ -53,11 +59,21 @@ const AddTransaction = ({
     type: "",
     paymentMethod: "",
     amount: "",
+    note: "",
+    relatedTransactionId: "",
+    adjustmentDirection: "in",
   });
 
   useEffect(() => {
     onDirtyChange?.(
-      Boolean(formData.type || formData.paymentMethod || formData.amount),
+      Boolean(
+        formData.type ||
+          formData.paymentMethod ||
+          formData.amount ||
+          formData.note ||
+          formData.relatedTransactionId ||
+          formData.adjustmentDirection !== "in",
+      ),
     );
 
     return () => onDirtyChange?.(false);
@@ -97,20 +113,33 @@ const AddTransaction = ({
     </div>
   );
 
-  const amount = Number(formData.amount);
-  const validAmount = Number.isFinite(amount) && amount > 0 ? amount : 0;
-  const shouldShowCardSurcharge =
-    formData.paymentMethod === "Card" && formData.type !== "depositRefund";
-  const cardSurcharge = shouldShowCardSurcharge
-    ? Number((validAmount * 0.03).toFixed(2))
-    : 0;
-  const totalGuestPays = validAmount + cardSurcharge;
-
   const formatCurrency = (value: number) =>
     value.toLocaleString("th-TH", {
       minimumFractionDigits: value % 1 === 0 ? 0 : 2,
       maximumFractionDigits: 2,
     });
+
+  const amount = Number(formData.amount);
+  const validAmount = Number.isFinite(amount) && amount > 0 ? amount : 0;
+  const shouldShowCardSurcharge =
+    formData.paymentMethod === "Card" &&
+    formData.type !== "depositRefund" &&
+    !(formData.type === "adjustment" && formData.adjustmentDirection === "out");
+  const cardSurcharge = shouldShowCardSurcharge
+    ? Number((validAmount * 0.03).toFixed(2))
+    : 0;
+  const totalGuestPays = validAmount + cardSurcharge;
+  const needsNote = formData.type === "adjustment" || formData.type === "depositRefund";
+  const canAttachTransaction = formData.type === "adjustment";
+  const transactionAttachmentOptions: OptionType[] = transactions
+    .filter((transaction) => transaction._id)
+    .map((transaction) => ({
+      value: transaction._id || "",
+      label: `${transaction.type} · ${transaction.paymentMethod} · ${formatCurrency(transaction.amount)} บาท`,
+      color:
+        transactionTypeOptions.find((option) => option.value === transaction.type)
+          ?.color || "#94a3b8",
+    }));
 
   const submitHandler = async () => {
     if (submitting) return;
@@ -125,10 +154,24 @@ const AddTransaction = ({
         throw new Error("จำนวนเงินต้องมากกว่า 0");
       }
 
+      if (needsNote && !formData.note.trim()) {
+        throw new Error("กรุณาระบุหมายเหตุสำหรับรายการนี้");
+      }
+
+      if (formData.type === "adjustment" && !formData.relatedTransactionId) {
+        throw new Error("กรุณาเลือกรายการเดิมที่ต้องการปรับยอด");
+      }
+
       const transaction: Transaction = {
         type: formData.type,
         paymentMethod: formData.paymentMethod,
         amount,
+        note: formData.note.trim() || undefined,
+        relatedTransactionId: formData.relatedTransactionId || undefined,
+        direction:
+          formData.type === "adjustment"
+            ? formData.adjustmentDirection
+            : undefined,
       };
 
       const response = await axios.post(
@@ -191,6 +234,44 @@ const AddTransaction = ({
           />
         </div>
 
+        {formData.type === "adjustment" && (
+          <div>
+            <p className="addBooking__label">ทิศทางการปรับยอด</p>
+            <div className="addTransaction__directionControl">
+              <button
+                type="button"
+                className={
+                  "addTransaction__directionButton" +
+                  (formData.adjustmentDirection === "in"
+                    ? " addTransaction__directionButton--active"
+                    : "")
+                }
+                onClick={() =>
+                  formDataChangeHandler("adjustmentDirection", "in")
+                }
+              >
+                <i className="bx bx-plus" />
+                เพิ่มยอด
+              </button>
+              <button
+                type="button"
+                className={
+                  "addTransaction__directionButton" +
+                  (formData.adjustmentDirection === "out"
+                    ? " addTransaction__directionButton--active"
+                    : "")
+                }
+                onClick={() =>
+                  formDataChangeHandler("adjustmentDirection", "out")
+                }
+              >
+                <i className="bx bx-minus" />
+                ลดยอด
+              </button>
+            </div>
+          </div>
+        )}
+
         <div>
           <p className="addBooking__label">จ่ายผ่าน</p>
           <Select<OptionType>
@@ -211,6 +292,42 @@ const AddTransaction = ({
             }
           />
         </div>
+
+        {needsNote && (
+          <div>
+            <p className="addBooking__label">หมายเหตุ</p>
+            <input
+              className="boxInput"
+              type="text"
+              value={formData.note}
+              placeholder="เช่น คืนมัดจำบางส่วน / ปรับราคาตามหน้างาน"
+              onChange={(e) => formDataChangeHandler("note", e.target.value)}
+            />
+          </div>
+        )}
+
+        {canAttachTransaction && transactionAttachmentOptions.length > 0 && (
+          <div>
+            <p className="addBooking__label">แนบรายการที่ปรับ</p>
+            <Select<OptionType>
+              styles={customStyles<OptionType>()}
+              classNamePrefix="rs"
+              options={transactionAttachmentOptions}
+              placeholder="เลือกรายการเดิม"
+              formatOptionLabel={formatTransactionTypeLabel}
+              menuPortalTarget={document.body}
+              menuPosition="fixed"
+              value={
+                transactionAttachmentOptions.find(
+                  (option) => option.value === formData.relatedTransactionId,
+                ) || null
+              }
+              onChange={(option: SingleValue<OptionType>) =>
+                formDataChangeHandler("relatedTransactionId", option?.value || "")
+              }
+            />
+          </div>
+        )}
 
         {shouldShowCardSurcharge && validAmount > 0 && (
           <div className="addTransaction__cardPreview">

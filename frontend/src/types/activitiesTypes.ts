@@ -6,13 +6,15 @@ export type actionType =
   | "EDIT_BOOKING"
   | "CHECK_IN"
   | "CHECK_OUT"
+  | "CANCEL_BOOKING"
   | "MANAGE_ROOM_STAYS"
   | "ADD_TRANSACTION"
   | "CREATE_USER"
   | "RESET_USER_PASSWORD"
   | "UPDATE_USER"
   | "DEACTIVATE_USER"
-  | "REACTIVATE_USER";
+  | "REACTIVATE_USER"
+  | "DAILY_CLOSE";
 
 export type TransactionType =
   | "roomCharge"
@@ -30,11 +32,21 @@ export type TransactionType =
 export type PaymentMethod = "OTA" | "Cash" | "Card" | "Transfer" | "Unpaid";
 
 export interface transaction {
+  _id?: string;
   type: TransactionType;
   paymentMethod: PaymentMethod;
   reasonOfAdjustment?: "rounding";
   relatedTransactionType?: Exclude<TransactionType, "cardSurcharge">;
+  relatedTransactionId?: string;
   amount: number;
+  direction?: "in" | "out" | "neutral";
+  createdBy?: string;
+  createdAt?: Date | string;
+  sourceAction?: actionType;
+  note?: string;
+  reference?: string;
+  reviewFlags?: string[];
+  reviewStatus?: "none" | "needs_review" | "reviewed";
 }
 
 export interface roomStay {

@@ -51,7 +51,34 @@ const transactionSchema = new mongoose_1.default.Schema({
         ],
         required: false,
     },
+    relatedTransactionId: { type: String },
     amount: { type: Number },
+    direction: {
+        type: String,
+        enum: ["in", "out", "neutral"],
+        required: false,
+    },
+    createdBy: { type: String },
+    createdAt: { type: Date, default: Date.now },
+    sourceAction: {
+        type: String,
+        enum: [
+            "NEW_BOOKING",
+            "CHECK_IN",
+            "CHECK_OUT",
+            "ADD_TRANSACTION",
+            "CANCEL_BOOKING",
+            "SYSTEM_MIGRATION",
+        ],
+    },
+    note: { type: String },
+    reference: { type: String },
+    reviewFlags: [{ type: String }],
+    reviewStatus: {
+        type: String,
+        enum: ["none", "needs_review", "reviewed"],
+        default: "none",
+    },
 });
 const cancellationSchema = new mongoose_1.default.Schema({
     cancellationType: {

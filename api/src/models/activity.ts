@@ -8,13 +8,15 @@ export type actionType =
   | "EDIT_BOOKING"
   | "CHECK_IN"
   | "CHECK_OUT"
+  | "CANCEL_BOOKING"
   | "MANAGE_ROOM_STAYS"
   | "ADD_TRANSACTION"
   | "CREATE_USER"
   | "RESET_USER_PASSWORD"
   | "UPDATE_USER"
   | "DEACTIVATE_USER"
-  | "REACTIVATE_USER";
+  | "REACTIVATE_USER"
+  | "DAILY_CLOSE";
 
 export type activity =
   | {
@@ -33,13 +35,15 @@ export type activity =
         | "EDIT_BOOKING"
         | "CHECK_IN"
         | "CHECK_OUT"
+        | "CANCEL_BOOKING"
         | "MANAGE_ROOM_STAYS"
         | "ADD_TRANSACTION"
         | "CREATE_USER"
         | "RESET_USER_PASSWORD"
         | "UPDATE_USER"
         | "DEACTIVATE_USER"
-        | "REACTIVATE_USER";
+        | "REACTIVATE_USER"
+        | "DAILY_CLOSE";
       details: {
         changes?: Record<string, { before: any; after: any }>;
         snapshot?: {
@@ -72,6 +76,7 @@ const activitySchema = new mongoose.Schema({
       "EDIT_BOOKING",
       "CHECK_IN",
       "CHECK_OUT",
+      "CANCEL_BOOKING",
       "MANAGE_ROOM_STAYS",
       "ADD_TRANSACTION",
       "CREATE_USER",
@@ -79,6 +84,7 @@ const activitySchema = new mongoose.Schema({
       "UPDATE_USER",
       "DEACTIVATE_USER",
       "REACTIVATE_USER",
+      "DAILY_CLOSE",
     ],
   },
   details: {

@@ -255,6 +255,14 @@ const AddBooking = ({
         throw new Error("วันที่เช็คอินต้องไม่อยู่หลังวันที่เช็คเอาท์");
       }
 
+      if (!isEditMode) {
+        const price = Number(formData.price);
+
+        if (!Number.isFinite(price) || price <= 0) {
+          throw new Error("ราคาห้องต้องมากกว่า 0");
+        }
+      }
+
       if (isEditMode && editModeBooking) {
         const response = await axios.patch(
           `${API_URL}/bookings/editBooking/${editModeBooking.bookingId}`,
