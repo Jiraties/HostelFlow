@@ -9,6 +9,8 @@ export type actionType =
   | "CHECK_IN"
   | "CHECK_OUT"
   | "CANCEL_BOOKING"
+  | "RESOLVE_STAY"
+  | "POST_CLOSE_ADJUSTMENT"
   | "MANAGE_ROOM_STAYS"
   | "ADD_TRANSACTION"
   | "CREATE_USER"
@@ -36,6 +38,8 @@ export type activity =
         | "CHECK_IN"
         | "CHECK_OUT"
         | "CANCEL_BOOKING"
+        | "RESOLVE_STAY"
+        | "POST_CLOSE_ADJUSTMENT"
         | "MANAGE_ROOM_STAYS"
         | "ADD_TRANSACTION"
         | "CREATE_USER"
@@ -77,6 +81,8 @@ const activitySchema = new mongoose.Schema({
       "CHECK_IN",
       "CHECK_OUT",
       "CANCEL_BOOKING",
+      "RESOLVE_STAY",
+      "POST_CLOSE_ADJUSTMENT",
       "MANAGE_ROOM_STAYS",
       "ADD_TRANSACTION",
       "CREATE_USER",

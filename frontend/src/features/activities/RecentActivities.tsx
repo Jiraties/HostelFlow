@@ -17,6 +17,11 @@ const actionMap = {
   CHECK_IN: { icon: "bx-check-circle", text: "Check-In" },
   CHECK_OUT: { icon: "bx-door-open", text: "Check-Out" },
   CANCEL_BOOKING: { icon: "bx-calendar-x", text: "ยกเลิก Booking" },
+  RESOLVE_STAY: { icon: "bx-receipt", text: "เคลียร์การเข้าพัก" },
+  POST_CLOSE_ADJUSTMENT: {
+    icon: "bx-history",
+    text: "แก้ไขหลังปิด",
+  },
   MANAGE_ROOM_STAYS: {
     icon: "bx-calendar-cog",
     text: "แก้ช่วงการเข้าพัก",
@@ -65,6 +70,11 @@ const transactionLabelMap = {
   adjustment: "ปรับราคา",
   depositRefund: "คืนมัดจำ",
   cancellationRefund: "คืนเงินยกเลิก",
+  roomRefund: "คืนค่าห้อง",
+  settlementCharge: "เก็บเงินเพิ่ม",
+  compensation: "ชดเชยลูกค้า",
+  depositKept: "เก็บมัดจำ",
+  paymentCorrection: "แก้ไขการชำระเงิน",
   towel: "ผ้าเช็ดตัว",
   motorbike: "มอเตอร์ไซค์",
   slowBoat: "Slow Boat",

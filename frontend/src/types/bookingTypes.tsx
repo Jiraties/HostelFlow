@@ -14,12 +14,26 @@ type TransactionType =
   | "adjustment"
   | "depositRefund"
   | "cancellationRefund"
+  | "roomRefund"
+  | "settlementCharge"
+  | "compensation"
+  | "depositKept"
+  | "paymentCorrection"
   | "towel"
   | "motorbike"
   | "slowBoat"
   | "joinTour"
   | "extraBed"
   | "cardSurcharge";
+
+export type ResolutionOutcome =
+  | "normal_checkout"
+  | "early_checkout"
+  | "cancelled_before_arrival"
+  | "cancelled_after_checkin"
+  | "no_show"
+  | "guest_left"
+  | "post_close_adjustment";
 
 interface EncryptedField {
   ciphertText: string;
@@ -49,6 +63,27 @@ interface Cancellation {
   cancelledByStaffUsername: string;
 }
 
+interface Checkout {
+  roomReleaseStatus: RoomReleaseStatus;
+  depositRefundAmount: number;
+  checkedOutAt: Date;
+  checkedOutByStaffUsername: string;
+  earlyCheckOut: boolean;
+  nightsEarly: number;
+}
+
+interface Resolution {
+  outcome: ResolutionOutcome;
+  roomReleaseStatus: RoomReleaseStatus;
+  reasonCode: string;
+  note: string;
+  resolvedAt: Date;
+  resolvedByStaffUsername: string;
+  finalStatus: Status;
+  amendedAfterClose?: boolean;
+  approvedByStaffUsername?: string;
+}
+
 export interface transcation {
   _id?: string;
   type: TransactionType;
@@ -66,6 +101,7 @@ export interface transcation {
     | "CHECK_OUT"
     | "ADD_TRANSACTION"
     | "CANCEL_BOOKING"
+    | "RESOLVE_STAY"
     | "SYSTEM_MIGRATION";
   note?: string;
   reference?: string;
@@ -90,6 +126,8 @@ export interface booking {
 
   passport?: Passport;
   cancellation?: Cancellation;
+  checkout?: Checkout;
+  resolution?: Resolution;
   note?: string;
 }
 

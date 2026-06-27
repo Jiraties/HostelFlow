@@ -11,6 +11,7 @@ export type SourceAction =
   | "CHECK_OUT"
   | "ADD_TRANSACTION"
   | "CANCEL_BOOKING"
+  | "RESOLVE_STAY"
   | "SYSTEM_MIGRATION";
 export type CancellationType =
   | "refundable"
@@ -23,12 +24,26 @@ export type TransactionType =
   | "adjustment"
   | "depositRefund"
   | "cancellationRefund"
+  | "roomRefund"
+  | "settlementCharge"
+  | "compensation"
+  | "depositKept"
+  | "paymentCorrection"
   | "towel"
   | "motorbike"
   | "slowBoat"
   | "joinTour"
   | "extraBed"
   | "cardSurcharge";
+
+export type ResolutionOutcome =
+  | "normal_checkout"
+  | "early_checkout"
+  | "cancelled_before_arrival"
+  | "cancelled_after_checkin"
+  | "no_show"
+  | "guest_left"
+  | "post_close_adjustment";
 
 export interface EncryptedField {
   cipherText: string;
@@ -85,6 +100,18 @@ interface Checkout {
   nightsEarly: number;
 }
 
+interface Resolution {
+  outcome: ResolutionOutcome;
+  roomReleaseStatus: RoomReleaseStatus;
+  reasonCode: string;
+  note: string;
+  resolvedAt: Date;
+  resolvedByStaffUsername: string;
+  finalStatus: Status;
+  amendedAfterClose?: boolean;
+  approvedByStaffUsername?: string;
+}
+
 // export interface booking extends Document {
 //   name: string;
 //   checkIn: Date;
@@ -123,6 +150,7 @@ export interface booking extends Document {
   passport?: Passport;
   cancellation?: Cancellation;
   checkout?: Checkout;
+  resolution?: Resolution;
   note?: string;
 }
 
@@ -141,6 +169,11 @@ const transactionSchema = new mongoose.Schema({
       "adjustment",
       "depositRefund",
       "cancellationRefund",
+      "roomRefund",
+      "settlementCharge",
+      "compensation",
+      "depositKept",
+      "paymentCorrection",
       "towel",
       "motorbike",
       "slowBoat",
@@ -166,6 +199,11 @@ const transactionSchema = new mongoose.Schema({
       "adjustment",
       "depositRefund",
       "cancellationRefund",
+      "roomRefund",
+      "settlementCharge",
+      "compensation",
+      "depositKept",
+      "paymentCorrection",
       "towel",
       "motorbike",
       "slowBoat",
@@ -191,6 +229,7 @@ const transactionSchema = new mongoose.Schema({
       "CHECK_OUT",
       "ADD_TRANSACTION",
       "CANCEL_BOOKING",
+      "RESOLVE_STAY",
       "SYSTEM_MIGRATION",
     ],
   },
@@ -240,6 +279,41 @@ const checkoutSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const resolutionSchema = new mongoose.Schema(
+  {
+    outcome: {
+      type: String,
+      enum: [
+        "normal_checkout",
+        "early_checkout",
+        "cancelled_before_arrival",
+        "cancelled_after_checkin",
+        "no_show",
+        "guest_left",
+        "post_close_adjustment",
+      ],
+      required: true,
+    },
+    roomReleaseStatus: {
+      type: String,
+      enum: ["released", "blocked"],
+      required: true,
+    },
+    reasonCode: { type: String, required: true },
+    note: { type: String, required: true },
+    resolvedAt: { type: Date, required: true },
+    resolvedByStaffUsername: { type: String, required: true },
+    finalStatus: {
+      type: String,
+      enum: ["booked", "checkedIn", "checkedOut", "cancelled"],
+      required: true,
+    },
+    amendedAfterClose: { type: Boolean, default: false },
+    approvedByStaffUsername: { type: String },
+  },
+  { _id: false },
+);
+
 const bookingSchema = new mongoose.Schema({
   name: { type: String },
 
@@ -282,6 +356,8 @@ const bookingSchema = new mongoose.Schema({
   cancellation: cancellationSchema,
 
   checkout: checkoutSchema,
+
+  resolution: resolutionSchema,
 });
 
 export default mongoose.model<booking>("Booking", bookingSchema);

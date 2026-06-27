@@ -14,6 +14,7 @@ import {
   removeBooking,
   getPassportData,
   cancelBooking,
+  resolveBooking,
 } from "../controller/booking";
 
 const bookingsRouter = express.Router();
@@ -29,6 +30,7 @@ bookingsRouter.put("/checkIn/:bookingId", checkIn);
 bookingsRouter.patch("/checkOut/:bookingId", checkOut);
 bookingsRouter.patch("/manageRoomStays/:bookingId", manageRoomStays);
 bookingsRouter.patch("/cancelBooking/:bookingId", cancelBooking);
+bookingsRouter.patch("/resolveBooking/:bookingId", resolveBooking);
 bookingsRouter.get("/getMonthCalendar", getMonthCalendar);
 bookingsRouter.get("/getBookingById/:bookingId", getBookingById);
 bookingsRouter.get("/getPassportData/:bookingId", getPassportData);

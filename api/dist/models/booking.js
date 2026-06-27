@@ -18,6 +18,11 @@ const transactionSchema = new mongoose_1.default.Schema({
             "adjustment",
             "depositRefund",
             "cancellationRefund",
+            "roomRefund",
+            "settlementCharge",
+            "compensation",
+            "depositKept",
+            "paymentCorrection",
             "towel",
             "motorbike",
             "slowBoat",
@@ -43,6 +48,11 @@ const transactionSchema = new mongoose_1.default.Schema({
             "adjustment",
             "depositRefund",
             "cancellationRefund",
+            "roomRefund",
+            "settlementCharge",
+            "compensation",
+            "depositKept",
+            "paymentCorrection",
             "towel",
             "motorbike",
             "slowBoat",
@@ -68,6 +78,7 @@ const transactionSchema = new mongoose_1.default.Schema({
             "CHECK_OUT",
             "ADD_TRANSACTION",
             "CANCEL_BOOKING",
+            "RESOLVE_STAY",
             "SYSTEM_MIGRATION",
         ],
     },
@@ -108,6 +119,37 @@ const checkoutSchema = new mongoose_1.default.Schema({
     earlyCheckOut: { type: Boolean, default: false },
     nightsEarly: { type: Number, default: 0 },
 }, { _id: false });
+const resolutionSchema = new mongoose_1.default.Schema({
+    outcome: {
+        type: String,
+        enum: [
+            "normal_checkout",
+            "early_checkout",
+            "cancelled_before_arrival",
+            "cancelled_after_checkin",
+            "no_show",
+            "guest_left",
+            "post_close_adjustment",
+        ],
+        required: true,
+    },
+    roomReleaseStatus: {
+        type: String,
+        enum: ["released", "blocked"],
+        required: true,
+    },
+    reasonCode: { type: String, required: true },
+    note: { type: String, required: true },
+    resolvedAt: { type: Date, required: true },
+    resolvedByStaffUsername: { type: String, required: true },
+    finalStatus: {
+        type: String,
+        enum: ["booked", "checkedIn", "checkedOut", "cancelled"],
+        required: true,
+    },
+    amendedAfterClose: { type: Boolean, default: false },
+    approvedByStaffUsername: { type: String },
+}, { _id: false });
 const bookingSchema = new mongoose_1.default.Schema({
     name: { type: String },
     roomStays: [roomStaySchema],
@@ -141,6 +183,7 @@ const bookingSchema = new mongoose_1.default.Schema({
     },
     cancellation: cancellationSchema,
     checkout: checkoutSchema,
+    resolution: resolutionSchema,
 });
 exports.default = mongoose_1.default.model("Booking", bookingSchema);
 //# sourceMappingURL=booking.js.map

@@ -9,6 +9,7 @@ import AddBooking from "./AddBooking.tsx";
 import PassportView from "./PassportView.tsx";
 import CheckIn from "./CheckIn.tsx";
 import CheckOut from "./CheckOut.tsx";
+import ResolveBooking from "./ResolveBooking.tsx";
 
 import { useState, useEffect, useRef } from "react";
 import { API_URL } from "../../config/api.ts";
@@ -16,6 +17,7 @@ import { platformMap } from "../../helpers/maps.ts";
 import { formatBookingDates, isSameDay } from "../../helpers/bookingHelpers.ts";
 import { requestUnsavedModalClose } from "../../helpers/modalGuards.ts";
 import { Modal } from "@mui/material";
+import { useAuth } from "../../context/AuthContext.tsx";
 
 import type { booking } from "../../types/bookingTypes";
 
@@ -38,6 +40,19 @@ const transactionMap = {
     icon: "bx-calendar-x",
     name: "คืนเงินยกเลิก",
     color: "#fb7185",
+  },
+  roomRefund: { icon: "bx-undo", name: "คืนค่าห้อง", color: "#fb7185" },
+  settlementCharge: {
+    icon: "bx-receipt",
+    name: "เก็บเงินเพิ่ม",
+    color: "#22c55e",
+  },
+  compensation: { icon: "bx-gift", name: "ชดเชยลูกค้า", color: "#38bdf8" },
+  depositKept: { icon: "bx-lock-alt", name: "เก็บมัดจำ", color: "#facc15" },
+  paymentCorrection: {
+    icon: "bx-transfer",
+    name: "แก้ไขการชำระเงิน",
+    color: "#a78bfa",
   },
   towel: { icon: "bx-bath", name: "ผ้าเช็ดตัว", color: "#38bdf8" },
   motorbike: { icon: "bx-cycling", name: "มอเตอร์ไซค์", color: "#fb923c" },
@@ -71,16 +86,19 @@ const ViewBooking = ({
   const [cancellationIsOpen, setCancellationIsOpen] = useState(false);
   const [checkInIsOpen, setCheckInIsOpen] = useState(false);
   const [checkOutIsOpen, setCheckOutIsOpen] = useState(false);
+  const [resolveBookingIsOpen, setResolveBookingIsOpen] = useState(false);
   const [manageRoomStaysIsDirty, setManageRoomStaysIsDirty] = useState(false);
   const [editBookingIsDirty, setEditBookingIsDirty] = useState(false);
   const [addTransactionIsDirty, setAddTransactionIsDirty] = useState(false);
   const [cancellationIsDirty, setCancellationIsDirty] = useState(false);
   const [checkInIsDirty, setCheckInIsDirty] = useState(false);
   const [checkOutIsDirty, setCheckOutIsDirty] = useState(false);
+  const [resolveBookingIsDirty, setResolveBookingIsDirty] = useState(false);
   const [pendingUnsavedClose, setPendingUnsavedClose] = useState<
     (() => void) | null
   >(null);
   const [loading, setLoading] = useState(!booking);
+  const [moreActionsIsOpen, setMoreActionsIsOpen] = useState(false);
   const [showTransactionOverflowAlert, setShowTransactionOverflowAlert] =
     useState(false);
   const [
@@ -88,6 +106,7 @@ const ViewBooking = ({
     setTransactionOverflowAlertDismissed,
   ] = useState(false);
   const priceListRef = useRef<HTMLDivElement | null>(null);
+  const { user } = useAuth();
 
   const updateTransactionOverflowAlert = () => {
     const priceList = priceListRef.current;
@@ -132,6 +151,7 @@ const ViewBooking = ({
 
     setData(booking);
     setLoading(false);
+    setMoreActionsIsOpen(false);
   }, [booking]);
 
   useEffect(() => {
@@ -340,7 +360,8 @@ const ViewBooking = ({
     transaction.type === "cardSurcharge" ||
     transaction.type === "depositRefund" ||
     transaction.type === "cancellationRefund" ||
-    (transaction.type === "adjustment" && Boolean(transaction.relatedTransactionId));
+    (transaction.type === "adjustment" &&
+      Boolean(transaction.relatedTransactionId));
 
   const groupedTransactions = data.transactions.reduce<
     {
@@ -412,8 +433,14 @@ const ViewBooking = ({
 
   const renderPaymentMethod = (
     transaction: booking["transactions"][number],
+    compact = false,
   ) => (
-    <div style={{ display: "flex", gap: "0.5rem" }}>
+    <div
+      className={
+        "viewBooking__paymentMethod" +
+        (compact ? " viewBooking__paymentMethod--compact" : "")
+      }
+    >
       <p
         className={
           transaction.paymentMethod === "Unpaid" ? "viewBooking__unpaid" : ""
@@ -422,14 +449,10 @@ const ViewBooking = ({
         {transaction.paymentMethod}
       </p>
       {transaction.paymentMethod === "Unpaid" ? (
-        <i
-          className="bx bx-error viewBooking__unpaid"
-          style={{ fontSize: "1.4rem" }}
-        />
+        <i className="bx bx-error viewBooking__unpaid" />
       ) : (
         <i
           className={"bx " + paymentMethodIconMap[transaction.paymentMethod]}
-          style={{ fontSize: "1.4rem" }}
         />
       )}
     </div>
@@ -446,22 +469,34 @@ const ViewBooking = ({
         )
       : null;
 
-    const shouldShowNote = transaction.type !== "adjustment" && transaction.note;
+    const shouldShowNote =
+      transaction.type !== "adjustment" && transaction.note;
+    const infoItems = [
+      linkedTransaction
+        ? `ปรับจาก ${transactionMap[linkedTransaction.type].name} · ${formatTransactionAmount(
+            linkedTransaction,
+          )}`
+        : "",
+      shouldShowNote ? transaction.note : "",
+    ].filter(Boolean);
 
     if (!hasReviewFlag && !shouldShowNote && !linkedTransaction) return null;
 
     return (
       <div className="viewBooking__transactionMeta">
         {hasReviewFlag && (
-          <span className="viewBooking__reviewBadge">รอ Admin ตรวจสอบ</span>
+          <span className="viewBooking__reviewBadge">รอตรวจสอบ</span>
         )}
-        {linkedTransaction && (
-          <span>
-            ปรับจาก {transactionMap[linkedTransaction.type].name} ·{" "}
-            {formatTransactionAmount(linkedTransaction)}
+        {infoItems.length > 0 && (
+          <span className="viewBooking__transactionInfo" tabIndex={0}>
+            <i className="bx bx-info-circle" />
+            <span className="viewBooking__transactionTooltip">
+              {infoItems.map((item, index) => (
+                <span key={`${item}-${index}`}>{item}</span>
+              ))}
+            </span>
           </span>
         )}
-        {shouldShowNote && <span>{transaction.note}</span>}
       </div>
     );
   };
@@ -475,16 +510,18 @@ const ViewBooking = ({
       key={`${transaction.type}-${transaction.amount}-${index}`}
     >
       <div className="viewBooking__priceChildMain">
-        <span className="viewBooking__priceChildMarker">↳</span>
+        <span className="viewBooking__priceChildMarker" />
         <div>
-          <p className="viewBooking__priceChildAmount">
-            {formatTransactionAmount(transaction)}
+          <p className="viewBooking__priceChildText">
+            <span className="viewBooking__priceChildAmount">
+              {formatTransactionAmount(transaction)}
+            </span>
+            <span>{transactionMap[transaction.type].name}</span>
           </p>
-          <p>{transactionMap[transaction.type].name}</p>
           {renderReviewMeta(transaction)}
         </div>
       </div>
-      {renderPaymentMethod(transaction)}
+      {renderPaymentMethod(transaction, true)}
     </div>
   );
 
@@ -561,6 +598,30 @@ const ViewBooking = ({
           handleCheckOutSuccess={(updatedBooking) => {
             updateBooking(updatedBooking);
             setCheckOutIsOpen(false);
+          }}
+        />
+      </Modal>
+      <Modal
+        open={resolveBookingIsOpen}
+        className="home__modalCenter"
+        onClose={() =>
+          requestUnsavedModalClose(
+            resolveBookingIsDirty,
+            () => setResolveBookingIsOpen(false),
+            () =>
+              setPendingUnsavedClose(
+                () => () => setResolveBookingIsOpen(false),
+              ),
+          )
+        }
+      >
+        <ResolveBooking
+          booking={data}
+          onClose={() => setResolveBookingIsOpen(false)}
+          onDirtyChange={setResolveBookingIsDirty}
+          onUpdated={(updatedBooking) => {
+            updateBooking(updatedBooking);
+            setResolveBookingIsOpen(false);
           }}
         />
       </Modal>
@@ -802,6 +863,7 @@ const ViewBooking = ({
                                 display: "flex",
                                 gap: "1rem",
                                 alignItems: "center",
+                                minWidth: 0,
                               }}
                             >
                               <i
@@ -811,8 +873,8 @@ const ViewBooking = ({
                                     transactionMap[transaction.type].color,
                                 }}
                               />
-                              <div>
-                                <p className="viewBooking__infoText">
+                              <div style={{ minWidth: 0 }}>
+                                <p className="viewBooking__infoText viewBooking__priceAmount">
                                   {formatTransactionAmount(transaction)}
                                 </p>
                                 <p>{transactionMap[transaction.type].name}</p>
@@ -906,25 +968,72 @@ const ViewBooking = ({
           </div>
         </div>
         <div className="viewBooking__actions">
-          <div className="viewBooking__actionsRow">
+          <div className="viewBooking__moreActions">
             <ActionButton
-              text="แก้ไข"
-              icon="bx-edit"
-              onClick={() => setEditBookingIsOpen(true)}
+              text="เพิ่มเติม"
+              icon="bx-dots-horizontal-rounded"
+              onClick={() => setMoreActionsIsOpen((isOpen) => !isOpen)}
             />
-            <ActionButton
-              text="ลบ"
-              onClick={() => removeBookingHandler(data)}
-              icon="bx-trash"
-            />
-            {data.status === "booked" && (
-              <ActionButton
-                text="ยกเลิก"
-                onClick={() => {
-                  setCancellationIsOpen(true);
-                }}
-                icon="bx-calendar-x"
-              />
+            {moreActionsIsOpen && (
+              <div className="viewBooking__moreActionsMenu">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditBookingIsOpen(true);
+                    setMoreActionsIsOpen(false);
+                  }}
+                >
+                  <i className="bx bx-edit" />
+                  แก้ไข
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    removeBookingHandler(data);
+                    setMoreActionsIsOpen(false);
+                  }}
+                >
+                  <i className="bx bx-trash" />
+                  ลบ
+                </button>
+                {data.status === "booked" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCancellationIsOpen(true);
+                      setMoreActionsIsOpen(false);
+                    }}
+                  >
+                    <i className="bx bx-calendar-x" />
+                    ยกเลิก
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={
+                    (data.status === "checkedOut" ||
+                      data.status === "cancelled") &&
+                    !user?.admin
+                  }
+                  onClick={() => {
+                    setResolveBookingIsOpen(true);
+                    setMoreActionsIsOpen(false);
+                  }}
+                >
+                  <i
+                    className={
+                      "bx " +
+                      (data.status === "checkedOut" ||
+                      data.status === "cancelled"
+                        ? "bx-history"
+                        : "bx-receipt")
+                    }
+                  />
+                  {data.status === "checkedOut" || data.status === "cancelled"
+                    ? "แก้ไขหลังปิด"
+                    : "เคลียร์การเข้าพัก"}
+                </button>
+              </div>
             )}
           </div>
           <div className="viewBooking__actionsRow">

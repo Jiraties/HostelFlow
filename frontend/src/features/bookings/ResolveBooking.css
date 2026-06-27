@@ -1,0 +1,130 @@
+.resolveBooking__wrapper {
+  width: min(50rem, calc(100vw - 2rem));
+}
+
+.resolveBooking__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.resolveBooking__warning {
+  color: var(--red);
+  font-weight: 600;
+}
+
+.resolveBooking__section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.resolveBooking__sectionHeader {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.resolveBooking__linkButton,
+.resolveBooking__removeButton {
+  align-items: center;
+  background: transparent;
+  border: none;
+  color: var(--primary-color);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-weight: 600;
+  gap: 0.35rem;
+}
+
+.resolveBooking__removeButton {
+  align-self: end;
+  color: var(--red);
+  height: 2.75rem;
+  justify-content: center;
+  width: 2.75rem;
+}
+
+.resolveBooking__removeButton:disabled {
+  color: #c9c9c9;
+  cursor: not-allowed;
+}
+
+.resolveBooking__note {
+  min-height: 5rem;
+  resize: vertical;
+}
+
+.resolveBooking__segmentedControl {
+  min-height: 2.65rem;
+}
+
+.resolveBooking__segmentedControl .cancellation__segment {
+  padding: 0.65rem 0.5rem;
+  white-space: nowrap;
+}
+
+.resolveBooking__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.resolveBooking__row {
+  align-items: end;
+  border: 1px solid #eee;
+  border-radius: 0.75rem;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 0.9rem;
+}
+
+.resolveBooking__removeButton {
+  grid-column: 2;
+  justify-self: end;
+}
+
+.resolveBooking__rowNote {
+  min-width: 0;
+}
+
+.resolveBooking__option {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.resolveBooking__option span {
+  border-radius: 50%;
+  display: inline-block;
+  height: 0.65rem;
+  width: 0.65rem;
+}
+
+.resolveBooking__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+}
+
+@media (max-width: 560px) {
+  .resolveBooking__wrapper {
+    width: calc(100vw - 1.5rem);
+  }
+
+  .resolveBooking__row {
+    grid-template-columns: 1fr;
+  }
+
+  .resolveBooking__actions {
+    flex-direction: column;
+  }
+
+  .resolveBooking__actions .home__action {
+    justify-content: center;
+    width: 100%;
+  }
+}

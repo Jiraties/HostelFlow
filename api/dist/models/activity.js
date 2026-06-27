@@ -19,6 +19,8 @@ const activitySchema = new mongoose_1.default.Schema({
             "CHECK_IN",
             "CHECK_OUT",
             "CANCEL_BOOKING",
+            "RESOLVE_STAY",
+            "POST_CLOSE_ADJUSTMENT",
             "MANAGE_ROOM_STAYS",
             "ADD_TRANSACTION",
             "CREATE_USER",

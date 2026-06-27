@@ -7,6 +7,7 @@ export type SourceAction =
   | "CHECK_OUT"
   | "ADD_TRANSACTION"
   | "CANCEL_BOOKING"
+  | "RESOLVE_STAY"
   | "SYSTEM_MIGRATION";
 
 export const CASH_VARIANCE_THRESHOLD = 20;
@@ -16,17 +17,24 @@ export const LARGE_REFUND_THRESHOLD = 2000;
 const moneyOutTransactionTypes: TransactionType[] = [
   "depositRefund",
   "cancellationRefund",
+  "roomRefund",
+  "compensation",
 ];
 
 const nonRevenueTransactionTypes: TransactionType[] = [
   "deposit",
   "depositRefund",
   "cancellationRefund",
+  "roomRefund",
+  "compensation",
+  "depositKept",
 ];
 
 const revenueTransactionTypes: TransactionType[] = [
   "roomCharge",
   "adjustment",
+  "settlementCharge",
+  "paymentCorrection",
   "towel",
   "motorbike",
   "slowBoat",
@@ -69,7 +77,8 @@ export const transactionRefundAmount = (transaction: transcation) =>
 
 export const transactionDepositLiabilityDelta = (transaction: transcation) => {
   if (transaction.type === "deposit") return Math.abs(transaction.amount || 0);
-  if (transaction.type === "depositRefund") return -Math.abs(transaction.amount || 0);
+  if (transaction.type === "depositRefund" || transaction.type === "depositKept")
+    return -Math.abs(transaction.amount || 0);
   return 0;
 };
 

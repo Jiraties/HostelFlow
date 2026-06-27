@@ -7,15 +7,22 @@ exports.LARGE_REFUND_THRESHOLD = 2000;
 const moneyOutTransactionTypes = [
     "depositRefund",
     "cancellationRefund",
+    "roomRefund",
+    "compensation",
 ];
 const nonRevenueTransactionTypes = [
     "deposit",
     "depositRefund",
     "cancellationRefund",
+    "roomRefund",
+    "compensation",
+    "depositKept",
 ];
 const revenueTransactionTypes = [
     "roomCharge",
     "adjustment",
+    "settlementCharge",
+    "paymentCorrection",
     "towel",
     "motorbike",
     "slowBoat",
@@ -56,7 +63,7 @@ exports.transactionRefundAmount = transactionRefundAmount;
 const transactionDepositLiabilityDelta = (transaction) => {
     if (transaction.type === "deposit")
         return Math.abs(transaction.amount || 0);
-    if (transaction.type === "depositRefund")
+    if (transaction.type === "depositRefund" || transaction.type === "depositKept")
         return -Math.abs(transaction.amount || 0);
     return 0;
 };
