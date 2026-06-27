@@ -151,6 +151,17 @@ const CheckIn = ({
       throw new Error("กรุณายืนยันการรับเงินสดจากลูกค้า");
     }
 
+    const parsedReceivedCash = Number(receivedCash);
+
+    if (
+      roomCharge.paymentMethod === "Unpaid" &&
+      roundingAdjustment &&
+      (!Number.isFinite(parsedReceivedCash) ||
+        parsedReceivedCash < roomCharge.amount)
+    ) {
+      throw new Error("ยอดเงินสดค่าห้องต้องไม่ต่ำกว่าค่าห้อง");
+    }
+
     setSubmitting(true);
 
     try {
@@ -168,7 +179,7 @@ const CheckIn = ({
         payload.unpaidPayment = {
           paymentMethod: unpaidPaymentPaymentMethod,
           roundingAdjustment: roundingAdjustment
-            ? Number(receivedCash) - roomCharge.amount
+            ? parsedReceivedCash - roomCharge.amount
             : 0,
         };
       }
@@ -284,9 +295,12 @@ const CheckIn = ({
                   (option) => option.value === unpaidPaymentPaymentMethod,
                 )}
                 onChange={(option) => {
-                  if (option?.value !== "Cash")
+                  if (option?.value !== "Cash") {
                     setReceivedCash(String(roomCharge.amount));
+                    setRoundingAdjustment(false);
+                  }
 
+                  setConfirmedPayment(false);
                   setUnpaidPaymentPaymentMethod(option?.value || "");
                 }}
               />
@@ -399,6 +413,7 @@ const CheckIn = ({
               text="รับเงินสดไม่ตรงค่าห้อง"
               onClick={() => {
                 setRoundingAdjustment(!roundingAdjustment);
+                setConfirmedPayment(false);
               }}
               icon={roundingAdjustment ? "bx-check" : "bx-currency-notes"}
               highlight={roundingAdjustment}
@@ -413,6 +428,7 @@ const CheckIn = ({
               success: `เช็คอิน ${booking.name} สำเร็จ`,
               error: (err) =>
                 err.response?.data?.message ||
+                err.response?.data?.error ||
                 err.message ||
                 "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง",
             })

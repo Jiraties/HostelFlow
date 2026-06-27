@@ -18,7 +18,7 @@ type Transaction = booking["transactions"][number];
 type TransactionType = Transaction["type"];
 type PaymentMethod = Transaction["paymentMethod"];
 type TransactionDirection = NonNullable<Transaction["direction"]>;
-type FinalStatus = "checkedOut" | "cancelled";
+type FinalStatus = "checkedOut" | "cancelled" | "noShow";
 type RoomReleaseStatus = "released" | "blocked";
 
 type SettlementRow = {
@@ -82,6 +82,7 @@ const directionOptions: OptionType[] = [
 const finalStatusOptions: OptionType[] = [
   { value: "checkedOut", label: "Check-Out แล้ว" },
   { value: "cancelled", label: "ยกเลิกแล้ว" },
+  { value: "noShow", label: "No-Show" },
 ];
 
 const settlementPaymentMethodOptions = paymentMethodOptions.filter(
@@ -107,26 +108,40 @@ const formatCurrency = (amount: number) =>
 
 const ResolveBooking = ({
   booking,
+  initialOutcome,
+  initialFinalStatus,
   onClose,
   onUpdated,
   onDirtyChange,
 }: {
   booking: booking;
+  initialOutcome?: ResolutionOutcome;
+  initialFinalStatus?: FinalStatus;
   onClose?: () => void;
   onUpdated?: (booking: booking) => void;
   onDirtyChange?: (isDirty: boolean) => void;
 }) => {
   const { user } = useAuth();
   const bookingIsClosed =
-    booking.status === "checkedOut" || booking.status === "cancelled";
+    booking.status === "checkedOut" ||
+    booking.status === "cancelled" ||
+    booking.status === "noShow";
   const bookingIsCheckedIn = booking.status === "checkedIn";
   const mode = bookingIsClosed ? "closed" : bookingIsCheckedIn ? "checkedIn" : "open";
   const availableOutcomeOptions = outcomeOptions[mode];
+  const defaultOutcome =
+    initialOutcome &&
+    availableOutcomeOptions.some((option) => option.value === initialOutcome)
+      ? initialOutcome
+      : (availableOutcomeOptions[0].value as ResolutionOutcome);
   const [outcome, setOutcome] = useState<ResolutionOutcome>(
-    availableOutcomeOptions[0].value as ResolutionOutcome,
+    defaultOutcome,
   );
   const [finalStatus, setFinalStatus] = useState<FinalStatus>(
-    booking.status === "cancelled" ? "cancelled" : "checkedOut",
+    initialFinalStatus ||
+      (booking.status === "cancelled" || booking.status === "noShow"
+        ? booking.status
+        : "checkedOut"),
   );
   const [roomReleaseStatus, setRoomReleaseStatus] =
     useState<RoomReleaseStatus>("released");
@@ -135,9 +150,27 @@ const ResolveBooking = ({
   const [rows, setRows] = useState<SettlementRow[]>([defaultRow(Date.now())]);
   const [submitting, setSubmitting] = useState(false);
 
+  useEffect(() => {
+    if (bookingIsClosed) return;
+
+    if (outcome === "no_show") {
+      setFinalStatus("noShow");
+      return;
+    }
+
+    setFinalStatus((currentFinalStatus) =>
+      currentFinalStatus === "noShow" ? "checkedOut" : currentFinalStatus,
+    );
+  }, [bookingIsClosed, outcome]);
+
   const availableFinalStatusOptions = bookingIsClosed
     ? finalStatusOptions.filter((option) => option.value === booking.status)
-    : finalStatusOptions;
+    : finalStatusOptions.filter(
+        (option) =>
+          outcome === "no_show"
+            ? option.value === "noShow"
+            : option.value !== "noShow",
+      );
 
   const transactionAttachmentOptions: OptionType[] = booking.transactions
     .filter((transaction) => transaction._id)

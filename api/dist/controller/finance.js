@@ -178,7 +178,7 @@ const upsertDailyClose = async (req, res) => {
                 createdBy: req.user.username,
                 createdAt: new Date(),
             },
-        }, { new: true, upsert: true });
+        }, { returnDocument: "after", upsert: true });
         await (0, activityServices_1.logActivity)(req.user.username, "DAILY_CLOSE", {
             summary: {
                 businessDate: reconciliation.businessDate,

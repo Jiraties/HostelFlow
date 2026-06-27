@@ -144,7 +144,7 @@ const resolutionSchema = new mongoose_1.default.Schema({
     resolvedByStaffUsername: { type: String, required: true },
     finalStatus: {
         type: String,
-        enum: ["booked", "checkedIn", "checkedOut", "cancelled"],
+        enum: ["booked", "checkedIn", "checkedOut", "cancelled", "noShow"],
         required: true,
     },
     amendedAfterClose: { type: Boolean, default: false },
@@ -162,7 +162,7 @@ const bookingSchema = new mongoose_1.default.Schema({
     bookingId: { type: String, unique: true },
     status: {
         type: String,
-        enum: ["booked", "checkedIn", "checkedOut", "cancelled"],
+        enum: ["booked", "checkedIn", "checkedOut", "cancelled", "noShow"],
         default: "booked",
     },
     checkInByStaffUsername: { type: String, default: null },

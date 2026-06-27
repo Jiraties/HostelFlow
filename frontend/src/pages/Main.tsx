@@ -44,36 +44,24 @@ const getFetchErrorMessage = (err: unknown) => {
 const roomChargeTransaction = (booking: booking) =>
   booking.transactions.find((transaction) => transaction.type === "roomCharge");
 
-const sumBookingTransactions = (
-  booking: booking,
-  predicate: (transaction: booking["transactions"][number]) => boolean,
-) =>
-  booking.transactions.reduce(
-    (sum, transaction) =>
-      predicate(transaction) ? sum + transaction.amount : sum,
-    0,
-  );
-
-const getDepositToReturn = (bookings: booking[]) =>
-  bookings.reduce((sum, booking) => {
-    const deposits = sumBookingTransactions(
-      booking,
-      (transaction) => transaction.type === "deposit",
-    );
-    const refundedDeposits = sumBookingTransactions(
-      booking,
-      (transaction) => transaction.type === "depositRefund",
-    );
-
-    return sum + Math.max(deposits - refundedDeposits, 0);
-  }, 0);
-
 const formatDisplayDate = (date: Date) =>
   new Intl.DateTimeFormat("th-TH", {
     calendar: "gregory",
     day: "numeric",
     month: "short",
   }).format(date);
+
+const startOfDate = (date: Date) =>
+  new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+const daysBetweenDates = (from: Date, to: Date) =>
+  Math.max(
+    0,
+    Math.floor(
+      (startOfDate(to).getTime() - startOfDate(from).getTime()) /
+        (1000 * 60 * 60 * 24),
+    ),
+  );
 
 type AdminDashboardStats = {
   todayExpectedRevenue: number;
@@ -126,6 +114,28 @@ type ReconciliationData = {
   threshold: number;
   summary: FinanceSummary;
   dailyCloses: DailyClose[];
+};
+
+type ReviewBooking = booking & {
+  reviewLabel: string;
+  reviewType: "checkIn" | "checkOut";
+};
+
+const getReviewDate = (booking: ReviewBooking) =>
+  booking.reviewType === "checkIn" ? booking.checkIn : booking.checkOut;
+
+const getReviewDateLabel = (booking: ReviewBooking) =>
+  booking.reviewType === "checkIn" ? "ควรเช็คอิน" : "ควรเช็คเอาท์";
+
+const getReviewOverdueLabel = (booking: ReviewBooking) => {
+  const daysOverdue = daysBetweenDates(getReviewDate(booking), new Date());
+
+  return daysOverdue > 0 ? `${daysOverdue} วัน` : "วันนี้";
+};
+
+type NeedsReviewResponse = {
+  lateCheckIns: booking[];
+  lateCheckOuts: booking[];
 };
 
 const formatCompactNumber = (value: number) =>
@@ -239,66 +249,129 @@ const TodayList = ({
   icon,
   bookings,
   emptyText,
+  onBookingClick,
+  isBookingsThatNeedReview,
 }: {
   title: string;
   icon: string;
-  bookings: booking[];
+  bookings: Array<booking | ReviewBooking>;
   emptyText: string;
-}) => (
-  <section className="main__todaySection">
-    <div className="main__sectionHeader">
-      <div>
-        <i className={`bx ${icon}`} />
-        <h2>{title}</h2>
-      </div>
-      <span>{bookings.length}</span>
-    </div>
+  onBookingClick: (booking: booking) => void;
+  isBookingsThatNeedReview?: boolean;
+}) => {
+  const visibleBookings = bookings.slice(0, 6);
+  const hiddenBookingCount = Math.max(
+    0,
+    bookings.length - visibleBookings.length,
+  );
 
-    <div className="main__bookingList">
-      {bookings.length === 0 ? (
-        <div className="main__emptyState">
-          <i className="bx bx-check-circle" />
-          <p>{emptyText}</p>
+  return (
+    <section
+      className={`main__todaySection${
+        isBookingsThatNeedReview ? " main__todaySection--review" : ""
+      }`}
+    >
+      <div className="main__sectionHeader">
+        <div>
+          <i className={`bx ${icon}`} />
+          <h2>{title}</h2>
         </div>
-      ) : (
-        bookings.slice(0, 6).map((booking) => {
-          const roomNames = booking.roomStays
-            .map((roomStay) => roomStay.roomId)
-            .join(", ");
-          const roomCharge = roomChargeTransaction(booking);
-          const platform = platformMap[booking.platformId];
+        <span>{bookings.length}</span>
+      </div>
 
-          return (
-            <div className="main__bookingItem" key={booking.bookingId}>
-              <div className="main__bookingPrimary">
-                <h3>{booking.name}</h3>
-                <p>{roomNames || "ยังไม่มีห้อง"}</p>
+      <div className="main__bookingList">
+        {bookings.length === 0 ? (
+          <div className="main__emptyState">
+            <i className="bx bx-check-circle" />
+            <p>{emptyText}</p>
+          </div>
+        ) : (
+          <>
+            {visibleBookings.map((booking) => {
+              const roomNames = booking.roomStays
+                .map((roomStay) => roomStay.roomId)
+                .join(", ");
+              const platform = platformMap[booking.platformId];
+              const isReviewBooking =
+                isBookingsThatNeedReview && "reviewType" in booking;
+
+              return (
+                <button
+                  className={`main__bookingItem${
+                    isReviewBooking ? " main__bookingItem--review" : ""
+                  }${
+                    isReviewBooking
+                      ? ` main__bookingItem--review-${booking.reviewType}`
+                      : ""
+                  }`}
+                  key={booking.bookingId}
+                  type="button"
+                  onClick={() => onBookingClick(booking)}
+                >
+                  <div className="main__bookingPrimary">
+                    <h3>{booking.name}</h3>
+                    <p>{roomNames || "ยังไม่มีห้อง"}</p>
+                  </div>
+                  <div className="main__bookingMeta">
+                    {isReviewBooking ? (
+                      <>
+                        <strong className="main__bookingReviewReason">
+                          {booking.reviewLabel}
+                        </strong>
+                        <span className="main__bookingMetaLine">
+                          {getReviewDateLabel(booking)}{" "}
+                          {formatDisplayDate(getReviewDate(booking))}
+                          {" · "}
+                          <strong className="main__bookingReviewAge">
+                            {getReviewOverdueLabel(booking)}
+                          </strong>
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="main__bookingMetaLine">
+                          {formatDisplayDate(booking.checkIn)} -{" "}
+                          {formatDisplayDate(booking.checkOut)}
+                        </span>
+                        <span
+                          className="main__bookingMetaLine"
+                          style={{ color: platform?.color }}
+                        >
+                          {platform?.label || booking.platformId}
+                        </span>
+                      </>
+                    )}
+                    <div className="main__bookingReviewTags">
+                      {"reviewLabel" in booking && !isReviewBooking && (
+                        <strong className="main__bookingReviewTag">
+                          {booking.reviewLabel}
+                        </strong>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+            {hiddenBookingCount > 0 && (
+              <div className="main__bookingOverflow">
+                +{hiddenBookingCount} รายการเพิ่มเติม
               </div>
-              <div className="main__bookingMeta">
-                <span style={{ color: platform?.color }}>
-                  {platform?.label || booking.platformId}
-                </span>
-                <span>
-                  {formatDisplayDate(booking.checkIn)} -{" "}
-                  {formatDisplayDate(booking.checkOut)}
-                </span>
-                {roomCharge?.paymentMethod === "Unpaid" && (
-                  <strong>ยังไม่ชำระเงิน</strong>
-                )}
-              </div>
-            </div>
-          );
-        })
-      )}
-    </div>
-  </section>
-);
+            )}
+          </>
+        )}
+      </div>
+    </section>
+  );
+};
 
 const Main = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [arrivals, setArrivals] = useState<booking[]>([]);
   const [departures, setDepartures] = useState<booking[]>([]);
+  const [bookingsThatNeedReview, setBookingsThatNeedReview] = useState<
+    ReviewBooking[]
+  >([]);
   const [occupancy, setOccupancy] = useState(0);
   const [loading, setLoading] = useState(true);
   const [adminLoading, setAdminLoading] = useState(false);
@@ -330,17 +403,49 @@ const Main = () => {
   const fetchDailyOps = useCallback(async () => {
     setLoading(true);
     try {
-      const [arrivalsResponse, departuresResponse] = await Promise.all([
+      const [
+        arrivalsResponse,
+        departuresResponse,
+        bookingsThatNeedReviewResponse,
+      ] = await Promise.all([
         axios.get(`${API_URL}/bookings/getTodayBookings/arrivals`, {
           withCredentials: true,
         }),
         axios.get(`${API_URL}/bookings/getTodayBookings/departures`, {
           withCredentials: true,
         }),
+        axios.get<NeedsReviewResponse>(
+          `${API_URL}/bookings/getNeedsReviewBookings`,
+          {
+            withCredentials: true,
+          },
+        ),
       ]);
 
       setArrivals(formatBookingsDates(arrivalsResponse.data.bookings));
       setDepartures(formatBookingsDates(departuresResponse.data.bookings));
+      setBookingsThatNeedReview(
+        [
+          ...formatBookingsDates(
+            bookingsThatNeedReviewResponse.data.lateCheckIns,
+          ).map((booking) => ({
+            ...booking,
+            reviewLabel: "ยังไม่ได้เช็คอิน",
+            reviewType: "checkIn" as const,
+          })),
+          ...formatBookingsDates(
+            bookingsThatNeedReviewResponse.data.lateCheckOuts,
+          ).map((booking) => ({
+            ...booking,
+            reviewLabel: "ยังไม่ได้เช็คเอาท์",
+            reviewType: "checkOut" as const,
+          })),
+        ].sort(
+          (firstBooking, secondBooking) =>
+            getReviewDate(firstBooking).getTime() -
+            getReviewDate(secondBooking).getTime(),
+        ),
+      );
       setOccupancy(arrivalsResponse.data.occupancy);
       setLastUpdated(new Date());
     } finally {
@@ -464,7 +569,6 @@ const Main = () => {
   const unpaidArrivals = arrivals.filter(
     (booking) => roomChargeTransaction(booking)?.paymentMethod === "Unpaid",
   ).length;
-  const depositToReturn = getDepositToReturn(departures);
   const occupancyRatePercent = adminStats
     ? truncateDecimal(adminStats.occupancyRate * 100, 2)
     : 0;
@@ -485,9 +589,13 @@ const Main = () => {
       label: "ยังไม่ชำระเงิน",
       value: unpaidArrivals,
     },
+    // {
+    //   label: "มัดจำที่ต้องคืน (฿)",
+    //   value: depositToReturn,
+    // },
     {
-      label: "มัดจำที่ต้องคืน (฿)",
-      value: depositToReturn,
+      label: "ต้องตรวจสอบ",
+      value: bookingsThatNeedReview.length,
     },
   ];
   const adminStatCards = adminStats
@@ -520,6 +628,10 @@ const Main = () => {
   const appendToBookings = () => {
     setAddBookingIsOpen(false);
     refreshDashboard().catch((err) => toast.error(getFetchErrorMessage(err)));
+  };
+
+  const openBookingInMaster = (booking: booking) => {
+    navigate(`/master?bookingId=${encodeURIComponent(booking.bookingId)}`);
   };
 
   return (
@@ -824,18 +936,42 @@ const Main = () => {
       )}
 
       <div className="main__todayGrid">
-        <TodayList
-          title="เช็คอินวันนี้"
-          icon="bx-arrow-to-left"
-          bookings={arrivals}
-          emptyText="ไม่มีเช็คอินที่ต้องจัดการวันนี้"
-        />
-        <TodayList
-          title="เช็คเอาท์วันนี้"
-          icon="bx-arrow-from-left"
-          bookings={departures}
-          emptyText="ไม่มีเช็คเอาท์ที่ต้องจัดการวันนี้"
-        />
+        {bookingsThatNeedReview.length > 0 ? (
+          <TodayList
+            title="ต้องตรวจสอบ"
+            icon="bx-error-circle"
+            bookings={bookingsThatNeedReview}
+            emptyText="ไม่มีรายการจองที่ต้องตรวจสอบ"
+            isBookingsThatNeedReview={true}
+            onBookingClick={openBookingInMaster}
+          />
+        ) : (
+          <TodayList
+            title="เช็คอินวันนี้"
+            icon="bx-arrow-to-left"
+            bookings={arrivals}
+            emptyText="ไม่มีเช็คอินที่ต้องจัดการวันนี้"
+            onBookingClick={openBookingInMaster}
+          />
+        )}
+        <div className="main__todayStack">
+          {bookingsThatNeedReview.length > 0 && (
+            <TodayList
+              title="เช็คอินวันนี้"
+              icon="bx-arrow-to-left"
+              bookings={arrivals}
+              emptyText="ไม่มีเช็คอินที่ต้องจัดการวันนี้"
+              onBookingClick={openBookingInMaster}
+            />
+          )}
+          <TodayList
+            title="เช็คเอาท์วันนี้"
+            icon="bx-arrow-from-left"
+            bookings={departures}
+            emptyText="ไม่มีเช็คเอาท์ที่ต้องจัดการวันนี้"
+            onBookingClick={openBookingInMaster}
+          />
+        </div>
       </div>
     </main>
   );

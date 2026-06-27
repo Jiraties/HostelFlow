@@ -116,7 +116,7 @@ const resetUserPassword = async (req, res) => {
             });
         }
         const hashedPassword = await bcrypt_1.default.hash(password, 10);
-        const user = await user_1.default.findByIdAndUpdate(userId, { $set: { password: hashedPassword } }, { new: true }).select("_id username name admin active profilePictureUrl");
+        const user = await user_1.default.findByIdAndUpdate(userId, { $set: { password: hashedPassword } }, { returnDocument: "after" }).select("_id username name admin active profilePictureUrl");
         if (!user) {
             return res.status(404).json({
                 message: "ไม่พบผู้ใช้",
@@ -192,7 +192,7 @@ const updateUser = async (req, res) => {
                 user: sanitizeUser(existingUser),
             });
         }
-        const updatedUser = await user_1.default.findByIdAndUpdate(userId, { $set: updates }, { new: true }).select("_id username name admin active profilePictureUrl");
+        const updatedUser = await user_1.default.findByIdAndUpdate(userId, { $set: updates }, { returnDocument: "after" }).select("_id username name admin active profilePictureUrl");
         if (!updatedUser) {
             return res.status(404).json({ message: "ไม่พบผู้ใช้" });
         }
@@ -316,7 +316,7 @@ const setProfilePicture = async (req, res) => {
             $set: {
                 profilePictureUrl,
             },
-        }, { new: true });
+        }, { returnDocument: "after" });
         if (!updatedUser)
             return res.status(404).json({ message: "ไม่พบผู้ใช้" });
         return res.status(200).json({

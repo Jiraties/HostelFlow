@@ -144,7 +144,7 @@ export const resetUserPassword = async (req: Request, res: Response) => {
     const user = await User.findByIdAndUpdate(
       userId,
       { $set: { password: hashedPassword } },
-      { new: true },
+      { returnDocument: "after" },
     ).select("_id username name admin active profilePictureUrl");
 
     if (!user) {
@@ -242,7 +242,7 @@ export const updateUser = async (req: Request, res: Response) => {
     const updatedUser = await User.findByIdAndUpdate(
       userId,
       { $set: updates },
-      { new: true },
+      { returnDocument: "after" },
     ).select("_id username name admin active profilePictureUrl");
 
     if (!updatedUser) {
@@ -395,7 +395,7 @@ export const setProfilePicture = async (req: Request, res: Response) => {
           profilePictureUrl,
         },
       },
-      { new: true },
+      { returnDocument: "after" },
     );
 
     if (!updatedUser) return res.status(404).json({ message: "ไม่พบผู้ใช้" });

@@ -95,7 +95,9 @@ const AddBooking = ({
   const [formData, setFormData] = useState<BookingFormData>(initialFormData);
 
   useEffect(() => {
-    onDirtyChange?.(JSON.stringify(formData) !== JSON.stringify(initialFormData));
+    onDirtyChange?.(
+      JSON.stringify(formData) !== JSON.stringify(initialFormData),
+    );
 
     return () => onDirtyChange?.(false);
   }, [formData, initialFormData, onDirtyChange]);

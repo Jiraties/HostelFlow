@@ -187,6 +187,15 @@
   background-color: #dc2626;
 }
 
+.noShow {
+  background-color: #f3f4f6;
+  color: #4b5563;
+}
+
+.noShow div {
+  background-color: #4b5563;
+}
+
 .viewBooking__lateCheckInAction {
 }
 

@@ -115,6 +115,11 @@ const bookingStatusMap = {
     icon: "bx-calendar-x",
     className: "bookingStatusCell--cancelled",
   },
+  noShow: {
+    label: "No-Show",
+    icon: "bx-user-x",
+    className: "bookingStatusCell--noShow",
+  },
 };
 
 const statusCell = (params: ICellRendererParams<SpreadsheetRow, string>) => {
@@ -391,6 +396,9 @@ const Spreadsheet = ({
           },
           cancelled: (param: CellClassParams<SpreadsheetRow>) => {
             return !isMobile && param.value === "cancelled";
+          },
+          noShow: (param: CellClassParams<SpreadsheetRow>) => {
+            return !isMobile && param.value === "noShow";
           },
         },
         valueFormatter: (

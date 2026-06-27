@@ -59,6 +59,7 @@ const bookingStatusOptions = [
   { value: "booked", label: "ยังไม่ Check-In" },
   { value: "checkedIn", label: "Check-In แล้ว" },
   { value: "checkedOut", label: "Check-Out แล้ว" },
+  { value: "noShow", label: "No-Show" },
 ];
 
 const reportTypeOptions = [

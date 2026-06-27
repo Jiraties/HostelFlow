@@ -8,6 +8,7 @@ import {
   getBookingById,
   getMasterBookings,
   getMonthCalendar,
+  getNeedsReviewBookings,
   getTodayBookings,
   manageRoomStays,
   newBooking,
@@ -23,6 +24,7 @@ bookingsRouter.post("/newBooking", newBooking);
 bookingsRouter.patch("/editBooking/:bookingId", editBooking);
 bookingsRouter.post("/addTransaction/:bookingId", addTransaction);
 bookingsRouter.get("/getTodayBookings/:type", getTodayBookings);
+bookingsRouter.get("/getNeedsReviewBookings", getNeedsReviewBookings);
 bookingsRouter.get("/getAdminDashboardStats", getAdminDashboardStats);
 bookingsRouter.get("/getMasterBookings", getMasterBookings);
 bookingsRouter.delete("/removeBooking/:bookingId", removeBooking);

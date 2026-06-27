@@ -77,7 +77,9 @@ const transactionNeedsReview = (transaction, sameTypeCount = 0) => {
     if (direction === "out" && transaction.type === "adjustment") {
         flags.push("negative_adjustment");
     }
-    if (direction === "out" && transaction.type !== "adjustment") {
+    if (direction === "out" &&
+        transaction.type !== "adjustment" &&
+        transaction.type !== "depositRefund") {
         flags.push("refund");
     }
     if (direction === "out" &&

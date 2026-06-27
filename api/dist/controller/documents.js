@@ -56,6 +56,11 @@ const statusMap = {
         backgroundColor: "FFFEE2E2",
         textColor: "FFDC2626",
     },
+    noShow: {
+        label: "No-Show",
+        backgroundColor: "FFF3F4F6",
+        textColor: "FF4B5563",
+    },
 };
 const formatInputDate = (date) => {
     const year = date.getFullYear();

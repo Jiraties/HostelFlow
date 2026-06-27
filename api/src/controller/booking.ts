@@ -83,7 +83,11 @@ const RESOLUTION_OUTCOMES: ResolutionOutcome[] = [
   "post_close_adjustment",
 ];
 const ROOM_RELEASE_STATUSES: RoomReleaseStatus[] = ["released", "blocked"];
-const RESOLUTION_FINAL_STATUSES: Status[] = ["checkedOut", "cancelled"];
+const RESOLUTION_FINAL_STATUSES: Status[] = [
+  "checkedOut",
+  "cancelled",
+  "noShow",
+];
 const SENSITIVE_SETTLEMENT_TYPES: TransactionType[] = [
   "roomRefund",
   "depositRefund",
@@ -93,7 +97,7 @@ const SENSITIVE_SETTLEMENT_TYPES: TransactionType[] = [
 ];
 const ROOM_BLOCKING_BOOKING_FILTER = {
   $or: [
-    { status: { $nin: ["cancelled", "checkedOut"] } },
+    { status: { $nin: ["cancelled", "checkedOut", "noShow"] } },
     { "cancellation.roomReleaseStatus": "blocked" },
     { "checkout.roomReleaseStatus": "blocked" },
     { "resolution.roomReleaseStatus": "blocked" },
@@ -520,7 +524,7 @@ export const editBooking = async (
           roomStays: correctedRoomStays,
         },
       },
-      { new: true },
+      { returnDocument: "after" },
     );
 
     logActivity(
@@ -567,13 +571,13 @@ export const getTodayBookings = async (req: Request, res: Response) => {
     switch (type) {
       case "arrivals":
         bookings = await Booking.find({
-          status: { $ne: "cancelled" },
+          status: { $nin: ["cancelled", "noShow"] },
           checkIn: { $gte: startOfToday, $lt: startOfTomorrow },
         });
         break;
       case "departures":
         bookings = await Booking.find({
-          status: { $ne: "cancelled" },
+          status: { $nin: ["cancelled", "noShow"] },
           checkOut: { $gte: startOfToday, $lt: startOfTomorrow },
         });
         break;
@@ -1052,49 +1056,69 @@ export const checkIn = async (req: Request, res: Response) => {
       passport: encryptedPassportData,
     };
 
-    const updateOptions: {
-      new: true;
-      arrayFilters?: Record<string, string>[];
-    } = { new: true };
     const updateQuery: Record<string, unknown> = {
       bookingId,
       status: "booked",
     };
+    const updateOperation: Record<string, unknown> = {
+      $push: {
+        transactions: {
+          $each: newTransactions,
+        },
+      },
+      $set: setFields,
+    };
 
-    if (checkInData.unpaidPayment) {
+    if (checkInData.unpaidPayment && unpaidRoomCharge) {
       updateQuery.transactions = {
         $elemMatch: {
           paymentMethod: "Unpaid",
           type: "roomCharge",
         },
       };
-      setFields["transactions.$[transaction].paymentMethod"] =
-        checkInData.unpaidPayment.paymentMethod;
-      setFields["transactions.$[transaction].direction"] = transactionDirection(
-        {
-          type: "roomCharge",
-          paymentMethod: checkInData.unpaidPayment.paymentMethod,
-        },
-      );
-      updateOptions.arrayFilters = [
-        {
-          "transaction.paymentMethod": "Unpaid",
-          "transaction.type": "roomCharge",
-        },
+
+      const existingTransactions = existingBooking.toObject()
+        .transactions as transcation[];
+
+      setFields.transactions = [
+        ...existingTransactions.map((transaction) => {
+          if (
+            String(transaction._id) !== String(unpaidRoomCharge._id) &&
+            !(
+              transaction.type === "roomCharge" &&
+              transaction.paymentMethod === "Unpaid"
+            )
+          ) {
+            return transaction;
+          }
+
+          return {
+            ...transaction,
+            paymentMethod: checkInData.unpaidPayment!.paymentMethod,
+            direction: transactionDirection({
+              type: "roomCharge",
+              paymentMethod: checkInData.unpaidPayment!.paymentMethod,
+            }),
+          };
+        }),
+        ...newTransactions,
       ];
+
+      updateOperation.$set = setFields;
+      delete updateOperation.$push;
+    } else if (checkInData.unpaidPayment) {
+      updateQuery.transactions = {
+        $elemMatch: {
+          paymentMethod: "Unpaid",
+          type: "roomCharge",
+        },
+      };
     }
 
     const updatedBooking = await Booking.findOneAndUpdate(
       updateQuery,
-      {
-        $push: {
-          transactions: {
-            $each: newTransactions,
-          },
-        },
-        $set: setFields,
-      },
-      updateOptions,
+      updateOperation,
+      { returnDocument: "after" },
     );
 
     if (!updatedBooking) {
@@ -1260,7 +1284,7 @@ export const checkOut = async (req: Request, res: Response) => {
             }
           : {}),
       },
-      { new: true },
+      { returnDocument: "after" },
     );
 
     if (!updatedBooking) {
@@ -1532,7 +1556,7 @@ export const manageRoomStays = async (req: Request, res: Response) => {
           roomStays: sorted,
         },
       },
-      { new: true },
+      { returnDocument: "after" },
     );
 
     logActivity(
@@ -1714,7 +1738,7 @@ export const addTransaction = async (
           },
         },
       },
-      { new: true },
+      { returnDocument: "after" },
     );
 
     logActivity(
@@ -1924,7 +1948,7 @@ export const cancelBooking = async (req: Request, res: Response) => {
             }
           : {}),
       },
-      { new: true },
+      { returnDocument: "after" },
     );
 
     if (!updatedBooking) {
@@ -2049,7 +2073,9 @@ export const resolveBooking = async (
     }
 
     const bookingIsClosed =
-      booking.status === "checkedOut" || booking.status === "cancelled";
+      booking.status === "checkedOut" ||
+      booking.status === "cancelled" ||
+      booking.status === "noShow";
 
     if (bookingIsClosed && !req.user?.admin) {
       return res.status(403).json({
@@ -2081,6 +2107,17 @@ export const resolveBooking = async (
       return res.status(400).json({
         error: "INVALID_OUTCOME",
         message: "Outcome นี้ใช้กับ Booking ที่ Check-In แล้วเท่านั้น",
+      });
+    }
+
+    if (
+      !bookingIsClosed &&
+      ((outcome === "no_show" && finalStatus !== "noShow") ||
+        (outcome !== "no_show" && finalStatus === "noShow"))
+    ) {
+      return res.status(400).json({
+        error: "INVALID_NO_SHOW_STATUS",
+        message: "No-Show ต้องใช้สถานะสุดท้ายเป็น No-Show เท่านั้น",
       });
     }
 
@@ -2120,7 +2157,8 @@ export const resolveBooking = async (
         transaction.relatedTransactionId &&
         !booking.transactions.some(
           (existingTransaction) =>
-            String(existingTransaction._id) === transaction.relatedTransactionId,
+            String(existingTransaction._id) ===
+            transaction.relatedTransactionId,
         )
       ) {
         return res.status(400).json({
@@ -2199,8 +2237,7 @@ export const resolveBooking = async (
         checkedOutByStaffUsername: resolvedByStaffUsername,
         earlyCheckOut: ["early_checkout", "guest_left"].includes(outcome),
         nightsEarly:
-          ["early_checkout", "guest_left"].includes(outcome) &&
-          booking.checkOut
+          ["early_checkout", "guest_left"].includes(outcome) && booking.checkOut
             ? Math.max(
                 Math.round(
                   (getBookingBusinessDateStart(booking.checkOut).getTime() -
@@ -2239,7 +2276,7 @@ export const resolveBooking = async (
             }
           : {}),
       },
-      { new: true },
+      { returnDocument: "after" },
     );
 
     if (!updatedBooking) {
@@ -2276,6 +2313,31 @@ export const resolveBooking = async (
         ? "บันทึก Post-Close Adjustment สำเร็จ"
         : "Resolve Stay สำเร็จ",
       booking: updatedBooking,
+    });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+};
+
+export const getNeedsReviewBookings = async (req: Request, res: Response) => {
+  try {
+    const { start: todayStart } = getBusinessDayBounds();
+    const thirtyDaysAgo = new Date(todayStart);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const lateCheckInBookings = await Booking.find({
+      status: "booked",
+      checkIn: { $gte: thirtyDaysAgo, $lt: todayStart },
+    }).sort({ checkIn: 1, name: 1 });
+
+    const lateCheckOutBookings = await Booking.find({
+      status: "checkedIn",
+      checkOut: { $gte: thirtyDaysAgo, $lt: todayStart },
+    }).sort({ checkOut: 1, name: 1 });
+
+    res.status(200).json({
+      lateCheckIns: lateCheckInBookings,
+      lateCheckOuts: lateCheckOutBookings,
     });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });

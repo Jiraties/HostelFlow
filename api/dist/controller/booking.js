@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.resolveBooking = exports.cancelBooking = exports.getPassportData = exports.addTransaction = exports.manageRoomStays = exports.getBookingById = exports.getMonthCalendar = exports.checkOut = exports.checkIn = exports.removeBooking = exports.getMasterBookings = exports.getAdminDashboardStats = exports.getTodayBookings = exports.editBooking = exports.newBooking = void 0;
+exports.getNeedsReviewBookings = exports.resolveBooking = exports.cancelBooking = exports.getPassportData = exports.addTransaction = exports.manageRoomStays = exports.getBookingById = exports.getMonthCalendar = exports.checkOut = exports.checkIn = exports.removeBooking = exports.getMasterBookings = exports.getAdminDashboardStats = exports.getTodayBookings = exports.editBooking = exports.newBooking = void 0;
 const booking_1 = __importDefault(require("../models/booking"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const crypto_1 = __importDefault(require("crypto"));
@@ -65,7 +65,11 @@ const RESOLUTION_OUTCOMES = [
     "post_close_adjustment",
 ];
 const ROOM_RELEASE_STATUSES = ["released", "blocked"];
-const RESOLUTION_FINAL_STATUSES = ["checkedOut", "cancelled"];
+const RESOLUTION_FINAL_STATUSES = [
+    "checkedOut",
+    "cancelled",
+    "noShow",
+];
 const SENSITIVE_SETTLEMENT_TYPES = [
     "roomRefund",
     "depositRefund",
@@ -75,7 +79,7 @@ const SENSITIVE_SETTLEMENT_TYPES = [
 ];
 const ROOM_BLOCKING_BOOKING_FILTER = {
     $or: [
-        { status: { $nin: ["cancelled", "checkedOut"] } },
+        { status: { $nin: ["cancelled", "checkedOut", "noShow"] } },
         { "cancellation.roomReleaseStatus": "blocked" },
         { "checkout.roomReleaseStatus": "blocked" },
         { "resolution.roomReleaseStatus": "blocked" },
@@ -376,7 +380,7 @@ const editBooking = async (req, res) => {
                 note: booking.note || "",
                 roomStays: correctedRoomStays,
             },
-        }, { new: true });
+        }, { returnDocument: "after" });
         (0, activityServices_1.logActivity)(req.user?.username, "EDIT_BOOKING", {
             changes: {
                 name: { before: existingBooking.name, after: booking.name },
@@ -414,13 +418,13 @@ const getTodayBookings = async (req, res) => {
         switch (type) {
             case "arrivals":
                 bookings = await booking_1.default.find({
-                    status: { $ne: "cancelled" },
+                    status: { $nin: ["cancelled", "noShow"] },
                     checkIn: { $gte: startOfToday, $lt: startOfTomorrow },
                 });
                 break;
             case "departures":
                 bookings = await booking_1.default.find({
-                    status: { $ne: "cancelled" },
+                    status: { $nin: ["cancelled", "noShow"] },
                     checkOut: { $gte: startOfToday, $lt: startOfTomorrow },
                 });
                 break;
@@ -763,39 +767,57 @@ const checkIn = async (req, res) => {
             checkInByStaffUsername: req.user?.username,
             passport: encryptedPassportData,
         };
-        const updateOptions = { new: true };
         const updateQuery = {
             bookingId,
             status: "booked",
         };
-        if (checkInData.unpaidPayment) {
-            updateQuery.transactions = {
-                $elemMatch: {
-                    paymentMethod: "Unpaid",
-                    type: "roomCharge",
-                },
-            };
-            setFields["transactions.$[transaction].paymentMethod"] =
-                checkInData.unpaidPayment.paymentMethod;
-            setFields["transactions.$[transaction].direction"] = (0, financeHelpers_1.transactionDirection)({
-                type: "roomCharge",
-                paymentMethod: checkInData.unpaidPayment.paymentMethod,
-            });
-            updateOptions.arrayFilters = [
-                {
-                    "transaction.paymentMethod": "Unpaid",
-                    "transaction.type": "roomCharge",
-                },
-            ];
-        }
-        const updatedBooking = await booking_1.default.findOneAndUpdate(updateQuery, {
+        const updateOperation = {
             $push: {
                 transactions: {
                     $each: newTransactions,
                 },
             },
             $set: setFields,
-        }, updateOptions);
+        };
+        if (checkInData.unpaidPayment && unpaidRoomCharge) {
+            updateQuery.transactions = {
+                $elemMatch: {
+                    paymentMethod: "Unpaid",
+                    type: "roomCharge",
+                },
+            };
+            const existingTransactions = existingBooking.toObject()
+                .transactions;
+            setFields.transactions = [
+                ...existingTransactions.map((transaction) => {
+                    if (String(transaction._id) !== String(unpaidRoomCharge._id) &&
+                        !(transaction.type === "roomCharge" &&
+                            transaction.paymentMethod === "Unpaid")) {
+                        return transaction;
+                    }
+                    return {
+                        ...transaction,
+                        paymentMethod: checkInData.unpaidPayment.paymentMethod,
+                        direction: (0, financeHelpers_1.transactionDirection)({
+                            type: "roomCharge",
+                            paymentMethod: checkInData.unpaidPayment.paymentMethod,
+                        }),
+                    };
+                }),
+                ...newTransactions,
+            ];
+            updateOperation.$set = setFields;
+            delete updateOperation.$push;
+        }
+        else if (checkInData.unpaidPayment) {
+            updateQuery.transactions = {
+                $elemMatch: {
+                    paymentMethod: "Unpaid",
+                    type: "roomCharge",
+                },
+            };
+        }
+        const updatedBooking = await booking_1.default.findOneAndUpdate(updateQuery, updateOperation, { returnDocument: "after" });
         if (!updatedBooking) {
             return res.status(409).json({
                 message: "booking นี้ไม่สามารถ check-in ซ้ำได้",
@@ -919,7 +941,7 @@ const checkOut = async (req, res) => {
                     },
                 }
                 : {}),
-        }, { new: true });
+        }, { returnDocument: "after" });
         if (!updatedBooking) {
             return res.status(404).json({
                 message: "ไม่พบ booking นี้",
@@ -1122,7 +1144,7 @@ const manageRoomStays = async (req, res) => {
             $set: {
                 roomStays: sorted,
             },
-        }, { new: true });
+        }, { returnDocument: "after" });
         (0, activityServices_1.logActivity)(req.user?.username, "MANAGE_ROOM_STAYS", {
             summary: {
                 beforeRoomStays: originalRoomStays,
@@ -1248,7 +1270,7 @@ const addTransaction = async (req, res) => {
                     $each: newTransactions,
                 },
             },
-        }, { new: true });
+        }, { returnDocument: "after" });
         (0, activityServices_1.logActivity)(req.user?.username, "ADD_TRANSACTION", {
             summary: {
                 addedTransactions: newTransactions,
@@ -1404,7 +1426,7 @@ const cancelBooking = async (req, res) => {
                     },
                 }
                 : {}),
-        }, { new: true });
+        }, { returnDocument: "after" });
         if (!updatedBooking) {
             return res.status(404).json({
                 error: "NOT_FOUND",
@@ -1478,7 +1500,9 @@ const resolveBooking = async (req, res) => {
                 message: "ไม่พบ booking นี้",
             });
         }
-        const bookingIsClosed = booking.status === "checkedOut" || booking.status === "cancelled";
+        const bookingIsClosed = booking.status === "checkedOut" ||
+            booking.status === "cancelled" ||
+            booking.status === "noShow";
         if (bookingIsClosed && !req.user?.admin) {
             return res.status(403).json({
                 error: "ADMIN_APPROVAL_REQUIRED",
@@ -1502,6 +1526,14 @@ const resolveBooking = async (req, res) => {
             return res.status(400).json({
                 error: "INVALID_OUTCOME",
                 message: "Outcome นี้ใช้กับ Booking ที่ Check-In แล้วเท่านั้น",
+            });
+        }
+        if (!bookingIsClosed &&
+            ((outcome === "no_show" && finalStatus !== "noShow") ||
+                (outcome !== "no_show" && finalStatus === "noShow"))) {
+            return res.status(400).json({
+                error: "INVALID_NO_SHOW_STATUS",
+                message: "No-Show ต้องใช้สถานะสุดท้ายเป็น No-Show เท่านั้น",
             });
         }
         const normalizedTransactions = [];
@@ -1529,7 +1561,8 @@ const resolveBooking = async (req, res) => {
                 });
             }
             if (transaction.relatedTransactionId &&
-                !booking.transactions.some((existingTransaction) => String(existingTransaction._id) === transaction.relatedTransactionId)) {
+                !booking.transactions.some((existingTransaction) => String(existingTransaction._id) ===
+                    transaction.relatedTransactionId)) {
                 return res.status(400).json({
                     error: "INVALID_RELATED_TRANSACTION",
                     message: "ไม่พบรายการที่ต้องการอ้างอิง",
@@ -1593,8 +1626,7 @@ const resolveBooking = async (req, res) => {
                 checkedOutAt: now,
                 checkedOutByStaffUsername: resolvedByStaffUsername,
                 earlyCheckOut: ["early_checkout", "guest_left"].includes(outcome),
-                nightsEarly: ["early_checkout", "guest_left"].includes(outcome) &&
-                    booking.checkOut
+                nightsEarly: ["early_checkout", "guest_left"].includes(outcome) && booking.checkOut
                     ? Math.max(Math.round((getBookingBusinessDateStart(booking.checkOut).getTime() -
                         getBusinessDayBounds(now).start.getTime()) /
                         86400000), 0)
@@ -1622,7 +1654,7 @@ const resolveBooking = async (req, res) => {
                     },
                 }
                 : {}),
-        }, { new: true });
+        }, { returnDocument: "after" });
         if (!updatedBooking) {
             return res.status(404).json({
                 error: "BOOKING_NOT_FOUND",
@@ -1657,4 +1689,27 @@ const resolveBooking = async (req, res) => {
     }
 };
 exports.resolveBooking = resolveBooking;
+const getNeedsReviewBookings = async (req, res) => {
+    try {
+        const { start: todayStart } = getBusinessDayBounds();
+        const thirtyDaysAgo = new Date(todayStart);
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const lateCheckInBookings = await booking_1.default.find({
+            status: "booked",
+            checkIn: { $gte: thirtyDaysAgo, $lt: todayStart },
+        }).sort({ checkIn: 1, name: 1 });
+        const lateCheckOutBookings = await booking_1.default.find({
+            status: "checkedIn",
+            checkOut: { $gte: thirtyDaysAgo, $lt: todayStart },
+        }).sort({ checkOut: 1, name: 1 });
+        res.status(200).json({
+            lateCheckIns: lateCheckInBookings,
+            lateCheckOuts: lateCheckOutBookings,
+        });
+    }
+    catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+exports.getNeedsReviewBookings = getNeedsReviewBookings;
 //# sourceMappingURL=booking.js.map

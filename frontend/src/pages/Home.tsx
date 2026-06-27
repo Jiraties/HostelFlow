@@ -15,7 +15,7 @@ import UnsavedChangesModal from "../components/UnsavedChangesModal";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Modal } from "@mui/material";
-import { useLocation } from "react-router";
+import { useLocation, useSearchParams } from "react-router";
 import {
   formatBookingDates,
   formatBookingsDates,
@@ -77,7 +77,11 @@ const getFetchErrorMessage = (err: unknown) => {
 
 const Home = ({ status }: { status: HomeStatus }) => {
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isMaster = status === "master";
+  const bookingIdQuery = isMaster
+    ? searchParams.get("bookingId")?.trim() || ""
+    : "";
   const [addBookingIsOpen, setAddBookingIsOpen] = useState(false);
   const [addBookingIsDirty, setAddBookingIsDirty] = useState(false);
   const [pendingUnsavedClose, setPendingUnsavedClose] = useState<
@@ -102,10 +106,25 @@ const Home = ({ status }: { status: HomeStatus }) => {
     getDefaultMasterFilters,
   );
   const masterFiltersRef = useRef(masterFilters);
+  const openedBookingIdFromQueryRef = useRef("");
 
   useEffect(() => {
     masterFiltersRef.current = masterFilters;
   }, [masterFilters]);
+
+  useEffect(() => {
+    if (!isMaster) return;
+
+    openedBookingIdFromQueryRef.current = "";
+
+    if (!bookingIdQuery) return;
+
+    setMasterFilters((prev) =>
+      prev.bookingId === bookingIdQuery
+        ? prev
+        : { ...prev, bookingId: bookingIdQuery },
+    );
+  }, [bookingIdQuery, isMaster]);
 
   const fullFormattedDate = new Intl.DateTimeFormat("th-TH", {
     day: "numeric",
@@ -277,6 +296,19 @@ const Home = ({ status }: { status: HomeStatus }) => {
     fetchBookings();
   };
 
+  const clearBookingIdQueryParam = () => {
+    if (!isMaster || !searchParams.has("bookingId")) return;
+
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.delete("bookingId");
+    setSearchParams(nextSearchParams, { replace: true });
+  };
+
+  const closeViewBookingModal = () => {
+    setViewBookingBooking(null);
+    clearBookingIdQueryParam();
+  };
+
   const fetchBookingsWithFilters = useCallback(
     async (filters: MasterFilters) => {
       setLoading(true);
@@ -362,6 +394,26 @@ const Home = ({ status }: { status: HomeStatus }) => {
 
     return () => window.clearTimeout(timeoutId);
   }, [fetchBookingsWithFilters, isMaster, masterFilters]);
+
+  useEffect(() => {
+    if (
+      !isMaster ||
+      loading ||
+      !bookingIdQuery ||
+      openedBookingIdFromQueryRef.current === bookingIdQuery
+    ) {
+      return;
+    }
+
+    const bookingToOpen = bookings.find(
+      (booking) => booking.bookingId === bookingIdQuery,
+    );
+
+    if (!bookingToOpen) return;
+
+    openedBookingIdFromQueryRef.current = bookingIdQuery;
+    setViewBookingBooking(bookingToOpen);
+  }, [bookingIdQuery, bookings, isMaster, loading]);
 
   const renderMasterFilterFields = () => (
     <div className="home__masterFiltersInner">
@@ -480,12 +532,12 @@ const Home = ({ status }: { status: HomeStatus }) => {
       </Modal>
       <Modal
         open={!!viewBookingBooking}
-        onClose={() => setViewBookingBooking(null)}
+        onClose={closeViewBookingModal}
         className="home__modalCenter"
       >
         <ViewBooking
           booking={viewBookingBooking as booking}
-          onClose={() => setViewBookingBooking(null)}
+          onClose={closeViewBookingModal}
           onUpdated={handleViewBookingUpdated}
           removeBookingHandler={removeBookingHandler}
         />

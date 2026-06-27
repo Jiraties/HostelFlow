@@ -2,7 +2,12 @@ import mongoose from "mongoose";
 
 export type PlatformId = "BOOK" | "HOST" | "TRAV" | "AGOD" | "WALK";
 export type PaymentMethod = "OTA" | "Cash" | "Card" | "Transfer" | "Unpaid";
-export type Status = "booked" | "checkedIn" | "checkedOut" | "cancelled";
+export type Status =
+  | "booked"
+  | "checkedIn"
+  | "checkedOut"
+  | "cancelled"
+  | "noShow";
 export type TransactionDirection = "in" | "out" | "neutral";
 export type TransactionReviewStatus = "none" | "needs_review" | "reviewed";
 export type SourceAction =
@@ -305,7 +310,7 @@ const resolutionSchema = new mongoose.Schema(
     resolvedByStaffUsername: { type: String, required: true },
     finalStatus: {
       type: String,
-      enum: ["booked", "checkedIn", "checkedOut", "cancelled"],
+      enum: ["booked", "checkedIn", "checkedOut", "cancelled", "noShow"],
       required: true,
     },
     amendedAfterClose: { type: Boolean, default: false },
@@ -330,7 +335,7 @@ const bookingSchema = new mongoose.Schema({
 
   status: {
     type: String,
-    enum: ["booked", "checkedIn", "checkedOut", "cancelled"],
+    enum: ["booked", "checkedIn", "checkedOut", "cancelled", "noShow"],
     default: "booked",
   },
 

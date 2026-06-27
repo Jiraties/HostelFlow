@@ -19,7 +19,7 @@ import { requestUnsavedModalClose } from "../../helpers/modalGuards.ts";
 import { Modal } from "@mui/material";
 import { useAuth } from "../../context/AuthContext.tsx";
 
-import type { booking } from "../../types/bookingTypes";
+import type { booking, ResolutionOutcome } from "../../types/bookingTypes";
 
 import "./ViewBooking.css";
 import Cancellation from "./Cancellation.tsx";
@@ -87,6 +87,9 @@ const ViewBooking = ({
   const [checkInIsOpen, setCheckInIsOpen] = useState(false);
   const [checkOutIsOpen, setCheckOutIsOpen] = useState(false);
   const [resolveBookingIsOpen, setResolveBookingIsOpen] = useState(false);
+  const [initialResolveOutcome, setInitialResolveOutcome] = useState<
+    ResolutionOutcome | undefined
+  >(undefined);
   const [manageRoomStaysIsDirty, setManageRoomStaysIsDirty] = useState(false);
   const [editBookingIsDirty, setEditBookingIsDirty] = useState(false);
   const [addTransactionIsDirty, setAddTransactionIsDirty] = useState(false);
@@ -320,6 +323,8 @@ const ViewBooking = ({
         return usedFor === "classname" ? "checkedOut" : "Check-Out แล้ว";
       case "cancelled":
         return usedFor === "classname" ? "cancelled" : "ถูกยกเลิก";
+      case "noShow":
+        return usedFor === "classname" ? "noShow" : "No-Show";
       default:
         return usedFor === "classname" ? "unknown" : status;
     }
@@ -617,6 +622,10 @@ const ViewBooking = ({
       >
         <ResolveBooking
           booking={data}
+          initialOutcome={initialResolveOutcome}
+          initialFinalStatus={
+            initialResolveOutcome === "no_show" ? "noShow" : undefined
+          }
           onClose={() => setResolveBookingIsOpen(false)}
           onDirtyChange={setResolveBookingIsDirty}
           onUpdated={(updatedBooking) => {
@@ -1012,10 +1021,12 @@ const ViewBooking = ({
                   type="button"
                   disabled={
                     (data.status === "checkedOut" ||
-                      data.status === "cancelled") &&
+                      data.status === "cancelled" ||
+                      data.status === "noShow") &&
                     !user?.admin
                   }
                   onClick={() => {
+                    setInitialResolveOutcome(undefined);
                     setResolveBookingIsOpen(true);
                     setMoreActionsIsOpen(false);
                   }}
@@ -1024,12 +1035,15 @@ const ViewBooking = ({
                     className={
                       "bx " +
                       (data.status === "checkedOut" ||
-                      data.status === "cancelled"
+                      data.status === "cancelled" ||
+                      data.status === "noShow"
                         ? "bx-history"
                         : "bx-receipt")
                     }
                   />
-                  {data.status === "checkedOut" || data.status === "cancelled"
+                  {data.status === "checkedOut" ||
+                  data.status === "cancelled" ||
+                  data.status === "noShow"
                     ? "แก้ไขหลังปิด"
                     : "เคลียร์การเข้าพัก"}
                 </button>
@@ -1052,7 +1066,10 @@ const ViewBooking = ({
               <ActionButton
                 text="No-Show"
                 className="viewBooking__noShowAction"
-                onClick={() => {}}
+                onClick={() => {
+                  setInitialResolveOutcome("no_show");
+                  setResolveBookingIsOpen(true);
+                }}
                 icon="bx-x"
               />
             )}

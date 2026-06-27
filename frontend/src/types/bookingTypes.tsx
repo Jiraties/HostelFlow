@@ -1,6 +1,6 @@
 export type PlatformId = "BOOK" | "HOST" | "TRAV" | "AGOD" | "WALK";
 type PaymentMethod = "OTA" | "Cash" | "Card" | "Transfer" | "Unpaid";
-type Status = "booked" | "checkedIn" | "checkedOut" | "cancelled";
+type Status = "booked" | "checkedIn" | "checkedOut" | "cancelled" | "noShow";
 type TransactionDirection = "in" | "out" | "neutral";
 type TransactionReviewStatus = "none" | "needs_review" | "reviewed";
 type CancellationType =

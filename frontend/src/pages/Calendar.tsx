@@ -69,6 +69,9 @@ const Calendar = () => {
     return new Date(year, month + 1, 0).getDate();
   };
 
+  const startOfCalendarDay = (date: Date) =>
+    new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
   const calendarDays: Date[] = useMemo(() => {
     return Array.from(
       { length: getDateInMonth(year, month) },
@@ -159,8 +162,8 @@ const Calendar = () => {
     );
   });
 
-  const monthStart = new Date(year, month, 1);
-  const monthEnd = new Date(year, month + 1, 1);
+  const monthStart = startOfCalendarDay(new Date(year, month, 1));
+  const monthEnd = startOfCalendarDay(new Date(year, month + 1, 1));
 
   rooms.forEach((room, roomIndex) => {
     const gridRow = roomIndex + 2; // row 1 = header, rooms start at 2
@@ -198,8 +201,8 @@ const Calendar = () => {
 
     // Booking blocks
     room.bookings.forEach((booking: CalendarBooking, index) => {
-      const from = new Date(booking.from);
-      const to = new Date(booking.to);
+      const from = startOfCalendarDay(new Date(booking.from));
+      const to = startOfCalendarDay(new Date(booking.to));
       const overlaps = to > monthStart && from < monthEnd;
       if (!overlaps) return;
 
@@ -214,6 +217,8 @@ const Calendar = () => {
       if (startingDate === -1) return;
 
       const span = calculateNights(visibleStart, visibleEnd);
+      if (span <= 0) return;
+
       const continuesBefore = from < monthStart;
       const continuesAfter = to > monthEnd;
 
@@ -226,6 +231,8 @@ const Calendar = () => {
             gridRow,
             backgroundColor:
               booking.status === "cancelled"
+                ? "#9ca3af"
+                : booking.status === "noShow"
                 ? "#9ca3af"
                 : platformMap[booking.platformId].color,
             borderTopLeftRadius: continuesBefore ? 0 : "0.5rem",
@@ -259,8 +266,6 @@ const Calendar = () => {
     });
   };
 
-  console.log(roomRows);
-
   const appendToBookings = (booking: booking) => {
     const formattedBooking = formatBookingDates(booking);
 
@@ -289,7 +294,7 @@ const Calendar = () => {
   };
 
   const nextMonth = () => {
-    if (month + 1 < 11) return setMonth(month + 1);
+    if (month < 11) return setMonth(month + 1);
 
     setYear(year + 1);
     setMonth(0);
@@ -326,8 +331,6 @@ const Calendar = () => {
     const todayEl = el.querySelector(`[data-day="${todayIndex}"]`);
     if (!todayEl) return;
 
-    console.log(todayIndex);
-
     todayEl.scrollIntoView({
       behavior: isfirstRun.current ? "instant" : "smooth",
       inline: "start",
@@ -343,6 +346,14 @@ const Calendar = () => {
 
   const removeBookingHandler = (booking: booking) => {
     setConfirmationModalIsOpen({ isOpen: true, booking });
+  };
+
+  const closeAddBookingModal = () => {
+    requestUnsavedModalClose(
+      addBookingIsDirty,
+      () => setAddBookingIsOpen(false),
+      () => setPendingUnsavedClose(() => () => setAddBookingIsOpen(false)),
+    );
   };
 
   return (
@@ -378,18 +389,12 @@ const Calendar = () => {
       <Modal
         open={addBookingIsOpen}
         className="home__modalCenter"
-        onClose={() =>
-          requestUnsavedModalClose(
-            addBookingIsDirty,
-            () => setAddBookingIsOpen(false),
-            () => setPendingUnsavedClose(() => () => setAddBookingIsOpen(false)),
-          )
-        }
+        onClose={closeAddBookingModal}
       >
         <AddBooking
           appendToBookings={appendToBookings}
           clickInfo={addBookingClickInfo}
-          onClose={() => setAddBookingIsOpen(false)}
+          onClose={closeAddBookingModal}
           onDirtyChange={setAddBookingIsDirty}
         />
       </Modal>

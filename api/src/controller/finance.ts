@@ -234,7 +234,7 @@ export const upsertDailyClose = async (req: Request, res: Response) => {
           createdAt: new Date(),
         },
       },
-      { new: true, upsert: true },
+      { returnDocument: "after", upsert: true },
     );
 
     await logActivity(req.user.username, "DAILY_CLOSE", {

@@ -10,6 +10,7 @@ import { paymentMethodOptions } from "../../helpers/options";
 import { customStyles, type OptionType } from "../../helpers/selectStyling";
 import type { booking } from "../../types/bookingTypes";
 import "./AddTransaction.css";
+import "./Cancellation.css";
 
 type Transaction = booking["transactions"][number];
 type TransactionType = Transaction["type"];
@@ -237,15 +238,16 @@ const AddTransaction = ({
         {formData.type === "adjustment" && (
           <div>
             <p className="addBooking__label">ทิศทางการปรับยอด</p>
-            <div className="addTransaction__directionControl">
+            <div className="cancellation__segmentedControl">
               <button
                 type="button"
                 className={
-                  "addTransaction__directionButton" +
+                  "cancellation__segment" +
                   (formData.adjustmentDirection === "in"
-                    ? " addTransaction__directionButton--active"
+                    ? " cancellation__segment--active"
                     : "")
                 }
+                style={{ borderRight: "1px #eee solid" }}
                 onClick={() =>
                   formDataChangeHandler("adjustmentDirection", "in")
                 }
@@ -256,9 +258,9 @@ const AddTransaction = ({
               <button
                 type="button"
                 className={
-                  "addTransaction__directionButton" +
+                  "cancellation__segment" +
                   (formData.adjustmentDirection === "out"
-                    ? " addTransaction__directionButton--active"
+                    ? " cancellation__segment--active"
                     : "")
                 }
                 onClick={() =>

@@ -10,6 +10,7 @@ bookingsRouter.post("/newBooking", booking_1.newBooking);
 bookingsRouter.patch("/editBooking/:bookingId", booking_1.editBooking);
 bookingsRouter.post("/addTransaction/:bookingId", booking_1.addTransaction);
 bookingsRouter.get("/getTodayBookings/:type", booking_1.getTodayBookings);
+bookingsRouter.get("/getNeedsReviewBookings", booking_1.getNeedsReviewBookings);
 bookingsRouter.get("/getAdminDashboardStats", booking_1.getAdminDashboardStats);
 bookingsRouter.get("/getMasterBookings", booking_1.getMasterBookings);
 bookingsRouter.delete("/removeBooking/:bookingId", booking_1.removeBooking);

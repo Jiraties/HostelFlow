@@ -134,4 +134,9 @@
     background-color: #fee2e2;
     color: #dc2626;
   }
+
+  .bookingStatusCell--noShow {
+    background-color: #f3f4f6;
+    color: #4b5563;
+  }
 }
