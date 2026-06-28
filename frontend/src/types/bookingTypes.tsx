@@ -49,6 +49,7 @@ interface roomStay {
 
 interface Passport {
   passportHash?: string;
+  namePrefix?: string;
   nationality?: string;
   passportNo?: EncryptedField;
   passportName?: EncryptedField;
@@ -125,6 +126,7 @@ export interface booking {
 
   staffUsername: string;
   checkInByStaffUsername?: string | null;
+  checkedInAt?: string | Date;
 
   passport?: Passport;
   cancellation?: Cancellation;

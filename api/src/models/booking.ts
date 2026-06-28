@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 
 export type PlatformId = "BOOK" | "HOST" | "TRAV" | "AGOD" | "WALK";
 export type PaymentMethod = "OTA" | "Cash" | "Card" | "Transfer" | "Unpaid";
+export type NamePrefix = "Mr" | "Mrs" | "Ms" | "Miss" | "Dr";
 export type Status =
   | "booked"
   | "checkedIn"
@@ -64,6 +65,7 @@ export interface roomStay {
 
 interface Passport {
   passportHash?: string;
+  namePrefix?: NamePrefix;
   nationality?: string;
   passportNo?: EncryptedField;
   passportName?: EncryptedField;
@@ -153,6 +155,7 @@ export interface booking extends Document {
 
   staffUsername: string;
   checkInByStaffUsername?: string | null;
+  checkedInAt?: Date;
 
   passport?: Passport;
   cancellation?: Cancellation;
@@ -344,11 +347,16 @@ const bookingSchema = new mongoose.Schema({
   },
 
   checkInByStaffUsername: { type: String, default: null },
+  checkedInAt: { type: Date },
 
   transactions: [transactionSchema],
 
   passport: {
     passportHash: String,
+    namePrefix: {
+      type: String,
+      enum: ["Mr", "Mrs", "Ms", "Miss", "Dr"],
+    },
     nationality: { type: String },
     passportNo: {
       cipherText: { type: String },

@@ -17,7 +17,9 @@ import type { OptionType } from "../helpers/selectStyling";
 type DocumentFilters = {
   bookingMonth: string;
   tm30Month: string;
-  hotelMonth: string;
+  hotelDate: string;
+  hotelDestinationMode: string;
+  hotelDestinationCountry: string;
   bookingChannel: string;
   bookingStatus: string;
   paymentMethod: string;
@@ -31,6 +33,7 @@ type PassportReportStatus = {
     bookingId: string;
     name: string;
     checkOut: string;
+    reason?: string;
   }[];
 };
 
@@ -41,6 +44,14 @@ const formatInputMonth = (date: Date) => {
   return `${year}-${month}`;
 };
 
+const formatInputDate = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+};
+
 const bookingStatusOptions = [
   { value: "all", label: "ทุกสถานะ" },
   { value: "booked", label: "ยังไม่ Check-In" },
@@ -49,13 +60,40 @@ const bookingStatusOptions = [
   { value: "noShow", label: "No-Show" },
 ];
 
+const hotelDestinationModeOptions = [
+  { value: "random", label: "สุ่มปลายทาง" },
+  { value: "manual", label: "เลือกประเทศเอง" },
+];
+
+const hotelDestinationCountryOptions = [
+  { value: "THA", label: "ไทย" },
+  { value: "LAO", label: "ลาว" },
+  { value: "VNM", label: "เวียดนาม" },
+  { value: "KHM", label: "กัมพูชา" },
+  { value: "MMR", label: "เมียนมา" },
+  { value: "MYS", label: "มาเลเซีย" },
+  { value: "SGP", label: "สิงคโปร์" },
+  { value: "IDN", label: "อินโดนีเซีย" },
+  { value: "PHL", label: "ฟิลิปปินส์" },
+  { value: "CHN", label: "จีน" },
+  { value: "JPN", label: "ญี่ปุ่น" },
+  { value: "KOR", label: "เกาหลีใต้" },
+  { value: "IND", label: "อินเดีย" },
+  { value: "AUS", label: "ออสเตรเลีย" },
+  { value: "GBR", label: "สหราชอาณาจักร" },
+  { value: "USA", label: "สหรัฐอเมริกา" },
+];
+
 const Documents = () => {
   const today = new Date();
   const currentMonth = formatInputMonth(today);
+  const currentDate = formatInputDate(today);
   const [filters, setFilters] = useState<DocumentFilters>({
     bookingMonth: currentMonth,
     tm30Month: currentMonth,
-    hotelMonth: currentMonth,
+    hotelDate: currentDate,
+    hotelDestinationMode: "random",
+    hotelDestinationCountry: "THA",
     bookingChannel: "",
     bookingStatus: "all",
     paymentMethod: "all",
@@ -70,6 +108,7 @@ const Documents = () => {
   const [hotelStatusLoading, setHotelStatusLoading] = useState(false);
   const [bookingExporting, setBookingExporting] = useState(false);
   const [immigrationExporting, setImmigrationExporting] = useState(false);
+  const [hotelExporting, setHotelExporting] = useState(false);
   const fullFormattedDate = new Intl.DateTimeFormat("th-TH", {
     day: "numeric",
     month: "long",
@@ -83,10 +122,6 @@ const Documents = () => {
 
   const updateFilter = (key: keyof DocumentFilters, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
-  };
-
-  const handleHotelExport = () => {
-    toast.error("รายงาน รร. ยังไม่ได้เชื่อมต่อระบบส่งออก");
   };
 
   const renderSelect = (
@@ -144,7 +179,10 @@ const Documents = () => {
               <div className="documents__missingItem" key={booking.bookingId}>
                 <div>
                   <strong>{booking.name}</strong>
-                  <p>{booking.bookingId}</p>
+                  <p>
+                    {booking.bookingId}
+                    {booking.reason ? ` - ${booking.reason}` : ""}
+                  </p>
                 </div>
                 <span>
                   {new Date(booking.checkOut).toLocaleDateString("th-TH", {
@@ -245,6 +283,50 @@ const Documents = () => {
     }
   };
 
+  const getHotelAccommodationReport = async () => {
+    if (hotelStatus?.missing) {
+      const shouldContinue = window.confirm(
+        `ยังมีข้อมูล Passport ขาด ${hotelStatus.missing} รายการ ต้องการส่งออกต่อหรือไม่?`,
+      );
+
+      if (!shouldContinue) return;
+    }
+
+    setHotelExporting(true);
+
+    try {
+      const response = await axios.get(
+        `${API_URL}/documents/getHotelAccommodationReport`,
+        {
+          params: {
+            date: filters.hotelDate,
+            randomizeDestination:
+              filters.hotelDestinationMode === "random" ? "true" : "false",
+            destinationCountry: filters.hotelDestinationCountry,
+          },
+          responseType: "blob",
+          withCredentials: true,
+        },
+      );
+
+      const downloadUrl = URL.createObjectURL(response.data);
+      const link = document.createElement("a");
+
+      link.href = downloadUrl;
+      link.download = `hotel-accommodation-${filters.hotelDate}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(downloadUrl);
+      toast.success("ส่งออกรายงาน รร. สำเร็จ");
+    } catch (err) {
+      console.error(err);
+      toast.error("ไม่สามารถส่งออกรายงาน รร. ได้");
+    } finally {
+      setHotelExporting(false);
+    }
+  };
+
   useEffect(() => {
     let ignore = false;
 
@@ -289,10 +371,10 @@ const Documents = () => {
 
       try {
         const response = await axios.get<PassportReportStatus>(
-          `${API_URL}/documents/getImmigrationReportStatus`,
+          `${API_URL}/documents/getHotelAccommodationReportStatus`,
           {
             params: {
-              month: filters.hotelMonth,
+              date: filters.hotelDate,
             },
             withCredentials: true,
           },
@@ -315,7 +397,7 @@ const Documents = () => {
     return () => {
       ignore = true;
     };
-  }, [filters.hotelMonth]);
+  }, [filters.hotelDate]);
 
   return (
     <main className="home">
@@ -459,13 +541,35 @@ const Documents = () => {
 
           <div className="documents__form">
             <div>
-              <p className="documents__label">เดือน</p>
+              <p className="documents__label">วันที่เข้าพัก</p>
               <input
-                type="month"
-                value={filters.hotelMonth}
-                onChange={(e) => updateFilter("hotelMonth", e.target.value)}
+                type="date"
+                value={filters.hotelDate}
+                onChange={(e) => updateFilter("hotelDate", e.target.value)}
                 className="boxInput"
               />
+            </div>
+
+            <div className="documents__fieldGrid">
+              <div>
+                <p className="documents__label">ปลายทางถัดไป</p>
+                {renderSelect(
+                  hotelDestinationModeOptions,
+                  filters.hotelDestinationMode,
+                  (value) => updateFilter("hotelDestinationMode", value),
+                )}
+              </div>
+
+              {filters.hotelDestinationMode === "manual" && (
+                <div>
+                  <p className="documents__label">ประเทศที่จะไป</p>
+                  {renderSelect(
+                    hotelDestinationCountryOptions,
+                    filters.hotelDestinationCountry,
+                    (value) => updateFilter("hotelDestinationCountry", value),
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -473,10 +577,12 @@ const Documents = () => {
 
           <div className="documents__actions">
             <ActionButton
-              text="ยังไม่เชื่อมต่อระบบส่งออก"
-              icon="bx-download"
+              text={hotelExporting ? "กำลังส่งออก..." : "ส่งออกรายงาน รร."}
+              icon={hotelExporting ? "bx-loader-alt" : "bx-download"}
+              highlight
               className="documents__action documents__action--orange"
-              onClick={handleHotelExport}
+              onClick={getHotelAccommodationReport}
+              disabled={hotelExporting}
             />
           </div>
         </div>

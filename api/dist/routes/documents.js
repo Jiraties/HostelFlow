@@ -9,5 +9,7 @@ const documentsRouter = express_1.default.Router();
 documentsRouter.get("/getBookingsReport", documents_1.getBookingsReport);
 documentsRouter.get("/getImmigrationReport", documents_1.getImmigrationReport);
 documentsRouter.get("/getImmigrationReportStatus", documents_1.getImmigrationReportStatus);
+documentsRouter.get("/getHotelAccommodationReport", documents_1.getHotelAccomodationReport);
+documentsRouter.get("/getHotelAccommodationReportStatus", documents_1.getHotelAccomodationReportStatus);
 exports.default = documentsRouter;
 //# sourceMappingURL=documents.js.map

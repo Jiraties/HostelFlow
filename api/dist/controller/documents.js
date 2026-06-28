@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getHotelAccomodationReport = exports.getImmigrationReport = exports.getImmigrationReportStatus = exports.getBookingsReport = void 0;
+exports.getHotelAccomodationReportStatus = exports.getHotelAccomodationReport = exports.getImmigrationReport = exports.getImmigrationReportStatus = exports.getBookingsReport = void 0;
 const exceljs_1 = __importDefault(require("exceljs"));
 const booking_1 = __importDefault(require("../models/booking"));
 const crypto_1 = __importDefault(require("crypto"));
@@ -35,6 +35,34 @@ const transactionMap = {
     extraBed: "เตียงเสริม",
     cardSurcharge: "ค่าธรรมเนียมบัตร 3%",
 };
+const hotelAccommodationHeaders = [
+    "ลำดับ",
+    "วันที่เข้าพัก",
+    "เวลาเข้าพัก",
+    "ห้องพัก",
+    "คำนำหน้าชื่อไทย",
+    "ชื่อไทย",
+    "ชื่อกลางไทย",
+    "นามสกุลไทย",
+    "คำนำหน้าชื่ออังกฤษ",
+    "ชื่ออังกฤษ",
+    "ชื่อกลางอังกฤษ",
+    "นามสกุลอังกฤษ",
+    "สัญชาติ",
+    "เลขหนังสือเดินทาง",
+    "ออกให้โดย",
+    "ที่อยู่",
+    "ประเทศที่อยู่",
+    "อาชีพ",
+    "มาจาก",
+    "มาจากประเทศ",
+    "จะไปที่อำเภอจังหวัดหรือประเทศใด",
+    "จะไปประเทศ",
+    "วันที่ออก",
+    "เวลาออก",
+    "สถานะข้อมูล",
+    "หมายเหตุ",
+];
 const statusMap = {
     booked: {
         label: "ยังไม่ Check-In",
@@ -68,6 +96,13 @@ const formatInputDate = (date) => {
     const day = String(date.getDate());
     return `${year}/${month}/${day}`;
 };
+const formatReportTime = (date) => {
+    if (!date)
+        return "";
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    return `${hours}.${minutes}`;
+};
 const transactionTotal = (transactions, type) => transactions
     .filter((transaction) => !type || transaction.type === type)
     .reduce((sum, transaction) => sum +
@@ -87,7 +122,124 @@ const immigrationMonthQuery = (month) => {
         checkOut: { $gt: firstDayOfMonth },
     };
 };
-const passportInfoIsComplete = (passport) => !!passport?.nationality && !!passport.passportName && !!passport.passportNo;
+const dateQuery = (date) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
+        return null;
+    const start = new Date(`${date}T00:00:00`);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 1);
+    return { start, end };
+};
+const hotelAccommodationDateQuery = (date) => {
+    const bounds = dateQuery(date);
+    if (!bounds)
+        return null;
+    return {
+        $or: [
+            { checkedInAt: { $gte: bounds.start, $lt: bounds.end } },
+            {
+                checkedInAt: { $exists: false },
+                checkIn: { $gte: bounds.start, $lt: bounds.end },
+            },
+        ],
+    };
+};
+const passportInfoIsComplete = (passport) => !!passport?.namePrefix &&
+    !!passport.nationality &&
+    !!passport.passportName &&
+    !!passport.passportNo;
+const hotelPassportInfoIssue = (passport) => {
+    if (!passport?.namePrefix)
+        return "ขาดคำนำหน้าชื่อ";
+    if (!passport.nationality)
+        return "ขาดสัญชาติ";
+    if (!passport.passportName)
+        return "ขาดชื่อบน Passport";
+    if (!passport.passportNo)
+        return "ขาดเลข Passport";
+    const formattedPassport = formatPassport(passport, undefined, {
+        nationalityFormat: "number",
+    });
+    if (!formattedPassport.nationality) {
+        return `ไม่มีรหัสสัญชาติสำหรับ ${passport.nationality}`;
+    }
+    return null;
+};
+const hotelPassportInfoIsComplete = (passport) => !hotelPassportInfoIssue(passport);
+const formatPassport = (rawPassport, nationalitySheet, options = {}) => {
+    const emptyPassport = {
+        namePrefix: "",
+        nationality: "",
+        passportNo: "",
+        passportName: "",
+    };
+    if (!rawPassport?.nationality ||
+        !rawPassport.passportName ||
+        !rawPassport.passportNo) {
+        return emptyPassport;
+    }
+    const decrypt = ({ cipherText, iv, authTag }) => {
+        const key = Buffer.from(process.env.CRYPTO_SECRET, "hex");
+        const decipher = crypto_1.default.createDecipheriv("aes-256-gcm", key, Buffer.from(iv, "hex"));
+        decipher.setAuthTag(Buffer.from(authTag, "hex"));
+        let decrypted = decipher.update(cipherText, "hex", "utf8");
+        decrypted += decipher.final("utf8");
+        return decrypted;
+    };
+    return {
+        namePrefix: rawPassport.namePrefix || "",
+        nationality: options.nationalityFormat === "number"
+            ? (0, passportHelpers_1.formatNationalityToReportNumber)(rawPassport.nationality)
+            : nationalitySheet
+                ? (0, passportHelpers_1.formatNationalityToIcao)(rawPassport.nationality, nationalitySheet)
+                : "",
+        passportNo: decrypt(rawPassport.passportNo),
+        passportName: decrypt(rawPassport.passportName),
+    };
+};
+const pickRandomDestinationCountry = (seed) => {
+    const hash = seed.split("").reduce((sum, char) => {
+        return (sum * 31 + char.charCodeAt(0)) >>> 0;
+    }, 0);
+    return passportHelpers_1.reportDestinationCountries[hash % passportHelpers_1.reportDestinationCountries.length];
+};
+const getHotelDestinationCountry = (randomizeDestination, destinationCountry, seed) => randomizeDestination
+    ? pickRandomDestinationCountry(seed)
+    : (0, passportHelpers_1.formatDestinationCountryForReport)(destinationCountry || "THA");
+const createHotelAccommodationSheet = (workbook, date) => {
+    const sheet = workbook.addWorksheet("Sheet1");
+    sheet.getCell(1, 1).value = `Hotel Accommodation Report ${date}`;
+    sheet.mergeCells(1, 1, 1, hotelAccommodationHeaders.length);
+    const titleRow = sheet.getRow(1);
+    titleRow.font = { bold: true, size: 14 };
+    titleRow.alignment = { horizontal: "center" };
+    const headerRow = sheet.getRow(4);
+    headerRow.values = ["", ...hotelAccommodationHeaders];
+    headerRow.font = { bold: true };
+    headerRow.alignment = { horizontal: "center", vertical: "middle" };
+    hotelAccommodationHeaders.forEach((header, index) => {
+        const column = sheet.getColumn(index + 1);
+        column.width = Math.max(12, Math.min(header.length + 4, 28));
+    });
+    return sheet;
+};
+const getHotelAccommodationWorkbook = async (templatePath, date) => {
+    const workbook = new exceljs_1.default.Workbook();
+    try {
+        await workbook.xlsx.readFile(templatePath);
+        const sheet = workbook.getWorksheet("Sheet1") || workbook.worksheets[0];
+        if (sheet)
+            return { workbook, sheet };
+    }
+    catch (err) {
+        console.warn("Unable to read hotel accommodation template", err);
+    }
+    const fallbackWorkbook = new exceljs_1.default.Workbook();
+    return {
+        workbook: fallbackWorkbook,
+        sheet: createHotelAccommodationSheet(fallbackWorkbook, date),
+    };
+};
 const cellBorder = {
     top: { style: "thin", color: { argb: "FFE5E7EB" } },
     left: { style: "thin", color: { argb: "FFE5E7EB" } },
@@ -333,29 +485,7 @@ const getImmigrationReport = async (req, res) => {
         const startRow = 2;
         bookings.forEach((booking, index) => {
             const row = sheet.getRow(startRow + index);
-            let formattedPassport = {
-                nationality: "",
-                passportNo: "",
-                passportName: "",
-            };
-            const rawPassport = booking.passport;
-            const decrypt = ({ cipherText, iv, authTag }) => {
-                const key = Buffer.from(process.env.CRYPTO_SECRET, "hex");
-                const decipher = crypto_1.default.createDecipheriv("aes-256-gcm", key, Buffer.from(iv, "hex"));
-                decipher.setAuthTag(Buffer.from(authTag, "hex"));
-                let decrypted = decipher.update(cipherText, "hex", "utf8");
-                decrypted += decipher.final("utf8");
-                return decrypted;
-            };
-            if (rawPassport?.nationality &&
-                rawPassport.passportName &&
-                rawPassport.passportNo) {
-                formattedPassport = {
-                    nationality: (0, passportHelpers_1.formatNationalityToIcao)(rawPassport.nationality, nationalitySheet),
-                    passportNo: decrypt(rawPassport.passportNo),
-                    passportName: decrypt(rawPassport.passportName),
-                };
-            }
+            const formattedPassport = formatPassport(booking.passport, nationalitySheet);
             const splittedPassportName = (0, passportHelpers_1.splitPassportName)(formattedPassport.passportName);
             const missingPassportInfo = !formattedPassport.passportName ||
                 !formattedPassport.passportNo ||
@@ -391,13 +521,111 @@ const getImmigrationReport = async (req, res) => {
 exports.getImmigrationReport = getImmigrationReport;
 const getHotelAccomodationReport = async (req, res) => {
     try {
-        const month = req.query.month;
-        const query = immigrationMonthQuery(month);
+        const date = req.query.date;
+        const randomizeDestination = String(req.query.randomizeDestination || "false") === "true";
+        const destinationCountry = req.query.destinationCountry;
+        const query = hotelAccommodationDateQuery(date);
+        if (!query) {
+            return res.status(400).json({ message: "Invalid date format" });
+        }
+        const bookings = await booking_1.default.find(query)
+            .select("bookingId checkIn checkOut checkedInAt roomStays passport name")
+            .sort({ checkIn: 1, name: 1 });
+        if (bookings.length === 0)
+            return res.status(400).json({ message: "ไม่พบรายการจองในวันที่กำหนด" });
+        const templatePath = path_1.default.resolve(process.cwd(), "uploads", "document-templates", "HotelAccommodation.xlsx");
+        const { workbook, sheet } = await getHotelAccommodationWorkbook(templatePath, date);
+        sheet.getCell("N2").value = (0, dateHelpers_1.formatDateAD)(new Date(`${date}T00:00:00`));
+        const startRow = 5;
+        bookings.forEach((booking, index) => {
+            const row = sheet.getRow(startRow + index);
+            const formattedPassport = formatPassport(booking.passport, undefined, {
+                nationalityFormat: "number",
+            });
+            const splittedPassportName = (0, passportHelpers_1.splitPassportName)(formattedPassport.passportName);
+            const missingPassportInfo = !hotelPassportInfoIsComplete(booking.passport);
+            if (missingPassportInfo) {
+                const missingCell = row.getCell(1);
+                missingCell.value = `MISSING ${booking.name} ${booking.bookingId}`;
+                missingCell.font = {
+                    ...missingCell.font,
+                    color: { argb: "FFFF0000" },
+                };
+            }
+            else {
+                const destination = getHotelDestinationCountry(randomizeDestination, destinationCountry, booking.bookingId);
+                row.getCell(1).value = index + 1;
+                row.getCell(2).value = (0, dateHelpers_1.formatDateAD)(booking.checkIn);
+                row.getCell(3).value = formatReportTime(booking.checkedInAt || booking.checkIn);
+                row.getCell(4).value = (0, passportHelpers_1.formatRoomIdToReportNumber)(booking.roomStays[0]?.roomId || "");
+                row.getCell(9).value = formattedPassport.namePrefix;
+                row.getCell(10).value = splittedPassportName.firstName;
+                row.getCell(11).value = splittedPassportName.middleName;
+                row.getCell(12).value = splittedPassportName.lastName;
+                row.getCell(13).value = formattedPassport.nationality;
+                row.getCell(14).value = formattedPassport.passportNo;
+                row.getCell(17).value = (0, passportHelpers_1.formatNationalityToReportThaiName)(booking.passport?.nationality || "");
+                row.getCell(18).value = 146;
+                row.getCell(20).value = (0, passportHelpers_1.formatNationalityToReportThaiName)(booking.passport?.nationality || "");
+                row.getCell(21).value = destination.label;
+                row.getCell(22).value = destination.code;
+                row.getCell(23).value = (0, dateHelpers_1.formatDateAD)(booking.checkOut);
+                row.getCell(24).value = "12.00";
+            }
+            row.commit();
+        });
+        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        res.setHeader("Content-Disposition", `attachment; filename=hotel-accommodation-${date}.xlsx`);
+        await workbook.xlsx.write(res);
+        res.end();
     }
     catch (err) {
         console.error(err);
-        res.status(500).json({ message: "Failed to create immigration report" });
+        res
+            .status(500)
+            .json({ message: "Failed to create hotel accommodation report" });
     }
 };
 exports.getHotelAccomodationReport = getHotelAccomodationReport;
+const getHotelAccomodationReportStatus = async (req, res) => {
+    try {
+        const date = req.query.date;
+        const query = hotelAccommodationDateQuery(date);
+        if (!query) {
+            return res.status(400).json({ message: "Invalid date format" });
+        }
+        const bookings = await booking_1.default.find(query)
+            .select("bookingId name passport checkOut")
+            .sort({
+            checkIn: 1,
+            name: 1,
+        })
+            .lean();
+        const missingBookings = bookings
+            .map((booking) => ({
+            booking,
+            reason: hotelPassportInfoIssue(booking.passport),
+        }))
+            .filter(({ reason }) => reason)
+            .map(({ booking, reason }) => ({
+            bookingId: booking.bookingId,
+            name: booking.name,
+            checkOut: booking.checkOut,
+            reason,
+        }));
+        res.status(200).json({
+            total: bookings.length,
+            complete: bookings.length - missingBookings.length,
+            missing: missingBookings.length,
+            missingBookings,
+        });
+    }
+    catch (err) {
+        console.error(err);
+        res
+            .status(500)
+            .json({ message: "Failed to fetch hotel accommodation status" });
+    }
+};
+exports.getHotelAccomodationReportStatus = getHotelAccomodationReportStatus;
 //# sourceMappingURL=documents.js.map

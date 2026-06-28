@@ -54,6 +54,7 @@ const NEW_BOOKING_PAYMENT_METHODS = [
     "Unpaid",
 ];
 const CHECK_IN_PAYMENT_METHODS = ["Cash", "Card", "Transfer"];
+const NAME_PREFIXES = ["Mr", "Mrs", "Ms", "Miss", "Dr"];
 const PLATFORM_IDS = ["BOOK", "HOST", "TRAV", "AGOD", "WALK"];
 const RESOLUTION_OUTCOMES = [
     "normal_checkout",
@@ -635,12 +636,18 @@ const checkIn = async (req, res) => {
             return res.status(400).json({
                 message: "กรุณาแนบข้อมูล bookingId เพื่อดำเนินการ check-in",
             });
-        if (!checkInData.passportData?.nationality ||
+        if (!checkInData.passportData?.namePrefix ||
+            !checkInData.passportData?.nationality ||
             !checkInData.passportData?.passportNo ||
             !checkInData.passportData?.passportName ||
             checkInData.deposit == null) {
             return res.status(400).json({
                 message: "กรุณากรอกข้อมูลให้ครบทุกช่อง",
+            });
+        }
+        if (!NAME_PREFIXES.includes(checkInData.passportData.namePrefix)) {
+            return res.status(400).json({
+                message: "คำนำหน้าชื่อไม่ถูกต้อง",
             });
         }
         const depositAmount = Number(checkInData.deposit);
@@ -717,6 +724,7 @@ const checkIn = async (req, res) => {
         };
         const encryptedPassportData = {
             passportHash: hashPassport(checkInData.passportData.passportNo),
+            namePrefix: checkInData.passportData.namePrefix,
             nationality: checkInData.passportData.nationality,
             passportNo: encrypt(checkInData.passportData.passportNo),
             passportName: encrypt(checkInData.passportData.passportName),
@@ -762,9 +770,11 @@ const checkIn = async (req, res) => {
                 }));
             }
         }
+        const checkedInAt = new Date();
         const setFields = {
             status: "checkedIn",
             checkInByStaffUsername: req.user?.username,
+            checkedInAt,
             passport: encryptedPassportData,
         };
         const updateQuery = {
@@ -836,6 +846,10 @@ const checkIn = async (req, res) => {
                 checkInByStaffUsername: {
                     before: existingBooking.checkInByStaffUsername,
                     after: req.user?.username,
+                },
+                checkedInAt: {
+                    before: existingBooking.checkedInAt,
+                    after: checkedInAt,
                 },
             },
         }, String(bookingId));
@@ -1328,6 +1342,7 @@ const getPassportData = async (req, res) => {
             return decrypted;
         };
         const passportData = {
+            namePrefix: booking.passport.namePrefix || "",
             nationality: booking.passport.nationality,
             passportNo: decrypt(booking.passport.passportNo),
             passportName: decrypt(booking.passport.passportName),

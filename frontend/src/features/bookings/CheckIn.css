@@ -60,6 +60,18 @@
   margin-bottom: 0.5rem;
 }
 
+.checkIn__nameRow {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.35fr) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: end;
+}
+
+.checkIn__prefixField,
+.checkIn__passportNameField {
+  min-width: 0;
+}
+
 .checkIn__actions {
   margin-top: 2rem;
   display: flex;
@@ -250,6 +262,11 @@
 
   .checkIn__left,
   .checkIn__right {
+    gap: 1.25rem;
+  }
+
+  .checkIn__nameRow {
+    grid-template-columns: 1fr;
     gap: 1.25rem;
   }
 

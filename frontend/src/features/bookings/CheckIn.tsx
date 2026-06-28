@@ -34,9 +34,18 @@ const paymentMethodOptions = [
   { value: "Transfer", label: "Transfer" },
 ];
 
+const namePrefixOptions: OptionType[] = [
+  { value: "Mr", label: "Mr" },
+  { value: "Mrs", label: "Mrs" },
+  { value: "Ms", label: "Ms" },
+  { value: "Miss", label: "Miss" },
+  { value: "Dr", label: "Dr" },
+];
+
 type CheckInPayload = {
   deposit: number;
   passportData: {
+    namePrefix: string;
     passportNo: string;
     passportName: string;
     nationality: string;
@@ -68,6 +77,7 @@ const CheckIn = ({
   const [unpaidPaymentPaymentMethod, setUnpaidPaymentPaymentMethod] =
     useState<string>("Cash");
   const [confirmedPayment, setConfirmedPayment] = useState<boolean>(false);
+  const [namePrefix, setNamePrefix] = useState<string>("");
   const [nationality, setNationality] = useState<string>("");
   const [passportName, setPassportName] = useState<string>("");
   const [passportNo, setPassportNo] = useState<string>("");
@@ -84,7 +94,8 @@ const CheckIn = ({
   useEffect(() => {
     onDirtyChange?.(
       Boolean(
-        nationality ||
+        namePrefix ||
+          nationality ||
           passportName ||
           passportNo ||
           deposit !== 200 ||
@@ -99,6 +110,7 @@ const CheckIn = ({
   }, [
     confirmedPayment,
     deposit,
+    namePrefix,
     nationality,
     onDirtyChange,
     passportName,
@@ -138,6 +150,7 @@ const CheckIn = ({
 
   const checkInHandler = async () => {
     if (
+      !namePrefix ||
       !nationality ||
       !passportName ||
       !passportNo ||
@@ -169,6 +182,7 @@ const CheckIn = ({
       const payload: CheckInPayload = {
         deposit: Number(deposit),
         passportData: {
+          namePrefix,
           passportNo,
           passportName,
           nationality,
@@ -244,17 +258,31 @@ const CheckIn = ({
               placeholder="เช่น A12345678"
             />
           </div>
-          <div>
-            <p className="checkIn__label">
-              ชื่อ-นามสกุล Passport <i className="bx bx-check-shield" />
-            </p>
-            <input
-              type="text"
-              value={passportName}
-              onChange={(e) => setPassportName(e.target.value.toUpperCase())}
-              className="boxInput"
-              placeholder="เช่น ROBERT BROWN"
-            />
+          <div className="checkIn__nameRow">
+            <div className="checkIn__prefixField">
+              <p className="checkIn__label">คำนำหน้าชื่อ</p>
+              <Select<OptionType>
+                styles={customStyles<OptionType>()}
+                options={namePrefixOptions}
+                value={namePrefixOptions.find(
+                  (option) => option.value === namePrefix,
+                )}
+                onChange={(option) => setNamePrefix(option?.value || "")}
+                placeholder="เลือก"
+              />
+            </div>
+            <div className="checkIn__passportNameField">
+              <p className="checkIn__label">
+                ชื่อ-นามสกุล Passport <i className="bx bx-check-shield" />
+              </p>
+              <input
+                type="text"
+                value={passportName}
+                onChange={(e) => setPassportName(e.target.value.toUpperCase())}
+                className="boxInput"
+                placeholder="เช่น ROBERT BROWN"
+              />
+            </div>
           </div>
           <div>
             <p className="checkIn__label">ชาติ</p>

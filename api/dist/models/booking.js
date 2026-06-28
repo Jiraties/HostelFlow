@@ -168,9 +168,14 @@ const bookingSchema = new mongoose_1.default.Schema({
         default: "booked",
     },
     checkInByStaffUsername: { type: String, default: null },
+    checkedInAt: { type: Date },
     transactions: [transactionSchema],
     passport: {
         passportHash: String,
+        namePrefix: {
+            type: String,
+            enum: ["Mr", "Mrs", "Ms", "Miss", "Dr"],
+        },
         nationality: { type: String },
         passportNo: {
             cipherText: { type: String },

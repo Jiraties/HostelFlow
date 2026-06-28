@@ -6,6 +6,7 @@ import { API_URL } from "../../config/api.ts";
 import "./PassportView.css";
 
 type PassportData = {
+  namePrefix?: string;
   nationality: string;
   passportNo: string;
   passportName: string;
@@ -74,6 +75,10 @@ const PassportView = ({ bookingId }: PassportViewProps) => {
         ) : (
           passportData && (
             <div className="passportView__content">
+              <div className="passportView__row">
+                <span>คำนำหน้าชื่อ</span>
+                <p>{passportData.namePrefix || "-"}</p>
+              </div>
               <div className="passportView__row">
                 <span>สัญชาติ</span>
                 <p>{passportData.nationality}</p>

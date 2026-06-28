@@ -15,6 +15,7 @@ import {
 } from "../helpers/financeHelpers";
 import type {
   booking,
+  NamePrefix,
   PlatformId,
   ResolutionOutcome,
   RoomReleaseStatus,
@@ -72,6 +73,7 @@ const NEW_BOOKING_PAYMENT_METHODS: PaymentMethod[] = [
   "Unpaid",
 ];
 const CHECK_IN_PAYMENT_METHODS: PaymentMethod[] = ["Cash", "Card", "Transfer"];
+const NAME_PREFIXES: NamePrefix[] = ["Mr", "Mrs", "Ms", "Miss", "Dr"];
 const PLATFORM_IDS: PlatformId[] = ["BOOK", "HOST", "TRAV", "AGOD", "WALK"];
 const RESOLUTION_OUTCOMES: ResolutionOutcome[] = [
   "normal_checkout",
@@ -847,6 +849,7 @@ type checkInData = {
     roundingAdjustment?: number;
   };
   passportData: {
+    namePrefix: NamePrefix;
     passportNo: string;
     passportName: string;
     nationality: string;
@@ -864,6 +867,7 @@ export const checkIn = async (req: Request, res: Response) => {
       });
 
     if (
+      !checkInData.passportData?.namePrefix ||
       !checkInData.passportData?.nationality ||
       !checkInData.passportData?.passportNo ||
       !checkInData.passportData?.passportName ||
@@ -871,6 +875,12 @@ export const checkIn = async (req: Request, res: Response) => {
     ) {
       return res.status(400).json({
         message: "กรุณากรอกข้อมูลให้ครบทุกช่อง",
+      });
+    }
+
+    if (!NAME_PREFIXES.includes(checkInData.passportData.namePrefix)) {
+      return res.status(400).json({
+        message: "คำนำหน้าชื่อไม่ถูกต้อง",
       });
     }
 
@@ -982,6 +992,7 @@ export const checkIn = async (req: Request, res: Response) => {
 
     const encryptedPassportData = {
       passportHash: hashPassport(checkInData.passportData.passportNo),
+      namePrefix: checkInData.passportData.namePrefix,
       nationality: checkInData.passportData.nationality,
       passportNo: encrypt(checkInData.passportData.passportNo),
       passportName: encrypt(checkInData.passportData.passportName),
@@ -1050,9 +1061,11 @@ export const checkIn = async (req: Request, res: Response) => {
       }
     }
 
+    const checkedInAt = new Date();
     const setFields: Record<string, unknown> = {
       status: "checkedIn",
       checkInByStaffUsername: req.user?.username,
+      checkedInAt,
       passport: encryptedPassportData,
     };
 
@@ -1146,6 +1159,10 @@ export const checkIn = async (req: Request, res: Response) => {
           checkInByStaffUsername: {
             before: existingBooking.checkInByStaffUsername,
             after: req.user?.username,
+          },
+          checkedInAt: {
+            before: existingBooking.checkedInAt,
+            after: checkedInAt,
           },
         },
       },
@@ -1819,6 +1836,7 @@ export const getPassportData = async (req: Request, res: Response) => {
     };
 
     const passportData = {
+      namePrefix: booking.passport.namePrefix || "",
       nationality: booking.passport.nationality,
       passportNo: decrypt(booking.passport.passportNo),
       passportName: decrypt(booking.passport.passportName),
