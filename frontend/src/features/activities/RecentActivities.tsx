@@ -62,6 +62,10 @@ const actionMap = {
     icon: "bx-cash",
     text: "ปิดยอดเงินสด",
   },
+  REVIEW_TRANSACTION: {
+    icon: "bx-check-shield",
+    text: "อนุมัติรายการ",
+  },
 } satisfies Record<activity["action"], { icon: string; text: string }>;
 
 const transactionLabelMap = {

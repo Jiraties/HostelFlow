@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getImmigrationReport = exports.getImmigrationReportStatus = exports.getBookingsReport = void 0;
+exports.getHotelAccomodationReport = exports.getImmigrationReport = exports.getImmigrationReportStatus = exports.getBookingsReport = void 0;
 const exceljs_1 = __importDefault(require("exceljs"));
 const booking_1 = __importDefault(require("../models/booking"));
 const crypto_1 = __importDefault(require("crypto"));
@@ -70,10 +70,12 @@ const formatInputDate = (date) => {
 };
 const transactionTotal = (transactions, type) => transactions
     .filter((transaction) => !type || transaction.type === type)
-    .reduce((sum, transaction) => sum + (0, financeHelpers_1.transactionSignedAmount)(transaction), 0);
+    .reduce((sum, transaction) => sum +
+    (0, financeHelpers_1.transactionSignedAmount)(transaction), 0);
 const roomChargeTotal = (transactions) => transactions
     .filter((transaction) => transaction.type === "roomCharge")
-    .reduce((sum, transaction) => sum + (0, financeHelpers_1.transactionRevenueAmount)(transaction), 0);
+    .reduce((sum, transaction) => sum +
+    (0, financeHelpers_1.transactionRevenueAmount)(transaction), 0);
 const immigrationMonthQuery = (month) => {
     if (!/^\d{4}-\d{2}$/.test(month))
         return null;
@@ -387,4 +389,15 @@ const getImmigrationReport = async (req, res) => {
     }
 };
 exports.getImmigrationReport = getImmigrationReport;
+const getHotelAccomodationReport = async (req, res) => {
+    try {
+        const month = req.query.month;
+        const query = immigrationMonthQuery(month);
+    }
+    catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Failed to create immigration report" });
+    }
+};
+exports.getHotelAccomodationReport = getHotelAccomodationReport;
 //# sourceMappingURL=documents.js.map

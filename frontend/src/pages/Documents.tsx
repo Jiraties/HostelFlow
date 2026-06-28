@@ -21,11 +21,9 @@ type DocumentFilters = {
   bookingChannel: string;
   bookingStatus: string;
   paymentMethod: string;
-  reportType: string;
-  roomGroup: string;
 };
 
-type ImmigrationReportStatus = {
+type PassportReportStatus = {
   total: number;
   complete: number;
   missing: number;
@@ -43,47 +41,12 @@ const formatInputMonth = (date: Date) => {
   return `${year}-${month}`;
 };
 
-const formatThaiMonth = (value: string) => {
-  const [year, month] = value.split("-").map(Number);
-  if (!year || !month) return "";
-
-  return new Intl.DateTimeFormat("th-TH", {
-    calendar: "gregory",
-    month: "long",
-    year: "numeric",
-  }).format(new Date(year, month - 1, 1));
-};
-
 const bookingStatusOptions = [
   { value: "all", label: "ทุกสถานะ" },
   { value: "booked", label: "ยังไม่ Check-In" },
   { value: "checkedIn", label: "Check-In แล้ว" },
   { value: "checkedOut", label: "Check-Out แล้ว" },
   { value: "noShow", label: "No-Show" },
-];
-
-const reportTypeOptions = [
-  { value: "dailySummary", label: "สรุปรายวัน" },
-  { value: "guestList", label: "รายชื่อผู้เข้าพัก" },
-  { value: "nationality", label: "สถิติสัญชาติ" },
-];
-
-const roomGroupOptions = [
-  { value: "all", label: "ทั้งหมด" },
-  { value: "Balcony", label: "Balcony / Window" },
-  { value: "Pottery", label: "Pottery" },
-  { value: "Siesta", label: "Siesta" },
-  { value: "Marquisette", label: "Marquisette" },
-  { value: "Homespan", label: "Homespan" },
-  { value: "Veranda", label: "Veranda" },
-  { value: "Wicker", label: "Wicker" },
-];
-
-const nationalityStats = [
-  { code: "TH", flag: "🇹🇭", count: 12, percent: "54.5%" },
-  { code: "US", flag: "🇺🇸", count: 4, percent: "18.2%" },
-  { code: "JP", flag: "🇯🇵", count: 3, percent: "13.6%" },
-  { code: "อื่นๆ", flag: "", count: 3, percent: "13.6%" },
 ];
 
 const Documents = () => {
@@ -96,13 +59,17 @@ const Documents = () => {
     bookingChannel: "",
     bookingStatus: "all",
     paymentMethod: "all",
-    reportType: "dailySummary",
-    roomGroup: "all",
   });
   const [immigrationStatus, setImmigrationStatus] =
-    useState<ImmigrationReportStatus | null>(null);
+    useState<PassportReportStatus | null>(null);
   const [immigrationStatusLoading, setImmigrationStatusLoading] =
     useState(false);
+  const [hotelStatus, setHotelStatus] = useState<PassportReportStatus | null>(
+    null,
+  );
+  const [hotelStatusLoading, setHotelStatusLoading] = useState(false);
+  const [bookingExporting, setBookingExporting] = useState(false);
+  const [immigrationExporting, setImmigrationExporting] = useState(false);
   const fullFormattedDate = new Intl.DateTimeFormat("th-TH", {
     day: "numeric",
     month: "long",
@@ -118,10 +85,8 @@ const Documents = () => {
     setFilters((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleAction = (documentName: string, action: "export" | "preview") => {
-    toast.success(
-      `${action === "export" ? "เตรียมส่งออก" : "เปิดตัวอย่าง"} ${documentName} (frontend only)`,
-    );
+  const handleHotelExport = () => {
+    toast.error("รายงาน รร. ยังไม่ได้เชื่อมต่อระบบส่งออก");
   };
 
   const renderSelect = (
@@ -143,7 +108,68 @@ const Documents = () => {
     />
   );
 
+  const renderPassportStatus = (
+    status: PassportReportStatus | null,
+    loading: boolean,
+  ) => {
+    const hasMissing = !!status?.missing;
+
+    return (
+      <div className="documents__passportStatus">
+        <div
+          className={`documents__statusRow ${
+            hasMissing
+              ? "documents__statusRow--warning"
+              : "documents__statusRow--success"
+          }`}
+        >
+          <i className={`bx ${hasMissing ? "bx-error" : "bx-check"}`} />
+          <p>
+            {loading
+              ? "กำลังตรวจสอบข้อมูลหนังสือเดินทาง"
+              : hasMissing
+                ? `ขาดข้อมูล Passport ${status?.missing} รายการ`
+                : "ข้อมูลหนังสือเดินทางครบถ้วน"}
+            <strong>
+              {status
+                ? `${status.complete} / ${status.total} รายการ`
+                : "- / - รายการ"}
+            </strong>
+          </p>
+        </div>
+
+        {hasMissing && (
+          <div className="documents__missingList">
+            {status.missingBookings.slice(0, 3).map((booking) => (
+              <div className="documents__missingItem" key={booking.bookingId}>
+                <div>
+                  <strong>{booking.name}</strong>
+                  <p>{booking.bookingId}</p>
+                </div>
+                <span>
+                  {new Date(booking.checkOut).toLocaleDateString("th-TH", {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                    calendar: "gregory",
+                  })}
+                </span>
+              </div>
+            ))}
+            {status.missing > 3 && (
+              <p className="documents__missingMore">
+                และอีก {status.missing - 3} รายการ
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const getBookingReport = async () => {
+    setBookingExporting(true);
+
     try {
       const response = await axios.get(
         `${API_URL}/documents/getBookingsReport`,
@@ -173,6 +199,8 @@ const Documents = () => {
     } catch (err) {
       console.error(err);
       toast.error("ไม่สามารถส่งออกรายงานการจองได้");
+    } finally {
+      setBookingExporting(false);
     }
   };
 
@@ -184,6 +212,8 @@ const Documents = () => {
 
       if (!shouldContinue) return;
     }
+
+    setImmigrationExporting(true);
 
     try {
       const response = await axios.get(
@@ -210,6 +240,8 @@ const Documents = () => {
     } catch (err) {
       console.error(err);
       toast.error("ไม่สามารถส่งออกรายงานการจองได้");
+    } finally {
+      setImmigrationExporting(false);
     }
   };
 
@@ -220,7 +252,7 @@ const Documents = () => {
       setImmigrationStatusLoading(true);
 
       try {
-        const response = await axios.get<ImmigrationReportStatus>(
+        const response = await axios.get<PassportReportStatus>(
           `${API_URL}/documents/getImmigrationReportStatus`,
           {
             params: {
@@ -249,6 +281,42 @@ const Documents = () => {
     };
   }, [filters.tm30Month]);
 
+  useEffect(() => {
+    let ignore = false;
+
+    const getHotelReportStatus = async () => {
+      setHotelStatusLoading(true);
+
+      try {
+        const response = await axios.get<PassportReportStatus>(
+          `${API_URL}/documents/getImmigrationReportStatus`,
+          {
+            params: {
+              month: filters.hotelMonth,
+            },
+            withCredentials: true,
+          },
+        );
+
+        if (!ignore) setHotelStatus(response.data);
+      } catch (err) {
+        console.error(err);
+        if (!ignore) {
+          setHotelStatus(null);
+          toast.error("ไม่สามารถโหลดสถานะข้อมูล Passport สำหรับรายงาน รร. ได้");
+        }
+      } finally {
+        if (!ignore) setHotelStatusLoading(false);
+      }
+    };
+
+    getHotelReportStatus();
+
+    return () => {
+      ignore = true;
+    };
+  }, [filters.hotelMonth]);
+
   return (
     <main className="home">
       <PageHeader
@@ -257,25 +325,41 @@ const Documents = () => {
         onRefresh={() => Promise.resolve()}
       />
 
+      <section className="documents__overview">
+        <div>
+          <i className="bx bx-file" />
+          <p>รายงานพร้อมส่งออก</p>
+          <strong>2</strong>
+        </div>
+        <div>
+          <i className="bx bx-id-card" />
+          <p>ตม. Passport ครบ</p>
+          <strong>
+            {immigrationStatus
+              ? `${immigrationStatus.complete}/${immigrationStatus.total}`
+              : "-/-"}
+          </strong>
+        </div>
+        <div>
+          <i className="bx bx-building-house" />
+          <p>รร. Passport ครบ</p>
+          <strong>
+            {hotelStatus
+              ? `${hotelStatus.complete}/${hotelStatus.total}`
+              : "-/-"}
+          </strong>
+        </div>
+      </section>
+
       <div className="documents__exports">
-        <div className="documents__export">
+        <div className="documents__export documents__export--booking">
           <div className="documents__exportHeader">
-            <i
-              className="bx bx-file"
-              style={{
-                color: "var(--primary-color)",
-                backgroundColor: "#51d1dc15",
-              }}
-            />
+            <i className="bx bx-file documents__exportIcon documents__exportIcon--booking" />
             <div>
               <h3>ข้อมูลการจอง</h3>
               <p>Booking Data Export</p>
             </div>
           </div>
-
-          <p className="documents__exportDescription">
-            ส่งออกข้อมูลการจอง รายได้ ช่องทางการจอง และสถานะการเข้าพัก
-          </p>
 
           <div className="documents__form">
             <div>
@@ -320,39 +404,24 @@ const Documents = () => {
 
           <div className="documents__actions">
             <ActionButton
-              text="ส่งออก Excel"
-              icon="bx-cloud-download"
+              text={bookingExporting ? "กำลังส่งออก..." : "ส่งออก Excel"}
+              icon={bookingExporting ? "bx-loader-alt" : "bx-cloud-download"}
               highlight
               className="documents__action documents__action--primary"
               onClick={getBookingReport}
+              disabled={bookingExporting}
             />
-            {/* <ActionButton
-              text="ดูตัวอย่าง"
-              icon="bx-show"
-              className="documents__action"
-              onClick={() => handleAction("ข้อมูลการจอง", "preview")}
-            /> */}
           </div>
         </div>
 
-        <div className="documents__export">
+        <div className="documents__export documents__export--tm30">
           <div className="documents__exportHeader">
-            <i
-              className="bx bx-file"
-              style={{
-                color: "#2F6FD6",
-                backgroundColor: "#2F6FD615",
-              }}
-            />
+            <i className="bx bx-id-card documents__exportIcon documents__exportIcon--tm30" />
             <div>
               <h3>ตม.30</h3>
               <p>Immigration Report</p>
             </div>
           </div>
-
-          <p className="documents__exportDescription">
-            สร้างไฟล์ข้อมูลผู้เข้าพักสำหรับส่งสำนักงานตรวจคนเข้าเมือง
-          </p>
 
           <div className="documents__form">
             <div>
@@ -366,56 +435,27 @@ const Documents = () => {
             </div>
           </div>
 
-          <div className="documents__tm30Status">
-            <div className="documents__statusRow documents__statusRow--success">
-              <i className="bx bx-check" />
-              <p>
-                {immigrationStatusLoading
-                  ? "กำลังตรวจสอบข้อมูลหนังสือเดินทาง"
-                  : "ข้อมูลหนังสือเดินทางครบถ้วน"}
-                <strong>
-                  {immigrationStatus
-                    ? `${immigrationStatus.complete} / ${immigrationStatus.total} รายการ`
-                    : "- / - รายการ"}
-                </strong>
-              </p>
-            </div>
-            {!!immigrationStatus?.missing && (
-              <div className="documents__statusRow documents__statusRow--warning">
-                <i className="bx bx-error" />
-                <p>ขาดข้อมูล Passport {immigrationStatus.missing} รายการ</p>
-              </div>
-            )}
-          </div>
+          {renderPassportStatus(immigrationStatus, immigrationStatusLoading)}
 
           <div className="documents__actions">
             <ActionButton
-              text="ส่งออกไฟล์ ตม."
-              icon="bx-download"
+              text={immigrationExporting ? "กำลังส่งออก..." : "ส่งออกไฟล์ ตม."}
+              icon={immigrationExporting ? "bx-loader-alt" : "bx-download"}
               highlight
               className="documents__action documents__action--blue"
               onClick={getImmigrationReport}
+              disabled={immigrationExporting}
             />
           </div>
         </div>
-        <div className="documents__export">
+        <div className="documents__export documents__export--hotel">
           <div className="documents__exportHeader">
-            <i
-              className="bx bx-file"
-              style={{
-                color: "#F4A900",
-                backgroundColor: "#F4A90015",
-              }}
-            />
+            <i className="bx bx-building-house documents__exportIcon documents__exportIcon--hotel" />
             <div>
               <h3>รายงาน รร.</h3>
               <p>Hotel Accommodation Report</p>
             </div>
           </div>
-
-          <p className="documents__exportDescription">
-            สร้างรายงานผู้เข้าพักและสถิติสำหรับงานเอกสารโรงแรม
-          </p>
 
           <div className="documents__form">
             <div>
@@ -427,59 +467,16 @@ const Documents = () => {
                 className="boxInput"
               />
             </div>
-
-            <div>
-              <p className="documents__label">รูปแบบรายงาน</p>
-              {renderSelect(reportTypeOptions, filters.reportType, (value) =>
-                updateFilter("reportType", value),
-              )}
-            </div>
-
-            <div>
-              <p className="documents__label">กลุ่มห้องพัก</p>
-              {renderSelect(
-                roomGroupOptions,
-                filters.roomGroup,
-                (value) => updateFilter("roomGroup", value),
-                "ทั้งหมด",
-              )}
-            </div>
           </div>
 
-          <div className="documents__hotelStats">
-            <div className="documents__hotelStatsHeader">
-              <p>สรุปสถิติ ({formatThaiMonth(filters.hotelMonth)})</p>
-              <p>
-                ผู้เข้าพักทั้งหมด <strong>22</strong>
-              </p>
-            </div>
-            <div className="documents__nationalities">
-              {nationalityStats.map((stat) => (
-                <div className="documents__nationality" key={stat.code}>
-                  <p>
-                    <span>{stat.flag}</span>
-                    {stat.code}
-                  </p>
-                  <strong>{stat.count}</strong>
-                  <small>{stat.percent}</small>
-                </div>
-              ))}
-            </div>
-          </div>
+          {renderPassportStatus(hotelStatus, hotelStatusLoading)}
 
           <div className="documents__actions">
             <ActionButton
-              text="ส่งออก Excel"
+              text="ยังไม่เชื่อมต่อระบบส่งออก"
               icon="bx-download"
-              highlight
               className="documents__action documents__action--orange"
-              onClick={() => handleAction("รายงาน รร.", "export")}
-            />
-            <ActionButton
-              text="ดูตัวอย่าง"
-              icon="bx-show"
-              className="documents__action"
-              onClick={() => handleAction("รายงาน รร.", "preview")}
+              onClick={handleHotelExport}
             />
           </div>
         </div>

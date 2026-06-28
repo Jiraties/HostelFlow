@@ -16,7 +16,8 @@ export type actionType =
   | "UPDATE_USER"
   | "DEACTIVATE_USER"
   | "REACTIVATE_USER"
-  | "DAILY_CLOSE";
+  | "DAILY_CLOSE"
+  | "REVIEW_TRANSACTION";
 
 export type TransactionType =
   | "roomCharge"
@@ -54,6 +55,8 @@ export interface transaction {
   reference?: string;
   reviewFlags?: string[];
   reviewStatus?: "none" | "needs_review" | "reviewed";
+  reviewedBy?: string;
+  reviewedAt?: Date | string;
 }
 
 export interface roomStay {

@@ -18,7 +18,8 @@ export type actionType =
   | "UPDATE_USER"
   | "DEACTIVATE_USER"
   | "REACTIVATE_USER"
-  | "DAILY_CLOSE";
+  | "DAILY_CLOSE"
+  | "REVIEW_TRANSACTION";
 
 export type activity =
   | {
@@ -47,7 +48,8 @@ export type activity =
         | "UPDATE_USER"
         | "DEACTIVATE_USER"
         | "REACTIVATE_USER"
-        | "DAILY_CLOSE";
+        | "DAILY_CLOSE"
+        | "REVIEW_TRANSACTION";
       details: {
         changes?: Record<string, { before: any; after: any }>;
         snapshot?: {
@@ -91,6 +93,7 @@ const activitySchema = new mongoose.Schema({
       "DEACTIVATE_USER",
       "REACTIVATE_USER",
       "DAILY_CLOSE",
+      "REVIEW_TRANSACTION",
     ],
   },
   details: {

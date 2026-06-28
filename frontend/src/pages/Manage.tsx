@@ -1,6 +1,7 @@
 import "./Manage.css";
 
 import axios from "axios";
+import toast from "react-hot-toast";
 import ActionButton from "../components/ActionButton";
 import PageHeader from "../components/PageHeader";
 import ViewActivities from "../features/activities/ViewActivities";
@@ -48,6 +49,7 @@ type DailyClose = {
 };
 
 type ReviewTransaction = {
+  _id?: string;
   bookingId?: string;
   guestName?: string;
   staffUsername?: string;
@@ -55,7 +57,12 @@ type ReviewTransaction = {
   paymentMethod: string;
   amount: number;
   direction?: "in" | "out" | "neutral";
+  createdAt?: string | Date;
+  reference?: string;
   reviewFlags?: string[];
+  reviewStatus?: "none" | "needs_review" | "reviewed";
+  reviewedBy?: string;
+  reviewedAt?: string | Date;
   note?: string;
 };
 
@@ -96,7 +103,36 @@ const actionMap = {
   LOGIN: { icon: "bx-arrow-in-right-square-half", text: "เข้าสู่ระบบ" },
   LOGOUT: { icon: "bx-arrow-out-right-square-half", text: "ออกจากระบบ" },
   DAILY_CLOSE: { icon: "bx-cash", text: "ปิดยอดเงินสด" },
+  REVIEW_TRANSACTION: { icon: "bx-check-shield", text: "อนุมัติรายการ" },
 } satisfies Record<actionType, { icon: string; text: string }>;
+
+const transactionTypeLabels: Record<string, string> = {
+  roomCharge: "ค่าห้อง",
+  deposit: "รับมัดจำ",
+  adjustment: "ปรับราคา",
+  depositRefund: "คืนมัดจำ",
+  cancellationRefund: "คืนเงินยกเลิก",
+  roomRefund: "คืนค่าห้อง",
+  settlementCharge: "Settlement Charge",
+  compensation: "ชดเชยลูกค้า",
+  depositKept: "เก็บมัดจำ",
+  paymentCorrection: "แก้ไขการชำระเงิน",
+  towel: "ผ้าเช็ดตัว",
+  motorbike: "มอเตอร์ไซค์",
+  slowBoat: "Slow Boat",
+  joinTour: "Join Tour",
+  extraBed: "เตียงเสริม",
+  cardSurcharge: "ค่าธรรมเนียมบัตร",
+};
+
+const reviewFlagLabels: Record<string, string> = {
+  negative_adjustment: "ปรับยอดติดลบ",
+  refund: "คืนเงิน",
+  large_refund: "คืนเงินสูง",
+  large_cash: "เงินสดสูง",
+  adjustment: "ปรับราคา",
+  repeated_sensitive_type: "รายการซ้ำ",
+};
 
 const emptyNewUserForm: NewUserForm = {
   username: "",
@@ -130,18 +166,41 @@ const formatMoney = (value: number) =>
     maximumFractionDigits: 2,
   });
 
+const transactionKey = (transaction: ReviewTransaction, index = 0) =>
+  transaction._id ||
+  `${transaction.bookingId || "booking"}-${transaction.type}-${transaction.amount}-${index}`;
+
+const transactionLabel = (type: string) => transactionTypeLabels[type] || type;
+
+const reviewFlagLabel = (flag: string) => reviewFlagLabels[flag] || flag;
+
+const signedTransactionAmount = (transaction: ReviewTransaction) => {
+  if (transaction.direction === "out") return -Math.abs(transaction.amount || 0);
+  if (transaction.direction === "neutral") return 0;
+  return Math.abs(transaction.amount || 0);
+};
+
 const FinanceReconciliation = ({
   reconciliation,
   reviewEvents,
   financeDate,
   onDateChange,
+  onApproveTransaction,
+  approvingTransactionId,
+  loading,
 }: {
   reconciliation: ReconciliationData | null;
   reviewEvents: ReviewTransaction[];
   financeDate: string;
   onDateChange: (value: string) => void;
+  onApproveTransaction: (transaction: ReviewTransaction) => void;
+  approvingTransactionId: string | null;
+  loading: boolean;
 }) => {
   const summary = reconciliation?.summary;
+  const reviewedCount = reconciliation?.transactions.filter(
+    (transaction) => transaction.reviewStatus === "reviewed",
+  ).length;
 
   return (
     <section className="manage__finance">
@@ -154,6 +213,7 @@ const FinanceReconciliation = ({
           </div>
         </div>
         <div className="manage__financeHeaderActions">
+          <span>{reviewEvents.length} รอตรวจ</span>
           <span>{reconciliation?.dailyCloses.length || 0} การปิดยอด</span>
           <input
             className="boxInput manage__dateInput"
@@ -161,6 +221,25 @@ const FinanceReconciliation = ({
             value={financeDate}
             onChange={(event) => onDateChange(event.target.value)}
           />
+        </div>
+      </div>
+
+      <div className="manage__financeOverview">
+        <div>
+          <p>รายได้</p>
+          <strong>{formatMoney(summary?.revenue || 0)} ฿</strong>
+        </div>
+        <div>
+          <p>Net Total</p>
+          <strong>{formatMoney(summary?.netTotal || 0)} ฿</strong>
+        </div>
+        <div>
+          <p>รายการตรวจแล้ว</p>
+          <strong>{reviewedCount || 0}</strong>
+        </div>
+        <div>
+          <p>รอตรวจ</p>
+          <strong>{reviewEvents.length}</strong>
         </div>
       </div>
 
@@ -189,28 +268,88 @@ const FinanceReconciliation = ({
 
         <div className="manage__financePanel">
           <div className="manage__financePanelHeader">
-            <h3>รายการที่ควรตรวจ</h3>
+            <h3>คิวอนุมัติรายการ</h3>
             <span>{reviewEvents.length}</span>
           </div>
           <div className="manage__reviewList">
-            {reviewEvents.length === 0 ? (
-              <p>ไม่มีรายการที่ต้องตรวจ</p>
+            {loading ? (
+              <div className="manage__emptyState">
+                <i className="bx bx-loader-alt" />
+                <p>กำลังโหลดรายการตรวจสอบ</p>
+              </div>
+            ) : reviewEvents.length === 0 ? (
+              <div className="manage__emptyState">
+                <i className="bx bx-check-shield" />
+                <p>ไม่มีรายการที่ต้องตรวจ</p>
+              </div>
             ) : (
-              reviewEvents.slice(0, 6).map((transaction, index) => (
+              reviewEvents.map((transaction, index) => (
                 <div
                   className="manage__reviewItem"
-                  key={`${transaction.bookingId}-${transaction.type}-${index}`}
+                  key={transactionKey(transaction, index)}
                 >
-                  <div>
-                    <strong>
-                      {transaction.guestName || transaction.bookingId}
-                    </strong>
+                  <div className="manage__reviewMain">
+                    <div className="manage__reviewTitleRow">
+                      <strong>
+                        {transaction.guestName || transaction.bookingId || "-"}
+                      </strong>
+                      <span
+                        className={
+                          "manage__reviewAmount" +
+                          (signedTransactionAmount(transaction) < 0
+                            ? " manage__reviewAmount--out"
+                            : "")
+                        }
+                      >
+                        {formatMoney(signedTransactionAmount(transaction))} ฿
+                      </span>
+                    </div>
                     <p>
-                      {transaction.type} · {transaction.paymentMethod} ·{" "}
+                      {transactionLabel(transaction.type)} ·{" "}
+                      {transaction.paymentMethod} ·{" "}
                       {transaction.staffUsername || "-"}
                     </p>
+                    <div className="manage__reviewMeta">
+                      {transaction.bookingId && <span>{transaction.bookingId}</span>}
+                      {transaction.createdAt && (
+                        <span>{formatDateTime(transaction.createdAt)}</span>
+                      )}
+                      {transaction.reference && (
+                        <span>Ref: {transaction.reference}</span>
+                      )}
+                    </div>
+                    {(transaction.reviewFlags || []).length > 0 && (
+                      <div className="manage__reviewFlags">
+                        {transaction.reviewFlags?.map((flag) => (
+                          <span key={flag}>{reviewFlagLabel(flag)}</span>
+                        ))}
+                      </div>
+                    )}
+                    {transaction.note && (
+                      <p className="manage__reviewNote">{transaction.note}</p>
+                    )}
                   </div>
-                  <span>{formatMoney(transaction.amount)} ฿</span>
+                  <div className="manage__reviewActions">
+                    <button
+                      type="button"
+                      aria-label="อนุมัติรายการ"
+                      disabled={
+                        !transaction._id ||
+                        !transaction.bookingId ||
+                        approvingTransactionId === transaction._id
+                      }
+                      className="manage__approveAction"
+                      onClick={() => onApproveTransaction(transaction)}
+                    >
+                      <i
+                        className={`bx ${
+                          approvingTransactionId === transaction._id
+                            ? "bx-loader-alt"
+                            : "bx-check"
+                        }`}
+                      />
+                    </button>
+                  </div>
                 </div>
               ))
             )}
@@ -259,6 +398,9 @@ const Manage = () => {
   const [reconciliation, setReconciliation] =
     useState<ReconciliationData | null>(null);
   const [reviewEvents, setReviewEvents] = useState<ReviewTransaction[]>([]);
+  const [approvingTransactionId, setApprovingTransactionId] = useState<
+    string | null
+  >(null);
 
   const fetchManageData = async () => {
     const [
@@ -413,6 +555,33 @@ const Manage = () => {
     }
   };
 
+  const approveTransactionHandler = async (transaction: ReviewTransaction) => {
+    if (!transaction.bookingId || !transaction._id) {
+      toast.error("ไม่พบข้อมูลรายการที่ต้องอนุมัติ");
+      return;
+    }
+
+    setApprovingTransactionId(transaction._id);
+
+    try {
+      await axios.patch(
+        `${API_URL}/finance/review-events/${transaction.bookingId}/${transaction._id}/approve`,
+        {},
+        { withCredentials: true },
+      );
+      setReviewEvents((prev) =>
+        prev.filter((event) => event._id !== transaction._id),
+      );
+      await fetchManageData();
+      toast.success("อนุมัติรายการสำเร็จ");
+    } catch (err) {
+      console.error(err);
+      toast.error("ไม่สามารถอนุมัติรายการได้");
+    } finally {
+      setApprovingTransactionId(null);
+    }
+  };
+
   const manageApi = {
     actionMap,
     activities,
@@ -512,14 +681,36 @@ const Manage = () => {
         />
       </section>
 
+      <section className="manage__overview">
+        {statCards.map((card) => (
+          <div className="manage__overviewCard" key={card.label}>
+            <p>{card.label}</p>
+            <strong>{card.value}</strong>
+          </div>
+        ))}
+      </section>
+
       <FinanceReconciliation
         reconciliation={reconciliation}
         reviewEvents={reviewEvents}
         financeDate={financeDate}
         onDateChange={setFinanceDate}
+        onApproveTransaction={approveTransactionHandler}
+        approvingTransactionId={approvingTransactionId}
+        loading={loading}
       />
 
-      <section>
+      <section className="manage__staffSection">
+        <div className="manage__sectionHeader">
+          <div>
+            <i className="bx bx-group" />
+            <div>
+              <h2>Staff</h2>
+              <p>จัดการบัญชีและดูประวัติการทำงาน</p>
+            </div>
+          </div>
+          <span>{users.length} คน</span>
+        </div>
         <div className="manage__users">
           {users.map((staffUser) => (
             <div
@@ -533,7 +724,7 @@ const Manage = () => {
               <div className="manage__userInfo">
                 <div>
                   <h3>
-                    {staffUser.name}{" "}
+                    <span className="manage__userName">{staffUser.name}</span>
                     {staffUser.admin && (
                       <span className="settings__adminTag">Admin</span>
                     )}

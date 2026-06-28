@@ -85,6 +85,8 @@ export interface transcation {
   reference?: string;
   reviewFlags?: string[];
   reviewStatus?: TransactionReviewStatus;
+  reviewedBy?: string;
+  reviewedAt?: Date;
 }
 
 interface Cancellation {
@@ -246,6 +248,8 @@ const transactionSchema = new mongoose.Schema({
     enum: ["none", "needs_review", "reviewed"],
     default: "none",
   },
+  reviewedBy: { type: String },
+  reviewedAt: { type: Date },
 });
 
 const cancellationSchema = new mongoose.Schema(

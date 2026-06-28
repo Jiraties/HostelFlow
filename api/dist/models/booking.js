@@ -90,6 +90,8 @@ const transactionSchema = new mongoose_1.default.Schema({
         enum: ["none", "needs_review", "reviewed"],
         default: "none",
     },
+    reviewedBy: { type: String },
+    reviewedAt: { type: Date },
 });
 const cancellationSchema = new mongoose_1.default.Schema({
     cancellationType: {

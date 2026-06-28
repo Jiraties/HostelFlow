@@ -404,6 +404,11 @@
   font-weight: 600;
 }
 
+.viewBooking__reviewBadge--approved {
+  background-color: color-mix(in srgb, var(--green) 12%, #ffffff);
+  color: var(--green);
+}
+
 .viewBooking__transactionInfo {
   position: relative;
   display: inline-flex;
@@ -677,6 +682,28 @@
   padding: 0.5rem 0.75rem 0.5rem 1rem;
 
   clip-path: polygon(10% 0, 100% 0, 100% 100%, 0 100%);
+}
+
+.viewBookng__bookingNo {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  transition-duration: 0.2s;
+  cursor: pointer;
+}
+
+.viewBooking__copyIcon {
+  opacity: 0;
+  color: #6c6c6c;
+  transition-duration: 0.2s;
+}
+
+.viewBookng__bookingNo:hover {
+  color: #6c6c6c;
+}
+
+.viewBookng__bookingNo:hover .viewBooking__copyIcon {
+  opacity: 1;
 }
 
 @media (max-width: 760px) {

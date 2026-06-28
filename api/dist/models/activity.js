@@ -29,6 +29,7 @@ const activitySchema = new mongoose_1.default.Schema({
             "DEACTIVATE_USER",
             "REACTIVATE_USER",
             "DAILY_CLOSE",
+            "REVIEW_TRANSACTION",
         ],
     },
     details: {

@@ -23,6 +23,7 @@ import type { booking, ResolutionOutcome } from "../../types/bookingTypes";
 
 import "./ViewBooking.css";
 import Cancellation from "./Cancellation.tsx";
+import toast from "react-hot-toast";
 
 const paymentMethodIconMap = {
   OTA: "bx-bank",
@@ -464,9 +465,11 @@ const ViewBooking = ({
   );
 
   const renderReviewMeta = (transaction: booking["transactions"][number]) => {
-    const hasReviewFlag =
-      transaction.reviewStatus === "needs_review" ||
-      Boolean(transaction.reviewFlags?.length);
+    const isReviewed = transaction.reviewStatus === "reviewed";
+    const needsReview =
+      !isReviewed &&
+      (transaction.reviewStatus === "needs_review" ||
+        Boolean(transaction.reviewFlags?.length));
     const linkedTransaction = transaction.relatedTransactionId
       ? data.transactions.find(
           (existingTransaction) =>
@@ -485,12 +488,19 @@ const ViewBooking = ({
       shouldShowNote ? transaction.note : "",
     ].filter(Boolean);
 
-    if (!hasReviewFlag && !shouldShowNote && !linkedTransaction) return null;
+    if (!isReviewed && !needsReview && !shouldShowNote && !linkedTransaction) {
+      return null;
+    }
 
     return (
       <div className="viewBooking__transactionMeta">
-        {hasReviewFlag && (
+        {needsReview && (
           <span className="viewBooking__reviewBadge">รอตรวจสอบ</span>
+        )}
+        {isReviewed && (
+          <span className="viewBooking__reviewBadge viewBooking__reviewBadge--approved">
+            อนุมัติแล้ว
+          </span>
         )}
         {infoItems.length > 0 && (
           <span className="viewBooking__transactionInfo" tabIndex={0}>
@@ -827,7 +837,16 @@ const ViewBooking = ({
 
             <div className="viewBooking__item">
               <span className="viewBooking__label">Booking No: </span>
-              <p className="viewBooking__infoText">{data.bookingId}</p>
+              <div
+                className="viewBookng__bookingNo"
+                onClick={() => {
+                  navigator.clipboard.writeText(data.bookingId);
+                  toast.success("คัดลอก Booking No สำเร็จ");
+                }}
+              >
+                <p className="viewBooking__infoText">{data.bookingId}</p>
+                <i className="bx bx-copy viewBooking__copyIcon" />
+              </div>
             </div>
             <div className="viewBooking__item">
               <span className="viewBooking__label">ห้อง: </span>

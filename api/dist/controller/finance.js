@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getReviewEvents = exports.upsertDailyClose = exports.getReconciliation = void 0;
+exports.approveReviewEvent = exports.getReviewEvents = exports.upsertDailyClose = exports.getReconciliation = void 0;
 const booking_1 = __importDefault(require("../models/booking"));
 const dailyClose_1 = __importDefault(require("../models/dailyClose"));
 const user_1 = __importDefault(require("../models/user"));
@@ -207,8 +207,9 @@ const getReviewEvents = async (req, res) => {
         if (!reconciliation) {
             return res.status(400).json({ message: "Invalid date format" });
         }
-        const transactions = reconciliation.transactions.filter((transaction) => transaction.reviewStatus === "needs_review" ||
-            (transaction.reviewFlags || []).length > 0);
+        const transactions = reconciliation.transactions.filter((transaction) => transaction.reviewStatus !== "reviewed" &&
+            (transaction.reviewStatus === "needs_review" ||
+                (transaction.reviewFlags || []).length > 0));
         res.status(200).json({
             businessDate: reconciliation.businessDate,
             transactions,
@@ -219,4 +220,62 @@ const getReviewEvents = async (req, res) => {
     }
 };
 exports.getReviewEvents = getReviewEvents;
+const approveReviewEvent = async (req, res) => {
+    try {
+        if (!req.user?.admin || !req.user.username) {
+            return res.status(403).json({
+                message: "เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถอนุมัติรายการตรวจสอบได้",
+            });
+        }
+        const bookingId = String(req.params.bookingId);
+        const transactionId = String(req.params.transactionId);
+        const booking = await booking_1.default.findOne({ bookingId });
+        if (!booking) {
+            return res.status(404).json({ message: "ไม่พบ Booking" });
+        }
+        const transaction = booking.transactions.find((existingTransaction) => String(existingTransaction._id) === transactionId);
+        if (!transaction) {
+            return res.status(404).json({ message: "ไม่พบรายการธุรกรรม" });
+        }
+        if (transaction.reviewStatus === "reviewed") {
+            return res.status(200).json({
+                message: "รายการนี้ได้รับการอนุมัติแล้ว",
+                transaction,
+            });
+        }
+        const requiresReview = transaction.reviewStatus === "needs_review" ||
+            (transaction.reviewFlags || []).length > 0;
+        if (!requiresReview) {
+            return res.status(400).json({
+                message: "รายการนี้ไม่จำเป็นต้องตรวจสอบ",
+            });
+        }
+        const reviewedAt = transaction.reviewedAt || new Date();
+        transaction.reviewStatus = "reviewed";
+        transaction.reviewedBy = transaction.reviewedBy || req.user.username;
+        transaction.reviewedAt = reviewedAt;
+        booking.markModified("transactions");
+        await booking.save();
+        await (0, activityServices_1.logActivity)(req.user.username, "REVIEW_TRANSACTION", {
+            summary: {
+                bookingId,
+                transactionId,
+                guestName: booking.name,
+                type: transaction.type,
+                paymentMethod: transaction.paymentMethod,
+                amount: transaction.amount,
+                flags: transaction.reviewFlags || [],
+                reviewedBy: transaction.reviewedBy,
+                reviewedAt,
+            },
+        }, bookingId);
+        res.status(200).json({
+            transaction,
+        });
+    }
+    catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+exports.approveReviewEvent = approveReviewEvent;
 //# sourceMappingURL=finance.js.map

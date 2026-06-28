@@ -107,6 +107,8 @@ export interface transcation {
   reference?: string;
   reviewFlags?: string[];
   reviewStatus?: TransactionReviewStatus;
+  reviewedBy?: string;
+  reviewedAt?: string | Date;
 }
 
 export interface booking {

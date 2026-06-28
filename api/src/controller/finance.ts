@@ -272,13 +272,90 @@ export const getReviewEvents = async (req: Request, res: Response) => {
 
     const transactions = reconciliation.transactions.filter(
       (transaction: transcation & { bookingId?: string }) =>
-        transaction.reviewStatus === "needs_review" ||
-        (transaction.reviewFlags || []).length > 0,
+        transaction.reviewStatus !== "reviewed" &&
+        (transaction.reviewStatus === "needs_review" ||
+          (transaction.reviewFlags || []).length > 0),
     );
 
     res.status(200).json({
       businessDate: reconciliation.businessDate,
       transactions,
+    });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+};
+
+export const approveReviewEvent = async (req: Request, res: Response) => {
+  try {
+    if (!req.user?.admin || !req.user.username) {
+      return res.status(403).json({
+        message: "เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถอนุมัติรายการตรวจสอบได้",
+      });
+    }
+
+    const bookingId = String(req.params.bookingId);
+    const transactionId = String(req.params.transactionId);
+    const booking = await Booking.findOne({ bookingId });
+
+    if (!booking) {
+      return res.status(404).json({ message: "ไม่พบ Booking" });
+    }
+
+    const transaction = booking.transactions.find(
+      (existingTransaction) => String(existingTransaction._id) === transactionId,
+    );
+
+    if (!transaction) {
+      return res.status(404).json({ message: "ไม่พบรายการธุรกรรม" });
+    }
+
+    if (transaction.reviewStatus === "reviewed") {
+      return res.status(200).json({
+        message: "รายการนี้ได้รับการอนุมัติแล้ว",
+        transaction,
+      });
+    }
+
+    const requiresReview =
+      transaction.reviewStatus === "needs_review" ||
+      (transaction.reviewFlags || []).length > 0;
+
+    if (!requiresReview) {
+      return res.status(400).json({
+        message: "รายการนี้ไม่จำเป็นต้องตรวจสอบ",
+      });
+    }
+
+    const reviewedAt = transaction.reviewedAt || new Date();
+    transaction.reviewStatus = "reviewed";
+    transaction.reviewedBy = transaction.reviewedBy || req.user.username;
+    transaction.reviewedAt = reviewedAt;
+
+    booking.markModified("transactions");
+    await booking.save();
+
+    await logActivity(
+      req.user.username,
+      "REVIEW_TRANSACTION",
+      {
+        summary: {
+          bookingId,
+          transactionId,
+          guestName: booking.name,
+          type: transaction.type,
+          paymentMethod: transaction.paymentMethod,
+          amount: transaction.amount,
+          flags: transaction.reviewFlags || [],
+          reviewedBy: transaction.reviewedBy,
+          reviewedAt,
+        },
+      },
+      bookingId,
+    );
+
+    res.status(200).json({
+      transaction,
     });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });

@@ -89,7 +89,10 @@ const transactionTotal = (
     .filter((transaction) => !type || transaction.type === type)
     .reduce(
       (sum, transaction) =>
-        sum + transactionSignedAmount(transaction as Parameters<typeof transactionSignedAmount>[0]),
+        sum +
+        transactionSignedAmount(
+          transaction as Parameters<typeof transactionSignedAmount>[0],
+        ),
       0,
     );
 
@@ -100,7 +103,10 @@ const roomChargeTotal = (
     .filter((transaction) => transaction.type === "roomCharge")
     .reduce(
       (sum, transaction) =>
-        sum + transactionRevenueAmount(transaction as Parameters<typeof transactionRevenueAmount>[0]),
+        sum +
+        transactionRevenueAmount(
+          transaction as Parameters<typeof transactionRevenueAmount>[0],
+        ),
       0,
     );
 
@@ -117,11 +123,15 @@ const immigrationMonthQuery = (month: string) => {
   };
 };
 
-const passportInfoIsComplete = (passport: {
-  nationality?: string;
-  passportNo?: EncryptedField;
-  passportName?: EncryptedField;
-} | undefined) =>
+const passportInfoIsComplete = (
+  passport:
+    | {
+        nationality?: string;
+        passportNo?: EncryptedField;
+        passportName?: EncryptedField;
+      }
+    | undefined,
+) =>
   !!passport?.nationality && !!passport.passportName && !!passport.passportNo;
 
 const cellBorder = {
@@ -506,6 +516,19 @@ export const getImmigrationReport = async (req: Request, res: Response) => {
 
     await workbook.xlsx.write(res);
     res.end();
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Failed to create immigration report" });
+  }
+};
+
+export const getHotelAccomodationReport = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const month = req.query.month as string;
+    const query = immigrationMonthQuery(month);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Failed to create immigration report" });
