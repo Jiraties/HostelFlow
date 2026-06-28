@@ -134,6 +134,11 @@ const summarizeTransactions = (transactions) => transactions.reduce((summary, tr
     summary.refunds += (0, exports.transactionRefundAmount)(transaction);
     summary.depositLiability += (0, exports.transactionDepositLiabilityDelta)(transaction);
     summary.unpaidBalance += (0, exports.transactionUnpaidAmount)(transaction);
+    if (["settlementCharge", "paymentCorrection"].includes(transaction.type) &&
+        transaction.relatedTransactionType === "roomCharge" &&
+        transaction.paymentMethod !== "Unpaid") {
+        summary.unpaidBalance = Math.max(summary.unpaidBalance - Math.abs(transaction.amount || 0), 0);
+    }
     summary.cardSurcharges +=
         transaction.type === "cardSurcharge" ? Math.abs(transaction.amount || 0) : 0;
     if (transaction.paymentMethod !== "Unpaid") {

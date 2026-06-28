@@ -563,14 +563,19 @@ const getHotelAccomodationReport = async (req, res) => {
                 row.getCell(11).value = splittedPassportName.middleName;
                 row.getCell(12).value = splittedPassportName.lastName;
                 row.getCell(13).value = formattedPassport.nationality;
-                row.getCell(14).value = formattedPassport.passportNo;
+                // row.getCell(14).value = formattedPassport.passportNo;
+                row.getCell(15).value = formattedPassport.passportNo;
+                row.getCell(16).value = formattedPassport.nationality;
                 row.getCell(17).value = (0, passportHelpers_1.formatNationalityToReportThaiName)(booking.passport?.nationality || "");
-                row.getCell(18).value = 146;
+                row.getCell(18).value = formattedPassport.nationality;
+                row.getCell(19).value = 146;
                 row.getCell(20).value = (0, passportHelpers_1.formatNationalityToReportThaiName)(booking.passport?.nationality || "");
-                row.getCell(21).value = destination.label;
-                row.getCell(22).value = destination.code;
-                row.getCell(23).value = (0, dateHelpers_1.formatDateAD)(booking.checkOut);
-                row.getCell(24).value = "12.00";
+                row.getCell(21).value = formattedPassport.nationality;
+                row.getCell(22).value = destination.label;
+                row.getCell(23).value = destination.code;
+                row.getCell(24).value = (0, dateHelpers_1.formatDateAD)(booking.checkOut);
+                row.getCell(25).value = "12.00";
+                row.getCell(26).value = 1;
             }
             row.commit();
         });

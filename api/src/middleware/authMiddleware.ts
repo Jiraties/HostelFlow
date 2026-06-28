@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
+import User from "../models/user";
 
 export interface MyJwtPayload {
   userId: string;
@@ -7,7 +8,7 @@ export interface MyJwtPayload {
   username: string;
 }
 
-const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
+const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {
   if (req.method === "OPTIONS") {
     return next();
   }
@@ -27,7 +28,20 @@ const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
       process.env.JWT_SECRET || "",
     ) as MyJwtPayload;
 
-    req.user = decodedToken;
+    const user = await User.findById(decodedToken.userId)
+      .select("username admin active")
+      .lean();
+
+    if (!user || user.active === false) {
+      res.status(403).json({ message: "User account is inactive" });
+      return;
+    }
+
+    req.user = {
+      userId: String(user._id),
+      username: user.username,
+      admin: Boolean(user.admin),
+    };
     next();
   } catch (err) {
     console.error(err);

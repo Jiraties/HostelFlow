@@ -169,6 +169,16 @@ export const summarizeTransactions = (transactions: transcation[]) =>
       summary.refunds += transactionRefundAmount(transaction);
       summary.depositLiability += transactionDepositLiabilityDelta(transaction);
       summary.unpaidBalance += transactionUnpaidAmount(transaction);
+      if (
+        ["settlementCharge", "paymentCorrection"].includes(transaction.type) &&
+        transaction.relatedTransactionType === "roomCharge" &&
+        transaction.paymentMethod !== "Unpaid"
+      ) {
+        summary.unpaidBalance = Math.max(
+          summary.unpaidBalance - Math.abs(transaction.amount || 0),
+          0,
+        );
+      }
       summary.cardSurcharges +=
         transaction.type === "cardSurcharge" ? Math.abs(transaction.amount || 0) : 0;
 

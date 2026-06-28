@@ -9,6 +9,16 @@ import {
   summarizeTransactions,
   transactionFallsOnBusinessDate,
 } from "../helpers/financeHelpers";
+import {
+  IdempotencyConflictError,
+  withMutationIdempotency,
+} from "../services/mutationIdempotency";
+
+const sendDuplicateMutationResponse = (res: Response) =>
+  res.status(409).json({
+    error: "DUPLICATE_REQUEST",
+    message: "คำขอนี้ถูกส่งซ้ำหรือเพิ่งดำเนินการสำเร็จ กรุณารีเฟรชข้อมูล",
+  });
 
 const BUSINESS_TIME_ZONE = "Asia/Bangkok";
 const BANGKOK_UTC_OFFSET_HOURS = 7;
@@ -187,6 +197,7 @@ export const upsertDailyClose = async (req: Request, res: Response) => {
       return res.status(401).json({ message: "กรุณาเข้าสู่ระบบใหม่" });
     }
 
+    const requestUsername = req.user.username;
     const actualCash = Number(req.body.actualCash);
     const openingCash = Number(req.body.openingCash || 0);
 
@@ -216,28 +227,60 @@ export const upsertDailyClose = async (req: Request, res: Response) => {
       });
     }
 
-    const dailyClose = await DailyClose.findOneAndUpdate(
-      {
-        businessDate: reconciliation.businessDate,
-        staffUsername,
-      },
-      {
-        $set: {
-          openingCash,
-          expectedCash,
-          actualCash,
-          variance,
-          cashIn: reconciliation.summary.cashIn,
-          cashOut: reconciliation.summary.cashOut,
-          note: req.body.note || "",
-          createdBy: req.user.username,
-          createdAt: new Date(),
+    const existingDailyClose = await DailyClose.findOne({
+      businessDate: reconciliation.businessDate,
+      staffUsername,
+    }).lean();
+    const now = new Date();
+    const previousRevision = existingDailyClose
+      ? {
+          revision: existingDailyClose.revision || 1,
+          openingCash: existingDailyClose.openingCash,
+          expectedCash: existingDailyClose.expectedCash,
+          actualCash: existingDailyClose.actualCash,
+          variance: existingDailyClose.variance,
+          cashIn: existingDailyClose.cashIn,
+          cashOut: existingDailyClose.cashOut,
+          note: existingDailyClose.note || "",
+          createdBy: existingDailyClose.createdBy,
+          createdAt: existingDailyClose.createdAt,
+          supersededAt: now,
+          supersededBy: requestUsername,
+        }
+      : null;
+
+    const dailyClose = await withMutationIdempotency(req, () =>
+      DailyClose.findOneAndUpdate(
+        {
+          businessDate: reconciliation.businessDate,
+          staffUsername,
         },
-      },
-      { returnDocument: "after", upsert: true },
+        {
+          $set: {
+            revision: (existingDailyClose?.revision || 0) + 1,
+            openingCash,
+            expectedCash,
+            actualCash,
+            variance,
+            cashIn: reconciliation.summary.cashIn,
+            cashOut: reconciliation.summary.cashOut,
+            note: req.body.note || "",
+            createdBy: requestUsername,
+            createdAt: now,
+          },
+          ...(previousRevision
+            ? {
+                $push: {
+                  revisions: previousRevision,
+                },
+              }
+            : {}),
+        },
+        { returnDocument: "after", upsert: true },
+      ),
     );
 
-    await logActivity(req.user.username, "DAILY_CLOSE", {
+    await logActivity(requestUsername, "DAILY_CLOSE", {
       summary: {
         businessDate: reconciliation.businessDate,
         staffUsername,
@@ -250,6 +293,10 @@ export const upsertDailyClose = async (req: Request, res: Response) => {
 
     res.status(200).json({ dailyClose });
   } catch (err) {
+    if (err instanceof IdempotencyConflictError) {
+      return sendDuplicateMutationResponse(res);
+    }
+
     res.status(500).json({ error: (err as Error).message });
   }
 };

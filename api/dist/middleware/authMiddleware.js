@@ -4,7 +4,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
-const authMiddleware = (req, res, next) => {
+const user_1 = __importDefault(require("../models/user"));
+const authMiddleware = async (req, res, next) => {
     if (req.method === "OPTIONS") {
         return next();
     }
@@ -17,7 +18,18 @@ const authMiddleware = (req, res, next) => {
         if (!process.env.JWT_SECRET)
             throw new Error("JWT_Secret not found");
         const decodedToken = jsonwebtoken_1.default.verify(token, process.env.JWT_SECRET || "");
-        req.user = decodedToken;
+        const user = await user_1.default.findById(decodedToken.userId)
+            .select("username admin active")
+            .lean();
+        if (!user || user.active === false) {
+            res.status(403).json({ message: "User account is inactive" });
+            return;
+        }
+        req.user = {
+            userId: String(user._id),
+            username: user.username,
+            admin: Boolean(user.admin),
+        };
         next();
     }
     catch (err) {

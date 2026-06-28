@@ -9,6 +9,11 @@ const dailyClose_1 = __importDefault(require("../models/dailyClose"));
 const user_1 = __importDefault(require("../models/user"));
 const activityServices_1 = require("../services/activityServices");
 const financeHelpers_1 = require("../helpers/financeHelpers");
+const mutationIdempotency_1 = require("../services/mutationIdempotency");
+const sendDuplicateMutationResponse = (res) => res.status(409).json({
+    error: "DUPLICATE_REQUEST",
+    message: "คำขอนี้ถูกส่งซ้ำหรือเพิ่งดำเนินการสำเร็จ กรุณารีเฟรชข้อมูล",
+});
 const BUSINESS_TIME_ZONE = "Asia/Bangkok";
 const BANGKOK_UTC_OFFSET_HOURS = 7;
 const getBusinessDateParts = (date = new Date()) => {
@@ -146,6 +151,7 @@ const upsertDailyClose = async (req, res) => {
         if (!staffUsername || !req.user?.username) {
             return res.status(401).json({ message: "กรุณาเข้าสู่ระบบใหม่" });
         }
+        const requestUsername = req.user.username;
         const actualCash = Number(req.body.actualCash);
         const openingCash = Number(req.body.openingCash || 0);
         if (!Number.isFinite(actualCash) || !Number.isFinite(openingCash)) {
@@ -163,11 +169,33 @@ const upsertDailyClose = async (req, res) => {
                 message: "กรุณาระบุหมายเหตุเมื่อยอดเงินสดไม่ตรงกัน",
             });
         }
-        const dailyClose = await dailyClose_1.default.findOneAndUpdate({
+        const existingDailyClose = await dailyClose_1.default.findOne({
+            businessDate: reconciliation.businessDate,
+            staffUsername,
+        }).lean();
+        const now = new Date();
+        const previousRevision = existingDailyClose
+            ? {
+                revision: existingDailyClose.revision || 1,
+                openingCash: existingDailyClose.openingCash,
+                expectedCash: existingDailyClose.expectedCash,
+                actualCash: existingDailyClose.actualCash,
+                variance: existingDailyClose.variance,
+                cashIn: existingDailyClose.cashIn,
+                cashOut: existingDailyClose.cashOut,
+                note: existingDailyClose.note || "",
+                createdBy: existingDailyClose.createdBy,
+                createdAt: existingDailyClose.createdAt,
+                supersededAt: now,
+                supersededBy: requestUsername,
+            }
+            : null;
+        const dailyClose = await (0, mutationIdempotency_1.withMutationIdempotency)(req, () => dailyClose_1.default.findOneAndUpdate({
             businessDate: reconciliation.businessDate,
             staffUsername,
         }, {
             $set: {
+                revision: (existingDailyClose?.revision || 0) + 1,
                 openingCash,
                 expectedCash,
                 actualCash,
@@ -175,11 +203,18 @@ const upsertDailyClose = async (req, res) => {
                 cashIn: reconciliation.summary.cashIn,
                 cashOut: reconciliation.summary.cashOut,
                 note: req.body.note || "",
-                createdBy: req.user.username,
-                createdAt: new Date(),
+                createdBy: requestUsername,
+                createdAt: now,
             },
-        }, { returnDocument: "after", upsert: true });
-        await (0, activityServices_1.logActivity)(req.user.username, "DAILY_CLOSE", {
+            ...(previousRevision
+                ? {
+                    $push: {
+                        revisions: previousRevision,
+                    },
+                }
+                : {}),
+        }, { returnDocument: "after", upsert: true }));
+        await (0, activityServices_1.logActivity)(requestUsername, "DAILY_CLOSE", {
             summary: {
                 businessDate: reconciliation.businessDate,
                 staffUsername,
@@ -192,6 +227,9 @@ const upsertDailyClose = async (req, res) => {
         res.status(200).json({ dailyClose });
     }
     catch (err) {
+        if (err instanceof mutationIdempotency_1.IdempotencyConflictError) {
+            return sendDuplicateMutationResponse(res);
+        }
         res.status(500).json({ error: err.message });
     }
 };

@@ -10,6 +10,8 @@ const crypto_1 = __importDefault(require("crypto"));
 const activityServices_1 = require("../services/activityServices");
 const financeHelpers_1 = require("../helpers/financeHelpers");
 const dateHelpers_1 = require("../helpers/dateHelpers");
+const roomMutationLocks_1 = require("../services/roomMutationLocks");
+const mutationIdempotency_1 = require("../services/mutationIdempotency");
 dotenv_1.default.config();
 const TOTAL_GUEST_CAPACITY = 52;
 const ROOM_GUEST_CAPACITY = {
@@ -88,6 +90,10 @@ const ROOM_BLOCKING_BOOKING_FILTER = {
 };
 const BUSINESS_TIME_ZONE = "Asia/Bangkok";
 const BANGKOK_UTC_OFFSET_HOURS = 7;
+const sendDuplicateMutationResponse = (res) => res.status(409).json({
+    error: "DUPLICATE_REQUEST",
+    message: "คำขอนี้ถูกส่งซ้ำหรือเพิ่งดำเนินการสำเร็จ กรุณารีเฟรชข้อมูล",
+});
 const getBusinessDateParts = (date = new Date()) => {
     const parts = new Intl.DateTimeFormat("en-CA", {
         timeZone: BUSINESS_TIME_ZONE,
@@ -160,15 +166,24 @@ const formatLocalDateKey = (date) => {
     return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 };
 const roomChargeRevenue = (booking) => booking.transactions.reduce((sum, transaction) => {
-    if (transaction.type !== "roomCharge")
+    if (transaction.type !== "roomCharge" &&
+        !(["settlementCharge", "paymentCorrection"].includes(transaction.type) &&
+            transaction.relatedTransactionType === "roomCharge")) {
         return sum;
+    }
     return sum + (0, financeHelpers_1.transactionRevenueAmount)(transaction);
 }, 0);
-const unpaidRoomChargeAmount = (booking) => booking.transactions.reduce((sum, transaction) => {
-    if (transaction.type !== "roomCharge")
-        return sum;
-    return sum + (0, financeHelpers_1.transactionUnpaidAmount)(transaction);
-}, 0);
+const unpaidRoomChargeAmount = (booking) => Math.max(booking.transactions.reduce((sum, transaction) => {
+    if (transaction.type === "roomCharge") {
+        return sum + (0, financeHelpers_1.transactionUnpaidAmount)(transaction);
+    }
+    if (["settlementCharge", "paymentCorrection"].includes(transaction.type) &&
+        transaction.relatedTransactionType === "roomCharge" &&
+        transaction.paymentMethod !== "Unpaid") {
+        return sum - Math.abs(transaction.amount || 0);
+    }
+    return sum;
+}, 0), 0);
 const calculateNights = (checkIn, checkOut) => {
     const checkInDate = new Date(checkIn + "T00:00:00");
     const checkOutDate = new Date(checkOut + "T00:00:00");
@@ -223,56 +238,69 @@ const newBooking = async (req, res, next) => {
             return res.status(400).json({
                 message: "วันที่เช็คอินต้องไม่อยู่หลังวันที่เช็คเอาท์",
             });
-        // find bookings that have same room && checkout greater than new checkin && checkin less than new checkout
-        const overlappingBooking = await booking_1.default.findOne({
-            ...ROOM_BLOCKING_BOOKING_FILTER,
-            roomStays: {
-                $elemMatch: {
-                    roomId: booking.roomId,
-                    from: { $lt: newCheckOut },
-                    to: { $gt: newCheckIn },
-                },
+        const createResult = await (0, roomMutationLocks_1.withRoomMutationLocks)([
+            {
+                roomId: booking.roomId.trim(),
+                from: newCheckIn,
+                to: newCheckOut,
             },
+        ], async () => {
+            // find bookings that have same room && checkout greater than new checkin && checkin less than new checkout
+            const overlappingBooking = await booking_1.default.findOne({
+                ...ROOM_BLOCKING_BOOKING_FILTER,
+                roomStays: {
+                    $elemMatch: {
+                        roomId: booking.roomId,
+                        from: { $lt: newCheckOut },
+                        to: { $gt: newCheckIn },
+                    },
+                },
+            });
+            if (overlappingBooking) {
+                return { overlappingBooking };
+            }
+            const roomChargeTransaction = {
+                type: "roomCharge",
+                amount: roomChargeAmount,
+                paymentMethod: booking.paymentMethod,
+            };
+            const savedBooking = new booking_1.default({
+                name: booking.name.trim(),
+                checkIn: newCheckIn,
+                checkOut: newCheckOut,
+                nights: calculateNights(booking.checkIn, booking.checkOut),
+                platformId: booking.platformId,
+                roomStays: [
+                    {
+                        roomId: booking.roomId.trim(),
+                        from: newCheckIn,
+                        to: newCheckOut,
+                    },
+                ],
+                note: booking.note || "",
+                // ------- OLD TRANSACTION STRUCTURE --------
+                // price: booking.price,
+                // paymentMethod: booking.paymentMethod,
+                // deposit: null,
+                // depositRepaid: null,
+                transactions: buildTransactionsWithCardSurcharge(roomChargeTransaction, {
+                    createdBy: req.user?.username,
+                    sourceAction: "NEW_BOOKING",
+                }),
+                staffUsername: booking.staffUsername,
+                bookingId: booking.bookingId.trim(),
+                checkInByStaffUsername: null,
+                status: "booked",
+            });
+            await savedBooking.save();
+            return { savedBooking };
         });
-        if (overlappingBooking) {
+        if (createResult.overlappingBooking) {
             return res.status(409).json({
-                message: `ห้องนี้ถูกจองแล้วระหว่างวันที่ ${(0, dateHelpers_1.dateRangeText)(overlappingBooking.roomStays[0].from, overlappingBooking.roomStays[0].to)} กรุณาเลือกช่วงเวลาอื่น`,
+                message: `ห้องนี้ถูกจองแล้วระหว่างวันที่ ${(0, dateHelpers_1.dateRangeText)(createResult.overlappingBooking.roomStays[0].from, createResult.overlappingBooking.roomStays[0].to)} กรุณาเลือกช่วงเวลาอื่น`,
             });
         }
-        const roomChargeTransaction = {
-            type: "roomCharge",
-            amount: roomChargeAmount,
-            paymentMethod: booking.paymentMethod,
-        };
-        const savedBooking = new booking_1.default({
-            name: booking.name.trim(),
-            checkIn: newCheckIn,
-            checkOut: newCheckOut,
-            nights: calculateNights(booking.checkIn, booking.checkOut),
-            platformId: booking.platformId,
-            roomStays: [
-                {
-                    roomId: booking.roomId.trim(),
-                    from: newCheckIn,
-                    to: newCheckOut,
-                },
-            ],
-            note: booking.note || "",
-            // ------- OLD TRANSACTION STRUCTURE --------
-            // price: booking.price,
-            // paymentMethod: booking.paymentMethod,
-            // deposit: null,
-            // depositRepaid: null,
-            transactions: buildTransactionsWithCardSurcharge(roomChargeTransaction, {
-                createdBy: req.user?.username,
-                sourceAction: "NEW_BOOKING",
-            }),
-            staffUsername: booking.staffUsername,
-            bookingId: booking.bookingId.trim(),
-            checkInByStaffUsername: null,
-            status: "booked",
-        });
-        await savedBooking.save();
+        const savedBooking = createResult.savedBooking;
         res
             .status(201)
             .json({ message: "Booking created successfully", booking: savedBooking });
@@ -290,6 +318,11 @@ const newBooking = async (req, res, next) => {
         });
     }
     catch (err) {
+        if (err instanceof roomMutationLocks_1.RoomMutationConflictError) {
+            return res.status(409).json({
+                message: "ห้องนี้กำลังถูกแก้ไขโดยผู้ใช้อื่น กรุณาลองอีกครั้ง",
+            });
+        }
         if (err.code === 11000) {
             return res.status(409).json({
                 message: "Booking ID ถูกใช้ไปแล้ว โปรดใช้ Booking ID อื่น",
@@ -352,36 +385,43 @@ const editBooking = async (req, res) => {
         const roomIds = [
             ...new Set(correctedRoomStays.map((roomStay) => roomStay.roomId)),
         ];
-        const conflictingBookings = await booking_1.default.find({
-            bookingId: { $ne: bookingId },
-            ...ROOM_BLOCKING_BOOKING_FILTER,
-            roomStays: {
-                $elemMatch: {
-                    roomId: { $in: roomIds },
-                    from: { $lt: newCheckOut },
-                    to: { $gt: newCheckIn },
+        const editResult = await (0, roomMutationLocks_1.withRoomMutationLocks)(correctedRoomStays, async () => {
+            const conflictingBookings = await booking_1.default.find({
+                bookingId: { $ne: bookingId },
+                ...ROOM_BLOCKING_BOOKING_FILTER,
+                roomStays: {
+                    $elemMatch: {
+                        roomId: { $in: roomIds },
+                        from: { $lt: newCheckOut },
+                        to: { $gt: newCheckIn },
+                    },
                 },
-            },
+            });
+            const hasConflict = conflictingBookings.some((conflictingBooking) => conflictingBooking.roomStays.some((existing) => correctedRoomStays.some((incoming) => existing.roomId === incoming.roomId &&
+                new Date(existing.from) < new Date(incoming.to) &&
+                new Date(existing.to) > new Date(incoming.from))));
+            if (hasConflict) {
+                return { hasConflict };
+            }
+            const updatedBooking = await booking_1.default.findOneAndUpdate({ bookingId }, {
+                $set: {
+                    name: booking.name,
+                    checkIn: newCheckIn,
+                    checkOut: newCheckOut,
+                    nights: calculateNights(booking.checkIn, booking.checkOut),
+                    platformId: booking.platformId,
+                    note: booking.note || "",
+                    roomStays: correctedRoomStays,
+                },
+            }, { returnDocument: "after" });
+            return { updatedBooking };
         });
-        const hasConflict = conflictingBookings.some((conflictingBooking) => conflictingBooking.roomStays.some((existing) => correctedRoomStays.some((incoming) => existing.roomId === incoming.roomId &&
-            new Date(existing.from) < new Date(incoming.to) &&
-            new Date(existing.to) > new Date(incoming.from))));
-        if (hasConflict) {
+        if (editResult.hasConflict) {
             return res.status(409).json({
                 message: "ห้องถูกจองในช่วงวันที่ที่แก้ไข",
             });
         }
-        const updatedBooking = await booking_1.default.findOneAndUpdate({ bookingId }, {
-            $set: {
-                name: booking.name,
-                checkIn: newCheckIn,
-                checkOut: newCheckOut,
-                nights: calculateNights(booking.checkIn, booking.checkOut),
-                platformId: booking.platformId,
-                note: booking.note || "",
-                roomStays: correctedRoomStays,
-            },
-        }, { returnDocument: "after" });
+        const updatedBooking = editResult.updatedBooking;
         (0, activityServices_1.logActivity)(req.user?.username, "EDIT_BOOKING", {
             changes: {
                 name: { before: existingBooking.name, after: booking.name },
@@ -407,6 +447,11 @@ const editBooking = async (req, res) => {
         });
     }
     catch (err) {
+        if (err instanceof roomMutationLocks_1.RoomMutationConflictError) {
+            return res.status(409).json({
+                message: "ห้องนี้กำลังถูกแก้ไขโดยผู้ใช้อื่น กรุณาลองอีกครั้ง",
+            });
+        }
         res.status(500).json({ error: err.message });
     }
 };
@@ -601,7 +646,7 @@ const removeBooking = async (req, res) => {
                 message: "ลบได้เฉพาะ booking ที่ยังไม่ได้ check-in",
             });
         }
-        const deletedBooking = await booking_1.default.findOneAndDelete({ bookingId });
+        const deletedBooking = await (0, mutationIdempotency_1.withMutationIdempotency)(req, () => booking_1.default.findOneAndDelete({ bookingId }));
         if (!deletedBooking)
             return res.status(400).json({
                 message: "Deletion Unsuccessfull",
@@ -624,6 +669,9 @@ const removeBooking = async (req, res) => {
         });
     }
     catch (err) {
+        if (err instanceof mutationIdempotency_1.IdempotencyConflictError) {
+            return sendDuplicateMutationResponse(res);
+        }
         res.status(400).json({ error: "Deletion Unsuccessful" });
     }
 };
@@ -757,18 +805,17 @@ const checkIn = async (req, res) => {
                 note: "Rounding adjustment at check-in",
             }));
         if (checkInData.unpaidPayment && unpaidRoomCharge) {
-            if (checkInData.unpaidPayment.paymentMethod === "Card" &&
-                unpaidRoomCharge) {
-                newTransactions.push((0, financeHelpers_1.normalizeTransaction)({
-                    type: "cardSurcharge",
-                    paymentMethod: "Card",
-                    relatedTransactionType: "roomCharge",
-                    amount: calculateCardSurcharge(unpaidRoomCharge.amount),
-                }, {
-                    createdBy: req.user?.username,
-                    sourceAction: "CHECK_IN",
-                }));
-            }
+            newTransactions.push(...buildTransactionsWithCardSurcharge({
+                type: "settlementCharge",
+                paymentMethod: checkInData.unpaidPayment.paymentMethod,
+                relatedTransactionType: "roomCharge",
+                relatedTransactionId: String(unpaidRoomCharge._id),
+                amount: unpaidRoomCharge.amount,
+            }, {
+                createdBy: req.user?.username,
+                sourceAction: "CHECK_IN",
+                note: "Unpaid room charge settled at check-in",
+            }));
         }
         const checkedInAt = new Date();
         const setFields = {
@@ -796,28 +843,6 @@ const checkIn = async (req, res) => {
                     type: "roomCharge",
                 },
             };
-            const existingTransactions = existingBooking.toObject()
-                .transactions;
-            setFields.transactions = [
-                ...existingTransactions.map((transaction) => {
-                    if (String(transaction._id) !== String(unpaidRoomCharge._id) &&
-                        !(transaction.type === "roomCharge" &&
-                            transaction.paymentMethod === "Unpaid")) {
-                        return transaction;
-                    }
-                    return {
-                        ...transaction,
-                        paymentMethod: checkInData.unpaidPayment.paymentMethod,
-                        direction: (0, financeHelpers_1.transactionDirection)({
-                            type: "roomCharge",
-                            paymentMethod: checkInData.unpaidPayment.paymentMethod,
-                        }),
-                    };
-                }),
-                ...newTransactions,
-            ];
-            updateOperation.$set = setFields;
-            delete updateOperation.$push;
         }
         else if (checkInData.unpaidPayment) {
             updateQuery.transactions = {
@@ -827,7 +852,9 @@ const checkIn = async (req, res) => {
                 },
             };
         }
-        const updatedBooking = await booking_1.default.findOneAndUpdate(updateQuery, updateOperation, { returnDocument: "after" });
+        const updatedBooking = await (0, mutationIdempotency_1.withMutationIdempotency)(req, () => booking_1.default.findOneAndUpdate(updateQuery, updateOperation, {
+            returnDocument: "after",
+        }));
         if (!updatedBooking) {
             return res.status(409).json({
                 message: "booking นี้ไม่สามารถ check-in ซ้ำได้",
@@ -855,6 +882,9 @@ const checkIn = async (req, res) => {
         }, String(bookingId));
     }
     catch (err) {
+        if (err instanceof mutationIdempotency_1.IdempotencyConflictError) {
+            return sendDuplicateMutationResponse(res);
+        }
         res.status(400).json({ error: err.message });
     }
 };
@@ -934,7 +964,7 @@ const checkOut = async (req, res) => {
                 }),
             ]
             : [];
-        const updatedBooking = await booking_1.default.findOneAndUpdate({ bookingId, status: "checkedIn" }, {
+        const updatedBooking = await (0, mutationIdempotency_1.withMutationIdempotency)(req, () => booking_1.default.findOneAndUpdate({ bookingId, status: "checkedIn" }, {
             $set: {
                 status: "checkedOut",
                 checkout: {
@@ -955,7 +985,7 @@ const checkOut = async (req, res) => {
                     },
                 }
                 : {}),
-        }, { returnDocument: "after" });
+        }, { returnDocument: "after" }));
         if (!updatedBooking) {
             return res.status(404).json({
                 message: "ไม่พบ booking นี้",
@@ -982,6 +1012,9 @@ const checkOut = async (req, res) => {
         }, String(bookingId));
     }
     catch (err) {
+        if (err instanceof mutationIdempotency_1.IdempotencyConflictError) {
+            return sendDuplicateMutationResponse(res);
+        }
         res.status(500).json({ error: err.message });
     }
 };
@@ -1134,31 +1167,38 @@ const manageRoomStays = async (req, res) => {
         ];
         const minFrom = new Date(sorted[0].from);
         const maxTo = new Date(sorted[sorted.length - 1].to);
-        const conflictingBookings = await booking_1.default.find({
-            bookingId: { $ne: bookingId },
-            ...ROOM_BLOCKING_BOOKING_FILTER,
-            roomStays: {
-                $elemMatch: {
-                    roomId: { $in: roomIds },
-                    from: { $lt: maxTo },
-                    to: { $gt: minFrom },
+        const manageResult = await (0, roomMutationLocks_1.withRoomMutationLocks)(sorted, async () => {
+            const conflictingBookings = await booking_1.default.find({
+                bookingId: { $ne: bookingId },
+                ...ROOM_BLOCKING_BOOKING_FILTER,
+                roomStays: {
+                    $elemMatch: {
+                        roomId: { $in: roomIds },
+                        from: { $lt: maxTo },
+                        to: { $gt: minFrom },
+                    },
                 },
-            },
+            });
+            const hasConflict = conflictingBookings.some((booking) => booking.roomStays.some((existing) => sorted.some((incoming) => existing.roomId === incoming.roomId &&
+                new Date(existing.from) < new Date(incoming.to) &&
+                new Date(existing.to) > new Date(incoming.from))));
+            if (hasConflict) {
+                return { hasConflict };
+            }
+            const updatedBooking = await booking_1.default.findOneAndUpdate({ bookingId }, {
+                $set: {
+                    roomStays: sorted,
+                },
+            }, { returnDocument: "after" });
+            return { updatedBooking };
         });
-        const hasConflict = conflictingBookings.some((booking) => booking.roomStays.some((existing) => sorted.some((incoming) => existing.roomId === incoming.roomId &&
-            new Date(existing.from) < new Date(incoming.to) &&
-            new Date(existing.to) > new Date(incoming.from))));
-        if (hasConflict) {
+        if (manageResult.hasConflict) {
             return res.status(409).json({
                 error: "ROOM_CONFLICT",
                 message: "ห้องถูกจองในช่วงเวลานี้",
             });
         }
-        const updatedBooking = await booking_1.default.findOneAndUpdate({ bookingId }, {
-            $set: {
-                roomStays: sorted,
-            },
-        }, { returnDocument: "after" });
+        const updatedBooking = manageResult.updatedBooking;
         (0, activityServices_1.logActivity)(req.user?.username, "MANAGE_ROOM_STAYS", {
             summary: {
                 beforeRoomStays: originalRoomStays,
@@ -1171,6 +1211,12 @@ const manageRoomStays = async (req, res) => {
         res.status(200).json({ message: "สำเร็จ", booking: updatedBooking });
     }
     catch (err) {
+        if (err instanceof roomMutationLocks_1.RoomMutationConflictError) {
+            return res.status(409).json({
+                error: "ROOM_MUTATION_CONFLICT",
+                message: "ห้องนี้กำลังถูกแก้ไขโดยผู้ใช้อื่น กรุณาลองอีกครั้ง",
+            });
+        }
         res.status(500).json({ error: err.message });
     }
 };
@@ -1278,13 +1324,13 @@ const addTransaction = async (req, res) => {
             reference: transaction.reference,
             sameTypeCount,
         });
-        const updatedBooking = await booking_1.default.findOneAndUpdate({ bookingId }, {
+        const updatedBooking = await (0, mutationIdempotency_1.withMutationIdempotency)(req, () => booking_1.default.findOneAndUpdate({ bookingId }, {
             $push: {
                 transactions: {
                     $each: newTransactions,
                 },
             },
-        }, { returnDocument: "after" });
+        }, { returnDocument: "after" }));
         (0, activityServices_1.logActivity)(req.user?.username, "ADD_TRANSACTION", {
             summary: {
                 addedTransactions: newTransactions,
@@ -1302,6 +1348,9 @@ const addTransaction = async (req, res) => {
         });
     }
     catch (err) {
+        if (err instanceof mutationIdempotency_1.IdempotencyConflictError) {
+            return sendDuplicateMutationResponse(res);
+        }
         res.status(500).json({ error: err.message });
     }
 };
@@ -1418,7 +1467,7 @@ const cancelBooking = async (req, res) => {
                 sourceAction: "CANCEL_BOOKING",
             }))
             : [];
-        const updatedBooking = await booking_1.default.findOneAndUpdate({ bookingId, status: "booked" }, {
+        const updatedBooking = await (0, mutationIdempotency_1.withMutationIdempotency)(req, () => booking_1.default.findOneAndUpdate({ bookingId, status: "booked" }, {
             $set: {
                 status: "cancelled",
                 cancellation: {
@@ -1441,7 +1490,7 @@ const cancelBooking = async (req, res) => {
                     },
                 }
                 : {}),
-        }, { returnDocument: "after" });
+        }, { returnDocument: "after" }));
         if (!updatedBooking) {
             return res.status(404).json({
                 error: "NOT_FOUND",
@@ -1471,6 +1520,9 @@ const cancelBooking = async (req, res) => {
         }, String(bookingId));
     }
     catch (err) {
+        if (err instanceof mutationIdempotency_1.IdempotencyConflictError) {
+            return sendDuplicateMutationResponse(res);
+        }
         res.status(500).json({ error: err.message });
     }
 };
@@ -1658,7 +1710,7 @@ const resolveBooking = async (req, res) => {
                 cancelledByStaffUsername: resolvedByStaffUsername,
             };
         }
-        const updatedBooking = await booking_1.default.findOneAndUpdate({ bookingId }, {
+        const updatedBooking = await (0, mutationIdempotency_1.withMutationIdempotency)(req, () => booking_1.default.findOneAndUpdate({ bookingId }, {
             $set: updateSet,
             ...(normalizedTransactions.length > 0
                 ? {
@@ -1669,7 +1721,7 @@ const resolveBooking = async (req, res) => {
                     },
                 }
                 : {}),
-        }, { returnDocument: "after" });
+        }, { returnDocument: "after" }));
         if (!updatedBooking) {
             return res.status(404).json({
                 error: "BOOKING_NOT_FOUND",
@@ -1700,6 +1752,9 @@ const resolveBooking = async (req, res) => {
         });
     }
     catch (err) {
+        if (err instanceof mutationIdempotency_1.IdempotencyConflictError) {
+            return sendDuplicateMutationResponse(res);
+        }
         res.status(500).json({ error: err.message });
     }
 };
