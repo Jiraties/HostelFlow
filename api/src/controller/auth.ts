@@ -7,6 +7,13 @@ import { logActivity } from "../services/activityServices";
 
 dotenv.config();
 
+const authCookieOptions = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax" as const,
+  path: "/",
+};
+
 export const createUser = async (
   req: Request,
   res: Response,
@@ -313,12 +320,7 @@ export const login = async (
       },
     );
 
-    res.cookie("token", token, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      path: "/",
-    });
+    res.cookie("token", token, authCookieOptions);
 
     res.status(200).json({
       message: "Logged In Successfully.",
@@ -365,12 +367,7 @@ export const me = async (req: Request, res: Response, next: NextFunction) => {
 };
 
 export const logout = (req: Request, res: Response) => {
-  res.clearCookie("token", {
-    httpOnly: true,
-    secure: true,
-    sameSite: "none",
-    path: "/",
-  });
+  res.clearCookie("token", authCookieOptions);
 
   res.status(200).json({ message: "Successfully logged out" });
 

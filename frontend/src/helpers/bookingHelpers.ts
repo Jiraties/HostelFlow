@@ -1,18 +1,48 @@
 import type { booking } from "../types/bookingTypes";
 
+type Transaction = booking["transactions"][number];
+
 export const roomChargeTransaction = (booking: booking) => {
   const transaction = booking.transactions.find(
     (transaction) => transaction.type === "roomCharge",
   );
 
   if (transaction) return transaction;
-  return {
+
+  const fallbackRoomCharge: Transaction = {
     type: "roomCharge",
     paymentMethod: "Unpaid",
-
     amount: 0,
   };
+
+  return fallbackRoomCharge;
 };
+
+export const roomChargeSettlementTransaction = (
+  booking: booking,
+): Transaction | undefined => {
+  const roomCharge = roomChargeTransaction(booking);
+  if (!roomCharge._id) return undefined;
+
+  return booking.transactions.find(
+    (transaction) =>
+      transaction.type === "settlementCharge" &&
+      transaction.relatedTransactionType === "roomCharge" &&
+      transaction.relatedTransactionId === roomCharge._id &&
+      transaction.paymentMethod !== "Unpaid",
+  );
+};
+
+export const roomChargeDisplayPaymentMethod = (
+  booking: booking,
+): Transaction["paymentMethod"] =>
+  roomChargeSettlementTransaction(booking)?.paymentMethod ||
+  roomChargeTransaction(booking).paymentMethod;
+
+export const isRoomChargeSettlementTransaction = (
+  booking: booking,
+  transaction: Transaction,
+) => roomChargeSettlementTransaction(booking)?._id === transaction._id;
 
 export const calculateNights = (checkIn: Date, checkOut: Date) => {
   const start = new Date(

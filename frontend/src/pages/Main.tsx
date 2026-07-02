@@ -706,6 +706,109 @@ const Main = () => {
         ))}
       </section>
 
+      {user?.admin && (adminStats || adminLoading) && (
+        <section className="main__adminSection">
+          <div className="main__adminHeader">
+            <div>
+              <i className="bx bx-bar-chart-big" />
+              <h2>ภาพรวมสำหรับแอดมิน</h2>
+            </div>
+            <span>เดือนนี้</span>
+          </div>
+
+          <div className="main__adminStatsGrid">
+            {(adminStats
+              ? adminStatCards
+              : [
+                  { label: "รายได้วันนี้ (฿)", value: 0 },
+                  { label: "รายได้เดือนนี้ (฿)", value: 0 },
+                  { label: "ยอดจองเดือนนี้", value: 0 },
+                  { label: "ยอดค้างชำระ (฿)", value: 0 },
+                  { label: "อัตราเข้าพัก (%)", value: 0 },
+                ]
+            ).map((stat) => (
+              <div
+                className={`main__adminStatCard${
+                  "fillPercent" in stat ? " main__adminStatCard--fill" : ""
+                }`}
+                key={stat.label}
+                style={
+                  "fillPercent" in stat
+                    ? ({
+                        "--admin-stat-fill": `${stat.fillPercent}%`,
+                      } as React.CSSProperties)
+                    : undefined
+                }
+              >
+                <StatCard
+                  label={stat.label}
+                  value={stat.value}
+                  loading={adminLoading && !adminStats}
+                  suffix={"suffix" in stat ? stat.suffix : undefined}
+                />
+              </div>
+            ))}
+          </div>
+
+          {adminStats && (
+            <div className="main__adminInsights">
+              <div className="main__chartCard">
+                <div className="main__cardHeader">
+                  <h3>รายได้ค่าห้องเดือนนี้</h3>
+                  <span>{adminStats.monthRoomRevenue.toLocaleString()} ฿</span>
+                </div>
+                <RevenueLineChart series={adminStats.revenueSeries} />
+              </div>
+
+              <div className="main__channelCard">
+                <div className="main__cardHeader">
+                  <h3>ช่องทางการจอง</h3>
+                  <span>{adminStats.monthBookings}</span>
+                </div>
+                <div className="main__channelList">
+                  {adminStats.channelMix.length === 0 ? (
+                    <div className="main__emptyState">
+                      <i className="bx bx-info-circle" />
+                      <p>ยังไม่มีรายการจองเดือนนี้</p>
+                    </div>
+                  ) : (
+                    adminStats.channelMix.map((channel) => {
+                      const platform = platformMap[channel.platformId];
+                      const percentage =
+                        adminStats.monthBookings === 0
+                          ? 0
+                          : Math.round(
+                              (channel.count / adminStats.monthBookings) * 100,
+                            );
+
+                      return (
+                        <div
+                          className="main__channelItem"
+                          key={channel.platformId}
+                        >
+                          <div>
+                            <span
+                              style={{
+                                backgroundColor:
+                                  platform?.color || "var(--primary-color)",
+                              }}
+                            />
+                            <p>{platform?.label || channel.platformId}</p>
+                          </div>
+                          <strong>
+                            {channel.count} รายการ · {percentage}%
+                          </strong>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
       <section className="main__cashCloseSection">
         <div className="main__sectionHeader">
           <div>
@@ -831,109 +934,6 @@ const Main = () => {
           </div>
         </div>
       </section>
-
-      {user?.admin && (adminStats || adminLoading) && (
-        <section className="main__adminSection">
-          <div className="main__adminHeader">
-            <div>
-              <i className="bx bx-bar-chart-big" />
-              <h2>ภาพรวมสำหรับแอดมิน</h2>
-            </div>
-            <span>เดือนนี้</span>
-          </div>
-
-          <div className="main__adminStatsGrid">
-            {(adminStats
-              ? adminStatCards
-              : [
-                  { label: "รายได้วันนี้ (฿)", value: 0 },
-                  { label: "รายได้เดือนนี้ (฿)", value: 0 },
-                  { label: "ยอดจองเดือนนี้", value: 0 },
-                  { label: "ยอดค้างชำระ (฿)", value: 0 },
-                  { label: "อัตราเข้าพัก (%)", value: 0 },
-                ]
-            ).map((stat) => (
-              <div
-                className={`main__adminStatCard${
-                  "fillPercent" in stat ? " main__adminStatCard--fill" : ""
-                }`}
-                key={stat.label}
-                style={
-                  "fillPercent" in stat
-                    ? ({
-                        "--admin-stat-fill": `${stat.fillPercent}%`,
-                      } as React.CSSProperties)
-                    : undefined
-                }
-              >
-                <StatCard
-                  label={stat.label}
-                  value={stat.value}
-                  loading={adminLoading && !adminStats}
-                  suffix={"suffix" in stat ? stat.suffix : undefined}
-                />
-              </div>
-            ))}
-          </div>
-
-          {adminStats && (
-            <div className="main__adminInsights">
-              <div className="main__chartCard">
-                <div className="main__cardHeader">
-                  <h3>รายได้ค่าห้องเดือนนี้</h3>
-                  <span>{adminStats.monthRoomRevenue.toLocaleString()} ฿</span>
-                </div>
-                <RevenueLineChart series={adminStats.revenueSeries} />
-              </div>
-
-              <div className="main__channelCard">
-                <div className="main__cardHeader">
-                  <h3>ช่องทางการจอง</h3>
-                  <span>{adminStats.monthBookings}</span>
-                </div>
-                <div className="main__channelList">
-                  {adminStats.channelMix.length === 0 ? (
-                    <div className="main__emptyState">
-                      <i className="bx bx-info-circle" />
-                      <p>ยังไม่มีรายการจองเดือนนี้</p>
-                    </div>
-                  ) : (
-                    adminStats.channelMix.map((channel) => {
-                      const platform = platformMap[channel.platformId];
-                      const percentage =
-                        adminStats.monthBookings === 0
-                          ? 0
-                          : Math.round(
-                              (channel.count / adminStats.monthBookings) * 100,
-                            );
-
-                      return (
-                        <div
-                          className="main__channelItem"
-                          key={channel.platformId}
-                        >
-                          <div>
-                            <span
-                              style={{
-                                backgroundColor:
-                                  platform?.color || "var(--primary-color)",
-                              }}
-                            />
-                            <p>{platform?.label || channel.platformId}</p>
-                          </div>
-                          <strong>
-                            {channel.count} รายการ · {percentage}%
-                          </strong>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-        </section>
-      )}
 
       <div className="main__todayGrid">
         {bookingsThatNeedReview.length > 0 ? (

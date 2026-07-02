@@ -17,6 +17,7 @@ import type {
 import type { booking } from "../../types/bookingTypes";
 import "./Spreadsheet.css";
 import { platformMap } from "../../helpers/maps.ts";
+import { roomChargeDisplayPaymentMethod } from "../../helpers/bookingHelpers.ts";
 
 type SpreadsheetStatus = "arrivals" | "departures" | "master";
 
@@ -354,9 +355,7 @@ const Spreadsheet = ({
       {
         valueGetter: (params: ValueGetterParams<SpreadsheetRow>) => {
           if (isSeparatorRow(params.data)) return "";
-          return params.data?.transactions?.find(
-            (transaction) => transaction.type === "roomCharge",
-          )?.paymentMethod;
+          return params.data ? roomChargeDisplayPaymentMethod(params.data) : "";
         },
         headerName: "ช่องทางการจ่าย",
         filter: true,

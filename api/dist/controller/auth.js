@@ -10,6 +10,12 @@ const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const activityServices_1 = require("../services/activityServices");
 dotenv_1.default.config();
+const authCookieOptions = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+};
 const createUser = async (req, res, next) => {
     try {
         const { username, password, secretCode, admin, name } = req.body;
@@ -243,12 +249,7 @@ const login = async (req, res, next) => {
         const token = jsonwebtoken_1.default.sign({ userId: user._id, admin: user.admin, username: user.username }, process.env.JWT_SECRET, {
             expiresIn: "1d",
         });
-        res.cookie("token", token, {
-            httpOnly: true,
-            secure: true,
-            sameSite: "none",
-            path: "/",
-        });
+        res.cookie("token", token, authCookieOptions);
         res.status(200).json({
             message: "Logged In Successfully.",
             user: {
@@ -293,12 +294,7 @@ const me = async (req, res, next) => {
 };
 exports.me = me;
 const logout = (req, res) => {
-    res.clearCookie("token", {
-        httpOnly: true,
-        secure: true,
-        sameSite: "none",
-        path: "/",
-    });
+    res.clearCookie("token", authCookieOptions);
     res.status(200).json({ message: "Successfully logged out" });
     console.log(req.user);
     (0, activityServices_1.logActivity)(req.user?.username, "LOGOUT", { success: true });

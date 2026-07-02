@@ -14,7 +14,12 @@ import ResolveBooking from "./ResolveBooking.tsx";
 import { useState, useEffect, useRef } from "react";
 import { API_URL } from "../../config/api.ts";
 import { platformMap } from "../../helpers/maps.ts";
-import { formatBookingDates, isSameDay } from "../../helpers/bookingHelpers.ts";
+import {
+  formatBookingDates,
+  isRoomChargeSettlementTransaction,
+  isSameDay,
+  roomChargeDisplayPaymentMethod,
+} from "../../helpers/bookingHelpers.ts";
 import { requestUnsavedModalClose } from "../../helpers/modalGuards.ts";
 import { Modal } from "@mui/material";
 import { useAuth } from "../../context/AuthContext.tsx";
@@ -30,6 +35,7 @@ const paymentMethodIconMap = {
   Cash: "bx-currency-notes",
   Card: "bx-credit-card-alt",
   Transfer: "bx-arrow-right-left",
+  Unpaid: "bx-error",
 };
 
 const transactionMap = {
@@ -369,12 +375,21 @@ const ViewBooking = ({
     (transaction.type === "adjustment" &&
       Boolean(transaction.relatedTransactionId));
 
+  const effectiveRoomChargePaymentMethod = roomChargeDisplayPaymentMethod(data);
+  let attachNextSettlementCardSurchargeToRoomCharge = false;
+
   const groupedTransactions = data.transactions.reduce<
     {
       transaction: booking["transactions"][number];
       children: booking["transactions"];
     }[]
   >((groups, transaction) => {
+    if (isRoomChargeSettlementTransaction(data, transaction)) {
+      attachNextSettlementCardSurchargeToRoomCharge =
+        transaction.paymentMethod === "Card";
+      return groups;
+    }
+
     if (transaction.type === "adjustment" && transaction.relatedTransactionId) {
       const linkedGroup = groups.find(
         (group) =>
@@ -394,6 +409,21 @@ const ViewBooking = ({
 
     if (transaction.type === "cardSurcharge") {
       const lastGroup = groups[groups.length - 1];
+      const roomChargeGroup = groups.find(
+        (group) => group.transaction.type === "roomCharge",
+      );
+
+      if (
+        roomChargeGroup &&
+        attachNextSettlementCardSurchargeToRoomCharge &&
+        transaction.relatedTransactionType === "settlementCharge"
+      ) {
+        roomChargeGroup.children.push(transaction);
+        attachNextSettlementCardSurchargeToRoomCharge = false;
+        return groups;
+      }
+
+      attachNextSettlementCardSurchargeToRoomCharge = false;
 
       if (lastGroup && !isChildTransaction(lastGroup.transaction)) {
         lastGroup.children.push(transaction);
@@ -402,6 +432,8 @@ const ViewBooking = ({
       }
       return groups;
     }
+
+    attachNextSettlementCardSurchargeToRoomCharge = false;
 
     if (transaction.type === "depositRefund") {
       const depositGroup = [...groups]
@@ -440,29 +472,32 @@ const ViewBooking = ({
   const renderPaymentMethod = (
     transaction: booking["transactions"][number],
     compact = false,
-  ) => (
-    <div
-      className={
-        "viewBooking__paymentMethod" +
-        (compact ? " viewBooking__paymentMethod--compact" : "")
-      }
-    >
-      <p
+  ) => {
+    const paymentMethod =
+      transaction.type === "roomCharge"
+        ? effectiveRoomChargePaymentMethod
+        : transaction.paymentMethod;
+
+    return (
+      <div
         className={
-          transaction.paymentMethod === "Unpaid" ? "viewBooking__unpaid" : ""
+          "viewBooking__paymentMethod" +
+          (compact ? " viewBooking__paymentMethod--compact" : "")
         }
       >
-        {transaction.paymentMethod}
-      </p>
-      {transaction.paymentMethod === "Unpaid" ? (
-        <i className="bx bx-error viewBooking__unpaid" />
-      ) : (
-        <i
-          className={"bx " + paymentMethodIconMap[transaction.paymentMethod]}
-        />
-      )}
-    </div>
-  );
+        <p
+          className={paymentMethod === "Unpaid" ? "viewBooking__unpaid" : ""}
+        >
+          {paymentMethod}
+        </p>
+        {paymentMethod === "Unpaid" ? (
+          <i className="bx bx-error viewBooking__unpaid" />
+        ) : (
+          <i className={"bx " + paymentMethodIconMap[paymentMethod]} />
+        )}
+      </div>
+    );
+  };
 
   const renderReviewMeta = (transaction: booking["transactions"][number]) => {
     const isReviewed = transaction.reviewStatus === "reviewed";
