@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import ActionButton from "../../components/ActionButton";
 import ModalCloseButton from "../../components/ModalCloseButton";
 import "./AddBooking.css";
-import Select, { type SingleValue } from "react-select";
+import Select, { type MultiValue, type SingleValue } from "react-select";
 import { useAuth } from "../../context/AuthContext";
 import toast from "react-hot-toast";
 import axios from "axios";
@@ -19,13 +19,14 @@ import {
   roomIdOptions,
   paymentMethodOptions,
 } from "../../helpers/options";
+import { getRoomStayRoomIds } from "../../helpers/roomStayHelpers";
 
 interface BookingFormData {
   name: string;
   checkIn: string;
   checkOut: string;
   platformId: PlatformId | "";
-  roomId: string;
+  roomIds: string[];
   price: string; // always string (form input)
   paymentMethod: string;
   bookingId: string;
@@ -56,6 +57,7 @@ const AddBooking = ({
   const { user } = useAuth();
   const isEditMode = mode === "edit" && !!editModeBooking;
   const [submitting, setSubmitting] = useState(false);
+  const [occupiedRoomIds, setOccupiedRoomIds] = useState<string[]>([]);
   const [reminderIsOpen, setReminderIsOpen] = useState(
     mode === "edit" && editModeBooking && editModeBooking?.roomStays.length > 1,
   );
@@ -70,7 +72,7 @@ const AddBooking = ({
         checkIn: formatLocalDate(new Date(editModeBooking.checkIn)),
         checkOut: formatLocalDate(new Date(editModeBooking.checkOut)),
         platformId: editModeBooking.platformId,
-        roomId: editModeBooking.roomStays[0]?.roomId || "",
+        roomIds: getRoomStayRoomIds(editModeBooking.roomStays[0] || {}),
         price: roomCharge?.amount?.toString() || "",
         paymentMethod: roomCharge?.paymentMethod || "",
         bookingId: editModeBooking.bookingId,
@@ -84,7 +86,7 @@ const AddBooking = ({
       checkIn: clickInfo?.checkIn || "",
       checkOut: "",
       platformId: "",
-      roomId: clickInfo?.roomId || "",
+      roomIds: clickInfo?.roomId ? [clickInfo.roomId] : [],
       price: "",
       paymentMethod: "",
       bookingId: "",
@@ -101,6 +103,60 @@ const AddBooking = ({
 
     return () => onDirtyChange?.(false);
   }, [formData, initialFormData, onDirtyChange]);
+
+  const roomOptions = useMemo(
+    () =>
+      roomIdOptions.map((option) => ({
+        ...option,
+        isDisabled: occupiedRoomIds.includes(option.value),
+      })),
+    [occupiedRoomIds],
+  );
+
+  useEffect(() => {
+    if (isEditMode || !formData.checkIn || !formData.checkOut) {
+      setOccupiedRoomIds([]);
+      return;
+    }
+
+    if (new Date(formData.checkIn) >= new Date(formData.checkOut)) {
+      setOccupiedRoomIds([]);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    axios
+      .get(`${API_URL}/bookings/getRoomAvailability`, {
+        params: {
+          checkIn: formData.checkIn,
+          checkOut: formData.checkOut,
+        },
+        signal: controller.signal,
+        withCredentials: true,
+      })
+      .then((response) => {
+        const nextOccupiedRoomIds = Array.isArray(
+          response.data?.occupiedRoomIds,
+        )
+          ? response.data.occupiedRoomIds
+          : [];
+
+        setOccupiedRoomIds(nextOccupiedRoomIds);
+        setFormData((prev) => ({
+          ...prev,
+          roomIds: prev.roomIds.filter(
+            (roomId) => !nextOccupiedRoomIds.includes(roomId),
+          ),
+        }));
+      })
+      .catch((err) => {
+        if (axios.isCancel(err) || err.name === "CanceledError") return;
+        setOccupiedRoomIds([]);
+      });
+
+    return () => controller.abort();
+  }, [formData.checkIn, formData.checkOut, isEditMode]);
 
   const fillDummyData = () => {
     if (submitting) return;
@@ -188,7 +244,7 @@ const AddBooking = ({
       checkIn: formatLocalDate(checkInDate), // ✅ always today
       checkOut: formatLocalDate(checkOutDate),
       platformId: platform,
-      roomId: random(rooms),
+      roomIds: [random(rooms)],
       price: String((Math.floor(Math.random() * 20) + 10) * 100),
       paymentMethod: payment,
       bookingId: String(Math.floor(1000000000 + Math.random() * 9000000000)),
@@ -213,15 +269,19 @@ const AddBooking = ({
     </div>
   );
 
-  const formDataChangeHandler = (field: string, value: string) => {
+  const formDataChangeHandler = (
+    field: keyof BookingFormData,
+    value: BookingFormData[keyof BookingFormData],
+  ) => {
     if (submitting) throw new Error("Already Submitting");
 
     setFormData((prev) => {
       const updated = { ...prev, [field]: value };
 
       if (field === "platformId") {
-        if (value === "BOOK") updated.paymentMethod = "OTA";
-        if (value === "HOST") updated.paymentMethod = "Unpaid";
+        const platformId = value as PlatformId | "";
+        if (platformId === "BOOK") updated.paymentMethod = "OTA";
+        if (platformId === "HOST") updated.paymentMethod = "Unpaid";
       }
 
       return updated;
@@ -244,7 +304,7 @@ const AddBooking = ({
         !formData.platformId;
       const missingAddFields =
         missingEditFields ||
-        !formData.roomId ||
+        formData.roomIds.length === 0 ||
         !formData.price ||
         !formData.paymentMethod ||
         !formData.bookingId;
@@ -299,7 +359,7 @@ const AddBooking = ({
         checkIn: "",
         checkOut: "",
         platformId: "",
-        roomId: "",
+        roomIds: [],
         price: "",
         paymentMethod: "",
         bookingId: "",
@@ -380,20 +440,32 @@ const AddBooking = ({
             {/* <input
               className="boxInput"
               type="text"
-              value={formData.roomId}
+              value={formData.roomIds.join(", ")}
               placeholder="เช่น Pottery 1"
-              onChange={(e) => formDataChangeHandler("roomId", e.target.value)}
+              onChange={(e) =>
+                formDataChangeHandler(
+                  "roomIds",
+                  e.target.value
+                    .split(",")
+                    .map((roomId) => roomId.trim())
+                    .filter(Boolean),
+                )
+              }
             /> */}
-            <Select<OptionType>
-              styles={customStyles<OptionType>()}
+            <Select<OptionType, true>
+              isMulti
+              styles={customStyles<OptionType, true>()}
               classNamePrefix="rs"
               placeholder="เช่น Veranda 1"
-              options={roomIdOptions}
-              value={roomIdOptions.find(
-                (option) => option.value === formData.roomId,
+              options={roomOptions}
+              value={roomOptions.filter((option) =>
+                formData.roomIds.includes(option.value),
               )}
-              onChange={(option: SingleValue<OptionType>) =>
-                formDataChangeHandler("roomId", option?.value || "")
+              onChange={(options: MultiValue<OptionType>) =>
+                formDataChangeHandler(
+                  "roomIds",
+                  options.map((option) => option.value),
+                )
               }
             />
           </div>

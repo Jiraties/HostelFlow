@@ -1,4 +1,4 @@
-import Select, { type SingleValue } from "react-select";
+import Select, { type MultiValue } from "react-select";
 import "./ManageRoomStays.css";
 import type { OptionType } from "../../helpers/selectStyling";
 import { customStyles } from "../../helpers/selectStyling";
@@ -14,9 +14,11 @@ import {
   formatLocalDate,
 } from "../../helpers/bookingHelpers";
 import type { booking } from "../../types/bookingTypes";
+import { getRoomStayRoomIds } from "../../helpers/roomStayHelpers";
 
 interface roomStay {
-  roomId: string;
+  roomIds: string[];
+  roomId?: string;
   from: string;
   to: string;
 }
@@ -54,19 +56,43 @@ const ManageRoomStays = ({
     }));
 
   const initialManagedRoomStays = useMemo(
-    () =>
-      applyBookingBoundaries(
-        initialRoomStays.map((stay) => ({
-          ...stay,
-          from: stay.from ? normalizeDate(stay.from) : "",
-          to: stay.to ? normalizeDate(stay.to) : "",
-        })),
-      ),
-    [initialRoomStays, bookingCheckIn, bookingCheckOut],
+    () => {
+      const normalizedCheckIn = normalizeDate(String(checkIn));
+      const normalizedCheckOut = normalizeDate(String(checkOut));
+
+      return initialRoomStays.map((stay, index) => ({
+        ...stay,
+        roomIds: getRoomStayRoomIds(stay),
+        from:
+          index === 0
+            ? normalizedCheckIn
+            : stay.from
+              ? normalizeDate(stay.from)
+              : "",
+        to:
+          index === initialRoomStays.length - 1
+            ? normalizedCheckOut
+            : stay.to
+              ? normalizeDate(stay.to)
+              : "",
+      }));
+    },
+    [initialRoomStays, checkIn, checkOut],
   );
 
   const [roomStays, setRoomStays] = useState<roomStay[]>(
     initialManagedRoomStays,
+  );
+  const [occupiedRoomIdsByStay, setOccupiedRoomIdsByStay] = useState<
+    Record<number, string[]>
+  >({});
+
+  const roomStayAvailabilityKey = useMemo(
+    () =>
+      applyBookingBoundaries(roomStays)
+        .map((stay) => `${stay.from || ""}:${stay.to || ""}`)
+        .join("|"),
+    [roomStays, bookingCheckIn, bookingCheckOut],
   );
 
   useEffect(() => {
@@ -77,11 +103,92 @@ const ManageRoomStays = ({
     return () => onDirtyChange?.(false);
   }, [initialManagedRoomStays, onDirtyChange, roomStays]);
 
+  useEffect(() => {
+    const boundedRoomStays = applyBookingBoundaries(roomStays);
+    const availabilityRequests = boundedRoomStays.map((stay, index) => ({
+      index,
+      from: stay.from,
+      to: stay.to,
+      valid:
+        Boolean(stay.from && stay.to) &&
+        new Date(stay.from) < new Date(stay.to),
+    }));
+
+    if (!availabilityRequests.some((request) => request.valid)) {
+      setOccupiedRoomIdsByStay({});
+      return;
+    }
+
+    const controller = new AbortController();
+
+    Promise.all(
+      availabilityRequests.map(async (request) => {
+        if (!request.valid) return { index: request.index, occupiedRoomIds: [] };
+
+        const response = await axios.get(
+          `${API_URL}/bookings/getRoomAvailability`,
+          {
+            params: {
+              checkIn: request.from,
+              checkOut: request.to,
+              excludeBookingId: bookingId,
+            },
+            signal: controller.signal,
+            withCredentials: true,
+          },
+        );
+
+        return {
+          index: request.index,
+          occupiedRoomIds: Array.isArray(response.data?.occupiedRoomIds)
+            ? response.data.occupiedRoomIds
+            : [],
+        };
+      }),
+    )
+      .then((availabilityResults) => {
+        const nextOccupiedRoomIdsByStay = availabilityResults.reduce<
+          Record<number, string[]>
+        >((result, availability) => {
+          result[availability.index] = availability.occupiedRoomIds;
+          return result;
+        }, {});
+
+        setOccupiedRoomIdsByStay(nextOccupiedRoomIdsByStay);
+        setRoomStays((prevRoomStays) =>
+          prevRoomStays.map((stay, index) => ({
+            ...stay,
+            roomIds: getRoomStayRoomIds(stay).filter(
+              (roomId) =>
+                !nextOccupiedRoomIdsByStay[index]?.includes(roomId),
+            ),
+          })),
+        );
+      })
+      .catch((err) => {
+        if (axios.isCancel(err) || err.name === "CanceledError") return;
+        setOccupiedRoomIdsByStay({});
+      });
+
+    return () => controller.abort();
+  }, [bookingId, roomStayAvailabilityKey]);
+
+  const roomOptionsByStay = useMemo(
+    () =>
+      roomStays.map((_, index) =>
+        roomIdOptions.map((option) => ({
+          ...option,
+          isDisabled: occupiedRoomIdsByStay[index]?.includes(option.value),
+        })),
+      ),
+    [occupiedRoomIdsByStay, roomStays],
+  );
+
   const addEmptyRoomStay = () => {
     if (roomStays.length + 1 > 5)
       return toast.error("สามารถเพิ่มห้องได้มากสุด 5 ห้องในการจองเดียว");
     setRoomStays((prevRoomStays) => {
-      return [...prevRoomStays, { roomId: "", from: "", to: "" }];
+      return [...prevRoomStays, { roomIds: [], from: "", to: "" }];
     });
   };
 
@@ -100,7 +207,7 @@ const ManageRoomStays = ({
   const patchRoomStays = async () => {
     const roomStaysWithBoundaries = applyBookingBoundaries(roomStays);
     const hasEmpty = roomStaysWithBoundaries.some(
-      (stay) => !stay.roomId || !stay.from || !stay.to,
+      (stay) => !getRoomStayRoomIds(stay).length || !stay.from || !stay.to,
     );
 
     if (hasEmpty) throw new Error("กรุณากรอกข้อมูลให้ครบทุกช่อง");
@@ -135,25 +242,22 @@ const ManageRoomStays = ({
           <div className="manageRoomStays__listItem" key={index}>
             <div>
               <p className="addBooking__label">ห้องพักช่วงพักที่ {index + 1}</p>
-              <Select<OptionType>
-                styles={customStyles<OptionType>()}
+              <Select<OptionType, true>
+                isMulti
+                styles={customStyles<OptionType, true>()}
                 classNamePrefix="rs"
-                options={roomIdOptions}
+                options={roomOptionsByStay[index] || roomIdOptions}
                 placeholder="เช่น Veranda 1"
-                value={
-                  roomIdOptions.find(
-                    (option) => option.value === roomStay.roomId,
-                  ) || null
-                }
+                value={(roomOptionsByStay[index] || roomIdOptions).filter((option) =>
+                  getRoomStayRoomIds(roomStay).includes(option.value),
+                )}
                 //   formatOptionLabel={formatOptionLabel}
-                onChange={(option: SingleValue<OptionType>) => {
-                  if (!option) return;
-
+                onChange={(options: MultiValue<OptionType>) => {
                   setRoomStays((prevRoomStays) => {
                     const updated = [...prevRoomStays];
                     updated[index] = {
                       ...updated[index],
-                      roomId: option.value,
+                      roomIds: options.map((option) => option.value),
                     };
                     return updated;
                   });

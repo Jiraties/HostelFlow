@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.withRoomMutationLocks = exports.RoomMutationConflictError = void 0;
 const crypto_1 = require("crypto");
 const roomMutationLock_1 = __importDefault(require("../models/roomMutationLock"));
+const roomStayHelpers_1 = require("../helpers/roomStayHelpers");
 const LOCK_TTL_MS = 120000;
 class RoomMutationConflictError extends Error {
     constructor() {
@@ -26,13 +27,16 @@ const buildLockKeys = (roomStays) => {
     roomStays.forEach((roomStay) => {
         const from = parseStayDate(roomStay.from);
         const to = parseStayDate(roomStay.to);
-        for (const date = new Date(from); date < to; date.setDate(date.getDate() + 1)) {
-            const dateKey = formatDateKey(date);
-            keys.set(`${roomStay.roomId}::${dateKey}`, {
-                roomId: roomStay.roomId,
-                dateKey,
-            });
-        }
+        const roomIds = (0, roomStayHelpers_1.getRoomStayRoomIds)(roomStay);
+        roomIds.forEach((roomId) => {
+            for (const date = new Date(from); date < to; date.setDate(date.getDate() + 1)) {
+                const dateKey = formatDateKey(date);
+                keys.set(`${roomId}::${dateKey}`, {
+                    roomId,
+                    dateKey,
+                });
+            }
+        });
     });
     return Array.from(keys.entries()).map(([key, value]) => ({
         key,

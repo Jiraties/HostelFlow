@@ -109,7 +109,17 @@
 }
 
 .viewBooking__roomAndIsCheckedIn h1 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   font-weight: 500;
+  overflow: hidden;
+  overflow-wrap: normal;
+  text-align: right;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  width: 100%;
+  word-break: normal;
 }
 
 .viewBooking__statusBadge {
@@ -537,11 +547,21 @@
   color: var(--red);
 }
 
+.viewBooking__starAction i {
+  color: #ffbf00;
+}
+
 .viewBooking__actionsRow {
   display: flex;
   gap: 1rem;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+
+.viewBooking__secondaryActions {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .viewBooking__moreActions {
@@ -613,7 +633,8 @@
 .viewBooking__noteTextArea {
   margin-top: 0.5rem;
   width: 100%;
-  resize: none;
+  min-height: 7rem;
+  resize: vertical;
   font-size: 1rem;
 }
 
@@ -630,8 +651,37 @@
 
 .viewBooking__note {
   padding: 1rem;
-  box-shadow: var(--main-shadow);
+  box-shadow: var(--light-shadow);
   border-radius: 1rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  position: relative;
+  transition-duration: 0.2s;
+}
+
+.viewBooking__note--editing {
+  cursor: default;
+}
+
+.viewBooking__noteHeader {
+  color: #ffbf00;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.viewBooking__note:not(.viewBooking__note--editing):hover {
+  transform: scale(1.025);
+}
+
+.viewBooking__note:not(.viewBooking__note--editing):active {
+  transform: scale(0.975);
+}
+
+.viewBooking__notePlaceholder {
+  color: #777777;
 }
 
 .viewBooking__roomStays {

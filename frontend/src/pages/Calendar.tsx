@@ -10,12 +10,15 @@ import { platformMap } from "../helpers/maps.ts";
 
 import { useEffect, useMemo, useState, useRef } from "react";
 import { Modal } from "@mui/material";
+import type { ReactNode } from "react";
 import { calculateNights } from "../helpers/bookingHelpers";
 import { useLocation } from "react-router";
 import { formatBookingDates } from "../helpers/bookingHelpers";
 import { API_URL } from "../config/api.ts";
 import { requestUnsavedModalClose } from "../helpers/modalGuards";
 import { formatLocalDate, isSameDay } from "../helpers/bookingHelpers";
+import { getRoomStayRoomIds } from "../helpers/roomStayHelpers";
+import usePageTitle from "../hooks/useTitle";
 // import { dummyBooking } from "./test.tsx";
 
 import "./Calendar.css";
@@ -35,6 +38,7 @@ type Room = {
 };
 
 const Calendar = () => {
+  usePageTitle("HostelFlow · ตารางการจอง");
   const today = new Date();
 
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -130,7 +134,8 @@ const Calendar = () => {
     })),
   ]);
 
-  let roomRows: any = [];
+  const roomRows: ReactNode[] = [];
+  const mergedBookingBlocks: ReactNode[] = [];
 
   const renderedDayHeaders = calendarDays.map((day, i) => {
     const monthAndDate = new Intl.DateTimeFormat("en-US", {
@@ -165,9 +170,43 @@ const Calendar = () => {
   const monthStart = startOfCalendarDay(new Date(year, month, 1));
   const monthEnd = startOfCalendarDay(new Date(year, month + 1, 1));
 
+  const getVisibleBookingPosition = (booking: CalendarBooking) => {
+    const from = startOfCalendarDay(new Date(booking.from));
+    const to = startOfCalendarDay(new Date(booking.to));
+    const overlaps = to > monthStart && from < monthEnd;
+    if (!overlaps) return null;
+
+    const visibleStart = from < monthStart ? monthStart : from;
+    const visibleEnd = to > monthEnd ? monthEnd : to;
+    const startingDate = calendarDays.findIndex(
+      (day) =>
+        day.getFullYear() === visibleStart.getFullYear() &&
+        day.getMonth() === visibleStart.getMonth() &&
+        day.getDate() === visibleStart.getDate(),
+    );
+    if (startingDate === -1) return null;
+
+    const span = calculateNights(visibleStart, visibleEnd);
+    if (span <= 0) return null;
+
+    return {
+      from,
+      to,
+      startingDate,
+      span,
+      continuesBefore: from < monthStart,
+      continuesAfter: to > monthEnd,
+    };
+  };
+
+  const bookingBlocksBySegment = new Map<
+    string,
+    { booking: CalendarBooking; roomIndex: number }[]
+  >();
+
   rooms.forEach((room, roomIndex) => {
     const gridRow = roomIndex + 2; // row 1 = header, rooms start at 2
-    const roomRow = [];
+    const roomRow: ReactNode[] = [];
 
     // Room label
     roomRow.push(
@@ -199,48 +238,75 @@ const Calendar = () => {
       );
     });
 
-    // Booking blocks
-    room.bookings.forEach((booking: CalendarBooking, index) => {
-      const from = startOfCalendarDay(new Date(booking.from));
-      const to = startOfCalendarDay(new Date(booking.to));
-      const overlaps = to > monthStart && from < monthEnd;
-      if (!overlaps) return;
+    room.bookings.forEach((booking: CalendarBooking) => {
+      const position = getVisibleBookingPosition(booking);
+      if (!position) return;
 
-      const visibleStart = from < monthStart ? monthStart : from;
-      const visibleEnd = to > monthEnd ? monthEnd : to;
-      const startingDate = calendarDays.findIndex(
-        (day) =>
-          day.getFullYear() === visibleStart.getFullYear() &&
-          day.getMonth() === visibleStart.getMonth() &&
-          day.getDate() === visibleStart.getDate(),
-      );
-      if (startingDate === -1) return;
+      const segmentKey = [
+        booking.bookingId,
+        position.from.getTime(),
+        position.to.getTime(),
+      ].join("::");
 
-      const span = calculateNights(visibleStart, visibleEnd);
-      if (span <= 0) return;
+      bookingBlocksBySegment.set(segmentKey, [
+        ...(bookingBlocksBySegment.get(segmentKey) || []),
+        { booking, roomIndex },
+      ]);
+    });
 
-      const continuesBefore = from < monthStart;
-      const continuesAfter = to > monthEnd;
+    roomRows.push(roomRow);
+  });
 
-      roomRow.push(
+  bookingBlocksBySegment.forEach((items, segmentKey) => {
+    const sortedItems = [...items].sort((a, b) => a.roomIndex - b.roomIndex);
+    const rowGroups: { booking: CalendarBooking; roomIndexes: number[] }[] = [];
+
+    sortedItems.forEach((item) => {
+      const currentGroup = rowGroups[rowGroups.length - 1];
+      const previousRoomIndex =
+        currentGroup?.roomIndexes[currentGroup.roomIndexes.length - 1];
+
+      if (currentGroup && previousRoomIndex === item.roomIndex - 1) {
+        currentGroup.roomIndexes.push(item.roomIndex);
+        return;
+      }
+
+      rowGroups.push({ booking: item.booking, roomIndexes: [item.roomIndex] });
+    });
+
+    rowGroups.forEach((group, groupIndex) => {
+      const booking = group.booking;
+      const position = getVisibleBookingPosition(booking);
+      if (!position) return;
+
+      const gridRow = `${group.roomIndexes[0] + 2} / span ${
+        group.roomIndexes.length
+      }`;
+
+      mergedBookingBlocks.push(
         <div
           className="timeline__item timeline__bookedRoomItem"
-          title={booking.name + " (" + calculateNights(from, to) + " คืน)"}
+          title={
+            booking.name +
+            " (" +
+            calculateNights(position.from, position.to) +
+            " คืน)"
+          }
           style={{
-            gridColumn: `${startingDate + 2} / span ${span}`,
+            gridColumn: `${position.startingDate + 2} / span ${position.span}`,
             gridRow,
             backgroundColor:
               booking.status === "cancelled"
                 ? "#9ca3af"
                 : booking.status === "noShow"
-                ? "#9ca3af"
-                : platformMap[booking.platformId].color,
-            borderTopLeftRadius: continuesBefore ? 0 : "0.5rem",
-            borderBottomLeftRadius: continuesBefore ? 0 : "0.5rem",
-            borderTopRightRadius: continuesAfter ? 0 : "0.5rem",
-            borderBottomRightRadius: continuesAfter ? 0 : "0.5rem",
+                  ? "#9ca3af"
+                  : platformMap[booking.platformId].color,
+            borderTopLeftRadius: position.continuesBefore ? 0 : "0.5rem",
+            borderBottomLeftRadius: position.continuesBefore ? 0 : "0.5rem",
+            borderTopRightRadius: position.continuesAfter ? 0 : "0.5rem",
+            borderBottomRightRadius: position.continuesAfter ? 0 : "0.5rem",
           }}
-          key={index}
+          key={`${segmentKey}-${groupIndex}`}
           onClick={() =>
             setViewBookingBooking({ bookingId: booking.bookingId } as booking)
           }
@@ -248,14 +314,12 @@ const Calendar = () => {
           <p className="timeline__itemText">
             {booking.name}{" "}
             <span className="timeline__itemNights">
-              {calculateNights(from, to)} คืน
+              {calculateNights(position.from, position.to)} คืน
             </span>
           </p>
         </div>,
       );
     });
-
-    roomRows.push(roomRow);
   });
 
   const handleAddBooking = (roomId: string, checkIn: Date) => {
@@ -271,7 +335,10 @@ const Calendar = () => {
 
     setRooms((prevRooms) =>
       prevRooms.map((room) => {
-        if (room.roomId !== booking.roomStays[0].roomId) return room;
+        const firstStay = formattedBooking.roomStays[0];
+        if (!firstStay || !getRoomStayRoomIds(firstStay).includes(room.roomId)) {
+          return room;
+        }
 
         return {
           ...room,
@@ -445,6 +512,7 @@ const Calendar = () => {
           {renderedDayHeaders}
 
           {roomRows}
+          {mergedBookingBlocks}
         </div>
       </div>
     </main>

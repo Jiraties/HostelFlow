@@ -24,6 +24,7 @@ import { platformOptions, roomIdOptions } from "../helpers/options";
 import { customStyles } from "../helpers/selectStyling";
 import { API_URL } from "../config/api";
 import { requestUnsavedModalClose } from "../helpers/modalGuards";
+import usePageTitle from "../hooks/useTitle";
 
 import type { booking } from "../types/bookingTypes";
 import type { OptionType } from "../helpers/selectStyling";
@@ -39,6 +40,7 @@ type MasterFilters = {
   bookingId: string;
   room: string;
   channel: string;
+  status: string;
 };
 
 const formatInputDate = (date: Date) => {
@@ -64,8 +66,18 @@ const getDefaultMasterFilters = (): MasterFilters => {
     bookingId: "",
     room: "",
     channel: "",
+    status: "",
   };
 };
+
+const bookingStatusOptions: OptionType[] = [
+  { value: "", label: "ทุกสถานะ" },
+  { value: "booked", label: "ยังไม่ Check-In" },
+  { value: "checkedIn", label: "Check-In แล้ว" },
+  { value: "checkedOut", label: "Check-Out แล้ว" },
+  { value: "cancelled", label: "ยกเลิกแล้ว" },
+  { value: "noShow", label: "No-Show" },
+];
 
 const getFetchErrorMessage = (err: unknown) => {
   if (axios.isAxiosError(err) && err.response?.data?.message) {
@@ -76,6 +88,15 @@ const getFetchErrorMessage = (err: unknown) => {
 };
 
 const Home = ({ status }: { status: HomeStatus }) => {
+  usePageTitle(
+    `HostelFlow · ${
+      status === "arrivals"
+        ? "เช็คอินวันนี้"
+        : status === "departures"
+          ? "เช็คเอาท์วันนี้"
+          : "รายการจองทั้งหมด"
+    }`,
+  );
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const isMaster = status === "master";
@@ -492,6 +513,25 @@ const Home = ({ status }: { status: HomeStatus }) => {
           }
           onChange={(option: SingleValue<OptionType>) =>
             updateMasterFilter("channel", option?.value || "")
+          }
+        />
+      </div>
+      <div className="home__filterField">
+        <p className="home__filterLabel">สถานะ</p>
+        <Select<OptionType>
+          styles={customStyles<OptionType>()}
+          classNamePrefix="rs"
+          placeholder="ทุกสถานะ"
+          isClearable
+          menuPortalTarget={document.body}
+          options={bookingStatusOptions}
+          value={
+            bookingStatusOptions.find(
+              (option) => option.value === masterFilters.status,
+            ) || null
+          }
+          onChange={(option: SingleValue<OptionType>) =>
+            updateMasterFilter("status", option?.value || "")
           }
         />
       </div>

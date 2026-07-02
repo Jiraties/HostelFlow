@@ -27,6 +27,8 @@ import {
 import { platformMap } from "../helpers/maps";
 import { API_URL } from "../config/api";
 import { requestUnsavedModalClose } from "../helpers/modalGuards";
+import { formatRoomStayRooms } from "../helpers/roomStayHelpers";
+import usePageTitle from "../hooks/useTitle";
 
 import type { booking, PlatformId } from "../types/bookingTypes";
 
@@ -289,7 +291,7 @@ const TodayList = ({
           <>
             {visibleBookings.map((booking) => {
               const roomNames = booking.roomStays
-                .map((roomStay) => roomStay.roomId)
+                .map(formatRoomStayRooms)
                 .join(", ");
               const platform = platformMap[booking.platformId];
               const isReviewBooking =
@@ -365,6 +367,7 @@ const TodayList = ({
 };
 
 const Main = () => {
+  usePageTitle("HostelFlow · หน้าแรก");
   const { user } = useAuth();
   const navigate = useNavigate();
   const [arrivals, setArrivals] = useState<booking[]>([]);

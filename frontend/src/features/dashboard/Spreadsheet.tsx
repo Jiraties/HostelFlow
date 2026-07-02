@@ -9,6 +9,7 @@ import type {
   ICellRendererParams,
   IsFullWidthRowParams,
   GridApi,
+  PostSortRowsParams,
   RowClickedEvent,
   RowHeightParams,
   ValueFormatterParams,
@@ -18,6 +19,7 @@ import type { booking } from "../../types/bookingTypes";
 import "./Spreadsheet.css";
 import { platformMap } from "../../helpers/maps.ts";
 import { roomChargeDisplayPaymentMethod } from "../../helpers/bookingHelpers.ts";
+import { formatRoomStayRooms } from "../../helpers/roomStayHelpers.ts";
 
 type SpreadsheetStatus = "arrivals" | "departures" | "master";
 
@@ -140,6 +142,19 @@ const statusCell = (params: ICellRendererParams<SpreadsheetRow, string>) => {
   );
 };
 
+const nameCell = (params: ICellRendererParams<SpreadsheetRow, string>) => {
+  if (isSeparatorRow(params.data)) return null;
+
+  return (
+    <div className="spreadsheet__nameCell">
+      {params.data?.starred && (
+        <i className="bx bxs-star spreadsheet__starIcon" aria-hidden="true" />
+      )}
+      <span>{params.value}</span>
+    </div>
+  );
+};
+
 const CustomLoadingOverlay = () => {
   return (
     <div className="custom-loading">
@@ -203,7 +218,12 @@ const Spreadsheet = ({
     }).format(date);
 
   const rowData = useMemo<SpreadsheetRow[]>(() => {
-    if (!isMaster) return bookings;
+    if (!isMaster) {
+      return [...bookings].sort((a, b) => {
+        if (Boolean(a.starred) === Boolean(b.starred)) return 0;
+        return a.starred ? -1 : 1;
+      });
+    }
 
     const sortedBookings = [...bookings].sort((a, b) => {
       const checkInDiff = a.checkIn.getTime() - b.checkIn.getTime();
@@ -303,7 +323,12 @@ const Spreadsheet = ({
 
   const colDefs = useMemo<ColDef<SpreadsheetRow>[]>(() => {
     const columns: ColDef<SpreadsheetRow>[] = [
-      { field: "name", headerName: "ชื่อ", filter: true },
+      {
+        field: "name",
+        headerName: "ชื่อ",
+        filter: true,
+        cellRenderer: nameCell,
+      },
       {
         field: "checkIn",
         valueFormatter: dateValueFormater,
@@ -318,12 +343,15 @@ const Spreadsheet = ({
           if (isSeparatorRow(params.data)) return "";
           return (
             params.data?.roomStays
-              ?.map((roomStay) => roomStay.roomId)
+              ?.map(formatRoomStayRooms)
               .join(", ") || ""
           );
         },
         headerName: "ห้อง",
         filter: true,
+        minWidth: 110,
+        maxWidth: 180,
+        cellClass: "spreadsheet__roomCell",
       },
       {
         field: "platformId",
@@ -431,6 +459,23 @@ const Spreadsheet = ({
     window.requestAnimationFrame(scrollToTodaySeparator);
   };
 
+  const postSortRows = useCallback(
+    (params: PostSortRowsParams<SpreadsheetRow>) => {
+      if (isMaster) return;
+
+      params.nodes.sort((a, b) => {
+        const aIsStarred =
+          !isSeparatorRow(a.data) && Boolean(a.data?.starred);
+        const bIsStarred =
+          !isSeparatorRow(b.data) && Boolean(b.data?.starred);
+
+        if (aIsStarred === bIsStarred) return 0;
+        return aIsStarred ? -1 : 1;
+      });
+    },
+    [isMaster],
+  );
+
   return (
     <AgGridProvider modules={modules}>
       <div
@@ -451,6 +496,11 @@ const Spreadsheet = ({
           suppressDragLeaveHidesColumns
           theme={myTheme}
           onGridReady={onGridReady}
+          postSortRows={postSortRows}
+          rowClassRules={{
+            spreadsheet__starredRow: (params) =>
+              !isSeparatorRow(params.data) && Boolean(params.data?.starred),
+          }}
           autoSizeStrategy={{ type: "fitCellContents" }}
           getRowId={(params) =>
             isSeparatorRow(params.data)

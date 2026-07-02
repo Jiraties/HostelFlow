@@ -1,8 +1,10 @@
 import { randomUUID } from "crypto";
 import RoomMutationLock from "../models/roomMutationLock";
+import { getRoomStayRoomIds } from "../helpers/roomStayHelpers";
 
 type RoomStayLockInput = {
-  roomId: string;
+  roomId?: string;
+  roomIds?: string[];
   from: string | Date;
   to: string | Date;
 };
@@ -36,14 +38,21 @@ const buildLockKeys = (roomStays: RoomStayLockInput[]) => {
   roomStays.forEach((roomStay) => {
     const from = parseStayDate(roomStay.from);
     const to = parseStayDate(roomStay.to);
+    const roomIds = getRoomStayRoomIds(roomStay);
 
-    for (const date = new Date(from); date < to; date.setDate(date.getDate() + 1)) {
-      const dateKey = formatDateKey(date);
-      keys.set(`${roomStay.roomId}::${dateKey}`, {
-        roomId: roomStay.roomId,
-        dateKey,
-      });
-    }
+    roomIds.forEach((roomId) => {
+      for (
+        const date = new Date(from);
+        date < to;
+        date.setDate(date.getDate() + 1)
+      ) {
+        const dateKey = formatDateKey(date);
+        keys.set(`${roomId}::${dateKey}`, {
+          roomId,
+          dateKey,
+        });
+      }
+    });
   });
 
   return Array.from(keys.entries()).map(([key, value]) => ({

@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importDefault(require("mongoose"));
 const roomStaySchema = new mongoose_1.default.Schema({
+    roomIds: { type: [String], default: [] },
     roomId: { type: String },
     from: { type: Date },
     to: { type: Date },
@@ -160,6 +161,7 @@ const bookingSchema = new mongoose_1.default.Schema({
     nights: { type: Number },
     platformId: { type: String },
     note: { type: String },
+    starred: { type: Boolean, default: false },
     staffUsername: { type: String },
     bookingId: { type: String, unique: true },
     status: {

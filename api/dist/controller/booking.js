@@ -3,13 +3,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getNeedsReviewBookings = exports.resolveBooking = exports.cancelBooking = exports.getPassportData = exports.addTransaction = exports.manageRoomStays = exports.getBookingById = exports.getMonthCalendar = exports.checkOut = exports.checkIn = exports.removeBooking = exports.getMasterBookings = exports.getAdminDashboardStats = exports.getTodayBookings = exports.editBooking = exports.newBooking = void 0;
+exports.getNeedsReviewBookings = exports.resolveBooking = exports.cancelBooking = exports.getPassportData = exports.addTransaction = exports.manageRoomStays = exports.getBookingById = exports.getMonthCalendar = exports.checkOut = exports.checkIn = exports.removeBooking = exports.getMasterBookings = exports.getAdminDashboardStats = exports.getTodayBookings = exports.starBooking = exports.updateBookingNote = exports.editBooking = exports.getRoomAvailability = exports.newBooking = void 0;
 const booking_1 = __importDefault(require("../models/booking"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const crypto_1 = __importDefault(require("crypto"));
 const activityServices_1 = require("../services/activityServices");
 const financeHelpers_1 = require("../helpers/financeHelpers");
 const dateHelpers_1 = require("../helpers/dateHelpers");
+const roomStayHelpers_1 = require("../helpers/roomStayHelpers");
 const roomMutationLocks_1 = require("../services/roomMutationLocks");
 const mutationIdempotency_1 = require("../services/mutationIdempotency");
 dotenv_1.default.config();
@@ -68,6 +69,13 @@ const RESOLUTION_OUTCOMES = [
     "post_close_adjustment",
 ];
 const ROOM_RELEASE_STATUSES = ["released", "blocked"];
+const BOOKING_STATUSES = [
+    "booked",
+    "checkedIn",
+    "checkedOut",
+    "cancelled",
+    "noShow",
+];
 const RESOLUTION_FINAL_STATUSES = [
     "checkedOut",
     "cancelled",
@@ -121,6 +129,51 @@ const getBusinessMonthBounds = (date = new Date()) => {
     return { start, end };
 };
 const getRoomGuestCapacity = (roomId) => ROOM_GUEST_CAPACITY[roomId] ?? 1;
+const getRequestedRoomIds = (booking) => (0, roomStayHelpers_1.getRoomStayRoomIds)({
+    roomIds: booking.roomIds,
+    roomId: booking.roomId,
+});
+const getRawRoomIds = (value) => (Array.isArray(value.roomIds) ? value.roomIds : value.roomId ? [value.roomId] : [])
+    .map((roomId) => roomId.trim())
+    .filter(Boolean);
+const hasDuplicateRoomIds = (value) => {
+    const roomIds = getRawRoomIds(value);
+    return new Set(roomIds).size !== roomIds.length;
+};
+const roomSetsIntersect = (left, right) => left.some((roomId) => right.includes(roomId));
+const roomStaysConflict = (existing, incoming) => roomSetsIntersect((0, roomStayHelpers_1.getRoomStayRoomIds)(existing), (0, roomStayHelpers_1.getRoomStayRoomIds)(incoming)) &&
+    new Date(existing.from) < new Date(incoming.to) &&
+    new Date(existing.to) > new Date(incoming.from);
+const buildRoomConflictQuery = (roomIds, from, to) => ({
+    $or: [
+        {
+            roomStays: {
+                $elemMatch: {
+                    roomIds: { $in: roomIds },
+                    from: { $lt: to },
+                    to: { $gt: from },
+                },
+            },
+        },
+        {
+            roomStays: {
+                $elemMatch: {
+                    roomId: { $in: roomIds },
+                    from: { $lt: to },
+                    to: { $gt: from },
+                },
+            },
+        },
+    ],
+});
+const buildAnyRoomConflictQuery = (from, to) => ({
+    roomStays: {
+        $elemMatch: {
+            from: { $lt: to },
+            to: { $gt: from },
+        },
+    },
+});
 const getGuestsInHouse = async (date = new Date()) => {
     const { start, end } = getBusinessDayBounds(date);
     const checkedInBookings = await booking_1.default.find({
@@ -140,7 +193,8 @@ const getGuestsInHouse = async (date = new Date()) => {
             const stayTo = new Date(roomStay.to);
             const stayIsActiveToday = stayFrom < end && stayTo > start;
             return stayIsActiveToday
-                ? roomTotal + getRoomGuestCapacity(roomStay.roomId)
+                ? roomTotal +
+                    (0, roomStayHelpers_1.getRoomStayRoomIds)(roomStay).reduce((total, roomId) => total + getRoomGuestCapacity(roomId), 0)
                 : roomTotal;
         }, 0), 0);
 };
@@ -200,11 +254,12 @@ const newBooking = async (req, res, next) => {
         if (!req.body.booking)
             return res.status(400).json({ message: "ไม่พบข้อมูล booking" });
         const { booking } = req.body;
+        const requestedRoomIds = getRequestedRoomIds(booking);
         if (!booking.name?.trim() ||
             !booking.checkIn ||
             !booking.checkOut ||
             !booking.platformId ||
-            !booking.roomId?.trim() ||
+            requestedRoomIds.length === 0 ||
             !booking.paymentMethod ||
             !booking.bookingId?.trim()) {
             return res.status(400).json({
@@ -219,6 +274,11 @@ const newBooking = async (req, res, next) => {
         if (!NEW_BOOKING_PAYMENT_METHODS.includes(booking.paymentMethod)) {
             return res.status(400).json({
                 message: "ช่องทางการชำระเงินไม่ถูกต้อง",
+            });
+        }
+        if (hasDuplicateRoomIds(booking)) {
+            return res.status(400).json({
+                message: "เลือกห้องซ้ำกัน",
             });
         }
         const roomChargeAmount = Number(booking.price);
@@ -240,7 +300,7 @@ const newBooking = async (req, res, next) => {
             });
         const createResult = await (0, roomMutationLocks_1.withRoomMutationLocks)([
             {
-                roomId: booking.roomId.trim(),
+                roomIds: requestedRoomIds,
                 from: newCheckIn,
                 to: newCheckOut,
             },
@@ -248,13 +308,7 @@ const newBooking = async (req, res, next) => {
             // find bookings that have same room && checkout greater than new checkin && checkin less than new checkout
             const overlappingBooking = await booking_1.default.findOne({
                 ...ROOM_BLOCKING_BOOKING_FILTER,
-                roomStays: {
-                    $elemMatch: {
-                        roomId: booking.roomId,
-                        from: { $lt: newCheckOut },
-                        to: { $gt: newCheckIn },
-                    },
-                },
+                ...buildRoomConflictQuery(requestedRoomIds, newCheckIn, newCheckOut),
             });
             if (overlappingBooking) {
                 return { overlappingBooking };
@@ -272,7 +326,7 @@ const newBooking = async (req, res, next) => {
                 platformId: booking.platformId,
                 roomStays: [
                     {
-                        roomId: booking.roomId.trim(),
+                        roomIds: requestedRoomIds,
                         from: newCheckIn,
                         to: newCheckOut,
                     },
@@ -310,7 +364,7 @@ const newBooking = async (req, res, next) => {
                 checkIn: newCheckIn,
                 checkOut: newCheckOut,
                 platformId: booking.platformId,
-                roomId: booking.roomId,
+                roomIds: requestedRoomIds,
                 price: booking.price,
                 paymentMethod: booking.paymentMethod,
                 bookingId: booking.bookingId,
@@ -332,6 +386,47 @@ const newBooking = async (req, res, next) => {
     }
 };
 exports.newBooking = newBooking;
+const getRoomAvailability = async (req, res) => {
+    try {
+        const { checkIn, checkOut, excludeBookingId } = req.query;
+        if (typeof checkIn !== "string" || typeof checkOut !== "string") {
+            return res.status(400).json({
+                message: "กรุณาระบุวันที่เช็คอินและเช็คเอาท์",
+            });
+        }
+        const from = new Date(`${checkIn}T00:00:00`);
+        const to = new Date(`${checkOut}T00:00:00`);
+        if (!isValidDate(from) || !isValidDate(to)) {
+            return res.status(400).json({
+                message: "วันที่เช็คอินหรือเช็คเอาท์ไม่ถูกต้อง",
+            });
+        }
+        if (from >= to) {
+            return res.status(400).json({
+                message: "วันที่เช็คอินต้องไม่อยู่หลังวันที่เช็คเอาท์",
+            });
+        }
+        const query = {
+            ...ROOM_BLOCKING_BOOKING_FILTER,
+            ...buildAnyRoomConflictQuery(from, to),
+            ...(typeof excludeBookingId === "string" && excludeBookingId.trim()
+                ? { bookingId: { $ne: excludeBookingId.trim() } }
+                : {}),
+        };
+        const overlappingBookings = await booking_1.default.find(query)
+            .select("roomStays")
+            .lean();
+        const occupiedRoomIds = Array.from(new Set(overlappingBookings.flatMap((booking) => booking.roomStays.flatMap((roomStay) => {
+            const overlaps = new Date(roomStay.from) < to && new Date(roomStay.to) > from;
+            return overlaps ? (0, roomStayHelpers_1.getRoomStayRoomIds)(roomStay) : [];
+        }))));
+        res.status(200).json({ occupiedRoomIds });
+    }
+    catch (err) {
+        res.status(500).json({ message: "Failed to fetch room availability" });
+    }
+};
+exports.getRoomAvailability = getRoomAvailability;
 const editBooking = async (req, res) => {
     try {
         const { booking } = req.body;
@@ -363,7 +458,7 @@ const editBooking = async (req, res) => {
         }
         const originalRoomStays = [...existingBooking.roomStays].sort((a, b) => new Date(a.from).getTime() - new Date(b.from).getTime());
         const correctedRoomStays = originalRoomStays.map((roomStay) => ({
-            roomId: roomStay.roomId,
+            roomIds: (0, roomStayHelpers_1.getRoomStayRoomIds)(roomStay),
             from: (0, dateHelpers_1.toInputDate)(roomStay.from),
             to: (0, dateHelpers_1.toInputDate)(roomStay.to),
         }));
@@ -382,24 +477,14 @@ const editBooking = async (req, res) => {
                 });
             }
         }
-        const roomIds = [
-            ...new Set(correctedRoomStays.map((roomStay) => roomStay.roomId)),
-        ];
+        const roomIds = (0, roomStayHelpers_1.getUniqueRoomIdsFromRoomStays)(correctedRoomStays);
         const editResult = await (0, roomMutationLocks_1.withRoomMutationLocks)(correctedRoomStays, async () => {
             const conflictingBookings = await booking_1.default.find({
                 bookingId: { $ne: bookingId },
                 ...ROOM_BLOCKING_BOOKING_FILTER,
-                roomStays: {
-                    $elemMatch: {
-                        roomId: { $in: roomIds },
-                        from: { $lt: newCheckOut },
-                        to: { $gt: newCheckIn },
-                    },
-                },
+                ...buildRoomConflictQuery(roomIds, newCheckIn, newCheckOut),
             });
-            const hasConflict = conflictingBookings.some((conflictingBooking) => conflictingBooking.roomStays.some((existing) => correctedRoomStays.some((incoming) => existing.roomId === incoming.roomId &&
-                new Date(existing.from) < new Date(incoming.to) &&
-                new Date(existing.to) > new Date(incoming.from))));
+            const hasConflict = conflictingBookings.some((conflictingBooking) => conflictingBooking.roomStays.some((existing) => correctedRoomStays.some((incoming) => roomStaysConflict(existing, incoming))));
             if (hasConflict) {
                 return { hasConflict };
             }
@@ -456,6 +541,86 @@ const editBooking = async (req, res) => {
     }
 };
 exports.editBooking = editBooking;
+const updateBookingNote = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const note = typeof req.body.note === "string" ? req.body.note : "";
+        if (!bookingId) {
+            return res.status(400).json({
+                error: "MISSING",
+                message: "กรุณากรอก BookingId ใน Params",
+            });
+        }
+        const existingBooking = await booking_1.default.findOne({ bookingId }).lean();
+        if (!existingBooking) {
+            return res.status(404).json({
+                error: "BOOKING_NOT_FOUND",
+                message: "ไม่พบ booking นี้",
+            });
+        }
+        const updatedBooking = await booking_1.default.findOneAndUpdate({ bookingId }, { $set: { note } }, { returnDocument: "after" });
+        (0, activityServices_1.logActivity)(req.user?.username, "EDIT_BOOKING", {
+            changes: {
+                note: {
+                    before: existingBooking.note || "",
+                    after: note,
+                },
+            },
+        }, String(bookingId));
+        res.status(200).json({
+            message: "อัปเดต Note สำเร็จ",
+            booking: updatedBooking,
+        });
+    }
+    catch (err) {
+        console.log(err);
+        res.status(500).json({
+            error: "SERVER_ERROR",
+            message: "เกิดข้อผิดพลาดในการอัปเดต Note",
+        });
+    }
+};
+exports.updateBookingNote = updateBookingNote;
+const starBooking = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const starred = Boolean(req.body.starred);
+        if (!bookingId) {
+            return res.status(400).json({
+                error: "MISSING",
+                message: "กรุณากรอก BookingId ใน Params",
+            });
+        }
+        const existingBooking = await booking_1.default.findOne({ bookingId }).lean();
+        if (!existingBooking) {
+            return res.status(404).json({
+                error: "BOOKING_NOT_FOUND",
+                message: "ไม่พบ booking นี้",
+            });
+        }
+        const updatedBooking = await booking_1.default.findOneAndUpdate({ bookingId }, { $set: { starred } }, { returnDocument: "after" });
+        (0, activityServices_1.logActivity)(req.user?.username, "EDIT_BOOKING", {
+            changes: {
+                starred: {
+                    before: Boolean(existingBooking.starred),
+                    after: starred,
+                },
+            },
+        }, String(bookingId));
+        res.status(200).json({
+            message: starred ? "ปักดาว Booking สำเร็จ" : "ยกเลิกปักดาว Booking สำเร็จ",
+            booking: updatedBooking,
+        });
+    }
+    catch (err) {
+        console.log(err);
+        res.status(500).json({
+            error: "SERVER_ERROR",
+            message: "เกิดข้อผิดพลาดในการปักดาว Booking",
+        });
+    }
+};
+exports.starBooking = starBooking;
 const getTodayBookings = async (req, res) => {
     const { type } = req.params;
     const { start: startOfToday, end: startOfTomorrow } = getBusinessDayBounds();
@@ -557,7 +722,7 @@ const getAdminDashboardStats = async (req, res) => {
 exports.getAdminDashboardStats = getAdminDashboardStats;
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const getMasterBookings = async (req, res) => {
-    const { from, to, name, bookingId, room, channel } = req.query;
+    const { from, to, name, bookingId, room, channel, status } = req.query;
     if (!from || !to) {
         return res.status(400).json({
             message: "Please specify from and to dates",
@@ -592,10 +757,18 @@ const getMasterBookings = async (req, res) => {
             };
         }
         if (typeof room === "string" && room.trim()) {
-            query["roomStays.roomId"] = room.trim();
+            query.$or = [
+                { "roomStays.roomIds": room.trim() },
+                { "roomStays.roomId": room.trim() },
+            ];
         }
         if (typeof channel === "string" && channel.trim()) {
             query.platformId = channel.trim();
+        }
+        if (typeof status === "string" &&
+            status.trim() &&
+            BOOKING_STATUSES.includes(status.trim())) {
+            query.status = status.trim();
         }
         const bookings = await booking_1.default.find(query).sort({
             checkIn: 1,
@@ -661,7 +834,7 @@ const removeBooking = async (req, res) => {
                 checkIn: deletedBooking.checkIn,
                 checkOut: deletedBooking.checkOut,
                 platformId: deletedBooking.platformId,
-                roomId: deletedBooking.roomStays?.[0]?.roomId,
+                roomIds: (0, roomStayHelpers_1.getRoomStayRoomIds)(deletedBooking.roomStays?.[0] || {}),
                 price: deletedBooking.transactions?.[0]?.amount,
                 paymentMethod: deletedBooking.transactions?.[0]?.paymentMethod,
                 bookingId: deletedBooking.bookingId,
@@ -1072,14 +1245,16 @@ const getMonthCalendar = async (req, res) => {
         ];
         monthOfBookings.forEach((booking) => {
             booking.roomStays.forEach((roomStay) => {
-                const roomWithMatchingId = rooms.find((room) => room.roomId === roomStay.roomId);
-                roomWithMatchingId?.bookings.push({
-                    name: booking.name,
-                    platformId: booking.platformId,
-                    bookingId: booking.bookingId,
-                    from: roomStay.from,
-                    to: roomStay.to,
-                    status: booking.status,
+                (0, roomStayHelpers_1.getRoomStayRoomIds)(roomStay).forEach((roomId) => {
+                    const roomWithMatchingId = rooms.find((room) => room.roomId === roomId);
+                    roomWithMatchingId?.bookings.push({
+                        name: booking.name,
+                        platformId: booking.platformId,
+                        bookingId: booking.bookingId,
+                        from: roomStay.from,
+                        to: roomStay.to,
+                        status: booking.status,
+                    });
                 });
             });
         });
@@ -1107,12 +1282,21 @@ const manageRoomStays = async (req, res) => {
         const { bookingId } = req.params;
         if (!Array.isArray(roomStays) ||
             roomStays.length === 0 ||
-            !roomStays.every((roomStay) => roomStay.roomId && roomStay.from && roomStay.to))
+            !roomStays.every((roomStay) => (0, roomStayHelpers_1.getRoomStayRoomIds)(roomStay).length > 0 &&
+                roomStay.from &&
+                roomStay.to))
             return res.status(400).json({
                 error: "MISSING",
                 message: "กรุณากรอกข้อมูลให้ครบทุกช่อง",
             });
-        const sorted = [...roomStays].sort((a, b) => new Date(a.from).getTime() - new Date(b.from).getTime());
+        if (roomStays.some((roomStay) => hasDuplicateRoomIds(roomStay))) {
+            return res.status(400).json({
+                error: "DUPLICATE_ROOMS",
+                message: "เลือกห้องซ้ำกัน",
+            });
+        }
+        const normalizedRoomStays = roomStays.map(roomStayHelpers_1.normalizeRoomStay);
+        const sorted = [...normalizedRoomStays].sort((a, b) => new Date(a.from).getTime() - new Date(b.from).getTime());
         // Check if they overlap or not && each room is available then && full from checkin till checkout
         const hasInternalOverlap = (sorted) => {
             for (let i = 0; i < sorted.length - 1; i++) {
@@ -1162,26 +1346,16 @@ const manageRoomStays = async (req, res) => {
                 });
             }
         }
-        const roomIds = [
-            ...new Set(sorted.map((roomStay) => roomStay.roomId)),
-        ];
+        const roomIds = (0, roomStayHelpers_1.getUniqueRoomIdsFromRoomStays)(sorted);
         const minFrom = new Date(sorted[0].from);
         const maxTo = new Date(sorted[sorted.length - 1].to);
         const manageResult = await (0, roomMutationLocks_1.withRoomMutationLocks)(sorted, async () => {
             const conflictingBookings = await booking_1.default.find({
                 bookingId: { $ne: bookingId },
                 ...ROOM_BLOCKING_BOOKING_FILTER,
-                roomStays: {
-                    $elemMatch: {
-                        roomId: { $in: roomIds },
-                        from: { $lt: maxTo },
-                        to: { $gt: minFrom },
-                    },
-                },
+                ...buildRoomConflictQuery(roomIds, minFrom, maxTo),
             });
-            const hasConflict = conflictingBookings.some((booking) => booking.roomStays.some((existing) => sorted.some((incoming) => existing.roomId === incoming.roomId &&
-                new Date(existing.from) < new Date(incoming.to) &&
-                new Date(existing.to) > new Date(incoming.from))));
+            const hasConflict = conflictingBookings.some((booking) => booking.roomStays.some((existing) => sorted.some((incoming) => roomStaysConflict(existing, incoming))));
             if (hasConflict) {
                 return { hasConflict };
             }

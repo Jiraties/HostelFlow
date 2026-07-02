@@ -4,10 +4,12 @@ import { useAuth } from "../context/AuthContext";
 import { useState } from "react";
 import { API_URL } from "../config/api";
 import axios from "axios";
+import usePageTitle from "../hooks/useTitle";
 
 import "./Login.css";
 
 const Login = () => {
+  usePageTitle("HostelFlow · เข้าสู่ระบบ");
   const { login } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");

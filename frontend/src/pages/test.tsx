@@ -13,7 +13,7 @@ export const dummyBooking: booking = {
 
   roomStays: [
     {
-      roomId: "Balcony",
+      roomIds: ["Balcony"],
       from: "2026-04-15T00:00:00.000+00:00",
       to: "2026-04-18T00:00:00.000+00:00",
     },

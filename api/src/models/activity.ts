@@ -57,7 +57,8 @@ export type activity =
           checkIn: Date;
           checkOut: Date;
           platformId: "BOOK" | "HSTL" | "TRVL" | "AGDA";
-          roomId: string;
+          roomId?: string;
+          roomIds?: string[];
           price: number;
           paymentMethod: "OTA" | "Cash" | "Card" | "Transfer" | "Unpaid";
           bookingId: string;

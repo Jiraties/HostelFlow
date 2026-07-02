@@ -1,3 +1,7 @@
 .notFound {
   padding: 2.5rem;
 }
+
+.notFound__report {
+  margin-right: 1rem;
+}

@@ -7,6 +7,7 @@ import type {
   roomStay,
   transaction,
 } from "../../types/activitiesTypes";
+import { formatRoomStayRooms } from "../../helpers/roomStayHelpers";
 
 const ACTIVITY_PAGE_SIZE = 10;
 
@@ -113,7 +114,9 @@ const formatActivityDate = (date: Date) =>
   })}`;
 
 const formatRoomStay = (stay: roomStay) =>
-  `${stay.roomId}: ${formatDate(stay.from)} - ${formatDate(stay.to)}`;
+  `${formatRoomStayRooms(stay)}: ${formatDate(stay.from)} - ${formatDate(
+    stay.to,
+  )}`;
 
 const getAddedTransactions = (item: activity) => {
   if (item.action !== "ADD_TRANSACTION") return [];
@@ -296,7 +299,9 @@ const RecentActivities = ({ userId }: { userId?: string }) => {
                   ).toLocaleDateString("th-TH", { calendar: "gregory" })}
                 </p>
                 <p>
-                  <strong>ห้อง:</strong> {item.details.snapshot?.roomId}
+                  <strong>ห้อง:</strong>{" "}
+                  {item.details.snapshot?.roomIds?.join(", ") ||
+                    item.details.snapshot?.roomId}
                 </p>
                 <p>
                   <strong>ช่องทางการจอง:</strong>{" "}

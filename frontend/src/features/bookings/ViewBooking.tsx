@@ -21,6 +21,10 @@ import {
   roomChargeDisplayPaymentMethod,
 } from "../../helpers/bookingHelpers.ts";
 import { requestUnsavedModalClose } from "../../helpers/modalGuards.ts";
+import {
+  formatRoomStayRooms,
+  getRoomStayRoomIds,
+} from "../../helpers/roomStayHelpers.ts";
 import { Modal } from "@mui/material";
 import { useAuth } from "../../context/AuthContext.tsx";
 
@@ -104,6 +108,10 @@ const ViewBooking = ({
   const [checkInIsDirty, setCheckInIsDirty] = useState(false);
   const [checkOutIsDirty, setCheckOutIsDirty] = useState(false);
   const [resolveBookingIsDirty, setResolveBookingIsDirty] = useState(false);
+  const [noteIsEditing, setNoteIsEditing] = useState(false);
+  const [noteDraft, setNoteDraft] = useState(booking?.note || "");
+  const [noteSaving, setNoteSaving] = useState(false);
+  const [starSaving, setStarSaving] = useState(false);
   const [pendingUnsavedClose, setPendingUnsavedClose] = useState<
     (() => void) | null
   >(null);
@@ -160,6 +168,8 @@ const ViewBooking = ({
     if (!booking) return;
 
     setData(booking);
+    setNoteDraft(booking.note || "");
+    setNoteIsEditing(false);
     setLoading(false);
     setMoreActionsIsOpen(false);
   }, [booking]);
@@ -176,7 +186,9 @@ const ViewBooking = ({
           { withCredentials: true },
         );
 
-        setData(formatBookingDates(res.data));
+        const formattedBooking = formatBookingDates(res.data);
+        setData(formattedBooking);
+        setNoteDraft(formattedBooking.note || "");
       } catch (err) {
         console.error(err);
       } finally {
@@ -353,9 +365,8 @@ const ViewBooking = ({
     }
   };
 
-  const roomsName = data.roomStays
-    .map((roomStay) => roomStay.roomId)
-    .join(", ");
+  const compactRoomsName = data.roomStays.map(formatRoomStayRooms).join(", ");
+  const fullRoomsName = data.roomStays.flatMap(getRoomStayRoomIds).join(", ");
 
   const formatTransactionAmount = (
     transaction: booking["transactions"][number],
@@ -485,9 +496,7 @@ const ViewBooking = ({
           (compact ? " viewBooking__paymentMethod--compact" : "")
         }
       >
-        <p
-          className={paymentMethod === "Unpaid" ? "viewBooking__unpaid" : ""}
-        >
+        <p className={paymentMethod === "Unpaid" ? "viewBooking__unpaid" : ""}>
           {paymentMethod}
         </p>
         {paymentMethod === "Unpaid" ? (
@@ -579,7 +588,54 @@ const ViewBooking = ({
     const formattedBooking = formatBookingDates(updatedBooking);
 
     setData(formattedBooking);
+    setNoteDraft(formattedBooking.note || "");
     onUpdated?.(formattedBooking);
+  };
+
+  const saveNoteHandler = async () => {
+    if (noteSaving || noteDraft === (data.note || "")) {
+      setNoteIsEditing(false);
+      return;
+    }
+
+    setNoteSaving(true);
+
+    try {
+      const response = await axios.patch(
+        `${API_URL}/bookings/updateBookingNote/${data.bookingId}`,
+        { note: noteDraft },
+        { withCredentials: true },
+      );
+
+      if (response.data.booking) {
+        updateBooking(response.data.booking);
+      }
+
+      setNoteIsEditing(false);
+    } finally {
+      setNoteSaving(false);
+    }
+  };
+
+  const toggleStarHandler = async () => {
+    if (starSaving) return;
+
+    const nextStarred = !data.starred;
+    setStarSaving(true);
+
+    try {
+      const response = await axios.patch(
+        `${API_URL}/bookings/starBooking/${data.bookingId}`,
+        { starred: nextStarred },
+        { withCredentials: true },
+      );
+
+      if (response.data.booking) {
+        updateBooking(response.data.booking);
+      }
+    } finally {
+      setStarSaving(false);
+    }
   };
 
   return (
@@ -780,7 +836,7 @@ const ViewBooking = ({
           </h1>
           <div className="viewBooking__roomAndIsCheckedIn">
             <h1>
-              {roomsName} <br />
+              {compactRoomsName} <br />
             </h1>
             {data.status === "cancelled" &&
             data.cancellation?.roomReleaseStatus ? (
@@ -834,6 +890,51 @@ const ViewBooking = ({
         </div>
         <div className="viewBooking__main">
           <div className="viewBooking__mainLeft">
+            {(data.note || noteIsEditing) && (
+              <div
+                className={
+                  "viewBooking__note" +
+                  (noteIsEditing ? " viewBooking__note--editing" : "")
+                }
+                onClick={() => {
+                  if (!noteIsEditing) setNoteIsEditing(true);
+                }}
+              >
+                <div className="viewBooking__noteHeader">
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: ".5rem",
+                      alignItems: "center",
+                    }}
+                  >
+                    <i className="bx bx-note " style={{ fontSize: "1.3rem" }} />
+                    <p className="viewBooking__noteTitle">Note: </p>
+                  </div>
+                </div>
+                {noteIsEditing ? (
+                  <textarea
+                    autoFocus
+                    className="boxInput viewBooking__noteTextArea"
+                    value={noteDraft}
+                    placeholder="เพิ่ม Note สำหรับ booking นี้"
+                    disabled={noteSaving}
+                    onChange={(event) => setNoteDraft(event.target.value)}
+                    onClick={(event) => event.stopPropagation()}
+                    onBlur={() => {
+                      saveNoteHandler().catch((err) =>
+                        toast.error(
+                          err.response?.data?.message ||
+                            "เกิดข้อผิดพลาดในการบันทึก Note",
+                        ),
+                      );
+                    }}
+                  />
+                ) : (
+                  <p>{data.note}</p>
+                )}
+              </div>
+            )}
             <div className="viewBooking__item">
               <span className="viewBooking__label">ช่องทางการจอง: </span>
               <div className="viewBooking__platform">
@@ -885,7 +986,7 @@ const ViewBooking = ({
             </div>
             <div className="viewBooking__item">
               <span className="viewBooking__label">ห้อง: </span>
-              <p className="viewBooking__infoText">{roomsName}</p>
+              <p className="viewBooking__infoText">{fullRoomsName}</p>
             </div>
 
             <div className="viewBooking__item">
@@ -985,7 +1086,7 @@ const ViewBooking = ({
                       : { borderBottom: "1px solid #eee" }
                   }
                 >
-                  <h3>{roomStay.roomId}</h3>
+                  <h3>{formatRoomStayRooms(roomStay)}</h3>
                   <div className="viewBooking__roomStay--dates">
                     <p className="viewBooking__roomStay--from">
                       {new Date(roomStay.from).toLocaleDateString("th-TH", {
@@ -1010,99 +1111,112 @@ const ViewBooking = ({
                 <p>จัดการช่วงการเข้าพัก</p>
               </div>
             </div>
-
-            {data.note && (
-              <div className="viewBooking__note">
-                <p
-                  style={{
-                    color: "#ffbf00",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: ".5rem",
-                    marginBottom: ".5rem",
-                  }}
-                >
-                  <i className="bx bx-note" style={{ fontSize: "1.3rem" }} />
-                  Note:{" "}
-                </p>
-                <p>{data.note}</p>
-              </div>
-            )}
           </div>
         </div>
         <div className="viewBooking__actions">
-          <div className="viewBooking__moreActions">
-            <ActionButton
-              text="เพิ่มเติม"
-              icon="bx-dots-horizontal-rounded"
-              onClick={() => setMoreActionsIsOpen((isOpen) => !isOpen)}
-            />
-            {moreActionsIsOpen && (
-              <div className="viewBooking__moreActionsMenu">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditBookingIsOpen(true);
-                    setMoreActionsIsOpen(false);
-                  }}
-                >
-                  <i className="bx bx-edit" />
-                  แก้ไข
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    removeBookingHandler(data);
-                    setMoreActionsIsOpen(false);
-                  }}
-                >
-                  <i className="bx bx-trash" />
-                  ลบ
-                </button>
-                {data.status === "booked" && (
+          <div className="viewBooking__secondaryActions">
+            <div className="viewBooking__moreActions">
+              <ActionButton
+                text="เพิ่มเติม"
+                icon="bx-dots-horizontal-rounded"
+                onClick={() => setMoreActionsIsOpen((isOpen) => !isOpen)}
+              />
+              {moreActionsIsOpen && (
+                <div className="viewBooking__moreActionsMenu">
                   <button
                     type="button"
                     onClick={() => {
-                      setCancellationIsOpen(true);
+                      setEditBookingIsOpen(true);
                       setMoreActionsIsOpen(false);
                     }}
                   >
-                    <i className="bx bx-calendar-x" />
-                    ยกเลิก
+                    <i className="bx bx-edit" />
+                    แก้ไข
                   </button>
-                )}
-                <button
-                  type="button"
-                  disabled={
-                    (data.status === "checkedOut" ||
-                      data.status === "cancelled" ||
-                      data.status === "noShow") &&
-                    !user?.admin
-                  }
-                  onClick={() => {
-                    setInitialResolveOutcome(undefined);
-                    setResolveBookingIsOpen(true);
-                    setMoreActionsIsOpen(false);
-                  }}
-                >
-                  <i
-                    className={
-                      "bx " +
+                  <button
+                    type="button"
+                    onClick={() => {
+                      removeBookingHandler(data);
+                      setMoreActionsIsOpen(false);
+                    }}
+                  >
+                    <i className="bx bx-trash" />
+                    ลบ
+                  </button>
+                  {data.status === "booked" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCancellationIsOpen(true);
+                        setMoreActionsIsOpen(false);
+                      }}
+                    >
+                      <i className="bx bx-calendar-x" />
+                      ยกเลิก
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={
                       (data.status === "checkedOut" ||
-                      data.status === "cancelled" ||
-                      data.status === "noShow"
-                        ? "bx-history"
-                        : "bx-receipt")
+                        data.status === "cancelled" ||
+                        data.status === "noShow") &&
+                      !user?.admin
                     }
-                  />
-                  {data.status === "checkedOut" ||
-                  data.status === "cancelled" ||
-                  data.status === "noShow"
-                    ? "แก้ไขหลังปิด"
-                    : "เคลียร์การเข้าพัก"}
-                </button>
-              </div>
-            )}
+                    onClick={() => {
+                      setInitialResolveOutcome(undefined);
+                      setResolveBookingIsOpen(true);
+                      setMoreActionsIsOpen(false);
+                    }}
+                  >
+                    <i
+                      className={
+                        "bx " +
+                        (data.status === "checkedOut" ||
+                        data.status === "cancelled" ||
+                        data.status === "noShow"
+                          ? "bx-history"
+                          : "bx-receipt")
+                      }
+                    />
+                    {data.status === "checkedOut" ||
+                    data.status === "cancelled" ||
+                    data.status === "noShow"
+                      ? "แก้ไขหลังปิด"
+                      : "Resolve"}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <ActionButton
+              text=""
+              icon="bx-note"
+              onClick={() => {
+                setNoteDraft(data.note || "");
+                setNoteIsEditing(true);
+              }}
+            />
+
+            <ActionButton
+              text=""
+              icon={data.starred ? "bxs-star" : "bx-star"}
+              className={data.starred ? "viewBooking__starAction" : ""}
+              disabled={starSaving}
+              onClick={() =>
+                toast.promise(toggleStarHandler(), {
+                  loading: data.starred
+                    ? "กำลังยกเลิกปักดาว..."
+                    : "กำลังปักดาว...",
+                  success: data.starred
+                    ? "ยกเลิกปักดาวแล้ว"
+                    : "ปักดาว Booking แล้ว",
+                  error: (err) =>
+                    err.response?.data?.message ||
+                    "เกิดข้อผิดพลาดในการปักดาว Booking",
+                })
+              }
+            />
           </div>
           <div className="viewBooking__actionsRow">
             {data.status === "booked" && !isNoShow && (

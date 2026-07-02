@@ -3,10 +3,7 @@ type PaymentMethod = "OTA" | "Cash" | "Card" | "Transfer" | "Unpaid";
 type Status = "booked" | "checkedIn" | "checkedOut" | "cancelled" | "noShow";
 type TransactionDirection = "in" | "out" | "neutral";
 type TransactionReviewStatus = "none" | "needs_review" | "reviewed";
-type CancellationType =
-  | "refundable"
-  | "non_refundable"
-  | "no_payment_received";
+type CancellationType = "refundable" | "non_refundable" | "no_payment_received";
 type RoomReleaseStatus = "released" | "blocked";
 type TransactionType =
   | "roomCharge"
@@ -41,8 +38,9 @@ interface EncryptedField {
   authTag: string;
 }
 
-interface roomStay {
-  roomId: string;
+export interface roomStay {
+  roomIds: string[];
+  roomId?: string;
   from: string;
   to: string;
 }
@@ -133,6 +131,7 @@ export interface booking {
   checkout?: Checkout;
   resolution?: Resolution;
   note?: string;
+  starred?: boolean;
 }
 
 export type roomId =

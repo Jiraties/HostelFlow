@@ -76,20 +76,18 @@ const PassportView = ({ bookingId }: PassportViewProps) => {
           passportData && (
             <div className="passportView__content">
               <div className="passportView__row">
-                <span>คำนำหน้าชื่อ</span>
-                <p>{passportData.namePrefix || "-"}</p>
-              </div>
-              <div className="passportView__row">
-                <span>สัญชาติ</span>
-                <p>{passportData.nationality}</p>
-              </div>
-              <div className="passportView__row">
                 <span>เลข Passport</span>
                 <p>{passportData.passportNo}</p>
               </div>
               <div className="passportView__row">
                 <span>ชื่อ-นามสกุล Passport</span>
-                <p>{passportData.passportName}</p>
+                <p>
+                  {passportData.namePrefix || "-"} {passportData.passportName}
+                </p>
+              </div>{" "}
+              <div className="passportView__row">
+                <span>สัญชาติ</span>
+                <p>{passportData.nationality}</p>
               </div>
             </div>
           )

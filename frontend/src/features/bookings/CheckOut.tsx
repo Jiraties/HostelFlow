@@ -8,6 +8,7 @@ import type { booking } from "../../types/bookingTypes";
 import { API_URL } from "../../config/api";
 import { formatBookingDates } from "../../helpers/bookingHelpers";
 import { platformMap } from "../../helpers/maps";
+import { formatRoomStayRooms } from "../../helpers/roomStayHelpers";
 
 import "./CheckIn.css";
 import "./Cancellation.css";
@@ -151,7 +152,7 @@ const CheckOut = ({
           <div className="viewBooking__item">
             <span className="viewBooking__label">ห้อง: </span>
             <p className="viewBooking__infoText">
-              {booking.roomStays.map((roomStay) => roomStay.roomId).join(", ")}
+              {booking.roomStays.map(formatRoomStayRooms).join(", ")}
             </p>
           </div>
 

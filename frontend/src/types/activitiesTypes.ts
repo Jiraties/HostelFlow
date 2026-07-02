@@ -60,7 +60,8 @@ export interface transaction {
 }
 
 export interface roomStay {
-  roomId: string;
+  roomIds: string[];
+  roomId?: string;
   from: string | Date;
   to: string | Date;
 }
@@ -95,7 +96,8 @@ export interface activity {
       checkIn: Date;
       checkOut: Date;
       platformId: "BOOK" | "HSTL" | "TRVL" | "AGDA";
-      roomId: string;
+      roomId?: string;
+      roomIds?: string[];
       price: number;
       paymentMethod: PaymentMethod;
       bookingId: string;

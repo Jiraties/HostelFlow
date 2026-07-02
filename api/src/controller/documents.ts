@@ -20,6 +20,10 @@ import {
   transactionSignedAmount,
   transactionRevenueAmount,
 } from "../helpers/financeHelpers";
+import {
+  formatRoomStayRooms,
+  getPrimaryRoomId,
+} from "../helpers/roomStayHelpers";
 
 const platformMap: Record<string, { label: string; color: string }> = {
   BOOK: { label: "Booking.com", color: "003580" },
@@ -503,7 +507,7 @@ export const getBookingsReport = async (req: Request, res: Response) => {
         name: booking.name,
         platformId: platform.label,
         status: booking.status,
-        rooms: booking.roomStays.map((roomStay) => roomStay.roomId).join(", "),
+        rooms: booking.roomStays.map(formatRoomStayRooms).join(", "),
         roomCharge: roomChargeTotal(transactions),
         total: transactionTotal(transactions),
         paymentMethods,
@@ -671,6 +675,12 @@ export const getImmigrationReport = async (req: Request, res: Response) => {
 
     const startRow = 2;
 
+    const determineGender = (namePrefix?: string) => {
+      if (namePrefix === "Mr") return "M";
+      if (["Ms", "Mrs", "Miss"].includes(namePrefix || "")) return "F";
+      return "";
+    };
+
     bookings.forEach((booking, index) => {
       const row = sheet.getRow(startRow + index);
 
@@ -699,6 +709,7 @@ export const getImmigrationReport = async (req: Request, res: Response) => {
         row.getCell(2).value = splittedPassportName.middleName;
         row.getCell(3).value = splittedPassportName.lastName;
       }
+      row.getCell(4).value = determineGender(booking.passport?.namePrefix);
       row.getCell(5).value = formattedPassport.passportNo;
       row.getCell(6).value = formattedPassport.nationality;
       row.getCell(8).value = formatDateAD(booking.checkOut);
@@ -782,24 +793,20 @@ export const getHotelAccomodationReport = async (
       if (missingPassportInfo) {
         const missingCell = row.getCell(1);
         missingCell.value = `MISSING ${booking.name} ${booking.bookingId}`;
-        missingCell.font = {
-          ...missingCell.font,
-          color: { argb: "FFFF0000" },
-        };
       } else {
         const destination = getHotelDestinationCountry(
           randomizeDestination,
           destinationCountry,
           booking.bookingId,
         );
-
-        row.getCell(1).value = index + 1;
+        const indexCell = row.getCell(1);
+        indexCell.value = index + 1;
         row.getCell(2).value = formatDateAD(booking.checkIn);
         row.getCell(3).value = formatReportTime(
           booking.checkedInAt || booking.checkIn,
         );
         row.getCell(4).value = formatRoomIdToReportNumber(
-          booking.roomStays[0]?.roomId || "",
+          getPrimaryRoomId(booking.roomStays[0] || {}),
         );
         row.getCell(9).value = formattedPassport.namePrefix;
         row.getCell(10).value = splittedPassportName.firstName;

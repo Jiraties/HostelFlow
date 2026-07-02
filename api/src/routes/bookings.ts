@@ -9,6 +9,7 @@ import {
   getMasterBookings,
   getMonthCalendar,
   getNeedsReviewBookings,
+  getRoomAvailability,
   getTodayBookings,
   manageRoomStays,
   newBooking,
@@ -16,17 +17,22 @@ import {
   getPassportData,
   cancelBooking,
   resolveBooking,
+  updateBookingNote,
+  starBooking,
 } from "../controller/booking";
 
 const bookingsRouter = express.Router();
 
 bookingsRouter.post("/newBooking", newBooking);
 bookingsRouter.patch("/editBooking/:bookingId", editBooking);
+bookingsRouter.patch("/updateBookingNote/:bookingId", updateBookingNote);
+bookingsRouter.patch("/starBooking/:bookingId", starBooking);
 bookingsRouter.post("/addTransaction/:bookingId", addTransaction);
 bookingsRouter.get("/getTodayBookings/:type", getTodayBookings);
 bookingsRouter.get("/getNeedsReviewBookings", getNeedsReviewBookings);
 bookingsRouter.get("/getAdminDashboardStats", getAdminDashboardStats);
 bookingsRouter.get("/getMasterBookings", getMasterBookings);
+bookingsRouter.get("/getRoomAvailability", getRoomAvailability);
 bookingsRouter.delete("/removeBooking/:bookingId", removeBooking);
 bookingsRouter.put("/checkIn/:bookingId", checkIn);
 bookingsRouter.patch("/checkOut/:bookingId", checkOut);

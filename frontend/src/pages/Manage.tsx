@@ -16,6 +16,7 @@ import { useAuth } from "../context/AuthContext";
 import type { ManagedStaffUser } from "../components/ManageUser";
 import { requestUnsavedModalClose } from "../helpers/modalGuards";
 import UnsavedChangesModal from "../components/UnsavedChangesModal";
+import usePageTitle from "../hooks/useTitle";
 
 type StaffUser = ManagedStaffUser;
 
@@ -375,6 +376,7 @@ const FinanceReconciliation = ({
 };
 
 const Manage = () => {
+  usePageTitle("HostelFlow · จัดการระบบ");
   const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<StaffUser[]>([]);
   const [activities, setActivities] = useState<activity[]>([]);

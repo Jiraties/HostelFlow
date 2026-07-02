@@ -11,6 +11,7 @@ const path_1 = __importDefault(require("path"));
 const passportHelpers_1 = require("../helpers/passportHelpers");
 const dateHelpers_1 = require("../helpers/dateHelpers");
 const financeHelpers_1 = require("../helpers/financeHelpers");
+const roomStayHelpers_1 = require("../helpers/roomStayHelpers");
 const platformMap = {
     BOOK: { label: "Booking.com", color: "003580" },
     HOST: { label: "Hostelworld", color: "F15A24" },
@@ -350,7 +351,7 @@ const getBookingsReport = async (req, res) => {
                 name: booking.name,
                 platformId: platform.label,
                 status: booking.status,
-                rooms: booking.roomStays.map((roomStay) => roomStay.roomId).join(", "),
+                rooms: booking.roomStays.map(roomStayHelpers_1.formatRoomStayRooms).join(", "),
                 roomCharge: roomChargeTotal(transactions),
                 total: transactionTotal(transactions),
                 paymentMethods,
@@ -483,6 +484,13 @@ const getImmigrationReport = async (req, res) => {
             return res.status(404).json({ message: "ไม่พบ worksheet สัญชาติ" });
         }
         const startRow = 2;
+        const determineGender = (namePrefix) => {
+            if (namePrefix === "Mr")
+                return "M";
+            if (["Ms", "Mrs", "Miss"].includes(namePrefix || ""))
+                return "F";
+            return "";
+        };
         bookings.forEach((booking, index) => {
             const row = sheet.getRow(startRow + index);
             const formattedPassport = formatPassport(booking.passport, nationalitySheet);
@@ -503,6 +511,7 @@ const getImmigrationReport = async (req, res) => {
                 row.getCell(2).value = splittedPassportName.middleName;
                 row.getCell(3).value = splittedPassportName.lastName;
             }
+            row.getCell(4).value = determineGender(booking.passport?.namePrefix);
             row.getCell(5).value = formattedPassport.passportNo;
             row.getCell(6).value = formattedPassport.nationality;
             row.getCell(8).value = (0, dateHelpers_1.formatDateAD)(booking.checkOut);
@@ -547,17 +556,14 @@ const getHotelAccomodationReport = async (req, res) => {
             if (missingPassportInfo) {
                 const missingCell = row.getCell(1);
                 missingCell.value = `MISSING ${booking.name} ${booking.bookingId}`;
-                missingCell.font = {
-                    ...missingCell.font,
-                    color: { argb: "FFFF0000" },
-                };
             }
             else {
                 const destination = getHotelDestinationCountry(randomizeDestination, destinationCountry, booking.bookingId);
-                row.getCell(1).value = index + 1;
+                const indexCell = row.getCell(1);
+                indexCell.value = index + 1;
                 row.getCell(2).value = (0, dateHelpers_1.formatDateAD)(booking.checkIn);
                 row.getCell(3).value = formatReportTime(booking.checkedInAt || booking.checkIn);
-                row.getCell(4).value = (0, passportHelpers_1.formatRoomIdToReportNumber)(booking.roomStays[0]?.roomId || "");
+                row.getCell(4).value = (0, passportHelpers_1.formatRoomIdToReportNumber)((0, roomStayHelpers_1.getPrimaryRoomId)(booking.roomStays[0] || {}));
                 row.getCell(9).value = formattedPassport.namePrefix;
                 row.getCell(10).value = splittedPassportName.firstName;
                 row.getCell(11).value = splittedPassportName.middleName;

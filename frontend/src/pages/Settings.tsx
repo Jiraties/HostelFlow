@@ -6,8 +6,10 @@ import { useNavigate } from "react-router";
 import { API_URL } from "../config/api";
 import RecentActivities from "../features/activities/RecentActivities";
 import PageHeader from "../components/PageHeader";
+import usePageTitle from "../hooks/useTitle";
 
 const Settings = () => {
+  usePageTitle("HostelFlow · ตั้งค่า");
   const { logout, user, login } = useAuth();
   const navigate = useNavigate();
 

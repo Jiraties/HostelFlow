@@ -7,9 +7,11 @@ import PageHeader from "../components/PageHeader";
 
 import axios from "axios";
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import { customStyles } from "../helpers/selectStyling";
 import { API_URL } from "../config/api";
 import { paymentMethodOptions, platformOptions } from "../helpers/options";
+import usePageTitle from "../hooks/useTitle";
 
 import type { SingleValue } from "react-select";
 import type { OptionType } from "../helpers/selectStyling";
@@ -85,6 +87,8 @@ const hotelDestinationCountryOptions = [
 ];
 
 const Documents = () => {
+  usePageTitle("HostelFlow · เอกสาร");
+  const navigate = useNavigate();
   const today = new Date();
   const currentMonth = formatInputMonth(today);
   const currentDate = formatInputDate(today);
@@ -176,23 +180,35 @@ const Documents = () => {
         {hasMissing && (
           <div className="documents__missingList">
             {status.missingBookings.slice(0, 3).map((booking) => (
-              <div className="documents__missingItem" key={booking.bookingId}>
-                <div>
+              <button
+                className="documents__missingItem"
+                key={booking.bookingId}
+                type="button"
+                onClick={() =>
+                  navigate(
+                    `/master?bookingId=${encodeURIComponent(booking.bookingId)}`,
+                  )
+                }
+              >
+                <div className="documents__missingPrimary">
                   <strong>{booking.name}</strong>
                   <p>
                     {booking.bookingId}
                     {booking.reason ? ` - ${booking.reason}` : ""}
                   </p>
                 </div>
-                <span>
-                  {new Date(booking.checkOut).toLocaleDateString("th-TH", {
-                    day: "2-digit",
-                    month: "short",
-                    year: "numeric",
-                    calendar: "gregory",
-                  })}
-                </span>
-              </div>
+                <div className="documents__missingMeta">
+                  <strong>{booking.reason || "Passport ไม่ครบ"}</strong>
+                  <span>
+                    {new Date(booking.checkOut).toLocaleDateString("th-TH", {
+                      day: "2-digit",
+                      month: "short",
+                      year: "numeric",
+                      calendar: "gregory",
+                    })}
+                  </span>
+                </div>
+              </button>
             ))}
             {status.missing > 3 && (
               <p className="documents__missingMore">

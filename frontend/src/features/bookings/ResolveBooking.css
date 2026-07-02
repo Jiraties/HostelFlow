@@ -1,11 +1,17 @@
 .resolveBooking__wrapper {
-  width: min(50rem, calc(100vw - 2rem));
+  width: min(58rem, calc(100vw - 2rem));
 }
 
 .resolveBooking__header {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.45rem;
+}
+
+.resolveBooking__intro,
+.resolveBooking__helperText {
+  color: #777777;
+  line-height: 1.5;
 }
 
 .resolveBooking__warning {
@@ -16,7 +22,7 @@
 .resolveBooking__section {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.85rem;
 }
 
 .resolveBooking__sectionHeader {
@@ -26,8 +32,82 @@
   gap: 1rem;
 }
 
-.resolveBooking__linkButton,
-.resolveBooking__removeButton {
+.resolveBooking__scenarioGrid,
+.resolveBooking__quickActions {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.resolveBooking__scenario,
+.resolveBooking__quickAction {
+  background-color: var(--background);
+  border: none;
+  border-radius: 1.5rem;
+  box-shadow: var(--light-shadow);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  font-family: inherit;
+  gap: 0.55rem;
+  min-height: 9rem;
+  min-width: 0;
+  padding: 1.25rem;
+  text-align: left;
+  transition:
+    background-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+.resolveBooking__scenario:hover,
+.resolveBooking__quickAction:hover {
+  box-shadow: var(--main-shadow);
+  transform: translateY(-1px);
+}
+
+.resolveBooking__scenario--active,
+.resolveBooking__quickAction--active {
+  box-shadow: var(--main-shadow);
+}
+
+.resolveBooking__scenario i,
+.resolveBooking__quickAction i {
+  align-items: center;
+  background-color: color-mix(in srgb, var(--primary-color) 14%, #fff);
+  border-radius: 50%;
+  color: var(--primary-color);
+  display: inline-flex;
+  font-size: 1.4rem;
+  height: 2.5rem;
+  justify-content: center;
+  width: 2.5rem;
+}
+
+.resolveBooking__scenario span,
+.resolveBooking__quickAction span {
+  color: var(--text);
+  font-weight: 500;
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.resolveBooking__scenario small,
+.resolveBooking__quickAction small {
+  font-size: 1rem;
+  line-height: 1.45;
+  color: #414141;
+}
+
+.resolveBooking__twoColumn {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.resolveBooking__toggle,
+.resolveBooking__advancedToggle,
+.resolveBooking__linkButton {
   align-items: center;
   background: transparent;
   border: none;
@@ -39,17 +119,35 @@
   gap: 0.35rem;
 }
 
-.resolveBooking__removeButton {
-  align-self: end;
-  color: var(--red);
-  height: 2.75rem;
-  justify-content: center;
-  width: 2.75rem;
+.resolveBooking__toggle {
+  border: 0;
+  border-radius: 0.5rem;
+  box-shadow: var(--light-shadow);
+  color: #777777;
+  min-height: 2.5rem;
+  padding: 0 0.85rem;
+  white-space: nowrap;
 }
 
-.resolveBooking__removeButton:disabled {
-  color: #c9c9c9;
-  cursor: not-allowed;
+.resolveBooking__toggle--active {
+  background-color: color-mix(in srgb, var(--green) 14%, #fff);
+  color: var(--green);
+}
+
+.resolveBooking__advancedToggle {
+  grid-column: 1 / -1;
+  justify-self: start;
+  padding: 0.2rem 0;
+}
+
+.resolveBooking__removeButton {
+  bottom: 1.25rem;
+  position: absolute;
+  right: 1.25rem;
+}
+
+.resolveBooking__removeButton i {
+  color: var(--red);
 }
 
 .resolveBooking__note {
@@ -59,6 +157,25 @@
 
 .resolveBooking__segmentedControl {
   min-height: 2.65rem;
+}
+
+.resolveBooking__statusPreview {
+  align-items: center;
+  background-color: var(--background);
+  border-radius: 0.5rem;
+  box-shadow: var(--main-shadow);
+  display: flex;
+  min-height: 3.35rem;
+  padding: 0 1rem;
+}
+
+.resolveBooking__statusInline {
+  align-items: center;
+  background: transparent !important;
+  display: flex;
+  gap: 0.7rem;
+
+  border-radius: 2rem;
 }
 
 .resolveBooking__segmentedControl .cancellation__segment {
@@ -74,17 +191,15 @@
 
 .resolveBooking__row {
   align-items: end;
-  border: 1px solid #eee;
-  border-radius: 0.75rem;
+  background-color: var(--background);
+  border: 0;
+  border-radius: 1.5rem;
+  box-shadow: var(--light-shadow);
   display: grid;
   gap: 0.75rem;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  padding: 0.9rem;
-}
-
-.resolveBooking__removeButton {
-  grid-column: 2;
-  justify-self: end;
+  padding: 1.25rem 5.35rem 1.25rem 1.25rem;
+  position: relative;
 }
 
 .resolveBooking__rowNote {
@@ -104,19 +219,49 @@
   width: 0.65rem;
 }
 
+.resolveBooking__fieldError {
+  color: var(--red);
+  font-size: 0.9rem;
+  margin-top: 0.35rem;
+}
+
 .resolveBooking__actions {
   display: flex;
   justify-content: flex-end;
   gap: 1rem;
 }
 
-@media (max-width: 560px) {
+@media (max-width: 760px) {
   .resolveBooking__wrapper {
     width: calc(100vw - 1.5rem);
   }
 
+  .resolveBooking__scenarioGrid,
+  .resolveBooking__quickActions,
+  .resolveBooking__twoColumn {
+    grid-template-columns: 1fr;
+  }
+
+  .resolveBooking__sectionHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .resolveBooking__toggle {
+    justify-content: center;
+    width: 100%;
+  }
+}
+
+@media (max-width: 560px) {
   .resolveBooking__row {
     grid-template-columns: 1fr;
+    padding: 1.25rem 1.25rem 5.35rem;
+  }
+
+  .resolveBooking__removeButton {
+    bottom: 1.25rem;
+    right: 1.25rem;
   }
 
   .resolveBooking__actions {

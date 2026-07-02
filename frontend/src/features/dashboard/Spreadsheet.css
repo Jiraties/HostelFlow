@@ -40,6 +40,36 @@
   cursor: pointer;
 }
 
+.spreadsheet__roomCell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spreadsheet__nameCell {
+  align-items: center;
+  display: flex;
+  gap: 0.4rem;
+  font-weight: 500;
+  min-width: 0;
+}
+
+.spreadsheet__nameCell span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spreadsheet__starIcon {
+  color: #ffbf00;
+  flex: 0 0 auto;
+  font-size: 1rem;
+}
+
+.spreadsheet__starredRow {
+  background-color: color-mix(in srgb, #ffbf00 12%, #fff);
+}
+
 .daySeparator {
   display: flex;
   align-items: center;

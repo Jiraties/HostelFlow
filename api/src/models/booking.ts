@@ -58,7 +58,8 @@ export interface EncryptedField {
 }
 
 export interface roomStay {
-  roomId: string;
+  roomIds: string[];
+  roomId?: string;
   from: Date;
   to: Date;
 }
@@ -162,9 +163,11 @@ export interface booking extends Document {
   checkout?: Checkout;
   resolution?: Resolution;
   note?: string;
+  starred?: boolean;
 }
 
 const roomStaySchema = new mongoose.Schema({
+  roomIds: { type: [String], default: [] },
   roomId: { type: String },
   from: { type: Date },
   to: { type: Date },
@@ -337,6 +340,7 @@ const bookingSchema = new mongoose.Schema({
   platformId: { type: String },
 
   note: { type: String },
+  starred: { type: Boolean, default: false },
   staffUsername: { type: String },
   bookingId: { type: String, unique: true },
 
