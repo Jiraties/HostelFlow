@@ -103,7 +103,7 @@ const actionMap = {
   REACTIVATE_USER: { icon: "bx-user-check", text: "เปิดใช้งานผู้ใช้" },
   LOGIN: { icon: "bx-arrow-in-right-square-half", text: "เข้าสู่ระบบ" },
   LOGOUT: { icon: "bx-arrow-out-right-square-half", text: "ออกจากระบบ" },
-  DAILY_CLOSE: { icon: "bx-cash", text: "ปิดยอดเงินสด" },
+  DAILY_CLOSE: { icon: "bx-cash", text: "ปิดยอดเงินสดประจำวัน" },
   REVIEW_TRANSACTION: { icon: "bx-check-shield", text: "อนุมัติรายการ" },
 } satisfies Record<actionType, { icon: string; text: string }>;
 
@@ -209,7 +209,7 @@ const FinanceReconciliation = ({
         <div>
           <i className="bx bx-currency-notes" />
           <div>
-            <h2>Daily Cash Close</h2>
+            <h2>ปิดยอดเงินสดประจำวัน</h2>
             <p>สรุปยอดเงินสดและรายการที่ควรตรวจประจำวัน</p>
           </div>
         </div>
@@ -227,11 +227,11 @@ const FinanceReconciliation = ({
 
       <div className="manage__financeOverview">
         <div>
-          <p>รายได้</p>
+          <p>เงินที่รับแล้ว</p>
           <strong>{formatMoney(summary?.revenue || 0)} ฿</strong>
         </div>
         <div>
-          <p>Net Total</p>
+          <p>ยอดสุทธิ</p>
           <strong>{formatMoney(summary?.netTotal || 0)} ฿</strong>
         </div>
         <div>
@@ -261,7 +261,7 @@ const FinanceReconciliation = ({
               <strong>{formatMoney(summary?.refunds || 0)} ฿</strong>
             </div>
             <div>
-              <p>Unpaid</p>
+              <p>ค้างชำระ</p>
               <strong>{formatMoney(summary?.unpaidBalance || 0)} ฿</strong>
             </div>
           </div>

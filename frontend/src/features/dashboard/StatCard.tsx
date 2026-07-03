@@ -8,6 +8,7 @@ interface StatCardProps {
   value: number;
   loading: boolean;
   suffix?: string;
+  helperText?: string;
 }
 
 function AnimatedDigit({
@@ -91,6 +92,7 @@ export default function StatCard({
   value,
   loading,
   suffix = "",
+  helperText,
 }: StatCardProps) {
   const prevValue = useRef<number>(0); // ✅ start from 0
   const [direction, setDirection] = useState<"up" | "down">("up");
@@ -148,7 +150,14 @@ export default function StatCard({
       className="statCardShell"
       style={{ fontFamily: "'IBM Plex Sans Thai', sans-serif" }}
     >
-      <div className="statLabel">{label}</div>
+      <div className="statLabel">
+        {label}
+        {helperText && (
+          <span className="statTooltip" title={helperText} aria-label={helperText}>
+            <i className="bx bx-info-circle" />
+          </span>
+        )}
+      </div>
 
       <div
         style={{

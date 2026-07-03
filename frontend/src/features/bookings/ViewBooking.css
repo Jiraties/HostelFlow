@@ -162,12 +162,12 @@
 }
 
 .notCheckedIn {
-  background-color: var(--light-red);
-  color: var(--red);
+  background-color: #00adef20;
+  color: #00adef;
 }
 
 .notCheckedIn div {
-  background-color: var(--red);
+  background-color: #00adef;
 }
 
 .checkedIn {
@@ -189,12 +189,12 @@
 }
 
 .cancelled {
-  background-color: #fee2e2;
-  color: #dc2626;
+  background-color: var(--light-red);
+  color: var(--red);
 }
 
 .cancelled div {
-  background-color: #dc2626;
+  background-color: var(--red);
 }
 
 .noShow {
@@ -445,8 +445,9 @@
   max-width: 16rem;
   padding: 0.55rem 0.7rem;
   border-radius: 0.6rem;
-  background: #2a2a2a;
-  color: #fff;
+  background: #ffffff50;
+  backdrop-filter: blur(4px);
+  color: #000;
   box-shadow: var(--main-shadow);
   font-size: 0.78rem;
   line-height: 1.35;
@@ -459,7 +460,7 @@
   bottom: -0.35rem;
   width: 0.7rem;
   height: 0.7rem;
-  background: #2a2a2a;
+  background: #ffffff;
   content: "";
   transform: translateX(-50%) rotate(45deg);
 }

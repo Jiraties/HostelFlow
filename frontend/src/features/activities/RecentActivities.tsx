@@ -61,7 +61,7 @@ const actionMap = {
   },
   DAILY_CLOSE: {
     icon: "bx-cash",
-    text: "ปิดยอดเงินสด",
+    text: "ปิดยอดเงินสดประจำวัน",
   },
   REVIEW_TRANSACTION: {
     icon: "bx-check-shield",

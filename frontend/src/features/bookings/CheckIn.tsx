@@ -79,7 +79,9 @@ const CheckIn = ({
   const [confirmedPayment, setConfirmedPayment] = useState<boolean>(false);
   const [namePrefix, setNamePrefix] = useState<string>("");
   const [nationality, setNationality] = useState<string>("");
-  const [passportName, setPassportName] = useState<string>("");
+  const [passportName, setPassportName] = useState<string>(
+    booking.name.trim().toUpperCase(),
+  );
   const [passportNo, setPassportNo] = useState<string>("");
   const [roundingAdjustment, setRoundingAdjustment] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -95,14 +97,14 @@ const CheckIn = ({
     onDirtyChange?.(
       Boolean(
         namePrefix ||
-          nationality ||
-          passportName ||
-          passportNo ||
-          deposit !== 200 ||
-          unpaidPaymentPaymentMethod !== "Cash" ||
-          confirmedPayment ||
-          roundingAdjustment ||
-          receivedCash !== String(roomCharge.amount),
+        nationality ||
+        passportName ||
+        passportNo ||
+        deposit !== 200 ||
+        unpaidPaymentPaymentMethod !== "Cash" ||
+        confirmedPayment ||
+        roundingAdjustment ||
+        receivedCash !== String(roomCharge.amount),
       ),
     );
 

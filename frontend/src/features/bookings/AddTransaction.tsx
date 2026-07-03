@@ -88,8 +88,8 @@ const AddTransaction = ({
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const formatPaymentMethodLabel = ({ label }: { label: string }) => (
-    <div style={label === "Unpaid" ? { color: "red" } : {}}>{label}</div>
+  const formatPaymentMethodLabel = ({ label, value }: OptionType) => (
+    <div style={value === "Unpaid" ? { color: "red" } : {}}>{label}</div>
   );
 
   const formatTransactionTypeLabel = ({

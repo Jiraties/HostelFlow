@@ -37,6 +37,30 @@ type Room = {
   bookings: CalendarBooking[];
 };
 
+const statusLabelMap: Record<booking["status"], string> = {
+  booked: "รอเช็คอิน",
+  checkedIn: "เข้าพัก",
+  checkedOut: "เช็คเอาท์",
+  cancelled: "ยกเลิก",
+  noShow: "No-show",
+};
+
+const statusColorMap: Record<booking["status"], string> = {
+  booked: "#00ADEF",
+  checkedIn: "var(--green)",
+  checkedOut: "#64748b",
+  cancelled: "var(--red)",
+  noShow: "#6b7280",
+};
+
+const calendarLegendItems = [
+  { label: "รอเช็คอิน", color: "#00ADEF" },
+  { label: "เข้าพัก", color: statusColorMap.checkedIn },
+  { label: "เช็คเอาท์", color: statusColorMap.checkedOut },
+  { label: "ยกเลิก / No-show", color: statusColorMap.cancelled },
+  { label: "ค้างชำระ", color: "#ef4444", type: "outline" },
+];
+
 const Calendar = () => {
   usePageTitle("HostelFlow · ตารางการจอง");
   const today = new Date();
@@ -296,11 +320,8 @@ const Calendar = () => {
             gridColumn: `${position.startingDate + 2} / span ${position.span}`,
             gridRow,
             backgroundColor:
-              booking.status === "cancelled"
-                ? "#9ca3af"
-                : booking.status === "noShow"
-                  ? "#9ca3af"
-                  : platformMap[booking.platformId].color,
+              statusColorMap[booking.status] ||
+              platformMap[booking.platformId].color,
             borderTopLeftRadius: position.continuesBefore ? 0 : "0.5rem",
             borderBottomLeftRadius: position.continuesBefore ? 0 : "0.5rem",
             borderTopRightRadius: position.continuesAfter ? 0 : "0.5rem",
@@ -312,7 +333,10 @@ const Calendar = () => {
           }
         >
           <p className="timeline__itemText">
-            {booking.name}{" "}
+            <span className="timeline__bookingName">{booking.name}</span>{" "}
+            <span className="timeline__statusChip">
+              {statusLabelMap[booking.status]}
+            </span>
             <span className="timeline__itemNights">
               {calculateNights(position.from, position.to)} คืน
             </span>
@@ -336,7 +360,10 @@ const Calendar = () => {
     setRooms((prevRooms) =>
       prevRooms.map((room) => {
         const firstStay = formattedBooking.roomStays[0];
-        if (!firstStay || !getRoomStayRoomIds(firstStay).includes(room.roomId)) {
+        if (
+          !firstStay ||
+          !getRoomStayRoomIds(firstStay).includes(room.roomId)
+        ) {
           return room;
         }
 
@@ -494,6 +521,22 @@ const Calendar = () => {
         lastUpdated={lastUpdated}
         onRefresh={getRooms}
       />
+
+      <div className="calendar__legend" aria-label="คำอธิบายสถานะในปฏิทิน">
+        {calendarLegendItems.map((item) => (
+          <div className="calendar__legendItem" key={item.label}>
+            <span
+              className={
+                item.type === "outline"
+                  ? "calendar__legendDot calendar__legendDot--outline"
+                  : "calendar__legendDot"
+              }
+              style={{ backgroundColor: item.color }}
+            />
+            <p>{item.label}</p>
+          </div>
+        ))}
+      </div>
 
       <div className="timeline__wrapper" ref={timelineRef}>
         <div

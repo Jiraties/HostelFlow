@@ -55,30 +55,27 @@ const ManageRoomStays = ({
       to: index === stays.length - 1 ? bookingCheckOut : stay.to,
     }));
 
-  const initialManagedRoomStays = useMemo(
-    () => {
-      const normalizedCheckIn = normalizeDate(String(checkIn));
-      const normalizedCheckOut = normalizeDate(String(checkOut));
+  const initialManagedRoomStays = useMemo(() => {
+    const normalizedCheckIn = normalizeDate(String(checkIn));
+    const normalizedCheckOut = normalizeDate(String(checkOut));
 
-      return initialRoomStays.map((stay, index) => ({
-        ...stay,
-        roomIds: getRoomStayRoomIds(stay),
-        from:
-          index === 0
-            ? normalizedCheckIn
-            : stay.from
-              ? normalizeDate(stay.from)
-              : "",
-        to:
-          index === initialRoomStays.length - 1
-            ? normalizedCheckOut
-            : stay.to
-              ? normalizeDate(stay.to)
-              : "",
-      }));
-    },
-    [initialRoomStays, checkIn, checkOut],
-  );
+    return initialRoomStays.map((stay, index) => ({
+      ...stay,
+      roomIds: getRoomStayRoomIds(stay),
+      from:
+        index === 0
+          ? normalizedCheckIn
+          : stay.from
+            ? normalizeDate(stay.from)
+            : "",
+      to:
+        index === initialRoomStays.length - 1
+          ? normalizedCheckOut
+          : stay.to
+            ? normalizeDate(stay.to)
+            : "",
+    }));
+  }, [initialRoomStays, checkIn, checkOut]);
 
   const [roomStays, setRoomStays] = useState<roomStay[]>(
     initialManagedRoomStays,
@@ -123,7 +120,8 @@ const ManageRoomStays = ({
 
     Promise.all(
       availabilityRequests.map(async (request) => {
-        if (!request.valid) return { index: request.index, occupiedRoomIds: [] };
+        if (!request.valid)
+          return { index: request.index, occupiedRoomIds: [] };
 
         const response = await axios.get(
           `${API_URL}/bookings/getRoomAvailability`,
@@ -159,8 +157,7 @@ const ManageRoomStays = ({
           prevRoomStays.map((stay, index) => ({
             ...stay,
             roomIds: getRoomStayRoomIds(stay).filter(
-              (roomId) =>
-                !nextOccupiedRoomIdsByStay[index]?.includes(roomId),
+              (roomId) => !nextOccupiedRoomIdsByStay[index]?.includes(roomId),
             ),
           })),
         );
@@ -248,8 +245,9 @@ const ManageRoomStays = ({
                 classNamePrefix="rs"
                 options={roomOptionsByStay[index] || roomIdOptions}
                 placeholder="เช่น Veranda 1"
-                value={(roomOptionsByStay[index] || roomIdOptions).filter((option) =>
-                  getRoomStayRoomIds(roomStay).includes(option.value),
+                value={(roomOptionsByStay[index] || roomIdOptions).filter(
+                  (option) =>
+                    getRoomStayRoomIds(roomStay).includes(option.value),
                 )}
                 //   formatOptionLabel={formatOptionLabel}
                 onChange={(options: MultiValue<OptionType>) => {
@@ -289,15 +287,28 @@ const ManageRoomStays = ({
               <div className="addBooking__dateInputs">
                 <input
                   type="date"
-                  value={isFirstStay(index) ? bookingCheckIn : roomStay.from || ""}
+                  value={
+                    isFirstStay(index) ? bookingCheckIn : roomStay.from || ""
+                  }
                   disabled={isFirstStay(index)}
                   onChange={(e) => {
+                    const newFrom = e.target.value;
+
                     setRoomStays((prevRoomStays) => {
                       const updated = [...prevRoomStays];
+
                       updated[index] = {
                         ...updated[index],
-                        from: e.target.value,
+                        from: newFrom,
                       };
+
+                      if (index - 1 >= 0) {
+                        updated[index - 1] = {
+                          ...updated[index - 1],
+                          to: newFrom,
+                        };
+                      }
+
                       return updated;
                     });
                   }}
@@ -309,15 +320,28 @@ const ManageRoomStays = ({
                 />
                 <input
                   type="date"
-                  value={isLastStay(index) ? bookingCheckOut : roomStay.to || ""}
+                  value={
+                    isLastStay(index) ? bookingCheckOut : roomStay.to || ""
+                  }
                   disabled={isLastStay(index)}
                   onChange={(e) => {
+                    const newTo = e.target.value;
+
                     setRoomStays((prevRoomStays) => {
                       const updated = [...prevRoomStays];
+
                       updated[index] = {
                         ...updated[index],
-                        to: e.target.value,
+                        to: newTo,
                       };
+
+                      if (index + 1 < updated.length) {
+                        updated[index + 1] = {
+                          ...updated[index + 1],
+                          from: newTo,
+                        };
+                      }
+
                       return updated;
                     });
                   }}

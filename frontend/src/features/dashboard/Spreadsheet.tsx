@@ -99,7 +99,7 @@ const platformCell = (params: ICellRendererParams<SpreadsheetRow, string>) => {
 
 const bookingStatusMap = {
   booked: {
-    label: "ยังไม่ Check-In",
+    label: "รอ Check-In",
     icon: "bx-user-x",
     className: "bookingStatusCell--booked",
   },
@@ -342,9 +342,7 @@ const Spreadsheet = ({
         valueGetter: (params: ValueGetterParams<SpreadsheetRow>) => {
           if (isSeparatorRow(params.data)) return "";
           return (
-            params.data?.roomStays
-              ?.map(formatRoomStayRooms)
-              .join(", ") || ""
+            params.data?.roomStays?.map(formatRoomStayRooms).join(", ") || ""
           );
         },
         headerName: "ห้อง",
@@ -464,10 +462,8 @@ const Spreadsheet = ({
       if (isMaster) return;
 
       params.nodes.sort((a, b) => {
-        const aIsStarred =
-          !isSeparatorRow(a.data) && Boolean(a.data?.starred);
-        const bIsStarred =
-          !isSeparatorRow(b.data) && Boolean(b.data?.starred);
+        const aIsStarred = !isSeparatorRow(a.data) && Boolean(a.data?.starred);
+        const bIsStarred = !isSeparatorRow(b.data) && Boolean(b.data?.starred);
 
         if (aIsStarred === bIsStarred) return 0;
         return aIsStarred ? -1 : 1;

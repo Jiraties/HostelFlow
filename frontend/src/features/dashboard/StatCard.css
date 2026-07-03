@@ -78,3 +78,19 @@
     min-height: 5.5rem;
   }
 }
+.statLabel {
+  align-items: center;
+  display: flex;
+  gap: 0.35rem;
+}
+
+.statTooltip {
+  align-items: center;
+  color: #8a8a8a;
+  cursor: help;
+  display: inline-flex;
+}
+
+.statTooltip i {
+  font-size: 1rem;
+}

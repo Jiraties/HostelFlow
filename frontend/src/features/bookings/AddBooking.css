@@ -25,6 +25,33 @@
   margin-bottom: 0.5rem;
 }
 
+.addBooking__fieldError {
+  color: #dc2626;
+  font-size: 0.82rem;
+  margin-top: 0.5rem;
+}
+
+.addBooking__fieldHelper {
+  color: #6b7280;
+  font-size: 0.82rem;
+  margin-top: 0.5rem;
+}
+
+.boxInput--error {
+  outline: 1px solid #dc2626;
+}
+
+.addBooking__roomOption {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.addBooking__roomOption small {
+  color: #dc2626;
+  font-size: 0.75rem;
+}
+
 .addBooking__grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

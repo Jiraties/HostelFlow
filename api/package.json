@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "nodemon src/app.ts",
     "build": "tsc",
+    "test": "node --test -r ts-node/register tests/**/*.test.ts",
     "migrate:roomIds": "ts-node src/scripts/migrateRoomStayRoomIds.ts",
     "start": "node dist/app.js"
   },

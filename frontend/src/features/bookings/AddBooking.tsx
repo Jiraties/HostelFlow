@@ -34,6 +34,9 @@ interface BookingFormData {
   note: string;
 }
 
+type BookingFormErrors = Partial<Record<keyof BookingFormData, string>>;
+type RoomOptionWithReason = OptionType & { disabledReason?: string };
+
 const AddBooking = ({
   mode = "add",
   editModeBooking,
@@ -58,6 +61,7 @@ const AddBooking = ({
   const isEditMode = mode === "edit" && !!editModeBooking;
   const [submitting, setSubmitting] = useState(false);
   const [occupiedRoomIds, setOccupiedRoomIds] = useState<string[]>([]);
+  const [formErrors, setFormErrors] = useState<BookingFormErrors>({});
   const [reminderIsOpen, setReminderIsOpen] = useState(
     mode === "edit" && editModeBooking && editModeBooking?.roomStays.length > 1,
   );
@@ -104,11 +108,19 @@ const AddBooking = ({
     return () => onDirtyChange?.(false);
   }, [formData, initialFormData, onDirtyChange]);
 
-  const roomOptions = useMemo(
+  const roomAvailabilityReady =
+    !isEditMode &&
+    Boolean(formData.checkIn && formData.checkOut) &&
+    new Date(formData.checkIn) < new Date(formData.checkOut);
+
+  const roomOptions = useMemo<RoomOptionWithReason[]>(
     () =>
       roomIdOptions.map((option) => ({
         ...option,
         isDisabled: occupiedRoomIds.includes(option.value),
+        disabledReason: occupiedRoomIds.includes(option.value)
+          ? "ไม่ว่างในช่วงวันที่เลือก"
+          : undefined,
       })),
     [occupiedRoomIds],
   );
@@ -286,10 +298,66 @@ const AddBooking = ({
 
       return updated;
     });
+    setFormErrors((prev) => ({ ...prev, [field]: undefined }));
   };
 
-  const formatPaymentMethodLabel = ({ label }: { label: string }) => (
-    <div style={label === "Unpaid" ? { color: "red" } : {}}>{label}</div>
+  const validateForm = () => {
+    const nextErrors: BookingFormErrors = {};
+
+    if (!formData.name.trim()) {
+      nextErrors.name = "กรุณากรอกชื่อผู้เข้าพัก";
+    }
+    if (!formData.checkIn) {
+      nextErrors.checkIn = "กรุณาเลือกวันเช็คอิน";
+    }
+    if (!formData.checkOut) {
+      nextErrors.checkOut = "กรุณาเลือกวันเช็คเอาท์";
+    }
+    if (
+      formData.checkIn &&
+      formData.checkOut &&
+      new Date(formData.checkIn) >= new Date(formData.checkOut)
+    ) {
+      nextErrors.checkOut = "วันเช็คเอาท์ต้องอยู่หลังวันเช็คอิน";
+    }
+    if (!formData.platformId) {
+      nextErrors.platformId = "กรุณาเลือกช่องทางการจอง";
+    }
+
+    if (!isEditMode) {
+      if (formData.roomIds.length === 0) {
+        nextErrors.roomIds = roomAvailabilityReady
+          ? "กรุณาเลือกห้อง/เตียง"
+          : "เลือกวันเช็คอิน/เช็คเอาท์ก่อน แล้วเลือกห้อง/เตียง";
+      }
+      if (!formData.price) {
+        nextErrors.price = "กรุณากรอกราคาห้องพัก";
+      } else {
+        const price = Number(formData.price);
+        if (!Number.isFinite(price) || price <= 0) {
+          nextErrors.price = "ราคาห้องพักต้องมากกว่า 0";
+        }
+      }
+      if (!formData.paymentMethod) {
+        nextErrors.paymentMethod = "กรุณาเลือกช่องทางการชำระเงิน";
+      }
+      if (!formData.bookingId.trim()) {
+        nextErrors.bookingId = "กรุณากรอก Booking ID / Confirmation Number";
+      }
+    }
+
+    return nextErrors;
+  };
+
+  const formatPaymentMethodLabel = ({ label, value }: OptionType) => (
+    <div style={value === "Unpaid" ? { color: "red" } : {}}>{label}</div>
+  );
+
+  const formatRoomOptionLabel = (option: RoomOptionWithReason) => (
+    <div className="addBooking__roomOption">
+      <span>{option.label}</span>
+      {option.disabledReason && <small>{option.disabledReason}</small>}
+    </div>
   );
 
   const submitHandler = async () => {
@@ -297,32 +365,11 @@ const AddBooking = ({
     setSubmitting(true);
 
     try {
-      const missingEditFields =
-        !formData.name ||
-        !formData.checkIn ||
-        !formData.checkOut ||
-        !formData.platformId;
-      const missingAddFields =
-        missingEditFields ||
-        formData.roomIds.length === 0 ||
-        !formData.price ||
-        !formData.paymentMethod ||
-        !formData.bookingId;
+      const nextErrors = validateForm();
+      setFormErrors(nextErrors);
 
-      if (isEditMode ? missingEditFields : missingAddFields) {
-        throw new Error("กรุณากรอกข้อมูลให้ครบทุกช่อง");
-      }
-
-      if (new Date(formData.checkIn) >= new Date(formData.checkOut)) {
-        throw new Error("วันที่เช็คอินต้องไม่อยู่หลังวันที่เช็คเอาท์");
-      }
-
-      if (!isEditMode) {
-        const price = Number(formData.price);
-
-        if (!Number.isFinite(price) || price <= 0) {
-          throw new Error("ราคาห้องต้องมากกว่า 0");
-        }
+      if (Object.keys(nextErrors).length > 0) {
+        throw new Error("กรุณาตรวจสอบข้อมูลที่ไฮไลต์ไว้");
       }
 
       if (isEditMode && editModeBooking) {
@@ -347,11 +394,22 @@ const AddBooking = ({
         return;
       }
 
-      const response = await axios.post(
-        `${API_URL}/bookings/newBooking`,
-        { booking: formData },
-        { withCredentials: true },
-      );
+      const response = await axios
+        .post(
+          `${API_URL}/bookings/newBooking`,
+          { booking: formData },
+          { withCredentials: true },
+        )
+        .catch((err) => {
+          if (axios.isAxiosError(err) && err.response?.status === 409) {
+            setFormErrors((prev) => ({
+              ...prev,
+              roomIds:
+                err.response?.data?.message || "ห้อง/เตียงนี้ไม่ว่างในวันที่เลือก",
+            }));
+          }
+          throw err;
+        });
 
       if (appendToBookings) appendToBookings(response.data.booking);
       setFormData({
@@ -400,12 +458,15 @@ const AddBooking = ({
           <p className="addBooking__label">ชื่อ-สกุล</p>
           <input
             type="text"
-            className="boxInput"
+            className={`boxInput ${formErrors.name ? "boxInput--error" : ""}`}
             value={formData.name}
             maxLength={30}
             onChange={(e) => formDataChangeHandler("name", e.target.value)}
             placeholder="เช่น Robert Brown"
           />
+          {formErrors.name && (
+            <p className="addBooking__fieldError">{formErrors.name}</p>
+          )}
         </div>
         <div>
           <div className="addBooking__labels">
@@ -421,7 +482,9 @@ const AddBooking = ({
                 borderRight: "0.1rem solid #e8e8e8",
                 borderRadius: "0.5rem 0 0 0.5rem",
               }}
-              className="boxInput addBooking__dateInput"
+              className={`boxInput addBooking__dateInput ${
+                formErrors.checkIn ? "boxInput--error" : ""
+              }`}
             />
             <input
               type="date"
@@ -430,9 +493,16 @@ const AddBooking = ({
                 formDataChangeHandler("checkOut", e.target.value)
               }
               style={{ borderRadius: "0 0.5rem 0.5rem 0" }}
-              className="boxInput addBooking__dateInput"
+              className={`boxInput addBooking__dateInput ${
+                formErrors.checkOut ? "boxInput--error" : ""
+              }`}
             />
           </div>
+          {(formErrors.checkIn || formErrors.checkOut) && (
+            <p className="addBooking__fieldError">
+              {formErrors.checkIn || formErrors.checkOut}
+            </p>
+          )}
         </div>
         {!isEditMode && (
           <div>
@@ -452,12 +522,13 @@ const AddBooking = ({
                 )
               }
             /> */}
-            <Select<OptionType, true>
+            <Select<RoomOptionWithReason, true>
               isMulti
               styles={customStyles<OptionType, true>()}
               classNamePrefix="rs"
               placeholder="เช่น Veranda 1"
               options={roomOptions}
+              formatOptionLabel={formatRoomOptionLabel}
               value={roomOptions.filter((option) =>
                 formData.roomIds.includes(option.value),
               )}
@@ -468,6 +539,20 @@ const AddBooking = ({
                 )
               }
             />
+            <p
+              className={
+                formErrors.roomIds
+                  ? "addBooking__fieldError"
+                  : "addBooking__fieldHelper"
+              }
+            >
+              {formErrors.roomIds ||
+                (roomAvailabilityReady
+                  ? occupiedRoomIds.length > 0
+                    ? "ห้อง/เตียงที่ถูกจองแล้วจะแสดงเป็นตัวเลือกสีเทา"
+                    : "เลือกได้เฉพาะห้อง/เตียงที่ว่างในช่วงวันที่นี้"
+                  : "เลือกวันเช็คอินและเช็คเอาท์ก่อน ระบบจะแสดงห้อง/เตียงที่ว่าง")}
+            </p>
           </div>
         )}
         <div>
@@ -487,6 +572,9 @@ const AddBooking = ({
               formDataChangeHandler("platformId", option?.value || "BOOK")
             }
           />
+          {formErrors.platformId && (
+            <p className="addBooking__fieldError">{formErrors.platformId}</p>
+          )}
         </div>
 
         {!isEditMode && (
@@ -494,12 +582,15 @@ const AddBooking = ({
             <div>
               <p className="addBooking__label">ราคา (฿)</p>
               <input
-                className="boxInput"
+                className={`boxInput ${formErrors.price ? "boxInput--error" : ""}`}
                 type="number"
                 value={formData.price}
                 placeholder="เช่น 1000"
                 onChange={(e) => formDataChangeHandler("price", e.target.value)}
               />
+              {formErrors.price && (
+                <p className="addBooking__fieldError">{formErrors.price}</p>
+              )}
             </div>
             <div>
               <p className="addBooking__label">จ่ายผ่าน</p>
@@ -518,13 +609,20 @@ const AddBooking = ({
                   formDataChangeHandler("paymentMethod", option?.value || "")
                 }
               />
+              {formErrors.paymentMethod && (
+                <p className="addBooking__fieldError">
+                  {formErrors.paymentMethod}
+                </p>
+              )}
             </div>
             <div>
               <p className="addBooking__label">
                 Booking ID / Confirmation Number
               </p>
               <input
-                className="boxInput"
+                className={`boxInput ${
+                  formErrors.bookingId ? "boxInput--error" : ""
+                }`}
                 type="text"
                 value={formData.bookingId}
                 placeholder="เช่น 4012345678"
@@ -532,6 +630,9 @@ const AddBooking = ({
                   formDataChangeHandler("bookingId", e.target.value)
                 }
               />
+              {formErrors.bookingId && (
+                <p className="addBooking__fieldError">{formErrors.bookingId}</p>
+              )}
             </div>
           </>
         )}
@@ -546,7 +647,7 @@ const AddBooking = ({
           />
         </div>
       </div>
-      {!isEditMode && (
+      {!isEditMode && import.meta.env.DEV && (
         <ActionButton
           text="DEBUG | Dummy Data"
           icon="bx-test"
@@ -573,6 +674,7 @@ const AddBooking = ({
               }
               return (
                 err.response?.data?.message ||
+                err.message ||
                 (isEditMode
                   ? "เกิดข้อผิดพลาดในการแก้ไขการจอง"
                   : "เกิดข้อผิดพลาดในการเพิ่มการจอง")

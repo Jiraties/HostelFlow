@@ -98,10 +98,10 @@ const revenueRangeOptions: Array<{ value: RevenueRange; label: string }> = [
 ];
 
 const revenueRangeTitleMap: Record<RevenueRange, string> = {
-  mtd: "รายได้ MTD",
-  "1m": "รายได้ 1M",
-  "3m": "รายได้ 3M",
-  "1y": "รายได้ 1Y",
+  mtd: "รายได้ตามยอดจอง MTD",
+  "1m": "รายได้ตามยอดจอง 1M",
+  "3m": "รายได้ตามยอดจอง 3M",
+  "1y": "รายได้ตามยอดจอง 1Y",
 };
 
 const occupancyRangeTitleMap: Record<RevenueRange, string> = {
@@ -112,9 +112,19 @@ const occupancyRangeTitleMap: Record<RevenueRange, string> = {
 };
 
 const chartMetricOptions: Array<{ value: ChartMetric; label: string }> = [
-  { value: "revenue", label: "Revenue" },
-  { value: "occupancy", label: "Occupancy" },
+  { value: "revenue", label: "ยอดจอง" },
+  { value: "occupancy", label: "เข้าพัก" },
 ];
+
+const dashboardHelpText = {
+  bookedRevenue:
+    "รายได้จากยอดจองทั้งหมด แม้บางรายการยังไม่ได้รับเงินจริง",
+  collectedRevenue:
+    "เงินที่รับแล้วจริง เช่น เงินสด โอน บัตร หรือ OTA จ่ายแล้ว",
+  unpaid: "ยอดจองที่ยังไม่ได้รับเงินจากลูกค้า",
+  cashToday: "เงินสดรับ ลบ เงินสดจ่าย สำหรับวันที่เลือก",
+  occupancy: "จำนวนแขกที่เข้าพักจริงเทียบกับจำนวนเตียงทั้งหมด",
+};
 
 type FinanceSummary = {
   cashIn: number;
@@ -280,7 +290,7 @@ const TrendLineChart = ({
               ];
             }
 
-            return [formatCurrency(Number(value)), "รายได้รวม"];
+            return [formatCurrency(Number(value)), "รายได้ตามยอดจอง"];
           }}
           labelFormatter={(label) => String(label)}
         />
@@ -649,10 +659,12 @@ const Main = () => {
     {
       label: "แขกที่พักอยู่ตอนนี้",
       value: occupancy,
+      helperText: dashboardHelpText.occupancy,
     },
     {
-      label: "ยังไม่ชำระเงิน",
+      label: "ค้างชำระ",
       value: unpaidArrivals,
+      helperText: dashboardHelpText.unpaid,
     },
     // {
     //   label: "มัดจำที่ต้องคืน (฿)",
@@ -787,7 +799,12 @@ const Main = () => {
       <section className="main__statsGrid">
         {statCards.map((stat) => (
           <div className="main__statCard" key={stat.label}>
-            <StatCard label={stat.label} value={stat.value} loading={loading} />
+            <StatCard
+              label={stat.label}
+              value={stat.value}
+              loading={loading}
+              helperText={stat.helperText}
+            />
           </div>
         ))}
       </section>
@@ -807,8 +824,10 @@ const Main = () => {
               <section className="main__adminPanel main__revenueHero">
                 <div className="main__adminPanelHeader">
                   <div>
-                    <span>Revenue</span>
-                    <h3>รายได้รวม</h3>
+                    <span>Booked Revenue</span>
+                    <h3 title={dashboardHelpText.bookedRevenue}>
+                      รายได้ตามยอดจอง
+                    </h3>
                   </div>
                   <p>เดือนนี้</p>
                 </div>
@@ -818,8 +837,8 @@ const Main = () => {
                       ? "-"
                       : `${formatMoney(adminStats?.monthlyGrossRevenue || 0)} ฿`}
                   </strong>
-                  <span>
-                    รับเงินจริง{" "}
+                  <span title={dashboardHelpText.collectedRevenue}>
+                    เงินที่รับแล้ว{" "}
                     {adminLoading && !adminStats
                       ? "-"
                       : `${formatMoney(adminStats?.monthlyCollectedRevenue || 0)} ฿`}
@@ -834,7 +853,9 @@ const Main = () => {
                       <span>{group.title}</span>
                     </div>
                     <div className="main__summaryMetric">
-                      <p>รายได้รวม</p>
+                      <p title={dashboardHelpText.bookedRevenue}>
+                        รายได้ตามยอดจอง
+                      </p>
                       <strong>
                         {adminLoading && !adminStats
                           ? "-"
@@ -842,7 +863,9 @@ const Main = () => {
                       </strong>
                     </div>
                     <div className="main__summaryMetric">
-                      <p>รับเงินจริง</p>
+                      <p title={dashboardHelpText.collectedRevenue}>
+                        เงินที่รับแล้ว
+                      </p>
                       <strong className="main__summarySecondaryValue">
                         {adminLoading && !adminStats
                           ? "-"
@@ -915,12 +938,12 @@ const Main = () => {
                 <div className="main__adminPanelHeader">
                   <div>
                     <span>Occupancy</span>
-                    <h3>การเข้าพัก</h3>
+                    <h3 title={dashboardHelpText.occupancy}>การเข้าพัก</h3>
                   </div>
                   <p>เดือนนี้</p>
                 </div>
                 <div className="main__sideMetric main__sideMetric--large">
-                  <p>อัตราเข้าพัก</p>
+                  <p title={dashboardHelpText.occupancy}>อัตราเข้าพัก</p>
                   <strong>
                     {adminLoading && !adminStats
                       ? "-"
@@ -1008,7 +1031,7 @@ const Main = () => {
         <div className="main__sectionHeader">
           <div>
             <i className="bx bx-currency-notes" />
-            <h2>ปิดยอดเงินสด</h2>
+            <h2>ปิดยอดเงินสดประจำวัน</h2>
           </div>
           {latestDailyClose ? (
             <div className="main__cashCloseStatus">
@@ -1032,7 +1055,7 @@ const Main = () => {
         <div className="main__cashCloseGrid">
           <div className="main__cashCloseSummary">
             <div>
-              <p>รับเงินสด</p>
+              <p title={dashboardHelpText.cashToday}>รับเงินสด</p>
               <strong>
                 {cashCloseLoading
                   ? "-"
@@ -1040,7 +1063,7 @@ const Main = () => {
               </strong>
             </div>
             <div>
-              <p>จ่ายเงินสด</p>
+              <p title={dashboardHelpText.cashToday}>จ่ายเงินสด</p>
               <strong>
                 {cashCloseLoading
                   ? "-"
@@ -1048,7 +1071,7 @@ const Main = () => {
               </strong>
             </div>
             <div>
-              <p>ยอดเงินสดคาดไว้</p>
+              <p title={dashboardHelpText.cashToday}>ยอดเงินสดคาดไว้</p>
               <strong>{formatMoney(expectedCash)} ฿</strong>
             </div>
             <div>
@@ -1105,7 +1128,11 @@ const Main = () => {
               </label>
             )}
             <ActionButton
-              text={dailyCloseIsComplete ? "อัปเดตปิดยอด" : "ปิดยอด"}
+              text={
+                dailyCloseIsComplete
+                  ? "อัปเดตปิดยอดเงินสด"
+                  : "ปิดยอดเงินสดประจำวัน"
+              }
               icon="bx-save"
               highlight
               disabled={cashCloseSaving || cashCloseLoading}

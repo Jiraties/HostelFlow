@@ -20,6 +20,7 @@ type CheckOutProps = {
   onClose?: () => void;
   onDirtyChange?: (isDirty: boolean) => void;
   handleCheckOutSuccess?: (booking: booking) => void;
+  onRecordPayment?: () => void;
 };
 
 const CheckOut = ({
@@ -28,9 +29,11 @@ const CheckOut = ({
   isEarlyCheckOut,
   onDirtyChange,
   handleCheckOutSuccess,
+  onRecordPayment,
 }: CheckOutProps) => {
   const [releaseRemainingNights, setReleaseRemainingNights] = useState(true);
   const [confirmedDepositRefund, setConfirmedDepositRefund] = useState(false);
+  const [confirmedStillUnpaid, setConfirmedStillUnpaid] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const today = new Date();
   const todayDateOnly = new Date(
@@ -74,15 +77,42 @@ const CheckOut = ({
     0,
   );
   const depositPaymentMethod = depositTransactions[0]?.paymentMethod || "Cash";
+  const unpaidRoomChargeAmount = Math.max(
+    booking.transactions.reduce((sum, transaction) => {
+      if (transaction.type === "roomCharge") {
+        return (
+          sum +
+          (transaction.paymentMethod === "Unpaid"
+            ? Math.abs(transaction.amount || 0)
+            : 0)
+        );
+      }
+
+      if (
+        ["settlementCharge", "paymentCorrection"].includes(transaction.type) &&
+        transaction.relatedTransactionType === "roomCharge" &&
+        transaction.paymentMethod !== "Unpaid"
+      ) {
+        return sum - Math.abs(transaction.amount || 0);
+      }
+
+      return sum;
+    }, 0),
+    0,
+  );
+  const hasUnpaidBalance = unpaidRoomChargeAmount > 0;
 
   useEffect(() => {
     onDirtyChange?.(
-      confirmedDepositRefund || (isEarlyCheckOut && !releaseRemainingNights),
+      confirmedDepositRefund ||
+        confirmedStillUnpaid ||
+        (isEarlyCheckOut && !releaseRemainingNights),
     );
 
     return () => onDirtyChange?.(false);
   }, [
     confirmedDepositRefund,
+    confirmedStillUnpaid,
     isEarlyCheckOut,
     onDirtyChange,
     releaseRemainingNights,
@@ -93,6 +123,12 @@ const CheckOut = ({
       throw new Error("กรุณายืนยันการคืนมัดจำ");
     }
 
+    if (hasUnpaidBalance && !confirmedStillUnpaid) {
+      throw new Error(
+        "ยังมีเงินที่ยังไม่ได้รับ กรุณาบันทึกการชำระเงินหรือยืนยันก่อนเช็คเอาท์",
+      );
+    }
+
     setSubmitting(true);
 
     try {
@@ -101,6 +137,7 @@ const CheckOut = ({
         {
           depositReturned: confirmedDepositRefund,
           releaseRemainingNights,
+          confirmedStillUnpaid,
         },
         { withCredentials: true },
       );
@@ -178,6 +215,42 @@ const CheckOut = ({
         </div>
         <div>
           <p className="checkIn__label">สรุปยอดการคืนมัดจำ</p>
+          {hasUnpaidBalance && (
+            <section className="checkOut__unpaidWarning">
+              <div className="checkOut__unpaidHeader">
+                <i className="bx bx-error-circle" />
+                <div>
+                  <p>ยอดค้างชำระ</p>
+                  <strong>{formatCurrency(unpaidRoomChargeAmount)}</strong>
+                </div>
+              </div>
+              <p>
+                ยังมีเงินที่ยังไม่ได้รับ
+                กรุณาบันทึกการชำระเงินหรือยืนยันก่อนเช็คเอาท์
+              </p>
+              <div className="checkOut__unpaidActions">
+                {onRecordPayment && (
+                  <button
+                    type="button"
+                    className="checkOut__recordPaymentButton"
+                    onClick={onRecordPayment}
+                  >
+                    <i className="bx bx-receipt" />
+                    บันทึกการชำระเงิน
+                  </button>
+                )}
+                <label className="checkbox checkOut__stillUnpaidCheckbox">
+                  ยืนยันว่าเช็คเอาท์โดยยังค้างชำระ
+                  <input
+                    type="checkbox"
+                    checked={confirmedStillUnpaid}
+                    onChange={(e) => setConfirmedStillUnpaid(e.target.checked)}
+                  />
+                  <span className="box"></span>
+                </label>
+              </div>
+            </section>
+          )}
           <div className="checkIn__paymentConfirmation">
             <div className="checkIn__paymentConfirmationList">
               <div className="checkIn__paymentRow">

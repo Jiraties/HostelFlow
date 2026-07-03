@@ -332,7 +332,7 @@ const ViewBooking = ({
     switch (status) {
       case "booked":
         if (checkInIsToday) {
-          return usedFor === "classname" ? "notCheckedIn" : "ยังไม่ Check-In";
+          return usedFor === "classname" ? "notCheckedIn" : "รอ Check-In";
         }
 
         return usedFor === "classname" ? "booked" : "จองแล้ว";
@@ -701,6 +701,10 @@ const ViewBooking = ({
           isEarlyCheckOut={isEarlyCheckOut}
           onClose={() => setCheckOutIsOpen(false)}
           onDirtyChange={setCheckOutIsDirty}
+          onRecordPayment={() => {
+            setCheckOutIsOpen(false);
+            setAddTransactionIsOpen(true);
+          }}
           handleCheckOutSuccess={(updatedBooking) => {
             updateBooking(updatedBooking);
             setCheckOutIsOpen(false);

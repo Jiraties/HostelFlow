@@ -17,6 +17,69 @@
   margin-top: 1.5rem;
 }
 
+.checkOut__unpaidWarning {
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  border-radius: 1rem;
+  color: #7f1d1d;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin-bottom: 1rem;
+  padding: 1rem;
+}
+
+.checkOut__unpaidHeader {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.checkOut__unpaidHeader i {
+  color: #dc2626;
+  font-size: 1.5rem;
+}
+
+.checkOut__unpaidHeader p {
+  font-size: 0.85rem;
+  margin-bottom: 0.15rem;
+}
+
+.checkOut__unpaidHeader strong {
+  color: #dc2626;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.checkOut__unpaidActions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.checkOut__recordPaymentButton {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #fecaca;
+  border-radius: 0.75rem;
+  color: #991b1b;
+  cursor: pointer;
+  display: inline-flex;
+  font-family: "IBM Plex Sans Thai", sans-serif;
+  gap: 0.4rem;
+  padding: 0.65rem 0.9rem;
+}
+
+.checkOut__recordPaymentButton:hover {
+  background: #fff7f7;
+}
+
+.checkOut__stillUnpaidCheckbox {
+  color: #7f1d1d;
+}
+
 .checkOut__deposit {
   padding: 1rem;
   border-radius: 1rem;
