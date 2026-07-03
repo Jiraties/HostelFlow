@@ -112,17 +112,6 @@ const roomChargeTotal = (transactions) => transactions
     .filter((transaction) => transaction.type === "roomCharge")
     .reduce((sum, transaction) => sum +
     (0, financeHelpers_1.transactionRevenueAmount)(transaction), 0);
-const immigrationMonthQuery = (month) => {
-    if (!/^\d{4}-\d{2}$/.test(month))
-        return null;
-    const [year, monthNumber] = month.split("-").map(Number);
-    const firstDayOfNextMonth = new Date(year, monthNumber, 1);
-    const firstDayOfMonth = new Date(year, monthNumber - 1, 1);
-    return {
-        checkIn: { $lt: firstDayOfNextMonth },
-        checkOut: { $gt: firstDayOfMonth },
-    };
-};
 const dateQuery = (date) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date))
         return null;
@@ -130,6 +119,14 @@ const dateQuery = (date) => {
     const end = new Date(start);
     end.setDate(start.getDate() + 1);
     return { start, end };
+};
+const immigrationDateQuery = (date) => {
+    const bounds = dateQuery(date);
+    if (!bounds)
+        return null;
+    return {
+        checkIn: { $gte: bounds.start, $lt: bounds.end },
+    };
 };
 const hotelAccommodationDateQuery = (date) => {
     const bounds = dateQuery(date);
@@ -425,10 +422,10 @@ const getBookingsReport = async (req, res) => {
 exports.getBookingsReport = getBookingsReport;
 const getImmigrationReportStatus = async (req, res) => {
     try {
-        const month = req.query.month;
-        const query = immigrationMonthQuery(month);
+        const date = (req.query.date || req.query.month);
+        const query = immigrationDateQuery(date);
         if (!query) {
-            return res.status(400).json({ message: "Invalid month format" });
+            return res.status(400).json({ message: "Invalid date format" });
         }
         const bookings = await booking_1.default.find(query)
             .select("bookingId name passport checkOut")
@@ -459,10 +456,10 @@ const getImmigrationReportStatus = async (req, res) => {
 exports.getImmigrationReportStatus = getImmigrationReportStatus;
 const getImmigrationReport = async (req, res) => {
     try {
-        const month = req.query.month;
-        const query = immigrationMonthQuery(month);
+        const date = (req.query.date || req.query.month);
+        const query = immigrationDateQuery(date);
         if (!query) {
-            return res.status(400).json({ message: "Invalid month format" });
+            return res.status(400).json({ message: "Invalid date format" });
         }
         const bookings = await booking_1.default.find(query)
             .select("bookingId name passport checkOut")
@@ -471,8 +468,7 @@ const getImmigrationReport = async (req, res) => {
             name: 1,
         });
         if (bookings.length === 0)
-            return res.status(400).json({ message: "ไม่พบรายการจองในเดือนที่กำหนด" });
-        console.log(bookings.length);
+            return res.status(400).json({ message: "ไม่พบรายการจองในวันที่กำหนด" });
         const workbook = new exceljs_1.default.Workbook();
         const templatePath = path_1.default.resolve(process.cwd(), "uploads", "document-templates", "Immigration.xlsx");
         await workbook.xlsx.readFile(templatePath);
@@ -518,7 +514,7 @@ const getImmigrationReport = async (req, res) => {
             row.commit();
         });
         res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-        res.setHeader("Content-Disposition", `attachment; filename=immigration-${month}.xlsx`);
+        res.setHeader("Content-Disposition", `attachment; filename=immigration-${date}.xlsx`);
         await workbook.xlsx.write(res);
         res.end();
     }

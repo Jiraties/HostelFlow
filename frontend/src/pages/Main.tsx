@@ -66,8 +66,10 @@ const daysBetweenDates = (from: Date, to: Date) =>
   );
 
 type AdminDashboardStats = {
-  todayExpectedRevenue: number;
-  monthRoomRevenue: number;
+  dailyGrossRevenue: number;
+  dailyCollectedRevenue: number;
+  monthlyGrossRevenue: number;
+  monthlyCollectedRevenue: number;
   monthBookings: number;
   unpaidAmount: number;
   occupancyRate: number;
@@ -75,11 +77,44 @@ type AdminDashboardStats = {
     platformId: PlatformId;
     count: number;
   }>;
+  revenueRange: RevenueRange;
   revenueSeries: Array<{
     date: string;
-    revenue: number;
+    grossRevenue: number;
+    collectedRevenue: number;
+    occupancyRate: number;
+    occupiedCapacity: number;
   }>;
 };
+
+type RevenueRange = "mtd" | "1m" | "3m" | "1y";
+type ChartMetric = "revenue" | "occupancy";
+
+const revenueRangeOptions: Array<{ value: RevenueRange; label: string }> = [
+  { value: "mtd", label: "MTD" },
+  { value: "1m", label: "1M" },
+  { value: "3m", label: "3M" },
+  { value: "1y", label: "1Y" },
+];
+
+const revenueRangeTitleMap: Record<RevenueRange, string> = {
+  mtd: "รายได้ MTD",
+  "1m": "รายได้ 1M",
+  "3m": "รายได้ 3M",
+  "1y": "รายได้ 1Y",
+};
+
+const occupancyRangeTitleMap: Record<RevenueRange, string> = {
+  mtd: "อัตราเข้าพัก MTD",
+  "1m": "อัตราเข้าพัก 1M",
+  "3m": "อัตราเข้าพัก 3M",
+  "1y": "อัตราเข้าพัก 1Y",
+};
+
+const chartMetricOptions: Array<{ value: ChartMetric; label: string }> = [
+  { value: "revenue", label: "Revenue" },
+  { value: "occupancy", label: "Occupancy" },
+];
 
 type FinanceSummary = {
   cashIn: number;
@@ -171,10 +206,12 @@ const formatCloseTime = (date?: string | Date) =>
       })
     : "";
 
-const RevenueLineChart = ({
+const TrendLineChart = ({
   series,
+  metric,
 }: {
   series: AdminDashboardStats["revenueSeries"];
+  metric: ChartMetric;
 }) => (
   <div className="main__chartWrapper">
     <ResponsiveContainer width="100%" height={260}>
@@ -184,6 +221,7 @@ const RevenueLineChart = ({
 
           return {
             ...point,
+            occupancyPercent: point.occupancyRate * 100,
             label: new Intl.DateTimeFormat("th-TH", {
               day: "numeric",
               month: "short",
@@ -208,8 +246,13 @@ const RevenueLineChart = ({
           axisLine={false}
           tickLine={false}
           width={54}
+          domain={metric === "occupancy" ? [0, 100] : undefined}
           tick={{ fill: "#777777", fontSize: 12 }}
-          tickFormatter={(value) => formatCompactNumber(Number(value))}
+          tickFormatter={(value) =>
+            metric === "revenue"
+              ? formatCompactNumber(Number(value))
+              : `${formatMoney(Number(value))}%`
+          }
         />
         <Tooltip
           cursor={{
@@ -222,12 +265,28 @@ const RevenueLineChart = ({
             boxShadow: "var(--main-shadow)",
             fontFamily: '"IBM Plex Sans Thai", sans-serif',
           }}
-          formatter={(value) => [formatCurrency(Number(value)), "รายได้"]}
+          formatter={(value, _name, item) => {
+            if (metric === "occupancy") {
+              const payload =
+                item && typeof item === "object" && "payload" in item
+                  ? (item.payload as { occupiedCapacity?: number })
+                  : {};
+
+              return [
+                `${formatMoney(Number(value))}% · ${formatMoney(
+                  payload.occupiedCapacity || 0,
+                )} เตียง`,
+                "อัตราเข้าพัก",
+              ];
+            }
+
+            return [formatCurrency(Number(value)), "รายได้รวม"];
+          }}
           labelFormatter={(label) => String(label)}
         />
         <Area
           type="monotone"
-          dataKey="revenue"
+          dataKey={metric === "revenue" ? "grossRevenue" : "occupancyPercent"}
           stroke="none"
           fill="var(--primary-color)"
           fillOpacity={0.12}
@@ -235,7 +294,7 @@ const RevenueLineChart = ({
         />
         <Line
           type="monotone"
-          dataKey="revenue"
+          dataKey={metric === "revenue" ? "grossRevenue" : "occupancyPercent"}
           stroke="var(--primary-color)"
           strokeWidth={3}
           dot={{ r: 3, fill: "#fff", strokeWidth: 2 }}
@@ -381,6 +440,8 @@ const Main = () => {
   const [adminStats, setAdminStats] = useState<AdminDashboardStats | null>(
     null,
   );
+  const [revenueRange, setRevenueRange] = useState<RevenueRange>("mtd");
+  const [chartMetric, setChartMetric] = useState<ChartMetric>("revenue");
   const [cashCloseLoading, setCashCloseLoading] = useState(false);
   const [cashCloseSaving, setCashCloseSaving] = useState(false);
   const [reconciliation, setReconciliation] =
@@ -467,6 +528,7 @@ const Main = () => {
       const response = await axios.get(
         `${API_URL}/bookings/getAdminDashboardStats`,
         {
+          params: { revenueRange },
           withCredentials: true,
         },
       );
@@ -478,7 +540,7 @@ const Main = () => {
     } finally {
       setAdminLoading(false);
     }
-  }, [user?.admin]);
+  }, [revenueRange, user?.admin]);
 
   const fetchCashClose = useCallback(async () => {
     setCashCloseLoading(true);
@@ -601,32 +663,53 @@ const Main = () => {
       value: bookingsThatNeedReview.length,
     },
   ];
-  const adminStatCards = adminStats
+  const adminRevenueGroups = adminStats
     ? [
         {
-          label: "รายได้วันนี้ (฿)",
-          value: adminStats.todayExpectedRevenue,
+          title: "วันนี้",
+          grossRevenue: adminStats.dailyGrossRevenue,
+          collectedRevenue: adminStats.dailyCollectedRevenue,
         },
         {
-          label: "รายได้เดือนนี้ (฿)",
-          value: adminStats.monthRoomRevenue,
-        },
-        {
-          label: "ยอดจองเดือนนี้",
-          value: adminStats.monthBookings,
-        },
-        // {
-        //   label: "ยอดค้างชำระ (฿)",
-        //   value: adminStats.unpaidAmount,
-        // },
-        {
-          label: "อัตราเข้าพัก",
-          value: occupancyRatePercent,
-          suffix: "%",
-          fillPercent: Math.min(Math.max(occupancyRatePercent, 0), 100),
+          title: "เดือนนี้",
+          grossRevenue: adminStats.monthlyGrossRevenue,
+          collectedRevenue: adminStats.monthlyCollectedRevenue,
         },
       ]
-    : [];
+    : [
+        {
+          title: "วันนี้",
+          grossRevenue: 0,
+          collectedRevenue: 0,
+        },
+        {
+          title: "เดือนนี้",
+          grossRevenue: 0,
+          collectedRevenue: 0,
+        },
+      ];
+  const chartRevenueTotals = adminStats
+    ? adminStats.revenueSeries.reduce(
+        (total, point) => total + point.grossRevenue,
+        0,
+      )
+    : 0;
+  const occupancyFillPercent = Math.min(Math.max(occupancyRatePercent, 0), 100);
+  const chartAverageOccupancy =
+    adminStats && adminStats.revenueSeries.length > 0
+      ? adminStats.revenueSeries.reduce(
+          (total, point) => total + point.occupancyRate,
+          0,
+        ) / adminStats.revenueSeries.length
+      : 0;
+  const chartTitle =
+    chartMetric === "revenue"
+      ? revenueRangeTitleMap[revenueRange]
+      : occupancyRangeTitleMap[revenueRange];
+  const chartSummary =
+    chartMetric === "revenue"
+      ? `${chartRevenueTotals.toLocaleString()} ฿`
+      : `${formatMoney(chartAverageOccupancy * 100)}%`;
 
   const appendToBookings = () => {
     setAddBookingIsOpen(false);
@@ -719,96 +802,205 @@ const Main = () => {
             <span>เดือนนี้</span>
           </div>
 
-          <div className="main__adminStatsGrid">
-            {(adminStats
-              ? adminStatCards
-              : [
-                  { label: "รายได้วันนี้ (฿)", value: 0 },
-                  { label: "รายได้เดือนนี้ (฿)", value: 0 },
-                  { label: "ยอดจองเดือนนี้", value: 0 },
-                  { label: "ยอดค้างชำระ (฿)", value: 0 },
-                  { label: "อัตราเข้าพัก (%)", value: 0 },
-                ]
-            ).map((stat) => (
-              <div
-                className={`main__adminStatCard${
-                  "fillPercent" in stat ? " main__adminStatCard--fill" : ""
-                }`}
-                key={stat.label}
+          <div className="main__adminDashboardGrid">
+            <div className="main__adminPrimaryColumn">
+              <section className="main__adminPanel main__revenueHero">
+                <div className="main__adminPanelHeader">
+                  <div>
+                    <span>Revenue</span>
+                    <h3>รายได้รวม</h3>
+                  </div>
+                  <p>เดือนนี้</p>
+                </div>
+                <div className="main__revenueHeroValue">
+                  <strong>
+                    {adminLoading && !adminStats
+                      ? "-"
+                      : `${formatMoney(adminStats?.monthlyGrossRevenue || 0)} ฿`}
+                  </strong>
+                  <span>
+                    รับเงินจริง{" "}
+                    {adminLoading && !adminStats
+                      ? "-"
+                      : `${formatMoney(adminStats?.monthlyCollectedRevenue || 0)} ฿`}
+                  </span>
+                </div>
+              </section>
+
+              <section className="main__adminPanel main__revenueBreakdown">
+                {adminRevenueGroups.map((group) => (
+                  <div className="main__summaryRow" key={group.title}>
+                    <div className="main__summaryLabel">
+                      <span>{group.title}</span>
+                    </div>
+                    <div className="main__summaryMetric">
+                      <p>รายได้รวม</p>
+                      <strong>
+                        {adminLoading && !adminStats
+                          ? "-"
+                          : `${formatMoney(group.grossRevenue)} ฿`}
+                      </strong>
+                    </div>
+                    <div className="main__summaryMetric">
+                      <p>รับเงินจริง</p>
+                      <strong className="main__summarySecondaryValue">
+                        {adminLoading && !adminStats
+                          ? "-"
+                          : `${formatMoney(group.collectedRevenue)} ฿`}
+                      </strong>
+                    </div>
+                  </div>
+                ))}
+              </section>
+
+              {adminStats && (
+                <section className="main__adminPanel main__trendPanel">
+                  <div className="main__cardHeader">
+                    <div>
+                      <h3>{chartTitle}</h3>
+                      <span>{chartSummary}</span>
+                    </div>
+                    <div className="main__chartControls">
+                      <div className="main__chartMetricControl">
+                        {chartMetricOptions.map((option) => (
+                          <button
+                            className={
+                              option.value === chartMetric
+                                ? "main__chartRangeButton main__chartRangeButton--active"
+                                : "main__chartRangeButton"
+                            }
+                            key={option.value}
+                            type="button"
+                            onClick={() => setChartMetric(option.value)}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="main__chartRangeControl">
+                        {revenueRangeOptions.map((option) => (
+                          <button
+                            className={
+                              option.value === revenueRange
+                                ? "main__chartRangeButton main__chartRangeButton--active"
+                                : "main__chartRangeButton"
+                            }
+                            key={option.value}
+                            type="button"
+                            onClick={() => setRevenueRange(option.value)}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <TrendLineChart
+                    metric={chartMetric}
+                    series={adminStats.revenueSeries}
+                  />
+                </section>
+              )}
+            </div>
+
+            <aside className="main__adminSideColumn">
+              <section
+                className="main__adminPanel main__occupancyPanel"
                 style={
-                  "fillPercent" in stat
-                    ? ({
-                        "--admin-stat-fill": `${stat.fillPercent}%`,
-                      } as React.CSSProperties)
-                    : undefined
+                  {
+                    "--operation-fill": `${occupancyFillPercent}%`,
+                  } as React.CSSProperties
                 }
               >
-                <StatCard
-                  label={stat.label}
-                  value={stat.value}
-                  loading={adminLoading && !adminStats}
-                  suffix={"suffix" in stat ? stat.suffix : undefined}
-                />
-              </div>
-            ))}
-          </div>
-
-          {adminStats && (
-            <div className="main__adminInsights">
-              <div className="main__chartCard">
-                <div className="main__cardHeader">
-                  <h3>รายได้ค่าห้องเดือนนี้</h3>
-                  <span>{adminStats.monthRoomRevenue.toLocaleString()} ฿</span>
+                <div className="main__adminPanelHeader">
+                  <div>
+                    <span>Occupancy</span>
+                    <h3>การเข้าพัก</h3>
+                  </div>
+                  <p>เดือนนี้</p>
                 </div>
-                <RevenueLineChart series={adminStats.revenueSeries} />
-              </div>
-
-              <div className="main__channelCard">
-                <div className="main__cardHeader">
-                  <h3>ช่องทางการจอง</h3>
-                  <span>{adminStats.monthBookings}</span>
+                <div className="main__sideMetric main__sideMetric--large">
+                  <p>อัตราเข้าพัก</p>
+                  <strong>
+                    {adminLoading && !adminStats
+                      ? "-"
+                      : `${formatMoney(occupancyRatePercent)}%`}
+                  </strong>
                 </div>
-                <div className="main__channelList">
-                  {adminStats.channelMix.length === 0 ? (
-                    <div className="main__emptyState">
-                      <i className="bx bx-info-circle" />
-                      <p>ยังไม่มีรายการจองเดือนนี้</p>
+              </section>
+
+              <section className="main__adminPanel main__bookingPanel">
+                <div className="main__adminPanelHeader">
+                  <div>
+                    <span>Bookings</span>
+                    <h3>ยอดจอง</h3>
+                  </div>
+                  <p>เดือนนี้</p>
+                </div>
+                <div className="main__sideMetric">
+                  <p>ยอดจองเดือนนี้</p>
+                  <strong>
+                    {adminLoading && !adminStats
+                      ? "-"
+                      : (adminStats?.monthBookings || 0).toLocaleString(
+                          "th-TH",
+                        )}
+                  </strong>
+                </div>
+              </section>
+
+              {adminStats && (
+                <section className="main__adminPanel main__channelPanel">
+                  <div className="main__adminPanelHeader">
+                    <div>
+                      <span>Channels</span>
+                      <h3>ช่องทางการจอง</h3>
                     </div>
-                  ) : (
-                    adminStats.channelMix.map((channel) => {
-                      const platform = platformMap[channel.platformId];
-                      const percentage =
-                        adminStats.monthBookings === 0
-                          ? 0
-                          : Math.round(
-                              (channel.count / adminStats.monthBookings) * 100,
-                            );
+                    <p>{adminStats.monthBookings}</p>
+                  </div>
+                  <div className="main__channelList">
+                    {adminStats.channelMix.length === 0 ? (
+                      <div className="main__emptyState">
+                        <i className="bx bx-info-circle" />
+                        <p>ยังไม่มีรายการจองเดือนนี้</p>
+                      </div>
+                    ) : (
+                      adminStats.channelMix.map((channel) => {
+                        const platform = platformMap[channel.platformId];
+                        const percentage =
+                          adminStats.monthBookings === 0
+                            ? 0
+                            : Math.round(
+                                (channel.count / adminStats.monthBookings) *
+                                  100,
+                              );
 
-                      return (
-                        <div
-                          className="main__channelItem"
-                          key={channel.platformId}
-                        >
-                          <div>
-                            <span
-                              style={{
-                                backgroundColor:
-                                  platform?.color || "var(--primary-color)",
-                              }}
-                            />
-                            <p>{platform?.label || channel.platformId}</p>
+                        return (
+                          <div
+                            className="main__channelItem"
+                            key={channel.platformId}
+                          >
+                            <div>
+                              <span
+                                style={{
+                                  backgroundColor:
+                                    platform?.color || "var(--primary-color)",
+                                }}
+                              />
+                              <p>{platform?.label || channel.platformId}</p>
+                            </div>
+                            <strong>
+                              {channel.count} รายการ · {percentage}%
+                            </strong>
                           </div>
-                          <strong>
-                            {channel.count} รายการ · {percentage}%
-                          </strong>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
+                        );
+                      })
+                    )}
+                  </div>
+                </section>
+              )}
+            </aside>
+          </div>
         </section>
       )}
 

@@ -8,8 +8,9 @@ import {
   LARGE_REFUND_THRESHOLD,
   normalizeTransaction,
   summarizeTransactions,
+  transactionDashboardCollectedRevenueAmount,
+  transactionDashboardGrossRevenueAmount,
   transactionDirection,
-  transactionRevenueAmount,
   transactionUnpaidAmount,
   type SourceAction,
 } from "../helpers/financeHelpers";
@@ -129,6 +130,9 @@ const ROOM_BLOCKING_BOOKING_FILTER = {
 };
 const BUSINESS_TIME_ZONE = "Asia/Bangkok";
 const BANGKOK_UTC_OFFSET_HOURS = 7;
+const REVENUE_CHART_RANGES = ["mtd", "1m", "3m", "1y"] as const;
+type RevenueChartRange = (typeof REVENUE_CHART_RANGES)[number];
+type RevenueChartBucketSize = "day" | "week" | "month";
 
 const sendDuplicateMutationResponse = (res: Response) =>
   res.status(409).json({
@@ -168,6 +172,153 @@ const getBusinessMonthBounds = (date = new Date()) => {
   const end = getBusinessDateStart(year, month + 1, 1);
 
   return { start, end };
+};
+
+const daysInBusinessMonth = (year: number, month: number) =>
+  new Date(Date.UTC(year, month, 0)).getUTCDate();
+
+const getClampedBusinessDateStart = (
+  year: number,
+  month: number,
+  day: number,
+) => {
+  const monthStart = new Date(Date.UTC(year, month - 1, 1));
+  const normalizedYear = monthStart.getUTCFullYear();
+  const normalizedMonth = monthStart.getUTCMonth() + 1;
+  const normalizedDay = Math.min(
+    day,
+    daysInBusinessMonth(normalizedYear, normalizedMonth),
+  );
+
+  return getBusinessDateStart(normalizedYear, normalizedMonth, normalizedDay);
+};
+
+const normalizeRevenueChartRange = (value: unknown): RevenueChartRange =>
+  typeof value === "string" &&
+  REVENUE_CHART_RANGES.includes(value as RevenueChartRange)
+    ? (value as RevenueChartRange)
+    : "mtd";
+
+const getRevenueChartBounds = (
+  date: Date,
+  range: RevenueChartRange,
+  startOfMonth: Date,
+  endOfToday: Date,
+) => {
+  if (range === "mtd") return { start: startOfMonth, end: endOfToday };
+
+  const { year, month, day } = getBusinessDateParts(date);
+
+  if (range === "1m") {
+    return {
+      start: getClampedBusinessDateStart(year, month - 1, day),
+      end: endOfToday,
+    };
+  }
+
+  if (range === "3m") {
+    return {
+      start: getClampedBusinessDateStart(year, month - 3, day),
+      end: endOfToday,
+    };
+  }
+
+  return {
+    start: getClampedBusinessDateStart(year - 1, month, day),
+    end: endOfToday,
+  };
+};
+
+const getRevenueChartBucketSize = (
+  range: RevenueChartRange,
+): RevenueChartBucketSize => {
+  if (range === "1y") return "month";
+  if (range === "3m") return "week";
+  return "day";
+};
+
+const addBusinessMonths = (date: Date, months: number) => {
+  const { year, month, day } = getBusinessDateParts(date);
+  return getClampedBusinessDateStart(year, month + months, day);
+};
+
+const getRevenueBucketStart = (
+  date: Date,
+  bucketSize: RevenueChartBucketSize,
+) => {
+  if (bucketSize === "month") {
+    const { year, month } = getBusinessDateParts(date);
+    return getBusinessDateStart(year, month, 1);
+  }
+
+  if (bucketSize === "week") {
+    const dayStart = getBookingBusinessDateStart(date);
+    const weekday = dayStart.getUTCDay();
+    const daysFromMonday = (weekday + 6) % 7;
+    return new Date(dayStart.getTime() - daysFromMonday * 86400000);
+  }
+
+  return getBookingBusinessDateStart(date);
+};
+
+const nextRevenueBucketStart = (
+  date: Date,
+  bucketSize: RevenueChartBucketSize,
+) => {
+  if (bucketSize === "month") return addBusinessMonths(date, 1);
+  if (bucketSize === "week") return new Date(date.getTime() + 7 * 86400000);
+  return new Date(date.getTime() + 86400000);
+};
+
+const bookingKeepsRoomForOccupancy = (booking: booking) => {
+  if (booking.status !== "cancelled" && booking.status !== "noShow") {
+    return true;
+  }
+
+  return (
+    booking.cancellation?.roomReleaseStatus === "blocked" ||
+    booking.resolution?.roomReleaseStatus === "blocked"
+  );
+};
+
+const effectiveRoomStayEnd = (currentBooking: booking, roomStay: roomStay) => {
+  const stayEnd = new Date(roomStay.to);
+
+  if (
+    currentBooking.checkout?.earlyCheckOut &&
+    currentBooking.checkout.roomReleaseStatus === "released" &&
+    currentBooking.checkout.checkedOutAt
+  ) {
+    const checkoutStart = getBookingBusinessDateStart(
+      new Date(currentBooking.checkout.checkedOutAt),
+    );
+    return checkoutStart < stayEnd ? checkoutStart : stayEnd;
+  }
+
+  return stayEnd;
+};
+
+const bookingOccupiedCapacityOnDate = (
+  currentBooking: booking,
+  start: Date,
+  end: Date,
+) => {
+  if (!bookingKeepsRoomForOccupancy(currentBooking)) return 0;
+
+  return (currentBooking.roomStays || []).reduce((total, roomStay) => {
+    const stayStart = new Date(roomStay.from);
+    const stayEnd = effectiveRoomStayEnd(currentBooking, roomStay);
+
+    if (stayStart >= end || stayEnd <= start) return total;
+
+    return (
+      total +
+      getRoomStayRoomIds(roomStay).reduce(
+        (roomTotal, roomId) => roomTotal + getRoomGuestCapacity(roomId),
+        0,
+      )
+    );
+  }, 0);
 };
 
 const getRoomGuestCapacity = (roomId: string) =>
@@ -322,21 +473,6 @@ const formatLocalDateKey = (date: Date) => {
     "0",
   )}`;
 };
-
-const roomChargeRevenue = (booking: booking) =>
-  booking.transactions.reduce((sum, transaction) => {
-    if (
-      transaction.type !== "roomCharge" &&
-      !(
-        ["settlementCharge", "paymentCorrection"].includes(transaction.type) &&
-        transaction.relatedTransactionType === "roomCharge"
-      )
-    ) {
-      return sum;
-    }
-
-    return sum + transactionRevenueAmount(transaction);
-  }, 0);
 
 const unpaidRoomChargeAmount = (booking: booking) =>
   Math.max(
@@ -945,12 +1081,36 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
     getBusinessDayBounds(today);
   const { start: startOfMonth, end: startOfNextMonth } =
     getBusinessMonthBounds(today);
+  const revenueRange = normalizeRevenueChartRange(req.query.revenueRange);
+  const { start: chartStart, end: chartEnd } = getRevenueChartBounds(
+    today,
+    revenueRange,
+    startOfMonth,
+    startOfTomorrow,
+  );
 
   try {
-    const [todayArrivals, monthBookings, unpaidBookings, occupancy] =
-      await Promise.all([
+    const [
+      monthFinancialBookings,
+      chartFinancialBookings,
+      occupancyBookings,
+      monthBookings,
+      unpaidBookings,
+      occupancy,
+    ] = await Promise.all([
         Booking.find({
-          checkIn: { $gte: startOfToday, $lt: startOfTomorrow },
+          "transactions.createdAt": { $gte: startOfMonth, $lt: startOfNextMonth },
+        }),
+        Booking.find({
+          "transactions.createdAt": { $gte: chartStart, $lt: chartEnd },
+        }),
+        Booking.find({
+          roomStays: {
+            $elemMatch: {
+              from: { $lt: chartEnd },
+              to: { $gt: chartStart },
+            },
+          },
         }),
         Booking.find({
           checkIn: { $gte: startOfMonth, $lt: startOfNextMonth },
@@ -967,13 +1127,68 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
         getGuestsInHouse(today),
       ]);
 
-    const todayExpectedRevenue = todayArrivals.reduce(
-      (sum, booking) => sum + roomChargeRevenue(booking),
-      0,
+    const transactionsInRange = (
+      bookings: typeof monthFinancialBookings,
+      start: Date,
+      end: Date,
+    ) =>
+      bookings.flatMap((booking) =>
+        (booking.transactions || [])
+          .filter((transaction) => {
+            if (!transaction.createdAt) return false;
+            const transactionDate = new Date(transaction.createdAt);
+            return transactionDate >= start && transactionDate < end;
+          })
+          .map((transaction) => ({
+            transaction,
+            bookingTransactions: booking.transactions || [],
+          })),
+      );
+    const monthFinancialTransactions = transactionsInRange(
+      monthFinancialBookings,
+      startOfMonth,
+      startOfNextMonth,
     );
-    const monthRoomRevenue = monthBookings.reduce(
-      (sum, booking) => sum + roomChargeRevenue(booking),
-      0,
+    const chartFinancialTransactions = transactionsInRange(
+      chartFinancialBookings,
+      chartStart,
+      chartEnd,
+    );
+    const dailyFinancialTransactions = monthFinancialTransactions.filter(
+      ({ transaction }) => {
+        const transactionDate = new Date(transaction.createdAt || 0);
+        return transactionDate >= startOfToday && transactionDate < startOfTomorrow;
+      },
+    );
+
+    const calculateGrossRevenue = (
+      transactions: typeof monthFinancialTransactions,
+    ) =>
+      transactions.reduce(
+        (sum, { transaction }) =>
+          sum + transactionDashboardGrossRevenueAmount(transaction),
+        0,
+      );
+    const calculateCollectedRevenue = (
+      transactions: typeof monthFinancialTransactions,
+    ) =>
+      transactions.reduce(
+        (sum, { transaction, bookingTransactions }) =>
+          sum +
+          transactionDashboardCollectedRevenueAmount(
+            transaction,
+            bookingTransactions,
+          ),
+        0,
+      );
+
+    const dailyGrossRevenue = calculateGrossRevenue(dailyFinancialTransactions);
+    const dailyCollectedRevenue = calculateCollectedRevenue(
+      dailyFinancialTransactions,
+    );
+    const monthlyGrossRevenue = calculateGrossRevenue(monthFinancialTransactions);
+    const monthlyCollectedRevenue = calculateCollectedRevenue(
+      monthFinancialTransactions,
     );
     const unpaidAmount = unpaidBookings.reduce(
       (sum, booking) => sum + unpaidRoomChargeAmount(booking),
@@ -981,17 +1196,43 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
     );
 
     const channelCounts = new Map<PlatformId, number>();
-    const revenueByDate = new Map<string, number>();
+    const revenueByDate = new Map<
+      string,
+      {
+        grossRevenue: number;
+        collectedRevenue: number;
+        occupancyRate: number;
+        occupiedCapacity: number;
+      }
+    >();
+    const revenueBucketSize = getRevenueChartBucketSize(revenueRange);
+    const revenueBuckets: Array<{
+      key: string;
+      start: Date;
+      end: Date;
+    }> = [];
     const monthFinancialSummary = summarizeTransactions(
-      monthBookings.flatMap((booking) => booking.transactions || []),
+      monthFinancialTransactions.map(({ transaction }) => transaction),
     );
 
     for (
-      let date = new Date(startOfMonth);
+      let date = getRevenueBucketStart(chartStart, revenueBucketSize);
       date <= startOfToday;
-      date.setDate(date.getDate() + 1)
+      date = nextRevenueBucketStart(date, revenueBucketSize)
     ) {
-      revenueByDate.set(formatLocalDateKey(date), 0);
+      const nextBucketStart = nextRevenueBucketStart(date, revenueBucketSize);
+      const key = formatLocalDateKey(date);
+      revenueBuckets.push({
+        key,
+        start: date,
+        end: nextBucketStart < chartEnd ? nextBucketStart : chartEnd,
+      });
+      revenueByDate.set(key, {
+        grossRevenue: 0,
+        collectedRevenue: 0,
+        occupancyRate: 0,
+        occupiedCapacity: 0,
+      });
     }
 
     monthBookings.forEach((booking) => {
@@ -999,14 +1240,52 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
         booking.platformId,
         (channelCounts.get(booking.platformId) || 0) + 1,
       );
+    });
 
-      const dateKey = formatLocalDateKey(booking.checkIn);
-      if (revenueByDate.has(dateKey)) {
-        revenueByDate.set(
-          dateKey,
-          (revenueByDate.get(dateKey) || 0) + roomChargeRevenue(booking),
+    chartFinancialTransactions.forEach(({ transaction, bookingTransactions }) => {
+      const bucketKey = formatLocalDateKey(
+        getRevenueBucketStart(
+          new Date(transaction.createdAt || 0),
+          revenueBucketSize,
+        ),
+      );
+      const bucketRevenue = revenueByDate.get(bucketKey);
+      if (!bucketRevenue) return;
+
+      bucketRevenue.grossRevenue += transactionDashboardGrossRevenueAmount(
+        transaction,
+      );
+      bucketRevenue.collectedRevenue += transactionDashboardCollectedRevenueAmount(
+        transaction,
+        bookingTransactions,
+      );
+    });
+
+    revenueBuckets.forEach((bucket) => {
+      const bucketRevenue = revenueByDate.get(bucket.key);
+      if (!bucketRevenue) return;
+
+      let date = bucket.start < chartStart ? chartStart : bucket.start;
+      let dayCount = 0;
+      let occupiedCapacityTotal = 0;
+
+      while (date < bucket.end) {
+        const dayEnd = new Date(date.getTime() + 86400000);
+        const occupiedCapacity = occupancyBookings.reduce(
+          (total, currentBooking) =>
+            total + bookingOccupiedCapacityOnDate(currentBooking, date, dayEnd),
+          0,
         );
+
+        occupiedCapacityTotal += occupiedCapacity;
+        dayCount += 1;
+        date = dayEnd;
       }
+
+      const averageOccupiedCapacity =
+        dayCount === 0 ? 0 : occupiedCapacityTotal / dayCount;
+      bucketRevenue.occupiedCapacity = averageOccupiedCapacity;
+      bucketRevenue.occupancyRate = averageOccupiedCapacity / TOTAL_GUEST_CAPACITY;
     });
 
     const channelMix = Array.from(channelCounts.entries()).map(
@@ -1018,18 +1297,26 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
     const revenueSeries = Array.from(revenueByDate.entries()).map(
       ([date, revenue]) => ({
         date,
-        revenue,
+        grossRevenue: revenue.grossRevenue,
+        collectedRevenue: revenue.collectedRevenue,
+        occupancyRate: revenue.occupancyRate,
+        occupiedCapacity: revenue.occupiedCapacity,
       }),
     );
 
     res.status(200).json({
-      todayExpectedRevenue,
-      monthRoomRevenue,
+      dailyGrossRevenue,
+      dailyCollectedRevenue,
+      monthlyGrossRevenue,
+      monthlyCollectedRevenue,
+      todayExpectedRevenue: dailyGrossRevenue,
+      monthRoomRevenue: monthlyGrossRevenue,
       monthBookings: monthBookings.length,
       unpaidAmount,
       financialSummary: monthFinancialSummary,
       occupancyRate: occupancy / TOTAL_GUEST_CAPACITY,
       channelMix,
+      revenueRange,
       revenueSeries,
     });
   } catch (err) {

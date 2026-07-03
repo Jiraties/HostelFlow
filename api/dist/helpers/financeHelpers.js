@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.transactionFallsOnBusinessDate = exports.summarizeTransactions = exports.normalizeTransaction = exports.transactionNeedsReview = exports.transactionUnpaidAmount = exports.transactionDepositLiabilityDelta = exports.transactionRefundAmount = exports.transactionRevenueAmount = exports.transactionIsRevenue = exports.transactionCashImpact = exports.transactionSignedAmount = exports.transactionDirection = exports.LARGE_REFUND_THRESHOLD = exports.LARGE_CASH_TRANSACTION_THRESHOLD = exports.CASH_VARIANCE_THRESHOLD = void 0;
+exports.transactionFallsOnBusinessDate = exports.summarizeTransactions = exports.normalizeTransaction = exports.transactionNeedsReview = exports.transactionUnpaidAmount = exports.transactionDepositLiabilityDelta = exports.transactionDashboardCollectedRevenueAmount = exports.transactionDashboardGrossRevenueAmount = exports.transactionRefundAmount = exports.transactionRevenueAmount = exports.transactionIsRevenue = exports.transactionCashImpact = exports.transactionSignedAmount = exports.transactionDirection = exports.LARGE_REFUND_THRESHOLD = exports.LARGE_CASH_TRANSACTION_THRESHOLD = exports.CASH_VARIANCE_THRESHOLD = void 0;
 exports.CASH_VARIANCE_THRESHOLD = 20;
 exports.LARGE_CASH_TRANSACTION_THRESHOLD = 5000;
 exports.LARGE_REFUND_THRESHOLD = 2000;
@@ -29,6 +29,20 @@ const revenueTransactionTypes = [
     "joinTour",
     "extraBed",
     "cardSurcharge",
+];
+const dashboardOriginalRevenueTransactionTypes = [
+    "roomCharge",
+    "towel",
+    "motorbike",
+    "slowBoat",
+    "joinTour",
+    "extraBed",
+    "cardSurcharge",
+];
+const dashboardRevenueRefundTransactionTypes = [
+    "cancellationRefund",
+    "roomRefund",
+    "compensation",
 ];
 const transactionDirection = (transaction) => {
     if (transaction.direction)
@@ -60,6 +74,55 @@ const transactionRefundAmount = (transaction) => moneyOutTransactionTypes.includ
     ? Math.abs(transaction.amount || 0)
     : 0;
 exports.transactionRefundAmount = transactionRefundAmount;
+const transactionIsPositiveRevenueAdjustment = (transaction) => transaction.type === "adjustment" && (0, exports.transactionDirection)(transaction) === "in";
+const transactionIsRevenueReduction = (transaction) => (transaction.type === "adjustment" && (0, exports.transactionDirection)(transaction) === "out") ||
+    (dashboardRevenueRefundTransactionTypes.includes(transaction.type) &&
+        (0, exports.transactionDirection)(transaction) === "out");
+const transactionIsOriginalDashboardRevenue = (transaction) => dashboardOriginalRevenueTransactionTypes.includes(transaction.type) ||
+    transactionIsPositiveRevenueAdjustment(transaction);
+const transactionIsUnpaidDashboardRevenue = (transaction) => transaction.paymentMethod === "Unpaid" &&
+    transactionIsOriginalDashboardRevenue(transaction);
+const findRelatedTransaction = (transaction, transactions) => transaction.relatedTransactionId
+    ? transactions.find((existingTransaction) => String(existingTransaction._id) === transaction.relatedTransactionId)
+    : undefined;
+const transactionSettlesUnpaidDashboardRevenue = (transaction, transactions) => {
+    if (transaction.type !== "settlementCharge" ||
+        transaction.paymentMethod === "Unpaid" ||
+        (0, exports.transactionDirection)(transaction) !== "in") {
+        return false;
+    }
+    const relatedTransaction = findRelatedTransaction(transaction, transactions);
+    if (relatedTransaction) {
+        return transactionIsUnpaidDashboardRevenue(relatedTransaction);
+    }
+    return (transaction.relatedTransactionType !== undefined &&
+        dashboardOriginalRevenueTransactionTypes.includes(transaction.relatedTransactionType));
+};
+const transactionIsAdditionalCollectedRevenue = (transaction) => transaction.type === "paymentCorrection" &&
+    transaction.paymentMethod !== "Unpaid" &&
+    (0, exports.transactionDirection)(transaction) === "in";
+const transactionDashboardGrossRevenueAmount = (transaction) => {
+    // depositKept may later become other income by explicit accounting policy.
+    // For the dashboard summary, all deposit-related transactions stay excluded.
+    if (!transactionIsOriginalDashboardRevenue(transaction))
+        return 0;
+    return Math.abs(transaction.amount || 0);
+};
+exports.transactionDashboardGrossRevenueAmount = transactionDashboardGrossRevenueAmount;
+const transactionDashboardCollectedRevenueAmount = (transaction, transactions = []) => {
+    if (transaction.paymentMethod === "Unpaid")
+        return 0;
+    if (transactionIsRevenueReduction(transaction)) {
+        return -Math.abs(transaction.amount || 0);
+    }
+    if (transactionIsOriginalDashboardRevenue(transaction) ||
+        transactionSettlesUnpaidDashboardRevenue(transaction, transactions) ||
+        transactionIsAdditionalCollectedRevenue(transaction)) {
+        return Math.abs(transaction.amount || 0);
+    }
+    return 0;
+};
+exports.transactionDashboardCollectedRevenueAmount = transactionDashboardCollectedRevenueAmount;
 const transactionDepositLiabilityDelta = (transaction) => {
     if (transaction.type === "deposit")
         return Math.abs(transaction.amount || 0);

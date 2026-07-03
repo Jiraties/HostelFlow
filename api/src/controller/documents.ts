@@ -157,19 +157,6 @@ const roomChargeTotal = (
       0,
     );
 
-const immigrationMonthQuery = (month: string) => {
-  if (!/^\d{4}-\d{2}$/.test(month)) return null;
-
-  const [year, monthNumber] = month.split("-").map(Number);
-  const firstDayOfNextMonth = new Date(year, monthNumber, 1);
-  const firstDayOfMonth = new Date(year, monthNumber - 1, 1);
-
-  return {
-    checkIn: { $lt: firstDayOfNextMonth },
-    checkOut: { $gt: firstDayOfMonth },
-  };
-};
-
 const dateQuery = (date: string) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
 
@@ -178,6 +165,15 @@ const dateQuery = (date: string) => {
   end.setDate(start.getDate() + 1);
 
   return { start, end };
+};
+
+const immigrationDateQuery = (date: string) => {
+  const bounds = dateQuery(date);
+  if (!bounds) return null;
+
+  return {
+    checkIn: { $gte: bounds.start, $lt: bounds.end },
+  };
 };
 
 const hotelAccommodationDateQuery = (date: string) => {
@@ -598,11 +594,11 @@ export const getImmigrationReportStatus = async (
   res: Response,
 ) => {
   try {
-    const month = req.query.month as string;
-    const query = immigrationMonthQuery(month);
+    const date = (req.query.date || req.query.month) as string;
+    const query = immigrationDateQuery(date);
 
     if (!query) {
-      return res.status(400).json({ message: "Invalid month format" });
+      return res.status(400).json({ message: "Invalid date format" });
     }
 
     const bookings = await Booking.find(query)
@@ -635,11 +631,11 @@ export const getImmigrationReportStatus = async (
 
 export const getImmigrationReport = async (req: Request, res: Response) => {
   try {
-    const month = req.query.month as string;
-    const query = immigrationMonthQuery(month);
+    const date = (req.query.date || req.query.month) as string;
+    const query = immigrationDateQuery(date);
 
     if (!query) {
-      return res.status(400).json({ message: "Invalid month format" });
+      return res.status(400).json({ message: "Invalid date format" });
     }
 
     const bookings = await Booking.find(query)
@@ -650,9 +646,7 @@ export const getImmigrationReport = async (req: Request, res: Response) => {
       });
 
     if (bookings.length === 0)
-      return res.status(400).json({ message: "ไม่พบรายการจองในเดือนที่กำหนด" });
-
-    console.log(bookings.length);
+      return res.status(400).json({ message: "ไม่พบรายการจองในวันที่กำหนด" });
 
     const workbook = new ExcelJs.Workbook();
 
@@ -724,7 +718,7 @@ export const getImmigrationReport = async (req: Request, res: Response) => {
 
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename=immigration-${month}.xlsx`,
+      `attachment; filename=immigration-${date}.xlsx`,
     );
 
     await workbook.xlsx.write(res);

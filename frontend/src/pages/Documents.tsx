@@ -18,7 +18,7 @@ import type { OptionType } from "../helpers/selectStyling";
 
 type DocumentFilters = {
   bookingMonth: string;
-  tm30Month: string;
+  tm30Date: string;
   hotelDate: string;
   hotelDestinationMode: string;
   hotelDestinationCountry: string;
@@ -94,9 +94,9 @@ const Documents = () => {
   const currentDate = formatInputDate(today);
   const [filters, setFilters] = useState<DocumentFilters>({
     bookingMonth: currentMonth,
-    tm30Month: currentMonth,
+    tm30Date: currentDate,
     hotelDate: currentDate,
-    hotelDestinationMode: "random",
+    hotelDestinationMode: "manual",
     hotelDestinationCountry: "THA",
     bookingChannel: "",
     bookingStatus: "all",
@@ -274,7 +274,7 @@ const Documents = () => {
         `${API_URL}/documents/getImmigrationReport`,
         {
           params: {
-            month: filters.tm30Month,
+            date: filters.tm30Date,
           },
           responseType: "blob",
           withCredentials: true,
@@ -285,7 +285,7 @@ const Documents = () => {
       const link = document.createElement("a");
 
       link.href = downloadUrl;
-      link.download = `tm30-${filters.tm30Month}.xlsx`;
+      link.download = `tm30-${filters.tm30Date}.xlsx`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -354,7 +354,7 @@ const Documents = () => {
           `${API_URL}/documents/getImmigrationReportStatus`,
           {
             params: {
-              month: filters.tm30Month,
+              date: filters.tm30Date,
             },
             withCredentials: true,
           },
@@ -377,7 +377,7 @@ const Documents = () => {
     return () => {
       ignore = true;
     };
-  }, [filters.tm30Month]);
+  }, [filters.tm30Date]);
 
   useEffect(() => {
     let ignore = false;
@@ -523,11 +523,11 @@ const Documents = () => {
 
           <div className="documents__form">
             <div>
-              <p className="documents__label">เดือนเข้าพัก</p>
+              <p className="documents__label">วันที่เข้าพัก</p>
               <input
-                type="month"
-                value={filters.tm30Month}
-                onChange={(e) => updateFilter("tm30Month", e.target.value)}
+                type="date"
+                value={filters.tm30Date}
+                onChange={(e) => updateFilter("tm30Date", e.target.value)}
                 className="boxInput"
               />
             </div>

@@ -43,6 +43,22 @@ const revenueTransactionTypes: TransactionType[] = [
   "cardSurcharge",
 ];
 
+const dashboardOriginalRevenueTransactionTypes: TransactionType[] = [
+  "roomCharge",
+  "towel",
+  "motorbike",
+  "slowBoat",
+  "joinTour",
+  "extraBed",
+  "cardSurcharge",
+];
+
+const dashboardRevenueRefundTransactionTypes: TransactionType[] = [
+  "cancellationRefund",
+  "roomRefund",
+  "compensation",
+];
+
 export const transactionDirection = (
   transaction: Pick<transcation, "type" | "paymentMethod" | "direction">,
 ): TransactionDirection => {
@@ -74,6 +90,89 @@ export const transactionRefundAmount = (transaction: transcation) =>
   moneyOutTransactionTypes.includes(transaction.type)
     ? Math.abs(transaction.amount || 0)
     : 0;
+
+const transactionIsPositiveRevenueAdjustment = (transaction: transcation) =>
+  transaction.type === "adjustment" && transactionDirection(transaction) === "in";
+
+const transactionIsRevenueReduction = (transaction: transcation) =>
+  (transaction.type === "adjustment" && transactionDirection(transaction) === "out") ||
+  (dashboardRevenueRefundTransactionTypes.includes(transaction.type) &&
+    transactionDirection(transaction) === "out");
+
+const transactionIsOriginalDashboardRevenue = (transaction: transcation) =>
+  dashboardOriginalRevenueTransactionTypes.includes(transaction.type) ||
+  transactionIsPositiveRevenueAdjustment(transaction);
+
+const transactionIsUnpaidDashboardRevenue = (transaction: transcation) =>
+  transaction.paymentMethod === "Unpaid" &&
+  transactionIsOriginalDashboardRevenue(transaction);
+
+const findRelatedTransaction = (
+  transaction: transcation,
+  transactions: transcation[],
+) =>
+  transaction.relatedTransactionId
+    ? transactions.find(
+        (existingTransaction) =>
+          String(existingTransaction._id) === transaction.relatedTransactionId,
+      )
+    : undefined;
+
+const transactionSettlesUnpaidDashboardRevenue = (
+  transaction: transcation,
+  transactions: transcation[],
+) => {
+  if (
+    transaction.type !== "settlementCharge" ||
+    transaction.paymentMethod === "Unpaid" ||
+    transactionDirection(transaction) !== "in"
+  ) {
+    return false;
+  }
+
+  const relatedTransaction = findRelatedTransaction(transaction, transactions);
+  if (relatedTransaction) {
+    return transactionIsUnpaidDashboardRevenue(relatedTransaction);
+  }
+
+  return (
+    transaction.relatedTransactionType !== undefined &&
+    dashboardOriginalRevenueTransactionTypes.includes(transaction.relatedTransactionType)
+  );
+};
+
+const transactionIsAdditionalCollectedRevenue = (transaction: transcation) =>
+  transaction.type === "paymentCorrection" &&
+  transaction.paymentMethod !== "Unpaid" &&
+  transactionDirection(transaction) === "in";
+
+export const transactionDashboardGrossRevenueAmount = (transaction: transcation) => {
+  // depositKept may later become other income by explicit accounting policy.
+  // For the dashboard summary, all deposit-related transactions stay excluded.
+  if (!transactionIsOriginalDashboardRevenue(transaction)) return 0;
+  return Math.abs(transaction.amount || 0);
+};
+
+export const transactionDashboardCollectedRevenueAmount = (
+  transaction: transcation,
+  transactions: transcation[] = [],
+) => {
+  if (transaction.paymentMethod === "Unpaid") return 0;
+
+  if (transactionIsRevenueReduction(transaction)) {
+    return -Math.abs(transaction.amount || 0);
+  }
+
+  if (
+    transactionIsOriginalDashboardRevenue(transaction) ||
+    transactionSettlesUnpaidDashboardRevenue(transaction, transactions) ||
+    transactionIsAdditionalCollectedRevenue(transaction)
+  ) {
+    return Math.abs(transaction.amount || 0);
+  }
+
+  return 0;
+};
 
 export const transactionDepositLiabilityDelta = (transaction: transcation) => {
   if (transaction.type === "deposit") return Math.abs(transaction.amount || 0);
