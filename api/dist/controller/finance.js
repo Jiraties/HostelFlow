@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.approveReviewEvent = exports.getReviewEvents = exports.upsertDailyClose = exports.getReconciliation = void 0;
+exports.approveReviewEvent = exports.getReviewEvents = exports.upsertDailyClose = exports.getReconciliation = exports.getExpectedStayRevenueBreakdown = void 0;
 const booking_1 = __importDefault(require("../models/booking"));
 const dailyClose_1 = __importDefault(require("../models/dailyClose"));
 const user_1 = __importDefault(require("../models/user"));
@@ -16,6 +16,48 @@ const sendDuplicateMutationResponse = (res) => res.status(409).json({
 });
 const BUSINESS_TIME_ZONE = "Asia/Bangkok";
 const BANGKOK_UTC_OFFSET_HOURS = 7;
+const expectedStayRevenueTransactionMeta = {
+    roomCharge: { label: "ค่าห้อง", color: "#51d1dc", icon: "bx-bed-alt" },
+    adjustment: { label: "ปรับราคา", color: "#a78bfa", icon: "bx-edit-alt" },
+    towel: { label: "ผ้าเช็ดตัว", color: "#38bdf8", icon: "bx-bath" },
+    motorbike: { label: "มอเตอร์ไซค์", color: "#fb923c", icon: "bx-cycling" },
+    slowBoat: { label: "Slow Boat", color: "#2dd4bf", icon: "bx-water" },
+    joinTour: { label: "Join Tour", color: "#22c55e", icon: "bx-map" },
+    extraBed: { label: "เตียงเสริม", color: "#ec4899", icon: "bx-bed" },
+    cardSurcharge: {
+        label: "ค่าธรรมเนียมบัตร 3%",
+        color: "#94a3b8",
+        icon: "bx-credit-card-alt",
+    },
+    roomRefund: { label: "คืนค่าห้อง", color: "#fb7185", icon: "bx-undo" },
+    cancellationRefund: {
+        label: "คืนเงินยกเลิก",
+        color: "#fb7185",
+        icon: "bx-calendar-x",
+    },
+    compensation: { label: "ชดเชยลูกค้า", color: "#38bdf8", icon: "bx-gift" },
+};
+const expectedStayRevenueTypes = new Set([
+    "roomCharge",
+    "towel",
+    "motorbike",
+    "slowBoat",
+    "joinTour",
+    "extraBed",
+    "cardSurcharge",
+]);
+const expectedStayRevenueReductionTypes = new Set([
+    "roomRefund",
+    "cancellationRefund",
+    "compensation",
+]);
+const paymentMethodMeta = {
+    OTA: { label: "OTA", icon: "bx-bank" },
+    Cash: { label: "Cash", icon: "bx-currency-notes" },
+    Card: { label: "Card", icon: "bx-credit-card-alt" },
+    Transfer: { label: "Transfer", icon: "bx-arrow-right-left" },
+    Unpaid: { label: "Unpaid", icon: "bx-error" },
+};
 const getBusinessDateParts = (date = new Date()) => {
     const parts = new Intl.DateTimeFormat("en-CA", {
         timeZone: BUSINESS_TIME_ZONE,
@@ -30,6 +72,35 @@ const getBusinessDateParts = (date = new Date()) => {
     };
 };
 const getBusinessDateStart = (year, month, day) => new Date(Date.UTC(year, month - 1, day, -BANGKOK_UTC_OFFSET_HOURS, 0, 0, 0));
+const formatBusinessDateKey = (date) => {
+    const parts = getBusinessDateParts(date);
+    return `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+};
+const parseBusinessDateKey = (dateKey) => {
+    if (!dateKey || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey))
+        return null;
+    const [year, month, day] = dateKey.split("-").map(Number);
+    if (!year || !month || !day)
+        return null;
+    return getBusinessDateStart(year, month, day);
+};
+const getBusinessMonthBounds = (date = new Date()) => {
+    const parts = getBusinessDateParts(date);
+    const start = getBusinessDateStart(parts.year, parts.month, 1);
+    const end = parts.month === 12
+        ? getBusinessDateStart(parts.year + 1, 1, 1)
+        : getBusinessDateStart(parts.year, parts.month + 1, 1);
+    return { start, end };
+};
+const getExpectedStayRevenueBounds = (startDate, endDate) => {
+    if (!startDate && !endDate)
+        return getBusinessMonthBounds();
+    const start = parseBusinessDateKey(startDate);
+    const end = parseBusinessDateKey(endDate);
+    if (!start || !end || start >= end)
+        return null;
+    return { start, end };
+};
 const getBusinessDayBoundsFromKey = (dateKey) => {
     if (dateKey && !/^\d{4}-\d{2}-\d{2}$/.test(dateKey))
         return null;
@@ -114,6 +185,186 @@ const attachDailyCloseStaffProfiles = async (dailyCloses) => {
         };
     });
 };
+const addBreakdownTransaction = (categories, transaction, booking, amount, direction) => {
+    const meta = expectedStayRevenueTransactionMeta[transaction.type] || {
+        label: transaction.type,
+        color: "#94a3b8",
+        icon: "bx-receipt",
+    };
+    const existingCategory = categories.get(transaction.type) ||
+        {
+            type: transaction.type,
+            label: meta.label,
+            color: meta.color,
+            icon: meta.icon,
+            total: 0,
+            percentage: 0,
+            transactionCount: 0,
+            transactions: [],
+        };
+    existingCategory.total += amount;
+    existingCategory.transactionCount += 1;
+    existingCategory.transactions.push({
+        transactionId: transaction._id ? String(transaction._id) : undefined,
+        bookingId: booking.bookingId,
+        guestName: booking.name,
+        platformId: booking.platformId,
+        type: transaction.type,
+        label: meta.label,
+        color: meta.color,
+        icon: meta.icon,
+        amount,
+        paymentMethod: transaction.paymentMethod,
+        direction,
+        createdAt: transaction.createdAt,
+        createdBy: transaction.createdBy,
+        note: transaction.note,
+        reference: transaction.reference,
+    });
+    categories.set(transaction.type, existingCategory);
+};
+const addPaymentMethodBreakdownTransaction = (paymentMethods, transaction, booking, amount, direction) => {
+    const methodMeta = paymentMethodMeta[transaction.paymentMethod];
+    const transactionMeta = expectedStayRevenueTransactionMeta[transaction.type] || {
+        label: transaction.type,
+        color: "#94a3b8",
+        icon: "bx-receipt",
+    };
+    const existingPaymentMethod = paymentMethods.get(transaction.paymentMethod) ||
+        {
+            paymentMethod: transaction.paymentMethod,
+            label: methodMeta.label,
+            icon: methodMeta.icon,
+            total: 0,
+            percentage: 0,
+            transactionCount: 0,
+            transactions: [],
+        };
+    existingPaymentMethod.total += amount;
+    existingPaymentMethod.transactionCount += 1;
+    existingPaymentMethod.transactions.push({
+        transactionId: transaction._id ? String(transaction._id) : undefined,
+        bookingId: booking.bookingId,
+        guestName: booking.name,
+        platformId: booking.platformId,
+        type: transaction.type,
+        label: transactionMeta.label,
+        color: transactionMeta.color,
+        icon: transactionMeta.icon,
+        amount,
+        paymentMethod: transaction.paymentMethod,
+        direction,
+        createdAt: transaction.createdAt,
+        createdBy: transaction.createdBy,
+        note: transaction.note,
+        reference: transaction.reference,
+    });
+    paymentMethods.set(transaction.paymentMethod, existingPaymentMethod);
+};
+const finalizeBreakdownCategories = (categories, expectedStayRevenue) => Array.from(categories.values())
+    .map((category) => ({
+    ...category,
+    total: Number(category.total.toFixed(2)),
+    percentage: expectedStayRevenue === 0
+        ? 0
+        : Number(((category.total / expectedStayRevenue) * 100).toFixed(2)),
+    transactions: category.transactions.sort((first, second) => {
+        const firstTime = first.createdAt ? new Date(first.createdAt).getTime() : 0;
+        const secondTime = second.createdAt
+            ? new Date(second.createdAt).getTime()
+            : 0;
+        return secondTime - firstTime;
+    }),
+}))
+    .sort((first, second) => second.total - first.total);
+const finalizePaymentMethodBreakdowns = (paymentMethods, expectedStayRevenue) => Array.from(paymentMethods.values())
+    .map((paymentMethod) => ({
+    ...paymentMethod,
+    total: Number(paymentMethod.total.toFixed(2)),
+    percentage: expectedStayRevenue === 0
+        ? 0
+        : Number(((paymentMethod.total / expectedStayRevenue) * 100).toFixed(2)),
+    transactions: paymentMethod.transactions.sort((first, second) => {
+        const firstTime = first.createdAt ? new Date(first.createdAt).getTime() : 0;
+        const secondTime = second.createdAt
+            ? new Date(second.createdAt).getTime()
+            : 0;
+        return secondTime - firstTime;
+    }),
+}))
+    .sort((first, second) => second.total - first.total);
+const getExpectedStayRevenueBreakdown = async (req, res) => {
+    try {
+        if (!req.user?.admin) {
+            return res.status(403).json({
+                message: "เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถดูสรุปรายได้นี้ได้",
+            });
+        }
+        const bounds = getExpectedStayRevenueBounds(req.query.startDate, req.query.endDate);
+        if (!bounds) {
+            return res.status(400).json({
+                message: "Invalid date range. Use startDate and endDate as YYYY-MM-DD.",
+            });
+        }
+        const bookings = await booking_1.default.find({
+            "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end },
+        }).lean();
+        const categories = new Map();
+        const reductions = new Map();
+        const paymentMethods = new Map();
+        bookings.forEach((booking) => {
+            (booking.transactions || []).forEach((transaction) => {
+                if (!transaction.createdAt)
+                    return;
+                const createdAt = new Date(transaction.createdAt);
+                if (createdAt < bounds.start || createdAt >= bounds.end)
+                    return;
+                const direction = (0, financeHelpers_1.transactionDirection)(transaction);
+                const amount = Math.abs(transaction.amount || 0);
+                if (amount === 0)
+                    return;
+                if (expectedStayRevenueTypes.has(transaction.type) ||
+                    (transaction.type === "adjustment" && direction === "in")) {
+                    addBreakdownTransaction(categories, transaction, booking, amount, direction);
+                    addPaymentMethodBreakdownTransaction(paymentMethods, transaction, booking, amount, direction);
+                    return;
+                }
+                if (expectedStayRevenueReductionTypes.has(transaction.type) ||
+                    (transaction.type === "adjustment" && direction === "out")) {
+                    addBreakdownTransaction(reductions, transaction, booking, amount, direction);
+                }
+            });
+        });
+        const grossStayCharges = Array.from(categories.values()).reduce((sum, category) => sum + category.total, 0);
+        const reductionTotal = Array.from(reductions.values()).reduce((sum, category) => sum + category.total, 0);
+        const expectedStayRevenue = grossStayCharges - reductionTotal;
+        const finalizedCategories = finalizeBreakdownCategories(categories, grossStayCharges);
+        const finalizedReductions = finalizeBreakdownCategories(reductions, grossStayCharges);
+        const finalizedPaymentMethods = finalizePaymentMethodBreakdowns(paymentMethods, grossStayCharges);
+        res.status(200).json({
+            period: {
+                startDate: formatBusinessDateKey(bounds.start),
+                endDate: formatBusinessDateKey(bounds.end),
+                basis: "transactionCreatedAt",
+            },
+            totals: {
+                grossStayCharges: Number(grossStayCharges.toFixed(2)),
+                expectedStayRevenue: Number(expectedStayRevenue.toFixed(2)),
+                reductions: Number(reductionTotal.toFixed(2)),
+                netAfterReductions: Number(expectedStayRevenue.toFixed(2)),
+                transactionCount: finalizedCategories.reduce((sum, category) => sum + category.transactionCount, 0) +
+                    finalizedReductions.reduce((sum, category) => sum + category.transactionCount, 0),
+            },
+            categories: finalizedCategories,
+            reductions: finalizedReductions,
+            paymentMethods: finalizedPaymentMethods,
+        });
+    }
+    catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+exports.getExpectedStayRevenueBreakdown = getExpectedStayRevenueBreakdown;
 const getReconciliation = async (req, res) => {
     try {
         const staffUsername = req.user?.admin

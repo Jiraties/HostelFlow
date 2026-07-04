@@ -1,11 +1,11 @@
 export type PlatformId = "BOOK" | "HOST" | "TRAV" | "AGOD" | "WALK";
-type PaymentMethod = "OTA" | "Cash" | "Card" | "Transfer" | "Unpaid";
+export type PaymentMethod = "OTA" | "Cash" | "Card" | "Transfer" | "Unpaid";
 type Status = "booked" | "checkedIn" | "checkedOut" | "cancelled" | "noShow";
-type TransactionDirection = "in" | "out" | "neutral";
+export type TransactionDirection = "in" | "out" | "neutral";
 type TransactionReviewStatus = "none" | "needs_review" | "reviewed";
 type CancellationType = "refundable" | "non_refundable" | "no_payment_received";
 type RoomReleaseStatus = "released" | "blocked";
-type TransactionType =
+export type TransactionType =
   | "roomCharge"
   | "deposit"
   | "adjustment"

@@ -104,6 +104,8 @@ const transactionIsAdditionalCollectedRevenue = (transaction) => transaction.typ
 const transactionDashboardGrossRevenueAmount = (transaction) => {
     // depositKept may later become other income by explicit accounting policy.
     // For the dashboard summary, all deposit-related transactions stay excluded.
+    if (transactionIsRevenueReduction(transaction))
+        return -Math.abs(transaction.amount || 0);
     if (!transactionIsOriginalDashboardRevenue(transaction))
         return 0;
     return Math.abs(transaction.amount || 0);

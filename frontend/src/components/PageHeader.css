@@ -8,6 +8,11 @@
 
 .pageHeader h1 {
   font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.pageHeader > div:first-child {
+  min-width: 0;
 }
 
 .pageHeader__meta {
@@ -24,6 +29,7 @@
 }
 
 .pageHeader__profile {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 1rem;

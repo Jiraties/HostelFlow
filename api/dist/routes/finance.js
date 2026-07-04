@@ -7,6 +7,7 @@ const express_1 = __importDefault(require("express"));
 const finance_1 = require("../controller/finance");
 const financeRouter = express_1.default.Router();
 financeRouter.get("/reconciliation", finance_1.getReconciliation);
+financeRouter.get("/expected-stay-revenue-breakdown", finance_1.getExpectedStayRevenueBreakdown);
 financeRouter.get("/review-events", finance_1.getReviewEvents);
 financeRouter.patch("/review-events/:bookingId/:transactionId/approve", finance_1.approveReviewEvent);
 financeRouter.post("/daily-close", finance_1.upsertDailyClose);

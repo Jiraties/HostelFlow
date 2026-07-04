@@ -82,6 +82,34 @@ test("dashboard gross revenue counts unpaid room revenue while collected revenue
   );
 });
 
+test("dashboard expected stay revenue deducts stay revenue reductions", () => {
+  const roomCharge: transcation = {
+    type: "roomCharge",
+    paymentMethod: "Cash",
+    amount: 1400,
+  };
+  const roomRefund: transcation = {
+    type: "roomRefund",
+    paymentMethod: "Cash",
+    direction: "out",
+    amount: 300,
+  };
+  const compensation: transcation = {
+    type: "compensation",
+    paymentMethod: "Cash",
+    direction: "out",
+    amount: 100,
+  };
+
+  const expectedStayRevenue = [roomCharge, roomRefund, compensation].reduce(
+    (sum, transaction) =>
+      sum + transactionDashboardGrossRevenueAmount(transaction),
+    0,
+  );
+
+  assert.equal(expectedStayRevenue, 1000);
+});
+
 test("transactionFallsOnBusinessDate honors explicit Bangkok business-day UTC bounds", () => {
   const businessDateStart = new Date("2026-06-30T17:00:00.000Z");
   const businessDateEnd = new Date("2026-07-01T17:00:00.000Z");

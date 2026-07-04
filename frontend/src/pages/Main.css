@@ -297,6 +297,83 @@
   font-size: 0.9rem;
 }
 
+.main__metricTitle,
+.main__summaryMetricLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.main__summaryMetricLabel {
+  margin-bottom: 0.25rem;
+}
+
+.main__summaryMetricLabel > span:first-child {
+  min-width: 0;
+}
+
+.main__adminPanelHeader .main__metricInfo,
+.main__summaryMetricLabel .main__metricInfo {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  margin: 0;
+  color: #8a8a8a;
+  cursor: help;
+  outline: none;
+}
+
+.main__metricInfo i {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.main__metricInfo .main__metricTooltip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 0.45rem);
+  z-index: 8;
+  display: none;
+  flex-direction: column;
+  gap: 0.25rem;
+  width: max-content;
+  max-width: 18rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.6rem;
+  background: #ffffff50;
+  backdrop-filter: blur(4px);
+  color: #000;
+  box-shadow: var(--main-shadow);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  white-space: normal;
+  transform: translateX(-50%);
+}
+
+.main__metricTooltip::after {
+  position: absolute;
+  left: 50%;
+  bottom: -0.35rem;
+  width: 0.7rem;
+  height: 0.7rem;
+  background: #ffffff;
+  content: "";
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.main__adminPanelHeader .main__metricTooltip span,
+.main__summaryMetricLabel .main__metricTooltip span {
+  display: block;
+  margin: 0;
+  color: inherit;
+}
+
+.main__metricInfo:hover .main__metricTooltip {
+  display: flex;
+}
+
 .main__revenueHero {
   background: linear-gradient(
     180deg,
@@ -304,6 +381,15 @@
     #ffffff 68%
   );
   box-shadow: var(--light-shadow);
+  transition-duration: 0.2s;
+}
+
+.main__revenueHero:hover {
+  transform: scale(1.01);
+}
+
+.main__revenueHero:active {
+  transform: scale(0.99);
 }
 
 .main__revenueHeroValue {

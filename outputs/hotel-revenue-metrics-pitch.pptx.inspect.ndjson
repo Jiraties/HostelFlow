@@ -1,0 +1,173 @@
+{"kind":"deck","id":"pr/jjn38w","name":"Deck"}
+{"kind":"layout","layoutId":"d3d949a6-b72d-4bb2-8283-e38fdc62189c","name":"Master","type":"master"}
+{"kind":"layout","layoutId":"a4136d1b-9e7f-45bf-9b0d-aba2eda145ce","name":"Title Slide","type":"title"}
+{"kind":"slide","id":"sl/gvi6a5","slide":1,"title":"Revenue metrics Dad can trust","textShapes":6}
+{"kind":"textbox","id":"sh/yd0z6103","slide":1,"text":"Revenue metrics Dad can trust","textPreview":"Revenue metrics Dad can trust","textChars":29,"textLines":1,"bbox":[56,86,850,150]}
+{"kind":"textbox","id":"sh/90je9cvi","slide":1,"text":"A simple way to compare the current owner view with hotel industry standards, then choose the right dashboard metrics.","textPreview":"A simple way to compare the current owner view with hotel industry standards, then choose the right dashboard metrics.","textChars":118,"textLines":1,"bbox":[56,266,760,110]}
+{"kind":"shape","id":"sh/gfmlkjm1","slide":1,"bbox":[900,78,250,250]}
+{"kind":"textbox","id":"sh/rmhk3q5o","slide":1,"text":"ESR","textPreview":"ESR","textChars":3,"textLines":1,"bbox":[930,130,190,80]}
+{"kind":"textbox","id":"sh/y1kre1w7","slide":1,"text":"Expected Stay Revenue","textPreview":"Expected Stay Revenue","textChars":21,"textLines":1,"bbox":[930,222,190,60]}
+{"kind":"shape","id":"sh/9s36hcrm","slide":1,"bbox":[56,538,700,1]}
+{"kind":"textbox","id":"sh/g7adsji5","slide":1,"text":"Recommendation deck for the owner dashboard","textPreview":"Recommendation deck for the owner dashboard","textChars":43,"textLines":1,"bbox":[56,568,650,32]}
+{"kind":"textbox","id":"sh/nih4byhg","slide":1,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[1188,664,40,24]}
+{"kind":"notes","id":"nt/gvi6a5","slide":1,"text":""}
+{"kind":"slide","id":"sl/2tuwqf","slide":2,"title":"WHY THIS MATTERS","textShapes":8}
+{"kind":"textbox","id":"sh/twra5gbq","slide":2,"text":"WHY THIS MATTERS","textPreview":"WHY THIS MATTERS","textChars":16,"textLines":1,"bbox":[56,44,360,24]}
+{"kind":"textbox","id":"sh/m58z25kb","slide":2,"text":"The dashboard should answer two different questions","textPreview":"The dashboard should answer two different questions","textChars":51,"textLines":1,"bbox":[56,78,860,96]}
+{"kind":"textbox","id":"sh/bq1oryts","slide":2,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[1188,664,40,24]}
+{"kind":"textbox","id":"sh/4nap4r65","slide":2,"text":"Owner question","textPreview":"Owner question","textChars":14,"textLines":1,"bbox":[88,218,460,34]}
+{"kind":"textbox","id":"sh/t83itgfm","slide":2,"text":"Hotel industry question","textPreview":"Hotel industry question","textChars":23,"textLines":1,"bbox":[700,218,460,34]}
+{"kind":"shape","id":"sh/mhk3q5o7","slide":2,"bbox":[72,274,500,260]}
+{"kind":"shape","id":"sh/b2hwfyxo","slide":2,"bbox":[688,274,500,260]}
+{"kind":"textbox","id":"sh/4vmtwra5","slide":2,"text":"How much money should this month produce, and how much cash has actually arrived?","textPreview":"How much money should this month produce, and how much cash has actually arrived?","textChars":81,"textLines":1,"bbox":[106,318,430,130]}
+{"kind":"textbox","id":"sh/tgfmlkjm","slide":2,"text":"How well are rooms being priced, filled, and converted into revenue?","textPreview":"How well are rooms being priced, filled, and converted into revenue?","textChars":68,"textLines":1,"bbox":[722,318,430,130]}
+{"kind":"textbox","id":"sh/xc3ylc7u","slide":2,"text":"Both are valid. They should not be merged into one number.","textPreview":"Both are valid. They should not be merged into one number.","textChars":58,"textLines":1,"bbox":[302,588,680,36]}
+{"kind":"notes","id":"nt/2tuwqf","slide":2,"text":""}
+{"kind":"slide","id":"sl/d36qqy","slide":3,"title":"COMPARISON","textShapes":18}
+{"kind":"textbox","id":"sh/sfil0rqd","slide":3,"text":"COMPARISON","textPreview":"COMPARISON","textChars":10,"textLines":1,"bbox":[56,44,360,24]}
+{"kind":"textbox","id":"sh/zupwb2hw","slide":3,"text":"The current view is practical, but industry metrics add context","textPreview":"The current view is practical, but industry metrics add context","textChars":63,"textLines":1,"bbox":[56,78,860,96]}
+{"kind":"textbox","id":"sh/a9w3m94f","slide":3,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[1188,664,40,24]}
+{"kind":"textbox","id":"sh/hcrmhk3q","slide":3,"text":"Current owner view","textPreview":"Current owner view","textChars":18,"textLines":1,"bbox":[68,204,300,34]}
+{"kind":"textbox","id":"sh/orytsvu9","slide":3,"text":"Industry standard","textPreview":"Industry standard","textChars":17,"textLines":1,"bbox":[468,204,300,34]}
+{"kind":"textbox","id":"sh/z61032ls","slide":3,"text":"Why keep both","textPreview":"Why keep both","textChars":13,"textLines":1,"bbox":[868,204,300,34]}
+{"kind":"shape","id":"sh/al87ed8b","slide":3,"bbox":[52,254,1176,72]}
+{"kind":"textbox","id":"sh/hk3q5o7q","slide":3,"text":"Expected monthly stay revenue","textPreview":"Expected monthly stay revenue","textChars":29,"textLines":1,"bbox":[68,266,330,44]}
+{"kind":"textbox","id":"sh/oza1gvy9","slide":3,"text":"Room Revenue / Total Revenue","textPreview":"Room Revenue / Total Revenue","textChars":28,"textLines":1,"bbox":[468,266,330,44]}
+{"kind":"textbox","id":"sh/29gr2p8n","slide":3,"text":"Shows business value, not only cash timing","textPreview":"Shows business value, not only cash timing","textChars":42,"textLines":1,"bbox":[868,266,310,44]}
+{"kind":"shape","id":"sh/vu9knih4","slide":3,"bbox":[52,336,1176,72]}
+{"kind":"textbox","id":"sh/kf6dcbul","slide":3,"text":"Money received","textPreview":"Money received","textChars":14,"textLines":1,"bbox":[68,348,330,44]}
+{"kind":"textbox","id":"sh/d0z61032","slide":3,"text":"Payments / Collections","textPreview":"Payments / Collections","textChars":22,"textLines":1,"bbox":[468,348,330,44]}
+{"kind":"textbox","id":"sh/2lszqtcj","slide":3,"text":"Useful for cash control and daily close","textPreview":"Useful for cash control and daily close","textChars":39,"textLines":1,"bbox":[868,348,310,44]}
+{"kind":"shape","id":"sh/v6psfil0","slide":3,"bbox":[52,418,1176,72]}
+{"kind":"textbox","id":"sh/knih4byh","slide":3,"text":"Unpaid bookings","textPreview":"Unpaid bookings","textChars":15,"textLines":1,"bbox":[68,430,330,44]}
+{"kind":"textbox","id":"sh/d8bat47y","slide":3,"text":"A/R or outstanding balance","textPreview":"A/R or outstanding balance","textChars":26,"textLines":1,"bbox":[468,430,330,44]}
+{"kind":"textbox","id":"sh/6psfil0r","slide":3,"text":"Explains why revenue and cash differ","textPreview":"Explains why revenue and cash differ","textChars":36,"textLines":1,"bbox":[868,430,310,44]}
+{"kind":"shape","id":"sh/val87ed8","slide":3,"bbox":[52,500,1176,72]}
+{"kind":"textbox","id":"sh/n29gr2p8","slide":3,"text":"Guest count / beds filled","textPreview":"Guest count / beds filled","textChars":25,"textLines":1,"bbox":[68,512,330,44]}
+{"kind":"textbox","id":"sh/yhgn29gr","slide":3,"text":"Occupancy","textPreview":"Occupancy","textChars":9,"textLines":1,"bbox":[468,512,330,44]}
+{"kind":"textbox","id":"sh/58z25kb6","slide":3,"text":"Shows demand and utilization","textPreview":"Shows demand and utilization","textChars":28,"textLines":1,"bbox":[868,512,310,44]}
+{"kind":"notes","id":"nt/d36qqy","slide":3,"text":""}
+{"kind":"slide","id":"sl/qt90qq","slide":4,"title":"RECOMMENDATION","textShapes":12}
+{"kind":"textbox","id":"sh/wb2hwfyx","slide":4,"text":"RECOMMENDATION","textPreview":"RECOMMENDATION","textChars":14,"textLines":1,"bbox":[56,44,360,24]}
+{"kind":"textbox","id":"sh/3q5o7qpg","slide":4,"text":"ESR is the best owner headline if it is defined clearly","textPreview":"ESR is the best owner headline if it is defined clearly","textChars":55,"textLines":1,"bbox":[56,78,860,96]}
+{"kind":"textbox","id":"sh/e9cvixcz","slide":4,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[1188,664,40,24]}
+{"kind":"textbox","id":"sh/loj2t83i","slide":4,"text":"Expected Stay Revenue","textPreview":"Expected Stay Revenue","textChars":21,"textLines":1,"bbox":[88,228,500,48]}
+{"kind":"textbox","id":"sh/w3m94fu1","slide":4,"text":"Gross Stay Charges","textPreview":"Gross Stay Charges","textChars":18,"textLines":1,"bbox":[112,338,230,32]}
+{"kind":"textbox","id":"sh/3itgfmlk","slide":4,"text":"-","textPreview":"-","textChars":1,"textLines":1,"bbox":[384,333,50,44]}
+{"kind":"textbox","id":"sh/ex0nuxc3","slide":4,"text":"Reductions","textPreview":"Reductions","textChars":10,"textLines":1,"bbox":[456,338,180,32]}
+{"kind":"textbox","id":"sh/lkjm1cfa","slide":4,"text":"=","textPreview":"=","textChars":1,"textLines":1,"bbox":[664,333,50,44]}
+{"kind":"textbox","id":"sh/szqtcj6t","slide":4,"text":"ESR","textPreview":"ESR","textChars":3,"textLines":1,"bbox":[744,320,190,66]}
+{"kind":"shape","id":"sh/il0rqd4v","slide":4,"bbox":[92,410,860,1]}
+{"kind":"shape","id":"sh/b6xkf6dc","slide":4,"bbox":[108,463,8,8]}
+{"kind":"textbox","id":"sh/0rqd4vmt","slide":4,"text":"Includes room charges and stay-related add-ons such as tours, towels, extra beds, and card surcharge.","textPreview":"Includes room charges and stay-related add-ons such as tours, towels, extra beds, and card surcharge.","textChars":101,"textLines":1,"bbox":[132,454,930,62]}
+{"kind":"shape","id":"sh/tcj6tova","slide":4,"bbox":[108,525,8,8]}
+{"kind":"textbox","id":"sh/idonyd0z","slide":4,"text":"Deducts refunds, compensation, and negative adjustments.","textPreview":"Deducts refunds, compensation, and negative adjustments.","textChars":56,"textLines":1,"bbox":[132,516,930,62]}
+{"kind":"shape","id":"sh/byhgn29g","slide":4,"bbox":[108,587,8,8]}
+{"kind":"textbox","id":"sh/0je9cvix","slide":4,"text":"Excludes deposits and payment settlement events because those are cash/liability movements.","textPreview":"Excludes deposits and payment settlement events because those are cash/liability movements.","textChars":91,"textLines":1,"bbox":[132,578,930,62]}
+{"kind":"notes","id":"nt/qt90qq","slide":4,"text":""}
+{"kind":"slide","id":"sl/sdplvf","slide":5,"title":"IMPORTANT DISTINCTION","textShapes":10}
+{"kind":"textbox","id":"sh/36hcrmhk","slide":5,"text":"IMPORTANT DISTINCTION","textPreview":"IMPORTANT DISTINCTION","textChars":21,"textLines":1,"bbox":[56,44,360,24]}
+{"kind":"textbox","id":"sh/wra5gbq1","slide":5,"text":"Collected Revenue is not the same as ESR","textPreview":"Collected Revenue is not the same as ESR","textChars":40,"textLines":1,"bbox":[56,78,860,96]}
+{"kind":"textbox","id":"sh/lc7u54zi","slide":5,"text":"05","textPreview":"05","textChars":2,"textLines":1,"bbox":[1188,664,40,24]}
+{"kind":"shape","id":"sh/ed8bat47","slide":5,"bbox":[72,224,520,310]}
+{"kind":"shape","id":"sh/7u54zido","slide":5,"bbox":[688,224,520,310]}
+{"kind":"textbox","id":"sh/wfyxobm5","slide":5,"text":"ESR","textPreview":"ESR","textChars":3,"textLines":1,"bbox":[112,260,200,58]}
+{"kind":"textbox","id":"sh/l0rqd4vm","slide":5,"text":"Revenue the stay is expected to produce after reductions.","textPreview":"Revenue the stay is expected to produce after reductions.","textChars":57,"textLines":1,"bbox":[112,338,420,74]}
+{"kind":"textbox","id":"sh/e1w7mp0b","slide":5,"text":"Can include unpaid bookings.","textPreview":"Can include unpaid bookings.","textChars":28,"textLines":1,"bbox":[112,448,420,36]}
+{"kind":"textbox","id":"sh/7mp0bi9s","slide":5,"text":"Collected Revenue","textPreview":"Collected Revenue","textChars":17,"textLines":1,"bbox":[728,260,400,58]}
+{"kind":"textbox","id":"sh/zed8v6ps","slide":5,"text":"Cash, card, transfer, and OTA money actually received.","textPreview":"Cash, card, transfer, and OTA money actually received.","textChars":54,"textLines":1,"bbox":[728,338,420,74]}
+{"kind":"textbox","id":"sh/6xkf6dcb","slide":5,"text":"Useful for daily close and cash control.","textPreview":"Useful for daily close and cash control.","textChars":40,"textLines":1,"bbox":[728,448,420,36]}
+{"kind":"textbox","id":"sh/hk3q5o7q","slide":5,"text":"Example: a room can count in ESR today and become collected revenue later.","textPreview":"Example: a room can count in ESR today and become collected revenue later.","textChars":74,"textLines":1,"bbox":[176,594,920,34]}
+{"kind":"notes","id":"nt/sdplvf","slide":5,"text":""}
+{"kind":"slide","id":"sl/vbt8sq","slide":6,"title":"HOTEL KPI SET","textShapes":13}
+{"kind":"textbox","id":"sh/upwb2hwf","slide":6,"text":"HOTEL KPI SET","textPreview":"HOTEL KPI SET","textChars":13,"textLines":1,"bbox":[56,44,360,24]}
+{"kind":"textbox","id":"sh/5gbq1ory","slide":6,"text":"Industry standards explain room performance","textPreview":"Industry standards explain room performance","textChars":43,"textLines":1,"bbox":[56,78,860,96]}
+{"kind":"textbox","id":"sh/cvixczed","slide":6,"text":"06","textPreview":"06","textChars":2,"textLines":1,"bbox":[1188,664,40,24]}
+{"kind":"shape","id":"sh/nyd0z610","slide":6,"bbox":[64,208,356,340]}
+{"kind":"shape","id":"sh/udg7adsj","slide":6,"bbox":[64,208,7,340]}
+{"kind":"textbox","id":"sh/54zidony","slide":6,"text":"OCCUPANCY","textPreview":"OCCUPANCY","textChars":9,"textLines":1,"bbox":[86,230,312,28]}
+{"kind":"textbox","id":"sh/cj6tovah","slide":6,"text":"Rooms sold / rooms available","textPreview":"Rooms sold / rooms available","textChars":28,"textLines":1,"bbox":[86,266,312,88]}
+{"kind":"textbox","id":"sh/judg7ads","slide":6,"text":"Shows demand and utilization. High occupancy without good rate can still underperform.","textPreview":"Shows demand and utilization. High occupancy without good rate can still underperform.","textChars":86,"textLines":1,"bbox":[86,374,312,156]}
+{"kind":"shape","id":"sh/u9knih4b","slide":6,"bbox":[462,208,356,340]}
+{"kind":"shape","id":"sh/47y1kre1","slide":6,"bbox":[462,208,7,340]}
+{"kind":"textbox","id":"sh/tsvu9kni","slide":6,"text":"ADR","textPreview":"ADR","textChars":3,"textLines":1,"bbox":[484,230,312,28]}
+{"kind":"textbox","id":"sh/m1cfa9w3","slide":6,"text":"Room revenue / rooms sold","textPreview":"Room revenue / rooms sold","textChars":25,"textLines":1,"bbox":[484,266,312,88]}
+{"kind":"textbox","id":"sh/bm58z25k","slide":6,"text":"Shows average price earned per occupied room. Best read with occupancy.","textPreview":"Shows average price earned per occupied room. Best read with occupancy.","textChars":71,"textLines":1,"bbox":[484,374,312,156]}
+{"kind":"shape","id":"sh/4vmtwra5","slide":6,"bbox":[860,208,356,340]}
+{"kind":"shape","id":"sh/tgfmlkjm","slide":6,"bbox":[860,208,7,340]}
+{"kind":"textbox","id":"sh/mp0bi9s3","slide":6,"text":"REVPAR","textPreview":"REVPAR","textChars":6,"textLines":1,"bbox":[882,230,312,28]}
+{"kind":"textbox","id":"sh/bat47y1k","slide":6,"text":"Room revenue / available rooms","textPreview":"Room revenue / available rooms","textChars":30,"textLines":1,"bbox":[882,266,312,88]}
+{"kind":"textbox","id":"sh/4nap4r65","slide":6,"text":"The standard revenue-management KPI because it combines price and occupancy.","textPreview":"The standard revenue-management KPI because it combines price and occupancy.","textChars":76,"textLines":1,"bbox":[882,374,312,156]}
+{"kind":"textbox","id":"sh/t83itgfm","slide":6,"text":"Industry reference: ADR, Occupancy, and RevPAR are standard lodging KPIs; RevPAR = room revenue / available rooms.","textPreview":"Industry reference: ADR, Occupancy, and RevPAR are standard lodging KPIs; RevPAR = room revenue / available rooms.","textChars":114,"textLines":1,"bbox":[56,656,960,24]}
+{"kind":"notes","id":"nt/vbt8sq","slide":6,"text":""}
+{"kind":"slide","id":"sl/qqtin7","slide":7,"title":"STAY ADD-ONS","textShapes":12}
+{"kind":"textbox","id":"sh/wjudg7ad","slide":7,"text":"STAY ADD-ONS","textPreview":"STAY ADD-ONS","textChars":12,"textLines":1,"bbox":[56,44,360,24]}
+{"kind":"textbox","id":"sh/7y1kre1w","slide":7,"text":"Add-ons should be visible, but not mixed into room-only KPIs","textPreview":"Add-ons should be visible, but not mixed into room-only KPIs","textChars":60,"textLines":1,"bbox":[56,78,860,96]}
+{"kind":"textbox","id":"sh/ed8v6psf","slide":7,"text":"07","textPreview":"07","textChars":2,"textLines":1,"bbox":[1188,664,40,24]}
+{"kind":"textbox","id":"sh/pwb2hwfy","slide":7,"text":"Room-only view","textPreview":"Room-only view","textChars":14,"textLines":1,"bbox":[82,224,430,40]}
+{"kind":"textbox","id":"sh/0bi9s36h","slide":7,"text":"Total stay view","textPreview":"Total stay view","textChars":15,"textLines":1,"bbox":[742,224,430,40]}
+{"kind":"shape","id":"sh/7qpg3ex0","slide":7,"bbox":[72,292,500,250]}
+{"kind":"shape","id":"sh/i5sneloj","slide":7,"bbox":[708,292,500,250]}
+{"kind":"shape","id":"sh/pkzupwb2","slide":7,"bbox":[112,347,8,8]}
+{"kind":"textbox","id":"sh/0z61032l","slide":7,"text":"Room Revenue","textPreview":"Room Revenue","textChars":12,"textLines":1,"bbox":[136,338,410,62]}
+{"kind":"shape","id":"sh/qpg3ex0n","slide":7,"bbox":[112,411,8,8]}
+{"kind":"textbox","id":"sh/fa9w3m94","slide":7,"text":"ADR","textPreview":"ADR","textChars":3,"textLines":1,"bbox":[136,402,410,62]}
+{"kind":"shape","id":"sh/8v6psfil","slide":7,"bbox":[112,475,8,8]}
+{"kind":"textbox","id":"sh/xczed8v6","slide":7,"text":"RevPAR","textPreview":"RevPAR","textChars":6,"textLines":1,"bbox":[136,466,410,62]}
+{"kind":"shape","id":"sh/qd4vmtwr","slide":7,"bbox":[748,339,8,8]}
+{"kind":"textbox","id":"sh/fyxobm58","slide":7,"text":"ESR","textPreview":"ESR","textChars":3,"textLines":1,"bbox":[772,330,410,62]}
+{"kind":"shape","id":"sh/8jqh0fep","slide":7,"bbox":[748,403,8,8]}
+{"kind":"textbox","id":"sh/x4nap4r6","slide":7,"text":"Tours, towels, extra beds, surcharges","textPreview":"Tours, towels, extra beds, surcharges","textChars":37,"textLines":1,"bbox":[772,394,410,62]}
+{"kind":"shape","id":"sh/q1orytsv","slide":7,"bbox":[748,487,8,8]}
+{"kind":"textbox","id":"sh/fmlkjm1c","slide":7,"text":"Breakdown by type and payment method","textPreview":"Breakdown by type and payment method","textChars":36,"textLines":1,"bbox":[772,478,410,62]}
+{"kind":"textbox","id":"sh/r2p8nqxs","slide":7,"text":"This keeps industry KPIs comparable while still showing the real business mix.","textPreview":"This keeps industry KPIs comparable while still showing the real business mix.","textChars":78,"textLines":1,"bbox":[212,596,860,36]}
+{"kind":"notes","id":"nt/qqtin7","slide":7,"text":""}
+{"kind":"slide","id":"sl/1il3nx","slide":8,"title":"RECOMMENDED METRIC STACK","textShapes":16}
+{"kind":"textbox","id":"sh/58z25kb6","slide":8,"text":"RECOMMENDED METRIC STACK","textPreview":"RECOMMENDED METRIC STACK","textChars":24,"textLines":1,"bbox":[56,44,360,24]}
+{"kind":"textbox","id":"sh/yhgn29gr","slide":8,"text":"The best dashboard combines owner clarity with industry standards","textPreview":"The best dashboard combines owner clarity with industry standards","textChars":65,"textLines":1,"bbox":[56,78,860,96]}
+{"kind":"textbox","id":"sh/n29gr2p8","slide":8,"text":"08","textPreview":"08","textChars":2,"textLines":1,"bbox":[1188,664,40,24]}
+{"kind":"shape","id":"sh/gbq1oryt","slide":8,"bbox":[72,230,248,310]}
+{"kind":"textbox","id":"sh/5wjudg7a","slide":8,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[100,260,58,58]}
+{"kind":"textbox","id":"sh/y90je9cv","slide":8,"text":"ESR","textPreview":"ESR","textChars":3,"textLines":1,"bbox":[100,342,190,64]}
+{"kind":"textbox","id":"sh/nuxc3ylc","slide":8,"text":"Main owner headline. Expected stay revenue after reductions.","textPreview":"Main owner headline. Expected stay revenue after reductions.","textChars":60,"textLines":1,"bbox":[100,430,190,78]}
+{"kind":"shape","id":"sh/cbulwval","slide":8,"bbox":[360,230,248,310]}
+{"kind":"textbox","id":"sh/5sneloj2","slide":8,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[388,260,58,58]}
+{"kind":"textbox","id":"sh/tcj6tova","slide":8,"text":"Collected Revenue","textPreview":"Collected Revenue","textChars":17,"textLines":1,"bbox":[388,342,190,64]}
+{"kind":"textbox","id":"sh/0rqd4vmt","slide":8,"text":"Cash reality. Shows what has actually been paid.","textPreview":"Cash reality. Shows what has actually been paid.","textChars":48,"textLines":1,"bbox":[388,430,190,78]}
+{"kind":"shape","id":"sh/b6xkf6dc","slide":8,"bbox":[648,230,248,310]}
+{"kind":"textbox","id":"sh/il0rqd4v","slide":8,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[676,260,58,58]}
+{"kind":"textbox","id":"sh/t47y1kre","slide":8,"text":"Occupancy","textPreview":"Occupancy","textChars":9,"textLines":1,"bbox":[676,342,190,64]}
+{"kind":"textbox","id":"sh/0je9cvix","slide":8,"text":"Demand reality. Shows how full the property is.","textPreview":"Demand reality. Shows how full the property is.","textChars":47,"textLines":1,"bbox":[676,430,190,78]}
+{"kind":"shape","id":"sh/byhgn29g","slide":8,"bbox":[936,230,248,310]}
+{"kind":"textbox","id":"sh/idonyd0z","slide":8,"text":"4","textPreview":"4","textChars":1,"textLines":1,"bbox":[964,260,58,58]}
+{"kind":"textbox","id":"sh/p0bi9s36","slide":8,"text":"ADR + RevPAR","textPreview":"ADR + RevPAR","textChars":12,"textLines":1,"bbox":[964,342,190,64]}
+{"kind":"textbox","id":"sh/0fepkzup","slide":8,"text":"Industry comparison. Shows rate quality and room performance.","textPreview":"Industry comparison. Shows rate quality and room performance.","textChars":61,"textLines":1,"bbox":[964,430,190,78]}
+{"kind":"textbox","id":"sh/cbulwval","slide":8,"text":"Put the breakdown modal behind ESR so the owner can audit exactly where the number came from.","textPreview":"Put the breakdown modal behind ESR so the owner can audit exactly where the number came from.","textChars":93,"textLines":1,"bbox":[150,594,980,34]}
+{"kind":"notes","id":"nt/1il3nx","slide":8,"text":""}
+{"kind":"slide","id":"sl/nkmgl3","slide":9,"title":"DECISION","textShapes":8}
+{"kind":"textbox","id":"sh/gr2p8nqx","slide":9,"text":"DECISION","textPreview":"DECISION","textChars":8,"textLines":1,"bbox":[56,44,360,24]}
+{"kind":"textbox","id":"sh/r65wjudg","slide":9,"text":"The recommendation is to keep ESR, but define it like an owner metric","textPreview":"The recommendation is to keep ESR, but define it like an owner metric","textChars":69,"textLines":1,"bbox":[56,78,860,96]}
+{"kind":"textbox","id":"sh/ylc7u54z","slide":9,"text":"09","textPreview":"09","textChars":2,"textLines":1,"bbox":[1188,664,40,24]}
+{"kind":"textbox","id":"sh/5o7qpg3e","slide":9,"text":"Use ESR as the main monthly revenue headline.","textPreview":"Use ESR as the main monthly revenue headline.","textChars":45,"textLines":1,"bbox":[88,238,760,60]}
+{"kind":"shape","id":"sh/g3ex0nux","slide":9,"bbox":[108,355,8,8]}
+{"kind":"textbox","id":"sh/nih4byhg","slide":9,"text":"ESR tells him what the month should produce after refunds and reductions.","textPreview":"ESR tells him what the month should produce after refunds and reductions.","textChars":73,"textLines":1,"bbox":[132,346,900,62]}
+{"kind":"shape","id":"sh/yxobm58z","slide":9,"bbox":[108,433,8,8]}
+{"kind":"textbox","id":"sh/9s36hcrm","slide":9,"text":"Collected Revenue tells him what money has actually arrived.","textPreview":"Collected Revenue tells him what money has actually arrived.","textChars":60,"textLines":1,"bbox":[132,424,900,62]}
+{"kind":"shape","id":"sh/g7adsji5","slide":9,"bbox":[108,511,8,8]}
+{"kind":"textbox","id":"sh/y1kre1w7","slide":9,"text":"ADR, Occupancy, and RevPAR connect the dashboard to hotel industry standards.","textPreview":"ADR, Occupancy, and RevPAR connect the dashboard to hotel industry standards.","textChars":77,"textLines":1,"bbox":[132,502,900,62]}
+{"kind":"textbox","id":"sh/rmhk3q5o","slide":9,"text":"Plain English version: one number for expected business value, one number for cash, and three numbers for hotel performance.","textPreview":"Plain English version: one number for expected business value, one number for cash, and three numbers for hotel performance.","textChars":124,"textLines":1,"bbox":[108,604,920,44]}
+{"kind":"notes","id":"nt/nkmgl3","slide":9,"text":""}
+{"kind":"slide","id":"sl/jyf7hc","slide":10,"title":"SOURCES","textShapes":12}
+{"kind":"textbox","id":"sh/j6tovaho","slide":10,"text":"SOURCES","textPreview":"SOURCES","textChars":7,"textLines":1,"bbox":[56,44,360,24]}
+{"kind":"textbox","id":"sh/crmhk3q5","slide":10,"text":"Reference standards used","textPreview":"Reference standards used","textChars":24,"textLines":1,"bbox":[56,78,860,96]}
+{"kind":"textbox","id":"sh/1cfa9w3m","slide":10,"text":"10","textPreview":"10","textChars":2,"textLines":1,"bbox":[1188,664,40,24]}
+{"kind":"textbox","id":"sh/uxc3ylc7","slide":10,"text":"RevPAR","textPreview":"RevPAR","textChars":6,"textLines":1,"bbox":[90,224,180,34]}
+{"kind":"textbox","id":"sh/ji5snelo","slide":10,"text":"Revenue per available room; commonly calculated as room revenue divided by available rooms, or ADR x occupancy.","textPreview":"Revenue per available room; commonly calculated as room revenue divided by available rooms, or ADR x occupancy.","textChars":111,"textLines":1,"bbox":[300,224,820,48]}
+{"kind":"textbox","id":"sh/c3ylc7u5","slide":10,"text":"ADR","textPreview":"ADR","textChars":3,"textLines":1,"bbox":[90,310,180,34]}
+{"kind":"textbox","id":"sh/1kre1w7m","slide":10,"text":"Average daily rate; room revenue divided by rooms sold.","textPreview":"Average daily rate; room revenue divided by rooms sold.","textChars":55,"textLines":1,"bbox":[300,310,820,48]}
+{"kind":"textbox","id":"sh/q5o7qpg3","slide":10,"text":"TRevPAR","textPreview":"TRevPAR","textChars":7,"textLines":1,"bbox":[90,396,180,34]}
+{"kind":"textbox","id":"sh/jqh0fepk","slide":10,"text":"Total revenue per available room; uses total hotel revenue rather than room-only revenue.","textPreview":"Total revenue per available room; uses total hotel revenue rather than room-only revenue.","textChars":89,"textLines":1,"bbox":[300,396,820,48]}
+{"kind":"textbox","id":"sh/fmlkjm1c","slide":10,"text":"RevPOR","textPreview":"RevPOR","textChars":6,"textLines":1,"bbox":[90,482,180,34]}
+{"kind":"textbox","id":"sh/q1orytsv","slide":10,"text":"Revenue per occupied room; useful for understanding guest spend including services and add-ons.","textPreview":"Revenue per occupied room; useful for understanding guest spend including services and add-ons.","textChars":95,"textLines":1,"bbox":[300,482,820,48]}
+{"kind":"textbox","id":"sh/xs72x4na","slide":10,"text":"Sources: Investopedia hotel KPI explainers and public hospitality metric definitions for RevPAR, ADR, TRevPAR, and RevPOR.","textPreview":"Sources: Investopedia hotel KPI explainers and public hospitality metric definitions for RevPAR, ADR, TRevPAR, and RevPOR.","textChars":122,"textLines":1,"bbox":[90,600,940,42]}
+{"kind":"notes","id":"nt/jyf7hc","slide":10,"text":""}

@@ -1,8 +1,13 @@
 .sidebar {
+  display: flex;
+  flex-direction: column;
   background-color: var(--light-background);
   box-sizing: border-box;
   width: 17rem;
+  height: 100dvh;
+  min-height: 0;
   padding: 2.5rem;
+  overflow: hidden;
   transition:
     width 0.25s ease,
     padding 0.25s ease;
@@ -14,6 +19,7 @@
 }
 
 .sidebar__top {
+  flex: 0 0 auto;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -53,9 +59,18 @@
 }
 
 .sidebar__navList {
+  flex: 1 1 auto;
+  min-height: 0;
   list-style: none;
-  padding: 0;
-  margin-top: 2rem;
+  padding: 0.75rem;
+  margin: 1.25rem -0.75rem -0.75rem;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.sidebar__navList::-webkit-scrollbar {
+  display: none;
 }
 
 .sidebar__navList a {
@@ -128,7 +143,10 @@
   .sidebar--collapsed {
     grid-row: 2;
     width: 100%;
+    height: auto;
+    min-height: 0;
     padding: 0.65rem 0.75rem calc(0.65rem + env(safe-area-inset-bottom));
+    overflow: visible;
     border-top: 0.1rem solid #ededed;
     box-shadow: 0 -0.5rem 1.5rem rgba(149, 157, 165, 0.14);
   }
@@ -139,6 +157,7 @@
 
   .sidebar__navList {
     display: flex;
+    flex: none;
     gap: 0.65rem;
     margin-top: 0;
     overflow-x: auto;

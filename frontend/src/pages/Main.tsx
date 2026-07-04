@@ -34,6 +34,7 @@ import type { booking, PlatformId } from "../types/bookingTypes";
 
 import "./Home.css";
 import "./Main.css";
+import FinancialBreakdown from "../features/finance/FinancialBreakdown";
 
 const getFetchErrorMessage = (err: unknown) => {
   if (axios.isAxiosError(err) && err.response?.data?.message) {
@@ -98,10 +99,10 @@ const revenueRangeOptions: Array<{ value: RevenueRange; label: string }> = [
 ];
 
 const revenueRangeTitleMap: Record<RevenueRange, string> = {
-  mtd: "รายได้ตามยอดจอง MTD",
-  "1m": "รายได้ตามยอดจอง 1M",
-  "3m": "รายได้ตามยอดจอง 3M",
-  "1y": "รายได้ตามยอดจอง 1Y",
+  mtd: "ESR MTD",
+  "1m": "ESR 1M",
+  "3m": "ESR 3M",
+  "1y": "ESR 1Y",
 };
 
 const occupancyRangeTitleMap: Record<RevenueRange, string> = {
@@ -112,19 +113,30 @@ const occupancyRangeTitleMap: Record<RevenueRange, string> = {
 };
 
 const chartMetricOptions: Array<{ value: ChartMetric; label: string }> = [
-  { value: "revenue", label: "ยอดจอง" },
+  { value: "revenue", label: "ESR" },
   { value: "occupancy", label: "เข้าพัก" },
 ];
 
 const dashboardHelpText = {
   bookedRevenue:
-    "รายได้จากยอดจองทั้งหมด แม้บางรายการยังไม่ได้รับเงินจริง",
-  collectedRevenue:
-    "เงินที่รับแล้วจริง เช่น เงินสด โอน บัตร หรือ OTA จ่ายแล้ว",
+    "รายได้จากการเข้าพักที่คาดไว้หลังหักรายการลด เช่น คืนเงิน ชดเชย และปรับลบ โดยไม่รวมมัดจำ และบางยอดอาจยังไม่ได้รับเงินจริง",
+  collectedRevenue: "เงินที่รับแล้วจริง เช่น เงินสด โอน บัตร หรือ OTA จ่ายแล้ว",
   unpaid: "ยอดจองที่ยังไม่ได้รับเงินจากลูกค้า",
   cashToday: "เงินสดรับ ลบ เงินสดจ่าย สำหรับวันที่เลือก",
   occupancy: "จำนวนแขกที่เข้าพักจริงเทียบกับจำนวนเตียงทั้งหมด",
 };
+
+const ExpectedStayRevenueInfo = () => (
+  <span
+    className="main__metricInfo"
+    onClick={(event) => event.stopPropagation()}
+  >
+    <i className="bx bx-info-circle" />
+    <span className="main__metricTooltip">
+      <span>{dashboardHelpText.bookedRevenue}</span>
+    </span>
+  </span>
+);
 
 type FinanceSummary = {
   cashIn: number;
@@ -216,6 +228,12 @@ const formatCloseTime = (date?: string | Date) =>
       })
     : "";
 
+const currentThaiMonthLabel = () =>
+  new Intl.DateTimeFormat("th-TH", {
+    month: "long",
+    calendar: "gregory",
+  }).format(new Date());
+
 const TrendLineChart = ({
   series,
   metric,
@@ -290,7 +308,7 @@ const TrendLineChart = ({
               ];
             }
 
-            return [formatCurrency(Number(value)), "รายได้ตามยอดจอง"];
+            return [formatCurrency(Number(value)), "ESR"];
           }}
           labelFormatter={(label) => String(label)}
         />
@@ -462,6 +480,8 @@ const Main = () => {
   const [closeNote, setCloseNote] = useState("");
   const [addBookingIsOpen, setAddBookingIsOpen] = useState(false);
   const [addBookingIsDirty, setAddBookingIsDirty] = useState(false);
+  const [financialBreakdownIsOpen, setFinancialBreakdownIsOpen] =
+    useState(false);
   const [pendingUnsavedClose, setPendingUnsavedClose] = useState<
     (() => void) | null
   >(null);
@@ -714,6 +734,7 @@ const Main = () => {
           0,
         ) / adminStats.revenueSeries.length
       : 0;
+  const thisMonthLabel = `เดือนนี้ (${currentThaiMonthLabel()})`;
   const chartTitle =
     chartMetric === "revenue"
       ? revenueRangeTitleMap[revenueRange]
@@ -764,6 +785,13 @@ const Main = () => {
             setPendingUnsavedClose(null);
           }}
         />
+      </Modal>
+      <Modal
+        open={financialBreakdownIsOpen}
+        className="home__modalCenter"
+        onClose={() => setFinancialBreakdownIsOpen(false)}
+      >
+        <FinancialBreakdown />
       </Modal>
 
       <PageHeader
@@ -816,20 +844,23 @@ const Main = () => {
               <i className="bx bx-bar-chart-big" />
               <h2>ภาพรวมสำหรับแอดมิน</h2>
             </div>
-            <span>เดือนนี้</span>
+            <span>{thisMonthLabel}</span>
           </div>
 
           <div className="main__adminDashboardGrid">
             <div className="main__adminPrimaryColumn">
-              <section className="main__adminPanel main__revenueHero">
+              <section
+                className="main__adminPanel main__revenueHero"
+                onClick={() => setFinancialBreakdownIsOpen(true)}
+              >
                 <div className="main__adminPanelHeader">
                   <div>
-                    <span>Booked Revenue</span>
-                    <h3 title={dashboardHelpText.bookedRevenue}>
-                      รายได้ตามยอดจอง
-                    </h3>
+                    <div className="main__metricTitle">
+                      <h3>Expected Stay Revenue</h3>
+                      <ExpectedStayRevenueInfo />
+                    </div>
                   </div>
-                  <p>เดือนนี้</p>
+                  <p>{thisMonthLabel}</p>
                 </div>
                 <div className="main__revenueHeroValue">
                   <strong>
@@ -853,8 +884,9 @@ const Main = () => {
                       <span>{group.title}</span>
                     </div>
                     <div className="main__summaryMetric">
-                      <p title={dashboardHelpText.bookedRevenue}>
-                        รายได้ตามยอดจอง
+                      <p className="main__summaryMetricLabel">
+                        <span>Expected Stay Revenue</span>
+                        <ExpectedStayRevenueInfo />
                       </p>
                       <strong>
                         {adminLoading && !adminStats

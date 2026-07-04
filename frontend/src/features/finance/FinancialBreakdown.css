@@ -1,0 +1,508 @@
+.financialBreakdown {
+  position: relative;
+  width: min(60rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  padding: 2rem;
+  border-radius: 2rem;
+  background-color: var(--background);
+  box-shadow: var(--main-shadow);
+  scrollbar-color: #d4d4d4 transparent;
+  scrollbar-width: thin;
+}
+
+.financialBreakdown::-webkit-scrollbar {
+  width: 0.5rem;
+}
+
+.financialBreakdown::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.financialBreakdown::-webkit-scrollbar-thumb {
+  background-color: #d4d4d4;
+  border-radius: 999rem;
+}
+
+.financialBreakdown::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.financialBreakdown__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+/* .financialBreakdown__header h1 {
+  font-size: 1.65rem;
+  font-weight: 500;
+  line-height: 1.2;
+} */
+
+.financialBreakdown__header p {
+  margin-top: 0.55rem;
+  color: #666666;
+  line-height: 1.5;
+}
+
+.financialBreakdown__header > span {
+  flex: 0 0 auto;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999rem;
+  background-color: #f4f6f8;
+  color: #555555;
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.financialBreakdown__summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 2rem;
+  align-items: end;
+  padding: 1.35rem;
+  margin-bottom: 1.5rem;
+  border-radius: 1.5rem;
+  background-color: var(--background);
+  box-shadow: var(--light-shadow);
+}
+
+.financialBreakdown__summaryPrimary,
+.financialBreakdown__summaryMeta {
+  min-width: 0;
+}
+
+.financialBreakdown__summaryPrimary p,
+.financialBreakdown__summaryMeta small {
+  overflow: hidden;
+  margin-bottom: 0.45rem;
+  color: #666666;
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.financialBreakdown__summaryPrimary strong {
+  display: block;
+  overflow: hidden;
+  font-size: clamp(2.35rem, 4vw, 3.4rem);
+  font-weight: 400;
+  line-height: 1.02;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.financialBreakdown__summaryMeta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+
+.financialBreakdown__summaryMeta span {
+  min-width: 0;
+}
+
+.financialBreakdown__summaryMeta small,
+.financialBreakdown__summaryMeta strong {
+  display: block;
+}
+
+.financialBreakdown__summaryMeta strong {
+  overflow: hidden;
+  font-size: 1.15rem;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.financialBreakdown__analysisHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.financialBreakdown__analysisHeader h2 {
+  font-size: 1.25rem;
+  font-weight: 500;
+}
+
+.financialBreakdown__analysisHeader p {
+  margin-top: 0.25rem;
+  color: #777777;
+  font-size: 0.9rem;
+}
+
+.financialBreakdown__modeToggle {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 13.5rem;
+  overflow: hidden;
+  border-radius: 10rem;
+  background-color: var(--background);
+  box-shadow: var(--light-shadow);
+}
+
+.financialBreakdown__modeButton {
+  min-height: 2.2rem;
+  padding: 0 0.9rem;
+  border: 0;
+  background-color: transparent;
+  color: #666666;
+  cursor: pointer;
+  font-family: "IBM Plex Sans Thai", sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.financialBreakdown__modeButton--active {
+  background-color: color-mix(in srgb, var(--primary-color) 10%, #ffffff);
+  color: #111111;
+  box-shadow: var(--light-shadow);
+}
+
+.financialBreakdown__distributionBar {
+  display: flex;
+  gap: 0.25rem;
+  width: 100%;
+  height: 1.55rem;
+  margin-bottom: 2rem;
+  border-radius: 999rem;
+  overflow: visible;
+}
+
+.financialBreakdown__distributionBar--empty {
+  background-color: #f1f3f6;
+}
+
+.financialBreakdown__distributionSegment {
+  position: relative;
+  display: block;
+  min-width: 0.45rem;
+  height: 100%;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+}
+
+.financialBreakdown__distributionSegment:first-child {
+  border-radius: 999rem 0 0 999rem;
+}
+
+.financialBreakdown__distributionSegment:last-child {
+  border-radius: 0 999rem 999rem 0;
+}
+
+.financialBreakdown__distributionSegment:only-child {
+  border-radius: 999rem;
+}
+
+.financialBreakdown__distributionTooltip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 0.55rem);
+  z-index: 4;
+  display: none;
+  width: max-content;
+  max-width: 14rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.65rem;
+  background: #ffffffd9;
+  backdrop-filter: blur(6px);
+  box-shadow: var(--main-shadow);
+  color: #000000;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  transform: translateX(-50%);
+}
+
+.financialBreakdown__distributionTooltip::after {
+  position: absolute;
+  left: 50%;
+  bottom: -0.35rem;
+  width: 0.7rem;
+  height: 0.7rem;
+  background: #ffffffd9;
+  content: "";
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.financialBreakdown__distributionTooltip strong,
+.financialBreakdown__distributionTooltip span {
+  display: block;
+}
+
+.financialBreakdown__distributionSegment:hover {
+  filter: brightness(0.96);
+}
+
+.financialBreakdown__distributionSegment:hover
+  .financialBreakdown__distributionTooltip {
+  display: block;
+}
+
+.financialBreakdown__section {
+  margin-top: 2rem;
+}
+
+.financialBreakdown__sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.financialBreakdown__sectionHeader h2 {
+  font-size: 1.25rem;
+  font-weight: 500;
+}
+
+.financialBreakdown__sectionHeader span {
+  color: #777777;
+  font-size: 0.9rem;
+}
+
+.financialBreakdown__categoryList {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.financialBreakdown__category {
+  overflow: hidden;
+  border-radius: 1.5rem;
+  background-color: var(--background);
+  box-shadow: var(--light-shadow);
+}
+
+.financialBreakdown__categoryHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  width: 100%;
+  padding: 1.15rem 1.25rem;
+  border: 0;
+  background-color: transparent;
+  cursor: pointer;
+  font-family: "IBM Plex Sans Thai", sans-serif;
+  text-align: left;
+}
+
+.financialBreakdown__category--open .financialBreakdown__categoryHeader {
+  background-color: color-mix(in srgb, var(--primary-color) 5%, #ffffff);
+}
+
+.financialBreakdown__categoryTotal {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex: 0 0 auto;
+}
+
+.financialBreakdown__categoryTotal strong {
+  font-size: 1.1rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.financialBreakdown__categoryTotal i {
+  color: #777777;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.financialBreakdown__categoryIdentity {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.financialBreakdown__categoryIdentity h3 {
+  overflow: hidden;
+  font-size: 1rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.financialBreakdown__categoryIdentity p {
+  margin-top: 0.2rem;
+  color: #777777;
+  font-size: 0.9rem;
+}
+
+.financialBreakdown__colorDot {
+  flex: 0 0 auto;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+}
+
+.financialBreakdown__methodIcon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 2.5rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  color: #ffffff;
+}
+
+.financialBreakdown__methodIcon i {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.financialBreakdown__transactions {
+  display: flex;
+  flex-direction: column;
+  padding: 0.35rem 1.25rem 0.25rem;
+  background-color: #ffffff;
+  box-shadow: inset 0 0.35rem 0.65rem rgba(0, 0, 0, 0.03);
+}
+
+.financialBreakdown__transaction {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1.5rem;
+  align-items: start;
+  min-width: 0;
+  padding: 1rem 0;
+  box-shadow: inset 0 -0.1rem 0 rgba(0, 0, 0, 0.05);
+}
+
+.financialBreakdown__transaction:last-child {
+  padding-bottom: 0;
+  box-shadow: none;
+}
+
+.financialBreakdown__transactionMain,
+.financialBreakdown__transactionSide {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.financialBreakdown__transactionSide {
+  align-items: flex-end;
+  min-width: 9rem;
+  text-align: right;
+}
+
+.financialBreakdown__transactionMain strong,
+.financialBreakdown__transactionMain span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.financialBreakdown__transactionMain strong {
+  font-weight: 400;
+}
+
+.financialBreakdown__transactionMain span {
+  color: #666666;
+  font-size: 0.9rem;
+}
+
+.financialBreakdown__paymentMethod {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  color: #666666;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.financialBreakdown__paymentMethod i {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.financialBreakdown__transactionAmount {
+  color: #000000;
+  font-size: 1rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.financialBreakdown__state {
+  display: grid;
+  place-items: center;
+  gap: 0.5rem;
+  min-height: 10rem;
+  color: #777777;
+  text-align: center;
+}
+
+.financialBreakdown__state i {
+  color: var(--primary-color);
+  font-size: 1.8rem;
+}
+
+.financialBreakdown__state--error i {
+  color: var(--red);
+}
+
+.financialBreakdown__emptyText {
+  padding: 1.25rem;
+  border-radius: 1.5rem;
+  background-color: #f7f7f7;
+  color: #777777;
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .financialBreakdown {
+    width: min(42rem, calc(100vw - 1.5rem));
+    max-height: calc(100vh - 1.5rem);
+    padding: 1.25rem;
+    border-radius: 1.5rem;
+  }
+
+  .financialBreakdown__header,
+  .financialBreakdown__categoryHeader {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .financialBreakdown__summary {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.25rem;
+    padding: 1.25rem;
+  }
+
+  .financialBreakdown__summaryPrimary strong {
+    font-size: 1.65rem;
+  }
+
+  .financialBreakdown__analysisHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .financialBreakdown__modeToggle {
+    width: 100%;
+  }
+
+  .financialBreakdown__transaction {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.35rem;
+  }
+
+  .financialBreakdown__transactionSide {
+    align-items: flex-start;
+    min-width: 0;
+    text-align: left;
+  }
+}
