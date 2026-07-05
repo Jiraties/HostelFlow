@@ -1,6 +1,12 @@
 import type { PaymentMethod, transcation, TransactionType } from "../models/booking";
 
 export type TransactionDirection = "in" | "out" | "neutral";
+export type CashStashSummary = {
+  depositCashIn: number;
+  depositCashOut: number;
+  operatingCashIn: number;
+  operatingCashOut: number;
+};
 export type SourceAction =
   | "NEW_BOOKING"
   | "CHECK_IN"
@@ -78,6 +84,57 @@ export const transactionSignedAmount = (transaction: transcation) => {
 
 export const transactionCashImpact = (transaction: transcation) =>
   transaction.paymentMethod === "Cash" ? transactionSignedAmount(transaction) : 0;
+
+export const emptyCashStashSummary = (): CashStashSummary => ({
+  depositCashIn: 0,
+  depositCashOut: 0,
+  operatingCashIn: 0,
+  operatingCashOut: 0,
+});
+
+export const transactionCashStashImpact = (
+  transaction: transcation,
+): CashStashSummary => {
+  const summary = emptyCashStashSummary();
+  if (transaction.paymentMethod !== "Cash") return summary;
+
+  const amount = Math.abs(transaction.amount || 0);
+  if (amount === 0) return summary;
+
+  if (transaction.type === "deposit") {
+    summary.depositCashIn += amount;
+    return summary;
+  }
+
+  if (transaction.type === "depositRefund") {
+    summary.depositCashOut += amount;
+    return summary;
+  }
+
+  if (transaction.type === "depositKept") {
+    summary.depositCashOut += amount;
+    summary.operatingCashIn += amount;
+    return summary;
+  }
+
+  const signedAmount = transactionSignedAmount(transaction);
+  if (signedAmount > 0) summary.operatingCashIn += signedAmount;
+  if (signedAmount < 0) summary.operatingCashOut += Math.abs(signedAmount);
+
+  return summary;
+};
+
+export const summarizeCashStashes = (transactions: transcation[]) =>
+  transactions.reduce((summary, transaction) => {
+    const impact = transactionCashStashImpact(transaction);
+
+    summary.depositCashIn += impact.depositCashIn;
+    summary.depositCashOut += impact.depositCashOut;
+    summary.operatingCashIn += impact.operatingCashIn;
+    summary.operatingCashOut += impact.operatingCashOut;
+
+    return summary;
+  }, emptyCashStashSummary());
 
 export const transactionIsRevenue = (transaction: transcation) =>
   transaction.paymentMethod !== "Unpaid" &&

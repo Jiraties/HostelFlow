@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import Booking from "../models/booking";
+import CashShift from "../models/cashShift";
 import DailyClose from "../models/dailyClose";
 import User from "../models/user";
 import type {
@@ -13,6 +14,7 @@ import { logActivity } from "../services/activityServices";
 import {
   CASH_VARIANCE_THRESHOLD,
   summarizeTransactions,
+  summarizeCashStashes,
   transactionDirection,
   transactionFallsOnBusinessDate,
 } from "../helpers/financeHelpers";
@@ -253,7 +255,7 @@ const attachDailyCloseStaffProfiles = async (
         dailyClose.createdBy,
       ]),
     ),
-  ].filter(Boolean);
+  ].filter((username): username is string => Boolean(username));
 
   const users = await User.find({ username: { $in: usernames } })
     .select("username name profilePictureUrl")
@@ -283,6 +285,177 @@ const attachDailyCloseStaffProfiles = async (
         : undefined,
     };
   });
+};
+
+const getShiftTransactions = async (
+  shift: {
+    _id?: unknown;
+    startedAt: Date;
+    endedAt?: Date;
+  },
+  fallbackEnd = new Date(),
+) => {
+  const shiftId = String(shift._id);
+  const end = shift.endedAt || fallbackEnd;
+  const bookings = await Booking.find({
+    $or: [
+      { "transactions.cashShiftId": shiftId },
+      {
+        "transactions.createdAt": {
+          $gte: shift.startedAt,
+          $lt: end,
+        },
+      },
+    ],
+  }).lean<booking[]>();
+
+  return bookings.flatMap((booking) =>
+    (booking.transactions || [])
+      .filter((transaction) => {
+        if (transaction.cashShiftId === shiftId) return true;
+        if (transaction.cashShiftId) return false;
+        const createdAt = new Date(transaction.createdAt || booking.checkIn);
+        return createdAt >= shift.startedAt && createdAt < end;
+      })
+      .map((transaction) => ({
+        ...transaction,
+        bookingId: booking.bookingId,
+        guestName: booking.name,
+        staffUsername: transaction.createdBy || booking.staffUsername,
+      })),
+  );
+};
+
+const getUnassignedCashTransactionsBetween = async (start: Date, end: Date) => {
+  const bookings = await Booking.find({
+    "transactions.createdAt": { $gte: start, $lt: end },
+  }).lean<booking[]>();
+
+  return bookings.flatMap((booking) =>
+    (booking.transactions || [])
+      .filter((transaction) => {
+        if (transaction.cashShiftId) return false;
+        const createdAt = new Date(transaction.createdAt || booking.checkIn);
+        return createdAt >= start && createdAt < end;
+      })
+      .map((transaction) => ({
+        ...transaction,
+        bookingId: booking.bookingId,
+        guestName: booking.name,
+        staffUsername: transaction.createdBy || booking.staffUsername,
+      })),
+  );
+};
+
+const enrichCashShift = async <T extends { toObject?: () => T }>(
+  cashShift: T,
+) => {
+  const shiftObject =
+    typeof cashShift.toObject === "function" ? cashShift.toObject() : cashShift;
+  const movements = summarizeCashStashes(
+    await getShiftTransactions(shiftObject as T & { startedAt: Date }),
+  );
+  const depositExpectedCash =
+    Number((shiftObject as any).depositOpeningCash || 0) +
+    movements.depositCashIn -
+    movements.depositCashOut;
+  const operatingExpectedCash =
+    Number((shiftObject as any).operatingOpeningCash || 0) +
+    movements.operatingCashIn -
+    movements.operatingCashOut;
+
+  return {
+    ...shiftObject,
+    ...movements,
+    depositExpectedCash,
+    operatingExpectedCash,
+  };
+};
+
+const attachCashShiftStaffProfiles = async <T extends { staffUsername?: string }>(
+  cashShifts: T[],
+) => {
+  const usernames = [
+    ...new Set(cashShifts.map((cashShift) => cashShift.staffUsername)),
+  ].filter((username): username is string => Boolean(username));
+
+  const users = await User.find({ username: { $in: usernames } })
+    .select("username name profilePictureUrl")
+    .lean();
+  const usersByUsername = new Map(users.map((user) => [user.username, user]));
+
+  return cashShifts.map((cashShift) => {
+    const staff = cashShift.staffUsername
+      ? usersByUsername.get(cashShift.staffUsername)
+      : undefined;
+
+    return {
+      ...cashShift,
+      staff: staff
+        ? {
+            username: staff.username,
+            name: staff.name,
+            profilePictureUrl: staff.profilePictureUrl,
+          }
+        : undefined,
+    };
+  });
+};
+
+const getCashPositionForDate = async (businessDate?: string) => {
+  const bounds = getBusinessDayBoundsFromKey(businessDate);
+  if (!bounds) return null;
+
+  const shifts = await CashShift.find({ businessDate: bounds.businessDate }).sort({
+    shiftNumber: 1,
+  });
+  const activeShift = shifts.find((shift) => shift.status === "open");
+  const previousShift = [...shifts]
+    .reverse()
+    .find((shift) => shift.status === "closed");
+  const enrichedShifts = await attachCashShiftStaffProfiles(
+    await Promise.all(shifts.map(enrichCashShift)),
+  );
+  const enrichedActiveShift = activeShift
+    ? enrichedShifts.find(
+        (shift) => String((shift as any)._id) === String(activeShift._id),
+      )
+    : null;
+  const unassignedStart = activeShift
+    ? activeShift.startedAt
+    : previousShift?.endedAt || bounds.start;
+  const unassignedMovements = summarizeCashStashes(
+    await getUnassignedCashTransactionsBetween(unassignedStart, bounds.end),
+  );
+  const currentDepositCash = enrichedActiveShift
+    ? enrichedActiveShift.depositExpectedCash
+    : (previousShift?.depositActualCash || 0) +
+      unassignedMovements.depositCashIn -
+      unassignedMovements.depositCashOut;
+  const currentOperatingCash = enrichedActiveShift
+    ? enrichedActiveShift.operatingExpectedCash
+    : (previousShift?.operatingActualCash || 0) +
+      unassignedMovements.operatingCashIn -
+      unassignedMovements.operatingCashOut;
+
+  return {
+    businessDate: bounds.businessDate,
+    threshold: CASH_VARIANCE_THRESHOLD,
+    activeShift: enrichedActiveShift || null,
+    previousShift: previousShift || null,
+    current: {
+      depositCash: currentDepositCash,
+      operatingCash: currentOperatingCash,
+    },
+    unassignedCash: unassignedMovements,
+    handoff: {
+      depositCash: previousShift?.depositActualCash || 0,
+      operatingCash: previousShift?.operatingActualCash || 0,
+      fromShiftId: previousShift ? String(previousShift._id) : undefined,
+      fromShiftNumber: previousShift?.shiftNumber,
+    },
+    shifts: enrichedShifts,
+  };
 };
 
 const addBreakdownTransaction = (
@@ -586,15 +759,236 @@ export const getReconciliation = async (req: Request, res: Response) => {
     }).sort({ createdAt: -1, staffUsername: 1 });
     const dailyClosesWithStaff =
       await attachDailyCloseStaffProfiles(dailyCloses);
+    const cashPosition = await getCashPositionForDate(reconciliation.businessDate);
 
     res.status(200).json({
       businessDate: reconciliation.businessDate,
       threshold: CASH_VARIANCE_THRESHOLD,
       summary: reconciliation.summary,
+      cashStashes: summarizeCashStashes(reconciliation.transactions),
+      cashShifts: cashPosition?.shifts || [],
       transactions: reconciliation.transactions,
       dailyCloses: dailyClosesWithStaff,
     });
   } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+};
+
+export const getCashPosition = async (req: Request, res: Response) => {
+  try {
+    const cashPosition = await getCashPositionForDate(
+      req.query.date as string | undefined,
+    );
+
+    if (!cashPosition) {
+      return res.status(400).json({ message: "Invalid date format" });
+    }
+
+    res.status(200).json(cashPosition);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+};
+
+export const startCashShift = async (req: Request, res: Response) => {
+  try {
+    if (!req.user?.username) {
+      return res.status(401).json({ message: "กรุณาเข้าสู่ระบบใหม่" });
+    }
+
+    const bounds = getBusinessDayBoundsFromKey(req.body.businessDate);
+    if (!bounds) {
+      return res.status(400).json({ message: "Invalid date format" });
+    }
+
+    const existingOpenShift = await CashShift.findOne({
+      businessDate: bounds.businessDate,
+      status: "open",
+    });
+
+    if (existingOpenShift) {
+      return res.status(409).json({
+        message: "มีกะเงินสดที่เปิดอยู่แล้ว กรุณาปิดกะเดิมก่อน",
+      });
+    }
+
+    const previousShift = await CashShift.findOne({
+      businessDate: bounds.businessDate,
+      status: "closed",
+    }).sort({ shiftNumber: -1 });
+    const openingMode =
+      req.body.openingMode === "accepted_handoff"
+        ? "accepted_handoff"
+        : "counted";
+
+    if (openingMode === "accepted_handoff" && !previousShift) {
+      return res.status(400).json({
+        message: "ยังไม่มีกะก่อนหน้าให้รับส่งเงิน",
+      });
+    }
+
+    const expectedDepositOpening = previousShift?.depositActualCash || 0;
+    const expectedOperatingOpening = previousShift?.operatingActualCash || 0;
+    const depositOpeningCash =
+      openingMode === "accepted_handoff"
+        ? expectedDepositOpening
+        : Number(req.body.depositOpeningCash || 0);
+    const operatingOpeningCash =
+      openingMode === "accepted_handoff"
+        ? expectedOperatingOpening
+        : Number(req.body.operatingOpeningCash || 0);
+
+    if (
+      !Number.isFinite(depositOpeningCash) ||
+      !Number.isFinite(operatingOpeningCash)
+    ) {
+      return res.status(400).json({ message: "ยอดเงินสดไม่ถูกต้อง" });
+    }
+
+    const openingVariance =
+      Math.abs(depositOpeningCash - expectedDepositOpening) +
+      Math.abs(operatingOpeningCash - expectedOperatingOpening);
+    const openingNoteRequired =
+      (!previousShift && openingVariance > 0) ||
+      openingVariance > CASH_VARIANCE_THRESHOLD;
+    if (openingNoteRequired && !String(req.body.note || "").trim()) {
+      return res.status(400).json({
+        message: "กรุณาระบุหมายเหตุเมื่อยอดรับส่งเงินไม่ตรงกัน",
+      });
+    }
+
+    const shiftNumber = (previousShift?.shiftNumber || 0) + 1;
+    const cashShift = await withMutationIdempotency(req, () =>
+      CashShift.create({
+        businessDate: bounds.businessDate,
+        shiftNumber,
+        staffUsername: req.user?.username,
+        status: "open",
+        openingMode,
+        handoffFromShiftId: previousShift ? String(previousShift._id) : undefined,
+        depositOpeningCash,
+        operatingOpeningCash,
+        depositExpectedCash: depositOpeningCash,
+        operatingExpectedCash: operatingOpeningCash,
+        note: String(req.body.note || "").trim(),
+        startedAt: new Date(),
+        createdBy: req.user?.username,
+      }),
+    );
+
+    await logActivity(req.user.username, "DAILY_CLOSE", {
+      summary: {
+        action: "START_CASH_SHIFT",
+        businessDate: bounds.businessDate,
+        shiftNumber,
+        openingMode,
+        depositOpeningCash,
+        operatingOpeningCash,
+      },
+    });
+
+    res.status(201).json({ cashShift });
+  } catch (err) {
+    if (err instanceof IdempotencyConflictError) {
+      return sendDuplicateMutationResponse(res);
+    }
+
+    res.status(500).json({ error: (err as Error).message });
+  }
+};
+
+export const closeCashShift = async (req: Request, res: Response) => {
+  try {
+    if (!req.user?.username) {
+      return res.status(401).json({ message: "กรุณาเข้าสู่ระบบใหม่" });
+    }
+
+    const cashShift = await CashShift.findById(req.params.shiftId);
+    if (!cashShift) {
+      return res.status(404).json({ message: "ไม่พบกะเงินสดนี้" });
+    }
+
+    if (cashShift.status !== "open") {
+      return res.status(409).json({ message: "กะเงินสดนี้ปิดไปแล้ว" });
+    }
+
+    const depositActualCash = Number(req.body.depositActualCash);
+    const operatingActualCash = Number(req.body.operatingActualCash);
+    if (
+      !Number.isFinite(depositActualCash) ||
+      !Number.isFinite(operatingActualCash)
+    ) {
+      return res.status(400).json({ message: "ยอดเงินสดไม่ถูกต้อง" });
+    }
+
+    const movements = summarizeCashStashes(await getShiftTransactions(cashShift));
+    const depositExpectedCash =
+      cashShift.depositOpeningCash +
+      movements.depositCashIn -
+      movements.depositCashOut;
+    const operatingExpectedCash =
+      cashShift.operatingOpeningCash +
+      movements.operatingCashIn -
+      movements.operatingCashOut;
+    const depositVariance = depositActualCash - depositExpectedCash;
+    const operatingVariance = operatingActualCash - operatingExpectedCash;
+
+    if (
+      (Math.abs(depositVariance) > CASH_VARIANCE_THRESHOLD ||
+        Math.abs(operatingVariance) > CASH_VARIANCE_THRESHOLD) &&
+      !String(req.body.note || "").trim()
+    ) {
+      return res.status(400).json({
+        message: "กรุณาระบุหมายเหตุเมื่อยอดเงินสดไม่ตรงกัน",
+      });
+    }
+
+    const closedShift = await withMutationIdempotency(req, () =>
+      CashShift.findByIdAndUpdate(
+        cashShift._id,
+        {
+          $set: {
+            status: "closed",
+            depositCashIn: movements.depositCashIn,
+            depositCashOut: movements.depositCashOut,
+            operatingCashIn: movements.operatingCashIn,
+            operatingCashOut: movements.operatingCashOut,
+            depositExpectedCash,
+            operatingExpectedCash,
+            depositActualCash,
+            operatingActualCash,
+            depositVariance,
+            operatingVariance,
+            note: String(req.body.note || cashShift.note || "").trim(),
+            endedAt: new Date(),
+            closedBy: req.user?.username,
+          },
+        },
+        { returnDocument: "after" },
+      ),
+    );
+
+    await logActivity(req.user.username, "DAILY_CLOSE", {
+      summary: {
+        action: "CLOSE_CASH_SHIFT",
+        businessDate: cashShift.businessDate,
+        shiftNumber: cashShift.shiftNumber,
+        depositExpectedCash,
+        depositActualCash,
+        depositVariance,
+        operatingExpectedCash,
+        operatingActualCash,
+        operatingVariance,
+      },
+    });
+
+    res.status(200).json({ cashShift: closedShift });
+  } catch (err) {
+    if (err instanceof IdempotencyConflictError) {
+      return sendDuplicateMutationResponse(res);
+    }
+
     res.status(500).json({ error: (err as Error).message });
   }
 };

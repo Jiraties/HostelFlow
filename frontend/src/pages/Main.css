@@ -33,108 +33,301 @@
 .main__cashCloseSection {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  padding: 1.25rem;
-  border-radius: 2rem;
+  gap: 1.15rem;
+  padding: 1.4rem;
+  border-radius: 1.75rem;
   background-color: var(--background);
   box-shadow: var(--main-shadow);
 }
 
-.main__cashCloseGrid {
+.main__cashCloseHero {
   display: grid;
-  grid-template-columns: minmax(0, 0.85fr) minmax(24rem, 1.15fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 1rem;
-  align-items: stretch;
-}
-
-.main__cashCloseSummary,
-.main__cashCloseForm {
+  align-items: center;
   min-width: 0;
-  padding: 1.25rem;
-  border-radius: 1.5rem;
-  background-color: var(--background);
-  box-shadow: var(--light-shadow);
-  box-sizing: border-box;
+  padding: 0.15rem 0.1rem 0.35rem;
 }
 
-.main__cashCloseSummary {
+.main__cashCloseHeroIcon {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  background-color: color-mix(in srgb, var(--primary-color) 13%, #fff);
+  color: var(--primary-color);
+  font-size: 1.5rem;
 }
 
-.main__cashCloseSummary div {
-  min-width: 0;
+.main__cashCloseHeroIcon--complete {
+  background-color: color-mix(in srgb, var(--green) 14%, #fff);
+  color: var(--green);
 }
 
-.main__cashCloseSummary p,
-.main__cashCloseForm span {
-  margin: 0 0 0.3rem;
+.main__cashCloseHero p,
+.main__cashCloseHero h2,
+.main__cashCloseHero span {
+  margin: 0;
+}
+
+.main__cashCloseHero p,
+.main__cashCloseHero span {
   color: #777777;
   font-size: 0.9rem;
 }
 
-.main__cashCloseSummary strong {
-  display: block;
-  overflow-wrap: anywhere;
+.main__cashCloseHero h2 {
+  margin: 0.1rem 0;
   color: var(--text);
-  font-size: 1.45rem;
-  font-weight: 500;
+  font-size: 1.28rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
-.main__cashCloseVariance--negative {
-  color: var(--red) !important;
-}
-
-.main__cashCloseStatus {
+.main__cashCloseHeroMeta {
   display: flex;
-  align-items: center;
   gap: 0.55rem;
-  border-radius: 999rem;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
-.main__cashCloseStatus img {
-  width: 2rem;
-  height: 2rem;
+.main__cashCloseBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.25rem;
+  padding: 0.35rem 0.8rem;
+  border-radius: 999rem;
+  background-color: var(--light-background);
+  color: #666666;
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.main__cashCloseBadge--open {
+  background-color: color-mix(in srgb, var(--green) 13%, #fff);
+  color: var(--green);
+}
+
+.main__cashCloseBadge--complete {
+  background-color: color-mix(in srgb, var(--green) 13%, #fff);
+  color: var(--green);
+}
+
+.main__cashCloseStaffChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  max-width: 13rem;
+  min-height: 2.25rem;
+  padding: 0.25rem 0.7rem 0.25rem 0.35rem;
+  border-radius: 999rem;
+  background-color: var(--light-background);
+  box-shadow: var(--light-shadow);
+}
+
+.main__cashCloseStaffChip img {
+  width: 1.65rem;
+  height: 1.65rem;
+  flex: 0 0 auto;
   border-radius: 50%;
   object-fit: cover;
 }
 
-.main__cashCloseStatus span,
-.main__cashCloseStatus p {
+.main__cashCloseStaffChip span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.main__cashCloseExpandButton {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.65rem;
+  align-items: center;
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border: 0;
+  border-radius: 1rem;
+  background-color: var(--light-background);
+  color: var(--text);
+  box-shadow: var(--light-shadow);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.main__cashCloseExpandButton span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #777777;
+}
+
+.main__cashCloseExpandButton strong {
+  color: var(--primary-color);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.main__cashCloseExpandButton i {
+  color: var(--primary-color);
+  font-size: 1.35rem;
+}
+
+.main__cashCloseGrid {
+  display: grid;
+  grid-template-columns: minmax(18rem, 0.8fr) minmax(24rem, 1.2fr);
+  gap: 1.15rem;
+  align-items: stretch;
+}
+
+.main__cashCloseActionPanel {
+  min-width: 0;
+  padding: 1.15rem;
+  border-radius: 1.25rem;
+  background-color: var(--light-background);
+  box-shadow: var(--light-shadow);
+  box-sizing: border-box;
+}
+
+.main__cashCloseOverview {
+  display: grid;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.main__cashCloseTile {
+  min-width: 0;
+  padding: 1.05rem;
+  border-radius: 1rem;
+  background-color: var(--background);
+  box-shadow: var(--light-shadow);
+}
+
+.main__cashCloseTileHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.main__cashCloseTileHeader i {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background-color: color-mix(in srgb, var(--primary-color) 10%, #fff);
+  color: var(--primary-color);
+  font-size: 1rem;
+}
+
+.main__cashCloseTileHeader span,
+.main__cashCloseTile p,
+.main__cashCloseActionHeader p,
+.main__cashCloseForm span {
   margin: 0;
   color: #777777;
-  font: inherit;
-  line-height: 1.1;
+  font-size: 0.9rem;
+}
+
+.main__cashCloseTile strong {
+  display: block;
+  margin: 0.65rem 0 0.2rem;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 1.75rem;
+  font-weight: 600;
+}
+
+.main__cashCloseTile--deposit .main__cashCloseTileHeader i {
+  background-color: color-mix(in srgb, #facc15 18%, #fff);
+  color: #a16207;
+}
+
+.main__cashCloseTile--operating .main__cashCloseTileHeader i {
+  background-color: color-mix(in srgb, var(--primary-color) 13%, #fff);
+  color: var(--primary-color);
+}
+
+.main__cashCloseActionPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  background-color: var(--background);
+}
+
+.main__cashCloseActionHeader h3 {
+  margin: 0.12rem 0 0;
+  color: var(--text);
+  font-size: 1.15rem;
+  font-weight: 600;
 }
 
 .main__cashCloseForm {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.85rem 1rem;
-  align-items: end;
+  align-items: start;
 }
 
 .main__cashCloseForm label {
   display: flex;
   flex-direction: column;
+  gap: 0.3rem;
   min-width: 0;
 }
 
 .main__cashCloseNote {
-  grid-column: 1 / 3;
+  grid-column: 1 / -1;
+}
+
+.main__cashCloseToggle {
+  display: flex;
+  flex-direction: row !important;
+  gap: 0.55rem;
+  align-items: center;
+  grid-column: 1 / -1;
+  width: fit-content;
+  margin: 0.1rem 0 0.25rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 999rem;
+  background-color: var(--light-background);
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.main__cashCloseForm .boxInput:disabled {
+  opacity: 1;
+  cursor: default;
 }
 
 .main__cashCloseForm .home__action {
   position: static;
-  grid-column: 3;
-  width: min(100%, 12.5rem);
+  grid-column: 1 / -1;
+  width: 100%;
   max-width: 100%;
-  min-height: 3rem;
+  min-height: 3.35rem;
   justify-content: center;
-  justify-self: end;
+  justify-self: stretch;
   align-self: end;
   padding-inline: 1.15rem;
+  border-radius: 0.95rem;
+  box-shadow: var(--light-shadow);
+}
+
+.main__cashCloseForm .home__action p {
+  white-space: normal;
 }
 
 .main__adminSection {
@@ -828,8 +1021,8 @@
   .main__cashCloseSection,
   .main__statCard,
   .main__adminPanel,
-  .main__cashCloseSummary,
-  .main__cashCloseForm,
+  .main__cashCloseOverview,
+  .main__cashCloseActionPanel,
   .main__todaySection {
     padding: 1rem;
   }
@@ -929,8 +1122,23 @@
     gap: 0.35rem;
   }
 
-  .main__cashCloseSummary,
+  .main__cashCloseOverview,
   .main__cashCloseForm {
     grid-template-columns: 1fr;
+  }
+
+  .main__cashCloseForm .home__action,
+  .main__cashCloseNote {
+    grid-column: 1;
+  }
+
+  .main__cashCloseHero {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .main__cashCloseHeroMeta {
+    grid-column: 1 / -1;
+    justify-self: start;
+    justify-content: flex-start;
   }
 }

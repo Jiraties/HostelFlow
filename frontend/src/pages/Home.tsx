@@ -43,6 +43,17 @@ type MasterFilters = {
   status: string;
 };
 
+type CashPositionData = {
+  activeShift: {
+    shiftNumber: number;
+    staffUsername: string;
+  } | null;
+  current: {
+    depositCash: number;
+    operatingCash: number;
+  };
+};
+
 const formatInputDate = (date: Date) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -123,6 +134,9 @@ const Home = ({ status }: { status: HomeStatus }) => {
     booking: null,
   });
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [cashPosition, setCashPosition] = useState<CashPositionData | null>(
+    null,
+  );
   const [masterFilters, setMasterFilters] = useState<MasterFilters>(
     getDefaultMasterFilters,
   );
@@ -153,7 +167,6 @@ const Home = ({ status }: { status: HomeStatus }) => {
     year: "numeric",
     calendar: "gregory",
   }).format(new Date());
-
   const today = new Date();
   const bookingCheckInIsToday = (booking: booking) =>
     booking.checkIn.toDateString() === today.toDateString();
@@ -211,20 +224,6 @@ const Home = ({ status }: { status: HomeStatus }) => {
           (booking) =>
             roomChargeTransaction(booking).paymentMethod === "Unpaid",
         ).length,
-    cashToday:
-      isMaster || status === "departures"
-        ? 0
-        : arrivalsToday.reduce(
-            (sum, booking) =>
-              sum +
-              sumBookingTransactions(
-                booking,
-                (transaction) =>
-                  transaction.paymentMethod === "Cash" &&
-                  transaction.type !== "depositRefund",
-              ),
-            0,
-          ),
     cashToReturnToday:
       isMaster || status === "arrivals" ? 0 : cashRefundedToday,
     // revenueToday: bookings.reduce((sum, booking) => {
@@ -236,7 +235,12 @@ const Home = ({ status }: { status: HomeStatus }) => {
     guestsInHouse: occupancy,
     // guestsInHouse: `${Math.trunc((occupancy / 46) * 100)}%`,
     deposit: depositToReturn,
+    depositStash: cashPosition?.current.depositCash || 0,
+    operatingStash: cashPosition?.current.operatingCash || 0,
   };
+  const cashShiftHelperText = cashPosition?.activeShift
+    ? `Shift ${cashPosition.activeShift.shiftNumber} · ${cashPosition.activeShift.staffUsername}`
+    : "ยังไม่เปิดกะเงินสด";
 
   const statCards = isMaster
     ? []
@@ -259,9 +263,16 @@ const Home = ({ status }: { status: HomeStatus }) => {
           //   value: stats.revenueToday,
           // },
           {
-            id: "cashToday",
-            label: "เงินสดวันนี้ (฿)",
-            value: stats.cashToday,
+            id: "depositStash",
+            label: "เงินสดมัดจำ (฿)",
+            value: stats.depositStash,
+            helperText: cashShiftHelperText,
+          },
+          {
+            id: "operatingStash",
+            label: "เงินสดทั่วไป (฿)",
+            value: stats.operatingStash,
+            helperText: cashShiftHelperText,
           },
           {
             id: "guestsInHouse",
@@ -276,9 +287,21 @@ const Home = ({ status }: { status: HomeStatus }) => {
             value: stats.departuresToday,
           },
           { id: "deposit", label: "มัดจำที่ต้องคืน (฿)", value: stats.deposit },
+          {
+            id: "depositStash",
+            label: "เงินสดมัดจำ (฿)",
+            value: stats.depositStash,
+            helperText: cashShiftHelperText,
+          },
+          {
+            id: "operatingStash",
+            label: "เงินสดทั่วไป (฿)",
+            value: stats.operatingStash,
+            helperText: cashShiftHelperText,
+          },
           // {
-          //   id: "deposit",
-          //   label: "มัดจำที่ต้องคืน (฿)",
+            //   id: "deposit",
+            //   label: "มัดจำที่ต้องคืน (฿)",
           //   value: stats.cashReturn,
           // },
           {
@@ -361,17 +384,20 @@ const Home = ({ status }: { status: HomeStatus }) => {
 
     setLoading(true);
     try {
-      const response = await axios.get(
-        `${API_URL}/bookings/getTodayBookings/${status}`,
-        {
+      const [response, cashPositionResponse] = await Promise.all([
+        axios.get(`${API_URL}/bookings/getTodayBookings/${status}`, {
           withCredentials: true,
-        },
-      );
+        }),
+        axios.get(`${API_URL}/finance/cash-position`, {
+          withCredentials: true,
+        }),
+      ]);
 
       const bookingsData = response.data.bookings;
       setLastUpdated(new Date());
       setOccupancy(response.data.occupancy);
       setBookings(formatBookingsDates(bookingsData));
+      setCashPosition(cashPositionResponse.data);
     } finally {
       setLoading(false);
     }
@@ -651,6 +677,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
                 loading={loading}
                 label={stat.label}
                 value={stat.value ? stat.value : 0}
+                helperText={stat.helperText}
               />
             ))}
           </div>

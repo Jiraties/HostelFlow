@@ -90,6 +90,7 @@ export interface transcation {
   reviewStatus?: TransactionReviewStatus;
   reviewedBy?: string;
   reviewedAt?: Date;
+  cashShiftId?: string;
 }
 
 interface Cancellation {
@@ -256,6 +257,7 @@ const transactionSchema = new mongoose.Schema({
   },
   reviewedBy: { type: String },
   reviewedAt: { type: Date },
+  cashShiftId: { type: String },
 });
 
 const cancellationSchema = new mongoose.Schema(

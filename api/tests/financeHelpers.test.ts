@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  summarizeCashStashes,
   summarizeTransactions,
   transactionDashboardCollectedRevenueAmount,
   transactionDashboardGrossRevenueAmount,
@@ -54,6 +55,50 @@ test("summarizeTransactions separates cash, deposits, refunds, card fees, and un
   assert.equal(summary.cardSurcharges, 36);
   assert.equal(summary.byPaymentMethod.Cash, 1200);
   assert.equal(summary.byPaymentMethod.Card, 36);
+});
+
+test("summarizeCashStashes separates deposit cash from operating cash", () => {
+  const summary = summarizeCashStashes([
+    {
+      type: "deposit",
+      paymentMethod: "Cash",
+      amount: 200,
+    },
+    {
+      type: "depositRefund",
+      paymentMethod: "Cash",
+      amount: 100,
+    },
+    {
+      type: "settlementCharge",
+      paymentMethod: "Cash",
+      amount: 1200,
+    },
+    {
+      type: "roomRefund",
+      paymentMethod: "Cash",
+      direction: "out",
+      amount: 300,
+    },
+    {
+      type: "depositKept",
+      paymentMethod: "Cash",
+      direction: "neutral",
+      amount: 50,
+    },
+    {
+      type: "towel",
+      paymentMethod: "Transfer",
+      amount: 40,
+    },
+  ]);
+
+  assert.deepEqual(summary, {
+    depositCashIn: 200,
+    depositCashOut: 150,
+    operatingCashIn: 1250,
+    operatingCashOut: 300,
+  });
 });
 
 test("dashboard gross revenue counts unpaid room revenue while collected revenue waits for settlement", () => {

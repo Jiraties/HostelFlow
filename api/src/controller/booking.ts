@@ -1,4 +1,5 @@
 import Booking, { PaymentMethod } from "../models/booking";
+import CashShift from "../models/cashShift";
 import dotenv from "dotenv";
 import crypto from "crypto";
 
@@ -465,6 +466,24 @@ const buildTransactionsWithCardSurcharge = (
   return transactions;
 };
 
+const attachActiveCashShift = async (transactions: transcation[]) => {
+  if (!transactions.some((transaction) => transaction.paymentMethod === "Cash")) {
+    return transactions;
+  }
+
+  const activeCashShift = await CashShift.findOne({ status: "open" }).sort({
+    startedAt: -1,
+  });
+  if (!activeCashShift) return transactions;
+
+  const cashShiftId = String(activeCashShift._id);
+  return transactions.map((transaction) =>
+    transaction.paymentMethod === "Cash"
+      ? { ...transaction, cashShiftId }
+      : transaction,
+  );
+};
+
 const formatLocalDateKey = (date: Date) => {
   const { year, month, day } = getBusinessDateParts(date);
 
@@ -600,6 +619,13 @@ export const newBooking = async (
           paymentMethod: booking.paymentMethod,
         };
 
+        const transactions = await attachActiveCashShift(
+          buildTransactionsWithCardSurcharge(roomChargeTransaction, {
+            createdBy: req.user?.username,
+            sourceAction: "NEW_BOOKING",
+          }),
+        );
+
         const savedBooking = new Booking({
           name: booking.name.trim(),
           checkIn: newCheckIn,
@@ -621,10 +647,7 @@ export const newBooking = async (
           // deposit: null,
           // depositRepaid: null,
 
-          transactions: buildTransactionsWithCardSurcharge(roomChargeTransaction, {
-            createdBy: req.user?.username,
-            sourceAction: "NEW_BOOKING",
-          }),
+          transactions,
 
           staffUsername: booking.staffUsername,
           bookingId: booking.bookingId.trim(),
@@ -1638,7 +1661,7 @@ export const checkIn = async (req: Request, res: Response) => {
       passportName: encrypt(checkInData.passportData.passportName),
     };
 
-    const newTransactions: transcation[] = [
+    let newTransactions: transcation[] = [
       normalizeTransaction(
         {
           type: "deposit",
@@ -1697,6 +1720,7 @@ export const checkIn = async (req: Request, res: Response) => {
         ),
       );
     }
+    newTransactions = await attachActiveCashShift(newTransactions);
 
     const checkedInAt = new Date();
     const setFields: Record<string, unknown> = {
@@ -1871,7 +1895,7 @@ export const checkOut = async (req: Request, res: Response) => {
     const earlyCheckOut = nightsEarly > 0;
     const roomReleaseStatus =
       earlyCheckOut && !releaseRemainingNights ? "blocked" : "released";
-    const refundTransactions: transcation[] =
+    const refundTransactions: transcation[] = await attachActiveCashShift(
       remainingDepositAmount > 0
         ? [
             normalizeTransaction(
@@ -1886,7 +1910,8 @@ export const checkOut = async (req: Request, res: Response) => {
               },
             ),
           ]
-        : [];
+        : [],
+    );
 
     const updatedBooking = await withMutationIdempotency(req, () =>
       Booking.findOneAndUpdate(
@@ -2369,15 +2394,14 @@ export const addTransaction = async (
     const sameTypeCount = booking.transactions.filter(
       (existingTransaction) => existingTransaction.type === transaction.type,
     ).length;
-    const newTransactions = buildTransactionsWithCardSurcharge(
-      baseTransaction,
-      {
+    const newTransactions = await attachActiveCashShift(
+      buildTransactionsWithCardSurcharge(baseTransaction, {
         createdBy: req.user?.username,
         sourceAction: "ADD_TRANSACTION",
         note: transaction.note,
         reference: transaction.reference,
         sameTypeCount,
-      },
+      }),
     );
 
     const updatedBooking = await withMutationIdempotency(req, () =>
@@ -2563,7 +2587,7 @@ export const cancelBooking = async (req: Request, res: Response) => {
         message: "ยอดคืนเงินสูง ต้องให้ Admin ดำเนินการ",
       });
     }
-    const refundTransactions: transcation[] =
+    const refundTransactions: transcation[] = await attachActiveCashShift(
       refundAmount > 0
         ? Array.from(paidByMethod.entries()).map(([paymentMethod, amount]) =>
             normalizeTransaction(
@@ -2578,7 +2602,8 @@ export const cancelBooking = async (req: Request, res: Response) => {
               },
             ),
           )
-        : [];
+        : [],
+    );
 
     const updatedBooking = await withMutationIdempotency(req, () =>
       Booking.findOneAndUpdate(
@@ -2785,7 +2810,7 @@ export const resolveBooking = async (
       });
     }
 
-    const normalizedTransactions: transcation[] = [];
+    let normalizedTransactions: transcation[] = [];
     let sensitiveOutTotal = 0;
     let depositRefundAmount = 0;
     let cancellationRefundAmount = 0;
@@ -2874,6 +2899,7 @@ export const resolveBooking = async (
         message: "ยอดคืนเงินสูง ต้องให้ Admin ดำเนินการ",
       });
     }
+    normalizedTransactions = await attachActiveCashShift(normalizedTransactions);
 
     const now = new Date();
     const updateSet: Record<string, unknown> = {

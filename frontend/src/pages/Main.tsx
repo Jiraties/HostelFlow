@@ -33,6 +33,7 @@ import usePageTitle from "../hooks/useTitle";
 import type { booking, PlatformId } from "../types/bookingTypes";
 
 import "./Home.css";
+import "../features/bookings/CheckIn.css";
 import "./Main.css";
 import FinancialBreakdown from "../features/finance/FinancialBreakdown";
 
@@ -138,24 +139,29 @@ const ExpectedStayRevenueInfo = () => (
   </span>
 );
 
-type FinanceSummary = {
-  cashIn: number;
-  cashOut: number;
-  refunds: number;
-  unpaidBalance: number;
-};
-
-type DailyClose = {
+type CashShift = {
+  _id: string;
   businessDate: string;
+  shiftNumber: number;
   staffUsername: string;
-  openingCash: number;
-  expectedCash: number;
-  actualCash: number;
-  variance: number;
-  cashIn: number;
-  cashOut: number;
+  status: "open" | "closed";
+  openingMode: "counted" | "accepted_handoff";
+  handoffFromShiftId?: string;
+  depositOpeningCash: number;
+  operatingOpeningCash: number;
+  depositCashIn: number;
+  depositCashOut: number;
+  operatingCashIn: number;
+  operatingCashOut: number;
+  depositExpectedCash: number;
+  operatingExpectedCash: number;
+  depositActualCash?: number;
+  operatingActualCash?: number;
+  depositVariance?: number;
+  operatingVariance?: number;
   note?: string;
-  createdAt?: string | Date;
+  startedAt: string | Date;
+  endedAt?: string | Date;
   staff?: {
     username: string;
     name?: string;
@@ -168,11 +174,22 @@ type DailyClose = {
   };
 };
 
-type ReconciliationData = {
+type CashPositionData = {
   businessDate: string;
   threshold: number;
-  summary: FinanceSummary;
-  dailyCloses: DailyClose[];
+  activeShift: CashShift | null;
+  previousShift: CashShift | null;
+  current: {
+    depositCash: number;
+    operatingCash: number;
+  };
+  handoff: {
+    depositCash: number;
+    operatingCash: number;
+    fromShiftId?: string;
+    fromShiftNumber?: number;
+  };
+  shifts: CashShift[];
 };
 
 type ReviewBooking = booking & {
@@ -205,28 +222,11 @@ const formatCompactNumber = (value: number) =>
 
 const formatCurrency = (value: number) => `${value.toLocaleString("th-TH")} ฿`;
 
-const todayInputValue = () => {
-  const date = new Date();
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
-};
-
 const formatMoney = (value: number) =>
   value.toLocaleString("th-TH", {
     minimumFractionDigits: value % 1 === 0 ? 0 : 2,
     maximumFractionDigits: 2,
   });
-
-const formatCloseTime = (date?: string | Date) =>
-  date
-    ? new Date(date).toLocaleTimeString("th-TH", {
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : "";
 
 const currentThaiMonthLabel = () =>
   new Intl.DateTimeFormat("th-TH", {
@@ -472,11 +472,15 @@ const Main = () => {
   const [chartMetric, setChartMetric] = useState<ChartMetric>("revenue");
   const [cashCloseLoading, setCashCloseLoading] = useState(false);
   const [cashCloseSaving, setCashCloseSaving] = useState(false);
-  const [reconciliation, setReconciliation] =
-    useState<ReconciliationData | null>(null);
-  const [cashCloseDate, setCashCloseDate] = useState(todayInputValue());
-  const [openingCash, setOpeningCash] = useState("0");
-  const [actualCash, setActualCash] = useState("");
+  const [cashPosition, setCashPosition] = useState<CashPositionData | null>(
+    null,
+  );
+  const [depositOpeningCash, setDepositOpeningCash] = useState("0");
+  const [operatingOpeningCash, setOperatingOpeningCash] = useState("0");
+  const [depositActualCash, setDepositActualCash] = useState("");
+  const [operatingActualCash, setOperatingActualCash] = useState("");
+  const [recountHandoff, setRecountHandoff] = useState(false);
+  const [cashCloseExpanded, setCashCloseExpanded] = useState(false);
   const [closeNote, setCloseNote] = useState("");
   const [addBookingIsOpen, setAddBookingIsOpen] = useState(false);
   const [addBookingIsDirty, setAddBookingIsDirty] = useState(false);
@@ -575,29 +579,35 @@ const Main = () => {
   const fetchCashClose = useCallback(async () => {
     setCashCloseLoading(true);
     try {
-      const response = await axios.get(`${API_URL}/finance/reconciliation`, {
-        params: { date: cashCloseDate },
-        withCredentials: true,
-      });
-
-      setReconciliation(response.data);
-
-      const ownClose = response.data.dailyCloses?.find(
-        (dailyClose: DailyClose) => dailyClose.staffUsername === user?.username,
+      const positionResponse = await axios.get(
+        `${API_URL}/finance/cash-position`,
+        {
+          withCredentials: true,
+        },
       );
 
-      if (ownClose) {
-        setOpeningCash(String(ownClose.openingCash));
-        setActualCash(String(ownClose.actualCash));
-        setCloseNote(ownClose.note || "");
-      }
+      const nextPosition = positionResponse.data as CashPositionData;
+      setCashPosition(nextPosition);
+      setDepositOpeningCash(String(nextPosition.handoff.depositCash || 0));
+      setOperatingOpeningCash(String(nextPosition.handoff.operatingCash || 0));
+      setDepositActualCash("");
+      setOperatingActualCash("");
+      setCloseNote("");
+      setRecountHandoff(false);
+      const previousShiftBelongsToCurrentStaff =
+        nextPosition.previousShift?.staffUsername === user?.username;
+      setCashCloseExpanded(
+        !nextPosition.previousShift ||
+          Boolean(nextPosition.activeShift) ||
+          !previousShiftBelongsToCurrentStaff,
+      );
     } catch (err) {
-      setReconciliation(null);
+      setCashPosition(null);
       toast.error(getFetchErrorMessage(err));
     } finally {
       setCashCloseLoading(false);
     }
-  }, [cashCloseDate, user?.username]);
+  }, [user?.username]);
 
   const refreshDashboard = useCallback(async () => {
     await fetchDailyOps();
@@ -617,26 +627,98 @@ const Main = () => {
     fetchCashClose();
   }, [fetchCashClose]);
 
-  const expectedCash =
-    Number(openingCash || 0) +
-    (reconciliation?.summary.cashIn || 0) -
-    (reconciliation?.summary.cashOut || 0);
-  const cashVariance =
-    actualCash === "" ? 0 : Number(actualCash || 0) - expectedCash;
-  const cashVarianceNeedsNote =
-    reconciliation && Math.abs(cashVariance) > reconciliation.threshold;
-  const dailyCloseIsComplete = Boolean(
-    reconciliation?.dailyCloses?.some(
-      (dailyClose) => dailyClose.staffUsername === user?.username,
-    ),
+  const activeCashShift = cashPosition?.activeShift || null;
+  const previousCashShift = cashPosition?.previousShift || null;
+  const cashShiftIsOpen = Boolean(activeCashShift);
+  const hasPreviousCashShift = Boolean(previousCashShift);
+  const previousShiftBelongsToCurrentStaff =
+    previousCashShift?.staffUsername === user?.username;
+  const cashCloseIsComplete =
+    !activeCashShift &&
+    hasPreviousCashShift &&
+    previousShiftBelongsToCurrentStaff;
+  const cashCloseIsCollapsed = cashCloseIsComplete && !cashCloseExpanded;
+  const depositExpectedCash = activeCashShift?.depositExpectedCash || 0;
+  const operatingExpectedCash = activeCashShift?.operatingExpectedCash || 0;
+  const depositVariance =
+    depositActualCash === ""
+      ? 0
+      : Number(depositActualCash || 0) - depositExpectedCash;
+  const operatingVariance =
+    operatingActualCash === ""
+      ? 0
+      : Number(operatingActualCash || 0) - operatingExpectedCash;
+  const cashVarianceNeedsNote = Boolean(
+    cashPosition &&
+    (Math.abs(depositVariance) > cashPosition.threshold ||
+      Math.abs(operatingVariance) > cashPosition.threshold),
   );
-  const latestDailyClose = reconciliation?.dailyCloses?.[0];
-  const latestDailyClosePerson =
-    latestDailyClose?.closedBy || latestDailyClose?.staff;
+  const openingVarianceNeedsNote = Boolean(
+    cashPosition &&
+    ((!hasPreviousCashShift &&
+      (Number(depositOpeningCash || 0) !== 0 ||
+        Number(operatingOpeningCash || 0) !== 0)) ||
+      Math.abs(
+        Number(depositOpeningCash || 0) - cashPosition.handoff.depositCash,
+      ) > cashPosition.threshold ||
+      Math.abs(
+        Number(operatingOpeningCash || 0) - cashPosition.handoff.operatingCash,
+      ) > cashPosition.threshold),
+  );
+  const activeShiftStaffName =
+    activeCashShift?.staff?.name ||
+    activeCashShift?.staff?.username ||
+    activeCashShift?.staffUsername;
+  const cashShiftTitle = activeCashShift
+    ? `กะของ ${activeShiftStaffName || activeCashShift.staffUsername} เปิดอยู่`
+    : hasPreviousCashShift
+      ? `รับต่อจาก Shift ${previousCashShift?.shiftNumber}`
+      : "เริ่มกะแรกของวันนี้";
+  const cashShiftSubtitle = activeCashShift
+    ? ""
+    : hasPreviousCashShift
+      ? "รับยอดปิดกะก่อนหน้า หรือเลือกนับใหม่ถ้าเงินไม่ตรง"
+      : "นับเงินสองกล่องก่อนเริ่มรับผิดชอบกะ";
+  const cashShiftActionTitle = activeCashShift
+    ? "ปิดกะ"
+    : hasPreviousCashShift && !recountHandoff
+      ? "รับส่งเงิน"
+      : "นับเงินเริ่มกะ";
 
-  const submitCashClose = async () => {
-    if (actualCash === "") {
-      throw new Error("กรุณากรอกยอดเงินสดที่นับได้");
+  const startCashShift = async (
+    openingMode: "counted" | "accepted_handoff",
+  ) => {
+    if (
+      openingMode === "counted" &&
+      openingVarianceNeedsNote &&
+      !closeNote.trim()
+    ) {
+      throw new Error("กรุณาระบุหมายเหตุเมื่อยอดรับส่งเงินไม่ตรงกัน");
+    }
+    setCashCloseSaving(true);
+    try {
+      await axios.post(
+        `${API_URL}/finance/cash-shifts/start`,
+        {
+          openingMode,
+          depositOpeningCash: Number(depositOpeningCash || 0),
+          operatingOpeningCash: Number(operatingOpeningCash || 0),
+          note: closeNote.trim(),
+        },
+        { withCredentials: true },
+      );
+      await fetchCashClose();
+    } finally {
+      setCashCloseSaving(false);
+    }
+  };
+
+  const closeCashShift = async () => {
+    if (!activeCashShift) {
+      throw new Error("ยังไม่มีกะเงินสดที่เปิดอยู่");
+    }
+    if (depositActualCash === "" || operatingActualCash === "") {
+      throw new Error("กรุณากรอกยอดเงินสดที่นับได้ทั้งสองกล่อง");
     }
 
     if (cashVarianceNeedsNote && !closeNote.trim()) {
@@ -646,11 +728,10 @@ const Main = () => {
     setCashCloseSaving(true);
     try {
       await axios.post(
-        `${API_URL}/finance/daily-close`,
+        `${API_URL}/finance/cash-shifts/${activeCashShift._id}/close`,
         {
-          businessDate: cashCloseDate,
-          openingCash: Number(openingCash || 0),
-          actualCash: Number(actualCash || 0),
+          depositActualCash: Number(depositActualCash || 0),
+          operatingActualCash: Number(operatingActualCash || 0),
           note: closeNote.trim(),
         },
         { withCredentials: true },
@@ -1060,133 +1141,233 @@ const Main = () => {
       )}
 
       <section className="main__cashCloseSection">
-        <div className="main__sectionHeader">
-          <div>
-            <i className="bx bx-currency-notes" />
-            <h2>ปิดยอดเงินสดประจำวัน</h2>
-          </div>
-          {latestDailyClose ? (
-            <div className="main__cashCloseStatus">
-              <img
-                src={
-                  API_URL +
-                  (latestDailyClosePerson?.profilePictureUrl ||
-                    "/uploads/default.jpg")
-                }
-                alt=""
-              />
-
-              <span>{formatCloseTime(latestDailyClose.createdAt)}</span>
-              <p>บันทึกแล้ว</p>
-            </div>
-          ) : (
-            <span>วันนี้</span>
-          )}
-        </div>
-
-        <div className="main__cashCloseGrid">
-          <div className="main__cashCloseSummary">
-            <div>
-              <p title={dashboardHelpText.cashToday}>รับเงินสด</p>
-              <strong>
-                {cashCloseLoading
-                  ? "-"
-                  : `${formatMoney(reconciliation?.summary.cashIn || 0)} ฿`}
-              </strong>
-            </div>
-            <div>
-              <p title={dashboardHelpText.cashToday}>จ่ายเงินสด</p>
-              <strong>
-                {cashCloseLoading
-                  ? "-"
-                  : `${formatMoney(reconciliation?.summary.cashOut || 0)} ฿`}
-              </strong>
-            </div>
-            <div>
-              <p title={dashboardHelpText.cashToday}>ยอดเงินสดคาดไว้</p>
-              <strong>{formatMoney(expectedCash)} ฿</strong>
-            </div>
-            <div>
-              <p>ส่วนต่าง</p>
-              <strong
-                className={
-                  cashVariance < 0 ? "main__cashCloseVariance--negative" : ""
-                }
-              >
-                {formatMoney(cashVariance)} ฿
-              </strong>
-            </div>
-          </div>
-
-          <div className="main__cashCloseForm">
-            <label>
-              <span>วันที่</span>
-              <input
-                className="boxInput"
-                type="date"
-                value={cashCloseDate}
-                onChange={(event) => setCashCloseDate(event.target.value)}
-              />
-            </label>
-            <label>
-              <span>เงินสดตั้งต้น</span>
-              <input
-                className="boxInput"
-                type="number"
-                value={openingCash}
-                onChange={(event) => setOpeningCash(event.target.value)}
-              />
-            </label>
-            <label>
-              <span>เงินสดที่นับได้</span>
-              <input
-                className="boxInput"
-                type="number"
-                value={actualCash}
-                placeholder="ยอดในลิ้นชัก"
-                onChange={(event) => setActualCash(event.target.value)}
-              />
-            </label>
-            {cashVarianceNeedsNote && (
-              <label className="main__cashCloseNote">
-                <span>หมายเหตุยอดต่าง</span>
-                <input
-                  className="boxInput"
-                  type="text"
-                  value={closeNote}
-                  placeholder="เช่น เงินทอนตั้งต้นไม่ตรง"
-                  onChange={(event) => setCloseNote(event.target.value)}
-                />
-              </label>
-            )}
-            <ActionButton
-              text={
-                dailyCloseIsComplete
-                  ? "อัปเดตปิดยอดเงินสด"
-                  : "ปิดยอดเงินสดประจำวัน"
-              }
-              icon="bx-save"
-              highlight
-              disabled={cashCloseSaving || cashCloseLoading}
-              onClick={() =>
-                toast.promise(submitCashClose(), {
-                  loading: "กำลังบันทึกปิดยอดเงินสด",
-                  success: "บันทึกปิดยอดเงินสดเรียบร้อย",
-                  error: (err) => {
-                    if (axios.isAxiosError(err)) {
-                      return (
-                        err.response?.data?.message ||
-                        "เกิดข้อผิดพลาดในการบันทึกปิดยอด"
-                      );
-                    }
-                    if (err instanceof Error) return err.message;
-                    return "เกิดข้อผิดพลาดในการบันทึกปิดยอด";
-                  },
-                })
+        <div className="main__cashCloseHero">
+          <div
+            className={
+              cashCloseIsComplete
+                ? "main__cashCloseHeroIcon main__cashCloseHeroIcon--complete"
+                : "main__cashCloseHeroIcon"
+            }
+          >
+            <i
+              className={
+                cashCloseIsComplete ? "bx bx-check" : "bx bx-currency-notes"
               }
             />
           </div>
+          <div>
+            <p>กะเงินสดวันนี้</p>
+            <h2>{cashCloseIsComplete ? "ปิดกะเงินสดแล้ว" : cashShiftTitle}</h2>
+            {!cashCloseIsComplete && cashShiftSubtitle ? (
+              <span>{cashShiftSubtitle}</span>
+            ) : null}
+          </div>
+          <div className="main__cashCloseHeroMeta">
+            <strong
+              className={
+                cashCloseIsComplete
+                  ? "main__cashCloseBadge main__cashCloseBadge--complete"
+                  : cashShiftIsOpen
+                    ? "main__cashCloseBadge main__cashCloseBadge--open"
+                    : "main__cashCloseBadge"
+              }
+            >
+              {cashCloseIsComplete
+                ? "เรียบร้อย"
+                : cashShiftIsOpen
+                  ? "เปิดกะ"
+                  : "พร้อมเริ่ม"}
+            </strong>
+            {activeCashShift && activeShiftStaffName ? (
+              <div className="main__cashCloseStaffChip">
+                <img
+                  src={
+                    API_URL +
+                    (activeCashShift.staff?.profilePictureUrl ||
+                      "/uploads/default.jpg")
+                  }
+                  alt=""
+                />
+                <span>{activeShiftStaffName}</span>
+              </div>
+            ) : null}
+          </div>
         </div>
+
+        {cashCloseIsCollapsed ? (
+          <button
+            className="main__cashCloseExpandButton"
+            type="button"
+            onClick={() => setCashCloseExpanded(true)}
+          >
+            <span>ต้องแก้ไขหรือทำรายการเงินสดเพิ่ม?</span>
+            <strong>เปิดรายละเอียด</strong>
+            <i className="bx bx-chevron-down" />
+          </button>
+        ) : (
+          <div className="main__cashCloseGrid">
+            <div className="main__cashCloseOverview">
+              <div className="main__cashCloseTile main__cashCloseTile--deposit">
+                <div className="main__cashCloseTileHeader">
+                  <i className="bx bx-lock-alt" />
+                  <span>เงินสดมัดจำ</span>
+                </div>
+                <strong>
+                  {cashCloseLoading
+                    ? "-"
+                    : `${formatMoney(cashPosition?.current.depositCash || 0)} ฿`}
+                </strong>
+                <p>เงินมัดจำในลิ้นชัก</p>
+              </div>
+              <div className="main__cashCloseTile main__cashCloseTile--operating">
+                <div className="main__cashCloseTileHeader">
+                  <i className="bx bx-wallet" />
+                  <span>เงินสดทั่วไป</span>
+                </div>
+                <strong>
+                  {cashCloseLoading
+                    ? "-"
+                    : `${formatMoney(cashPosition?.current.operatingCash || 0)} ฿`}
+                </strong>
+                <p>เงินสดทั่วไปในลิ้นชัก</p>
+              </div>
+            </div>
+
+            <div className="main__cashCloseActionPanel">
+              <div className="main__cashCloseActionHeader">
+                <p>ขั้นตอนต่อไป</p>
+                <h3>{cashShiftActionTitle}</h3>
+              </div>
+              <div className="main__cashCloseForm">
+                {activeCashShift ? (
+                  <>
+                    <label>
+                      <span>นับเงินมัดจำปิดกะ</span>
+                      <input
+                        className="boxInput"
+                        type="number"
+                        value={depositActualCash}
+                        placeholder={`${formatMoney(depositExpectedCash)} คาดไว้`}
+                        onChange={(event) =>
+                          setDepositActualCash(event.target.value)
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>นับเงินทั่วไปปิดกะ</span>
+                      <input
+                        className="boxInput"
+                        type="number"
+                        value={operatingActualCash}
+                        placeholder={`${formatMoney(operatingExpectedCash)} คาดไว้`}
+                        onChange={(event) =>
+                          setOperatingActualCash(event.target.value)
+                        }
+                      />
+                    </label>
+                  </>
+                ) : (
+                  <>
+                    <label>
+                      <span>เงินมัดจำเริ่มกะ</span>
+                      <input
+                        className="boxInput"
+                        type="number"
+                        value={depositOpeningCash}
+                        disabled={hasPreviousCashShift && !recountHandoff}
+                        onChange={(event) =>
+                          setDepositOpeningCash(event.target.value)
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>เงินทั่วไปเริ่มกะ</span>
+                      <input
+                        className="boxInput"
+                        type="number"
+                        value={operatingOpeningCash}
+                        disabled={hasPreviousCashShift && !recountHandoff}
+                        onChange={(event) =>
+                          setOperatingOpeningCash(event.target.value)
+                        }
+                      />
+                    </label>
+                  </>
+                )}
+                {(cashVarianceNeedsNote || openingVarianceNeedsNote) && (
+                  <label className="main__cashCloseNote">
+                    <span>หมายเหตุยอดต่าง</span>
+                    <input
+                      className="boxInput"
+                      type="text"
+                      value={closeNote}
+                      placeholder="เช่น รับส่งเงินไม่ตรง / พบเงินเกิน"
+                      onChange={(event) => setCloseNote(event.target.value)}
+                    />
+                  </label>
+                )}
+                {!activeCashShift && hasPreviousCashShift && (
+                  <label className="checkbox main__cashCloseToggle">
+                    นับใหม่แทนรับส่ง
+                    <input
+                      type="checkbox"
+                      checked={recountHandoff}
+                      onChange={(event) => {
+                        setRecountHandoff(event.target.checked);
+                        if (!event.target.checked && cashPosition) {
+                          setDepositOpeningCash(
+                            String(cashPosition.handoff.depositCash || 0),
+                          );
+                          setOperatingOpeningCash(
+                            String(cashPosition.handoff.operatingCash || 0),
+                          );
+                        }
+                      }}
+                    />
+                    <span className="box"></span>
+                  </label>
+                )}
+                <ActionButton
+                  text={
+                    activeCashShift
+                      ? "ปิดกะเงินสด"
+                      : hasPreviousCashShift && !recountHandoff
+                        ? "รับส่งเงินและเริ่มกะ"
+                        : "เริ่มกะเงินสด"
+                  }
+                  icon="bx-save"
+                  highlight
+                  disabled={cashCloseSaving || cashCloseLoading}
+                  onClick={() =>
+                    toast.promise(
+                      activeCashShift
+                        ? closeCashShift()
+                        : startCashShift(
+                            hasPreviousCashShift && !recountHandoff
+                              ? "accepted_handoff"
+                              : "counted",
+                          ),
+                      {
+                        loading: "กำลังบันทึกกะเงินสด",
+                        success: "บันทึกกะเงินสดเรียบร้อย",
+                        error: (err) => {
+                          if (axios.isAxiosError(err)) {
+                            return (
+                              err.response?.data?.message ||
+                              "เกิดข้อผิดพลาดในการบันทึกกะเงินสด"
+                            );
+                          }
+                          if (err instanceof Error) return err.message;
+                          return "เกิดข้อผิดพลาดในการบันทึกกะเงินสด";
+                        },
+                      },
+                    )
+                  }
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </section>
 
       <div className="main__todayGrid">

@@ -67,7 +67,7 @@
 }
 
 .spreadsheet__starredRow {
-  background-color: color-mix(in srgb, #ffbf00 12%, #fff);
+  background-color: color-mix(in srgb, #ffbf00 5%, #fff);
 }
 
 .daySeparator {

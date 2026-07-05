@@ -108,6 +108,7 @@ export interface transcation {
   reviewStatus?: TransactionReviewStatus;
   reviewedBy?: string;
   reviewedAt?: string | Date;
+  cashShiftId?: string;
 }
 
 export interface booking {
