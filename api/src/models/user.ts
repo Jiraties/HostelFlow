@@ -7,6 +7,8 @@ export interface userType extends Document {
   active: boolean;
   name: string;
   profilePictureUrl: string;
+  currentSessionId?: string;
+  currentSessionIssuedAt?: Date;
 }
 
 const userSchema = new mongoose.Schema({
@@ -16,6 +18,8 @@ const userSchema = new mongoose.Schema({
   admin: { type: Boolean },
   active: { type: Boolean, default: true },
   profilePictureUrl: { type: String, default: "/uploads/default.jpg" },
+  currentSessionId: { type: String },
+  currentSessionIssuedAt: { type: Date },
 });
 
 export default mongoose.model<userType>("User", userSchema);

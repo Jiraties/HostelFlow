@@ -6,6 +6,7 @@ export interface MyJwtPayload {
   userId: string;
   admin: boolean;
   username: string;
+  sessionId: string;
 }
 
 const authMiddleware = async (req: Request, res: Response, next: NextFunction) => {
@@ -29,7 +30,7 @@ const authMiddleware = async (req: Request, res: Response, next: NextFunction) =
     ) as MyJwtPayload;
 
     const user = await User.findById(decodedToken.userId)
-      .select("username admin active")
+      .select("username admin active currentSessionId")
       .lean();
 
     if (!user || user.active === false) {
@@ -37,10 +38,22 @@ const authMiddleware = async (req: Request, res: Response, next: NextFunction) =
       return;
     }
 
+    if (
+      !decodedToken.sessionId ||
+      !user.currentSessionId ||
+      decodedToken.sessionId !== user.currentSessionId
+    ) {
+      res.status(401).json({
+        message: "This account was signed in on another device.",
+      });
+      return;
+    }
+
     req.user = {
       userId: String(user._id),
       username: user.username,
       admin: Boolean(user.admin),
+      sessionId: decodedToken.sessionId,
     };
     next();
   } catch (err) {

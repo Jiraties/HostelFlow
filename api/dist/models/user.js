@@ -11,6 +11,8 @@ const userSchema = new mongoose_1.default.Schema({
     admin: { type: Boolean },
     active: { type: Boolean, default: true },
     profilePictureUrl: { type: String, default: "/uploads/default.jpg" },
+    currentSessionId: { type: String },
+    currentSessionIssuedAt: { type: Date },
 });
 exports.default = mongoose_1.default.model("User", userSchema);
 //# sourceMappingURL=user.js.map

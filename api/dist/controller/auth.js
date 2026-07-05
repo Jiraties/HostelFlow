@@ -9,6 +9,7 @@ const user_1 = __importDefault(require("../models/user"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const activityServices_1 = require("../services/activityServices");
+const crypto_1 = require("crypto");
 dotenv_1.default.config();
 const authCookieOptions = {
     httpOnly: true,
@@ -122,7 +123,10 @@ const resetUserPassword = async (req, res) => {
             });
         }
         const hashedPassword = await bcrypt_1.default.hash(password, 10);
-        const user = await user_1.default.findByIdAndUpdate(userId, { $set: { password: hashedPassword } }, { returnDocument: "after" }).select("_id username name admin active profilePictureUrl");
+        const user = await user_1.default.findByIdAndUpdate(userId, {
+            $set: { password: hashedPassword },
+            $unset: { currentSessionId: "", currentSessionIssuedAt: "" },
+        }, { returnDocument: "after" }).select("_id username name admin active profilePictureUrl");
         if (!user) {
             return res.status(404).json({
                 message: "ไม่พบผู้ใช้",
@@ -172,6 +176,7 @@ const updateUser = async (req, res) => {
             });
         }
         const updates = {};
+        const unsets = {};
         const changes = {};
         if (typeof name === "string") {
             const trimmedName = name.trim();
@@ -191,14 +196,21 @@ const updateUser = async (req, res) => {
         if (typeof active === "boolean" && active !== existingActive) {
             updates.active = active;
             changes.active = { before: existingActive, after: active };
+            if (active === false) {
+                unsets.currentSessionId = "";
+                unsets.currentSessionIssuedAt = "";
+            }
         }
-        if (Object.keys(updates).length === 0) {
+        if (Object.keys(updates).length === 0 && Object.keys(unsets).length === 0) {
             return res.status(200).json({
                 message: "ไม่มีข้อมูลที่เปลี่ยนแปลง",
                 user: sanitizeUser(existingUser),
             });
         }
-        const updatedUser = await user_1.default.findByIdAndUpdate(userId, { $set: updates }, { returnDocument: "after" }).select("_id username name admin active profilePictureUrl");
+        const updatedUser = await user_1.default.findByIdAndUpdate(userId, {
+            ...(Object.keys(updates).length ? { $set: updates } : {}),
+            ...(Object.keys(unsets).length ? { $unset: unsets } : {}),
+        }, { returnDocument: "after" }).select("_id username name admin active profilePictureUrl");
         if (!updatedUser) {
             return res.status(404).json({ message: "ไม่พบผู้ใช้" });
         }
@@ -246,7 +258,19 @@ const login = async (req, res, next) => {
         }
         if (!process.env.JWT_SECRET)
             throw new Error("JWT_SECRET not found serverside");
-        const token = jsonwebtoken_1.default.sign({ userId: user._id, admin: user.admin, username: user.username }, process.env.JWT_SECRET, {
+        const sessionId = (0, crypto_1.randomUUID)();
+        await user_1.default.findByIdAndUpdate(user._id, {
+            $set: {
+                currentSessionId: sessionId,
+                currentSessionIssuedAt: new Date(),
+            },
+        });
+        const token = jsonwebtoken_1.default.sign({
+            userId: user._id,
+            admin: user.admin,
+            username: user.username,
+            sessionId,
+        }, process.env.JWT_SECRET, {
             expiresIn: "1d",
         });
         res.cookie("token", token, authCookieOptions);
@@ -293,7 +317,10 @@ const me = async (req, res, next) => {
     }
 };
 exports.me = me;
-const logout = (req, res) => {
+const logout = async (req, res) => {
+    if (req.user?.userId && req.user.sessionId) {
+        await user_1.default.updateOne({ _id: req.user.userId, currentSessionId: req.user.sessionId }, { $unset: { currentSessionId: "", currentSessionIssuedAt: "" } });
+    }
     res.clearCookie("token", authCookieOptions);
     res.status(200).json({ message: "Successfully logged out" });
     console.log(req.user);

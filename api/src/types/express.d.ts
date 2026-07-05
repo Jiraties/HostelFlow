@@ -9,6 +9,7 @@ declare global {
             userId: string;
             admin: boolean;
             username: string;
+            sessionId?: string;
           };
     }
   }

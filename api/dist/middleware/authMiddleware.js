@@ -19,16 +19,25 @@ const authMiddleware = async (req, res, next) => {
             throw new Error("JWT_Secret not found");
         const decodedToken = jsonwebtoken_1.default.verify(token, process.env.JWT_SECRET || "");
         const user = await user_1.default.findById(decodedToken.userId)
-            .select("username admin active")
+            .select("username admin active currentSessionId")
             .lean();
         if (!user || user.active === false) {
             res.status(403).json({ message: "User account is inactive" });
+            return;
+        }
+        if (!decodedToken.sessionId ||
+            !user.currentSessionId ||
+            decodedToken.sessionId !== user.currentSessionId) {
+            res.status(401).json({
+                message: "This account was signed in on another device.",
+            });
             return;
         }
         req.user = {
             userId: String(user._id),
             username: user.username,
             admin: Boolean(user.admin),
+            sessionId: decodedToken.sessionId,
         };
         next();
     }

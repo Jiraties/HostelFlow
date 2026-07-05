@@ -734,7 +734,7 @@ const Main = () => {
           0,
         ) / adminStats.revenueSeries.length
       : 0;
-  const thisMonthLabel = `เดือนนี้ (${currentThaiMonthLabel()})`;
+  const thisMonthLabel = currentThaiMonthLabel();
   const chartTitle =
     chartMetric === "revenue"
       ? revenueRangeTitleMap[revenueRange]
@@ -842,9 +842,9 @@ const Main = () => {
           <div className="main__adminHeader">
             <div>
               <i className="bx bx-bar-chart-big" />
-              <h2>ภาพรวมสำหรับแอดมิน</h2>
+              <h2>การวิเคราะห์การเงิน</h2>
             </div>
-            <span>{thisMonthLabel}</span>
+            <span>{thisMonthLabel} (เดือนนี้)</span>
           </div>
 
           <div className="main__adminDashboardGrid">
@@ -860,7 +860,7 @@ const Main = () => {
                       <ExpectedStayRevenueInfo />
                     </div>
                   </div>
-                  <p>{thisMonthLabel}</p>
+                  <p>เดือนนี้</p>
                 </div>
                 <div className="main__revenueHeroValue">
                   <strong>

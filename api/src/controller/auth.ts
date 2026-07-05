@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import { Request, Response, NextFunction } from "express";
 import { logActivity } from "../services/activityServices";
+import { randomUUID } from "crypto";
 
 dotenv.config();
 
@@ -150,7 +151,10 @@ export const resetUserPassword = async (req: Request, res: Response) => {
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = await User.findByIdAndUpdate(
       userId,
-      { $set: { password: hashedPassword } },
+      {
+        $set: { password: hashedPassword },
+        $unset: { currentSessionId: "", currentSessionIssuedAt: "" },
+      },
       { returnDocument: "after" },
     ).select("_id username name admin active profilePictureUrl");
 
@@ -214,6 +218,10 @@ export const updateUser = async (req: Request, res: Response) => {
       admin: boolean;
       active: boolean;
     }> = {};
+    const unsets: Partial<{
+      currentSessionId: "";
+      currentSessionIssuedAt: "";
+    }> = {};
     const changes: Record<string, { before: unknown; after: unknown }> = {};
 
     if (typeof name === "string") {
@@ -237,9 +245,14 @@ export const updateUser = async (req: Request, res: Response) => {
     if (typeof active === "boolean" && active !== existingActive) {
       updates.active = active;
       changes.active = { before: existingActive, after: active };
+
+      if (active === false) {
+        unsets.currentSessionId = "";
+        unsets.currentSessionIssuedAt = "";
+      }
     }
 
-    if (Object.keys(updates).length === 0) {
+    if (Object.keys(updates).length === 0 && Object.keys(unsets).length === 0) {
       return res.status(200).json({
         message: "ไม่มีข้อมูลที่เปลี่ยนแปลง",
         user: sanitizeUser(existingUser),
@@ -248,7 +261,10 @@ export const updateUser = async (req: Request, res: Response) => {
 
     const updatedUser = await User.findByIdAndUpdate(
       userId,
-      { $set: updates },
+      {
+        ...(Object.keys(updates).length ? { $set: updates } : {}),
+        ...(Object.keys(unsets).length ? { $unset: unsets } : {}),
+      },
       { returnDocument: "after" },
     ).select("_id username name admin active profilePictureUrl");
 
@@ -312,8 +328,21 @@ export const login = async (
     if (!process.env.JWT_SECRET)
       throw new Error("JWT_SECRET not found serverside");
 
+    const sessionId = randomUUID();
+    await User.findByIdAndUpdate(user._id, {
+      $set: {
+        currentSessionId: sessionId,
+        currentSessionIssuedAt: new Date(),
+      },
+    });
+
     const token = jwt.sign(
-      { userId: user._id, admin: user.admin, username: user.username },
+      {
+        userId: user._id,
+        admin: user.admin,
+        username: user.username,
+        sessionId,
+      },
       process.env.JWT_SECRET,
       {
         expiresIn: "1d",
@@ -366,7 +395,14 @@ export const me = async (req: Request, res: Response, next: NextFunction) => {
   }
 };
 
-export const logout = (req: Request, res: Response) => {
+export const logout = async (req: Request, res: Response) => {
+  if (req.user?.userId && req.user.sessionId) {
+    await User.updateOne(
+      { _id: req.user.userId, currentSessionId: req.user.sessionId },
+      { $unset: { currentSessionId: "", currentSessionIssuedAt: "" } },
+    );
+  }
+
   res.clearCookie("token", authCookieOptions);
 
   res.status(200).json({ message: "Successfully logged out" });
