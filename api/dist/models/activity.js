@@ -26,10 +26,13 @@ const activitySchema = new mongoose_1.default.Schema({
             "CREATE_USER",
             "RESET_USER_PASSWORD",
             "UPDATE_USER",
+            "UPDATE_USER_SETTINGS",
             "DEACTIVATE_USER",
             "REACTIVATE_USER",
             "DAILY_CLOSE",
             "REVIEW_TRANSACTION",
+            "VIEW_PASSPORT",
+            "EXPORT_PASSPORT_REPORT",
         ],
     },
     details: {

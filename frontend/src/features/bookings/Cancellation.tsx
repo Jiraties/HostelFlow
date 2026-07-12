@@ -4,6 +4,7 @@ import axios from "axios";
 import toast from "react-hot-toast";
 import ActionButton from "../../components/ActionButton";
 import ModalCloseButton from "../../components/ModalCloseButton";
+import CashShiftNudge from "../../components/CashShiftNudge";
 import { API_URL } from "../../config/api";
 import { formatBookingDates } from "../../helpers/bookingHelpers";
 import { customStyles, type OptionType } from "../../helpers/selectStyling";
@@ -32,6 +33,30 @@ const formatCurrency = (amount: number) =>
 const formatCashFlow = (amount: number) =>
   amount > 0 ? `${formatCurrency(amount)}` : formatCurrency(0);
 
+const moneyOutTransactionTypes = new Set([
+  "depositRefund",
+  "cancellationRefund",
+  "roomRefund",
+  "compensation",
+]);
+
+const transactionSignedAmount = (
+  transaction: booking["transactions"][number],
+) => {
+  const direction =
+    transaction.direction ||
+    (transaction.paymentMethod === "Unpaid"
+      ? "neutral"
+      : moneyOutTransactionTypes.has(transaction.type)
+        ? "out"
+        : "in");
+
+  if (direction === "neutral") return 0;
+  return direction === "out"
+    ? -Math.abs(transaction.amount || 0)
+    : Math.abs(transaction.amount || 0);
+};
+
 const Cancellation = ({
   booking,
   onClose,
@@ -53,21 +78,20 @@ const Cancellation = ({
         return;
       }
 
-      const multiplier = transaction.type === "depositRefund" ? -1 : 1;
       const currentAmount = breakdown.get(transaction.paymentMethod) || 0;
 
       breakdown.set(
         transaction.paymentMethod,
-        currentAmount + transaction.amount * multiplier,
+        currentAmount + transactionSignedAmount(transaction),
       );
     });
 
     return {
-      paidByMethod: Array.from(breakdown.entries()).filter(
-        ([, amount]) => amount !== 0,
-      ),
+      paidByMethod: Array.from(breakdown.entries())
+        .map(([method, amount]) => [method, Math.max(amount, 0)] as const)
+        .filter(([, amount]) => amount > 0),
       paidTotal: Array.from(breakdown.values()).reduce(
-        (sum, amount) => sum + amount,
+        (sum, amount) => sum + Math.max(amount, 0),
         0,
       ),
       unpaidAmount,
@@ -95,9 +119,14 @@ const Cancellation = ({
     ? cancellationTypeOptions.filter(
         (option) => option.value !== "no_payment_received",
       )
-    : cancellationTypeOptions.filter(
+      : cancellationTypeOptions.filter(
         (option) => option.value === "no_payment_received",
       );
+  const cashRefundAmount = paidBreakdown.paidByMethod.find(
+    ([method]) => method === "Cash",
+  )?.[1] || 0;
+  const hasCashMovement =
+    effectiveCancellationType === "refundable" && cashRefundAmount > 0;
 
   const selectedCancellationType =
     cancellationTypeOptions.find(
@@ -143,6 +172,7 @@ const Cancellation = ({
     <form className="cancellation__wrapper">
       {onClose && <ModalCloseButton onClick={onClose} />}
       <h1 className="addBooking__title">ยกเลิกการจอง</h1>
+      {hasCashMovement && <CashShiftNudge />}
 
       <section className="cancellation__section">
         <div className="addBooking__grid">

@@ -4,10 +4,14 @@ import dotenv from "dotenv";
 import crypto from "crypto";
 
 import { NextFunction, Request, Response } from "express";
-import { logActivity } from "../services/activityServices";
+import {
+  logActivity,
+  logActivityStrict,
+} from "../services/activityServices";
 import {
   LARGE_REFUND_THRESHOLD,
   normalizeTransaction,
+  summarizeReceivedPaymentsByMethod,
   summarizeTransactions,
   transactionDashboardCollectedRevenueAmount,
   transactionDashboardGrossRevenueAmount,
@@ -64,6 +68,14 @@ const ADD_TRANSACTION_TYPES: TransactionType[] = [
   "slowBoat",
   "joinTour",
   "extraBed",
+  "pickACraft",
+  "setMenu",
+  "sleeperBus",
+  "onlyWalk",
+  "laundry",
+  "bicycle",
+  "car",
+  "misc",
 ];
 const RESOLVE_BOOKING_TRANSACTION_TYPES: TransactionType[] = [
   "roomRefund",
@@ -471,9 +483,10 @@ const attachActiveCashShift = async (transactions: transcation[]) => {
     return transactions;
   }
 
-  const activeCashShift = await CashShift.findOne({ status: "open" }).sort({
-    startedAt: -1,
-  });
+  const activeCashShift = await CashShift.findOne({
+    status: "open",
+    businessDate: formatLocalDateKey(new Date()),
+  }).sort({ startedAt: -1 });
   if (!activeCashShift) return transactions;
 
   const cashShiftId = String(activeCashShift._id);
@@ -534,6 +547,11 @@ export const newBooking = async (
   next: NextFunction,
 ) => {
   try {
+    const staffUsername = req.user?.username;
+    if (!staffUsername) {
+      return res.status(401).json({ message: "กรุณาเข้าสู่ระบบใหม่" });
+    }
+
     if (!req.body.booking)
       return res.status(400).json({ message: "ไม่พบข้อมูล booking" });
 
@@ -649,7 +667,7 @@ export const newBooking = async (
 
           transactions,
 
-          staffUsername: booking.staffUsername,
+          staffUsername,
           bookingId: booking.bookingId.trim(),
           checkInByStaffUsername: null,
           status: "booked",
@@ -1165,6 +1183,7 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
           .map((transaction) => ({
             transaction,
             bookingTransactions: booking.transactions || [],
+            bookingId: String(booking._id),
           })),
       );
     const monthFinancialTransactions = transactionsInRange(
@@ -1176,12 +1195,6 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
       chartFinancialBookings,
       chartStart,
       chartEnd,
-    );
-    const dailyFinancialTransactions = monthFinancialTransactions.filter(
-      ({ transaction }) => {
-        const transactionDate = new Date(transaction.createdAt || 0);
-        return transactionDate >= startOfToday && transactionDate < startOfTomorrow;
-      },
     );
 
     const calculateGrossRevenue = (
@@ -1205,10 +1218,6 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
         0,
       );
 
-    const dailyGrossRevenue = calculateGrossRevenue(dailyFinancialTransactions);
-    const dailyCollectedRevenue = calculateCollectedRevenue(
-      dailyFinancialTransactions,
-    );
     const monthlyGrossRevenue = calculateGrossRevenue(monthFinancialTransactions);
     const monthlyCollectedRevenue = calculateCollectedRevenue(
       monthFinancialTransactions,
@@ -1328,11 +1337,8 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
     );
 
     res.status(200).json({
-      dailyGrossRevenue,
-      dailyCollectedRevenue,
       monthlyGrossRevenue,
       monthlyCollectedRevenue,
-      todayExpectedRevenue: dailyGrossRevenue,
       monthRoomRevenue: monthlyGrossRevenue,
       monthBookings: monthBookings.length,
       unpaidAmount,
@@ -2450,7 +2456,7 @@ export const addTransaction = async (
 
 export const getPassportData = async (req: Request, res: Response) => {
   try {
-    const { bookingId } = req.params;
+    const bookingId = String(req.params.bookingId || "");
 
     if (!bookingId)
       return res.status(400).json({
@@ -2506,6 +2512,15 @@ export const getPassportData = async (req: Request, res: Response) => {
       passportName: decrypt(booking.passport.passportName),
     };
 
+    await logActivityStrict(
+      req.user?.username,
+      "VIEW_PASSPORT",
+      { summary: { bookingId } },
+      bookingId,
+    );
+
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Pragma", "no-cache");
     res.status(200).json({ passportData });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
@@ -2547,16 +2562,8 @@ export const cancelBooking = async (req: Request, res: Response) => {
         message: "สามารถยกเลิกได้เฉพาะ Booking ที่ยังไม่ได้ Check-In",
       });
 
-    const paidByMethod = existingBooking.transactions.reduce(
-      (totals, transaction) => {
-        if (transaction.paymentMethod === "Unpaid") return totals;
-        totals.set(
-          transaction.paymentMethod,
-          (totals.get(transaction.paymentMethod) || 0) + transaction.amount,
-        );
-        return totals;
-      },
-      new Map<PaymentMethod, number>(),
+    const paidByMethod = summarizeReceivedPaymentsByMethod(
+      existingBooking.transactions,
     );
     const paidAmount = Array.from(paidByMethod.values()).reduce(
       (sum, amount) => sum + amount,

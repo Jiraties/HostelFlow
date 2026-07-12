@@ -40,6 +40,25 @@
   cursor: pointer;
 }
 
+.spreadsheet--spacious .ag-cell {
+  align-items: center;
+  display: flex;
+}
+
+.spreadsheet--spacious .ag-cell-value,
+.spreadsheet--spacious .ag-cell-wrapper,
+.spreadsheet--spacious .ag-cell .platformCell,
+.spreadsheet--spacious .ag-cell .bookingStatusCell {
+  align-items: center;
+  display: flex;
+  min-height: 100%;
+}
+
+.spreadsheet--spacious .ag-full-width-row .ag-cell {
+  align-items: stretch;
+  display: block;
+}
+
 .spreadsheet__roomCell {
   overflow: hidden;
   text-overflow: ellipsis;

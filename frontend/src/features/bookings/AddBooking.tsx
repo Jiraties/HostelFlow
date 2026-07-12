@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import ActionButton from "../../components/ActionButton";
 import ModalCloseButton from "../../components/ModalCloseButton";
+import CashShiftNudge from "../../components/CashShiftNudge";
 import "./AddBooking.css";
 import Select, { type MultiValue, type SingleValue } from "react-select";
 import { useAuth } from "../../context/AuthContext";
@@ -36,6 +37,7 @@ interface BookingFormData {
 
 type BookingFormErrors = Partial<Record<keyof BookingFormData, string>>;
 type RoomOptionWithReason = OptionType & { disabledReason?: string };
+type AvailabilityStatus = "idle" | "loading" | "ready" | "error";
 
 const AddBooking = ({
   mode = "add",
@@ -61,6 +63,8 @@ const AddBooking = ({
   const isEditMode = mode === "edit" && !!editModeBooking;
   const [submitting, setSubmitting] = useState(false);
   const [occupiedRoomIds, setOccupiedRoomIds] = useState<string[]>([]);
+  const [availabilityStatus, setAvailabilityStatus] =
+    useState<AvailabilityStatus>("idle");
   const [formErrors, setFormErrors] = useState<BookingFormErrors>({});
   const [reminderIsOpen, setReminderIsOpen] = useState(
     mode === "edit" && editModeBooking && editModeBooking?.roomStays.length > 1,
@@ -85,20 +89,37 @@ const AddBooking = ({
       };
     }
 
+    const defaultPlatform = user?.settings.defaultPlatformId || "";
+
     return {
       name: "",
       checkIn: clickInfo?.checkIn || "",
       checkOut: "",
-      platformId: "",
+      platformId: defaultPlatform,
       roomIds: clickInfo?.roomId ? [clickInfo.roomId] : [],
       price: "",
-      paymentMethod: "",
+      paymentMethod:
+        defaultPlatform === "TRAV"
+          ? "OTA"
+          : user?.settings.defaultPaymentMethod || "",
       bookingId: "",
       staffUsername: user?.username || "",
       note: "",
     };
-  }, [clickInfo?.checkIn, clickInfo?.roomId, editModeBooking, user?.username]);
+  }, [
+    clickInfo?.checkIn,
+    clickInfo?.roomId,
+    editModeBooking,
+    user?.settings.defaultPaymentMethod,
+    user?.settings.defaultPlatformId,
+    user?.username,
+  ]);
   const [formData, setFormData] = useState<BookingFormData>(initialFormData);
+  const hasCashMovement =
+    !isEditMode &&
+    formData.paymentMethod === "Cash" &&
+    Number.isFinite(Number(formData.price)) &&
+    Number(formData.price) > 0;
 
   useEffect(() => {
     onDirtyChange?.(
@@ -128,15 +149,18 @@ const AddBooking = ({
   useEffect(() => {
     if (isEditMode || !formData.checkIn || !formData.checkOut) {
       setOccupiedRoomIds([]);
+      setAvailabilityStatus("idle");
       return;
     }
 
     if (new Date(formData.checkIn) >= new Date(formData.checkOut)) {
       setOccupiedRoomIds([]);
+      setAvailabilityStatus("idle");
       return;
     }
 
     const controller = new AbortController();
+    setAvailabilityStatus("loading");
 
     axios
       .get(`${API_URL}/bookings/getRoomAvailability`, {
@@ -155,6 +179,8 @@ const AddBooking = ({
           : [];
 
         setOccupiedRoomIds(nextOccupiedRoomIds);
+        setAvailabilityStatus("ready");
+        setFormErrors((prev) => ({ ...prev, roomIds: undefined }));
         setFormData((prev) => ({
           ...prev,
           roomIds: prev.roomIds.filter(
@@ -165,6 +191,12 @@ const AddBooking = ({
       .catch((err) => {
         if (axios.isCancel(err) || err.name === "CanceledError") return;
         setOccupiedRoomIds([]);
+        setAvailabilityStatus("error");
+        setFormErrors((prev) => ({
+          ...prev,
+          roomIds:
+            "ตรวจสอบห้องว่างไม่สำเร็จ กรุณาลองเลือกวันที่อีกครั้งก่อนบันทึก",
+        }));
       });
 
     return () => controller.abort();
@@ -285,14 +317,16 @@ const AddBooking = ({
     field: keyof BookingFormData,
     value: BookingFormData[keyof BookingFormData],
   ) => {
-    if (submitting) throw new Error("Already Submitting");
+    if (submitting) return;
 
     setFormData((prev) => {
       const updated = { ...prev, [field]: value };
 
       if (field === "platformId") {
         const platformId = value as PlatformId | "";
-        if (platformId === "BOOK") updated.paymentMethod = "OTA";
+        if (platformId === "BOOK" || platformId === "TRAV") {
+          updated.paymentMethod = "OTA";
+        }
         if (platformId === "HOST") updated.paymentMethod = "Unpaid";
       }
 
@@ -325,7 +359,12 @@ const AddBooking = ({
     }
 
     if (!isEditMode) {
-      if (formData.roomIds.length === 0) {
+      if (roomAvailabilityReady && availabilityStatus !== "ready") {
+        nextErrors.roomIds =
+          availabilityStatus === "loading"
+            ? "กำลังตรวจสอบห้องว่าง กรุณารอสักครู่"
+            : "ตรวจสอบห้องว่างไม่สำเร็จ กรุณาลองเลือกวันที่อีกครั้งก่อนบันทึก";
+      } else if (formData.roomIds.length === 0) {
         nextErrors.roomIds = roomAvailabilityReady
           ? "กรุณาเลือกห้อง/เตียง"
           : "เลือกวันเช็คอิน/เช็คเอาท์ก่อน แล้วเลือกห้อง/เตียง";
@@ -452,6 +491,7 @@ const AddBooking = ({
           />
         </div>
       )}
+      {hasCashMovement && <CashShiftNudge />}
 
       <div className="addBooking__grid">
         <div>
@@ -528,6 +568,12 @@ const AddBooking = ({
               classNamePrefix="rs"
               placeholder="เช่น Veranda 1"
               options={roomOptions}
+              isDisabled={
+                !roomAvailabilityReady ||
+                availabilityStatus !== "ready" ||
+                submitting
+              }
+              isLoading={availabilityStatus === "loading"}
               formatOptionLabel={formatRoomOptionLabel}
               value={roomOptions.filter((option) =>
                 formData.roomIds.includes(option.value),
@@ -548,7 +594,9 @@ const AddBooking = ({
             >
               {formErrors.roomIds ||
                 (roomAvailabilityReady
-                  ? occupiedRoomIds.length > 0
+                  ? availabilityStatus === "loading"
+                    ? "กำลังตรวจสอบห้อง/เตียงที่ว่าง..."
+                    : occupiedRoomIds.length > 0
                     ? "ห้อง/เตียงที่ถูกจองแล้วจะแสดงเป็นตัวเลือกสีเทา"
                     : "เลือกได้เฉพาะห้อง/เตียงที่ว่างในช่วงวันที่นี้"
                   : "เลือกวันเช็คอินและเช็คเอาท์ก่อน ระบบจะแสดงห้อง/เตียงที่ว่าง")}
@@ -580,7 +628,9 @@ const AddBooking = ({
         {!isEditMode && (
           <>
             <div>
-              <p className="addBooking__label">ราคา (฿)</p>
+              <p className="addBooking__label">
+                ราคารวมค่าห้องตลอดการเข้าพัก (฿)
+              </p>
               <input
                 className={`boxInput ${formErrors.price ? "boxInput--error" : ""}`}
                 type="number"
@@ -590,6 +640,11 @@ const AddBooking = ({
               />
               {formErrors.price && (
                 <p className="addBooking__fieldError">{formErrors.price}</p>
+              )}
+              {!formErrors.price && (
+                <p className="addBooking__fieldHelper">
+                  กรอกยอดรวมทุกคืน ไม่ใช่ราคาต่อคืน
+                </p>
               )}
             </div>
             <div>

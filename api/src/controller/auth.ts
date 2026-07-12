@@ -1,10 +1,13 @@
 import bcrypt from "bcrypt";
 import User from "../models/user";
+import { defaultUserSettings } from "../models/user";
+import type { UserSettings } from "../models/user";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import { Request, Response, NextFunction } from "express";
 import { logActivity } from "../services/activityServices";
 import { randomUUID } from "crypto";
+import type { MyJwtPayload } from "../middleware/authMiddleware";
 
 dotenv.config();
 
@@ -15,38 +18,24 @@ const authCookieOptions = {
   path: "/",
 };
 
-export const createUser = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
-  try {
-    const { username, password, secretCode, admin, name } = req.body;
+const SESSION_LIFETIME_MS = 24 * 60 * 60 * 1000;
 
-    console.log(req.body);
-
-    if (secretCode !== process.env.SECRET_CODE)
-      throw new Error(
-        "To create a new account please provide the correct secret code",
-      );
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const user = new User({
-      username,
-      password: hashedPassword,
-      admin,
-      name,
-      profilePictureUrl: "/uploads/default.jpg",
-    });
-
-    await user.save();
-
-    res.status(201).json({ message: "User created successfully" });
-  } catch (err: any) {
-    return res.status(400).json({ error: err.message });
-  }
+const activeSessionError = {
+  error: "บัญชีนี้กำลังใช้งานอยู่บนอุปกรณ์อื่น กรุณาออกจากระบบบนอุปกรณ์เดิมก่อน",
+  code: "ACTIVE_SESSION_EXISTS",
 };
+
+const normalizeUserSettings = (settings?: Partial<UserSettings>) => ({
+  calendarColorMode:
+    settings?.calendarColorMode || defaultUserSettings.calendarColorMode,
+  calendarDensity: settings?.calendarDensity || defaultUserSettings.calendarDensity,
+  tableDensity: settings?.tableDensity || defaultUserSettings.tableDensity,
+  defaultPlatformId:
+    settings?.defaultPlatformId ?? defaultUserSettings.defaultPlatformId,
+  defaultPaymentMethod:
+    settings?.defaultPaymentMethod ?? defaultUserSettings.defaultPaymentMethod,
+  dateFormat: settings?.dateFormat || defaultUserSettings.dateFormat,
+});
 
 const sanitizeUser = (user: {
   _id: unknown;
@@ -55,14 +44,49 @@ const sanitizeUser = (user: {
   admin: boolean;
   active?: boolean;
   profilePictureUrl?: string;
-}) => ({
-  userId: String(user._id),
-  username: user.username,
-  name: user.name,
-  admin: user.admin,
-  active: user.active !== false,
-  profilePictureUrl: user.profilePictureUrl || "/uploads/default.jpg",
-});
+  settings?: Partial<UserSettings>;
+}) => {
+  const settings =
+    user.settings && typeof (user.settings as any).toObject === "function"
+      ? (user.settings as any).toObject()
+      : user.settings;
+
+  return {
+    userId: String(user._id),
+    username: user.username,
+    name: user.name,
+    admin: user.admin,
+    active: user.active !== false,
+    profilePictureUrl: user.profilePictureUrl || "/uploads/default.jpg",
+    settings: normalizeUserSettings(settings),
+  };
+};
+
+const settingsOptions = {
+  calendarColorMode: ["status", "source"],
+  calendarDensity: ["compact", "comfortable", "spacious"],
+  tableDensity: ["compact", "comfortable", "spacious"],
+  defaultPlatformId: ["", "BOOK", "HOST", "TRAV", "AGOD", "WALK"],
+  defaultPaymentMethod: ["", "OTA", "Cash", "Card", "Transfer", "Unpaid"],
+  dateFormat: ["dd/MM/yyyy", "d MMM yyyy"],
+} satisfies Record<keyof UserSettings, readonly string[]>;
+
+const normalizeSettingsUpdate = (body: Partial<UserSettings>) => {
+  const updates: Partial<UserSettings> = {};
+
+  (Object.keys(settingsOptions) as (keyof UserSettings)[]).forEach((key) => {
+    const value = body[key];
+    if (value === undefined) return;
+
+    if (!settingsOptions[key].includes(value)) {
+      throw new Error("ค่าการตั้งค่าไม่ถูกต้อง");
+    }
+
+    updates[key] = value as never;
+  });
+
+  return updates;
+};
 
 export const listUsers = async (req: Request, res: Response) => {
   try {
@@ -296,13 +320,60 @@ export const updateUser = async (req: Request, res: Response) => {
   }
 };
 
+export const updateMySettings = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) return res.status(401).json({ message: "Unauthorized" });
+
+    const updates = normalizeSettingsUpdate(req.body || {});
+
+    if (Object.keys(updates).length === 0) {
+      const user = await User.findById(req.user.userId).select(
+        "_id username name admin active profilePictureUrl settings",
+      );
+
+      if (!user) return res.status(404).json({ message: "ไม่พบผู้ใช้" });
+
+      return res.status(200).json({
+        message: "ไม่มีข้อมูลที่เปลี่ยนแปลง",
+        user: sanitizeUser(user),
+      });
+    }
+
+    const $set = Object.fromEntries(
+      Object.entries(updates).map(([key, value]) => [`settings.${key}`, value]),
+    );
+
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user.userId,
+      { $set },
+      { returnDocument: "after" },
+    ).select("_id username name admin active profilePictureUrl settings");
+
+    if (!updatedUser) return res.status(404).json({ message: "ไม่พบผู้ใช้" });
+
+    logActivity(req.user.username, "UPDATE_USER_SETTINGS", {
+      summary: {
+        updatedSettings: Object.keys(updates),
+      },
+    }).catch((err) => {
+      console.error("Failed to log settings update activity", err);
+    });
+
+    return res.status(200).json({
+      message: "บันทึกการตั้งค่าเรียบร้อยแล้ว",
+      user: sanitizeUser(updatedUser),
+    });
+  } catch (err) {
+    return res.status(400).json({ message: (err as Error).message });
+  }
+};
+
 export const login = async (
   req: Request,
   res: Response,
   next: NextFunction,
 ) => {
   try {
-    console.log("LOGGIN IN! ");
     const { username, password } = req.body;
 
     if (!username || !password)
@@ -328,19 +399,59 @@ export const login = async (
     if (!process.env.JWT_SECRET)
       throw new Error("JWT_SECRET not found serverside");
 
-    const sessionId = randomUUID();
-    await User.findByIdAndUpdate(user._id, {
-      $set: {
-        currentSessionId: sessionId,
-        currentSessionIssuedAt: new Date(),
+    const now = new Date();
+    const sessionCutoff = new Date(now.getTime() - SESSION_LIFETIME_MS);
+    let requestSessionId: string | undefined;
+
+    if (req.cookies.token) {
+      try {
+        const existingToken = jwt.verify(
+          req.cookies.token,
+          process.env.JWT_SECRET,
+        ) as MyJwtPayload;
+        if (
+          String(existingToken.userId) === String(user._id) &&
+          existingToken.sessionId === user.currentSessionId
+        ) {
+          requestSessionId = existingToken.sessionId;
+        }
+      } catch {
+        // An expired or invalid cookie does not own the active session.
+      }
+    }
+
+    const sessionId = requestSessionId || randomUUID();
+    const sessionUser = await User.findOneAndUpdate(
+      requestSessionId
+        ? { _id: user._id, currentSessionId: requestSessionId }
+        : {
+            _id: user._id,
+            $or: [
+              { currentSessionId: { $exists: false } },
+              { currentSessionId: null },
+              { currentSessionIssuedAt: { $exists: false } },
+              { currentSessionIssuedAt: { $lte: sessionCutoff } },
+            ],
+          },
+      {
+        $set: {
+          currentSessionId: sessionId,
+          currentSessionIssuedAt: now,
+        },
       },
-    });
+      { returnDocument: "after" },
+    );
+
+    if (!sessionUser) {
+      logActivity(username, "LOGIN", { success: false }).catch(() => {});
+      return res.status(409).json(activeSessionError);
+    }
 
     const token = jwt.sign(
       {
         userId: user._id,
-        admin: user.admin,
-        username: user.username,
+        admin: sessionUser.admin,
+        username: sessionUser.username,
         sessionId,
       },
       process.env.JWT_SECRET,
@@ -353,14 +464,7 @@ export const login = async (
 
     res.status(200).json({
       message: "Logged In Successfully.",
-      user: {
-        userId: String(user._id),
-        username: user.username,
-        name: user.name,
-        admin: user.admin,
-        active: true,
-        profilePictureUrl: user.profilePictureUrl,
-      },
+      user: sanitizeUser(sessionUser),
     });
 
     logActivity(username, "LOGIN", { success: true });
@@ -371,8 +475,6 @@ export const login = async (
 
 export const me = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    console.log(req.user);
-
     if (!req.user) return res.status(401).json({ error: "Not Authorized" });
 
     const user = await User.findById(req.user?.userId);
@@ -380,14 +482,7 @@ export const me = async (req: Request, res: Response, next: NextFunction) => {
     if (!user) throw new Error("Token authorized but user not found.");
 
     res.status(200).json({
-      user: {
-        userId: String(user._id),
-        username: user.username,
-        name: user.name,
-        admin: user.admin,
-        active: user.active !== false,
-        profilePictureUrl: user.profilePictureUrl,
-      },
+      user: sanitizeUser(user),
       message: "Successfully fetched user info",
     });
   } catch (err) {
@@ -407,10 +502,7 @@ export const logout = async (req: Request, res: Response) => {
 
   res.status(200).json({ message: "Successfully logged out" });
 
-  console.log(req.user);
-
   logActivity(req.user?.username, "LOGOUT", { success: true });
-  console.log("Logged Out");
 };
 
 export const setProfilePicture = async (req: Request, res: Response) => {
@@ -435,12 +527,7 @@ export const setProfilePicture = async (req: Request, res: Response) => {
 
     return res.status(200).json({
       message: "อัปเดตรูปโปรไฟล์เรียบร้อยแล้ว",
-      user: {
-        username: updatedUser.username,
-        name: updatedUser.name,
-        admin: updatedUser.admin,
-        profilePictureUrl: updatedUser.profilePictureUrl,
-      },
+      user: sanitizeUser(updatedUser),
     });
   } catch (err) {
     return res.status(500).json({ message: (err as Error).message });

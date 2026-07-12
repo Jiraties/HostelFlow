@@ -1,6 +1,6 @@
 import axios from "axios";
 import { Modal } from "@mui/material";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import toast from "react-hot-toast";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -29,8 +29,18 @@ import { API_URL } from "../config/api";
 import { requestUnsavedModalClose } from "../helpers/modalGuards";
 import { formatRoomStayRooms } from "../helpers/roomStayHelpers";
 import usePageTitle from "../hooks/useTitle";
+import {
+  formatDisplayDate as formatPreferredDate,
+  formatHeaderDate,
+} from "../helpers/displayDate";
 
-import type { booking, PlatformId } from "../types/bookingTypes";
+import type {
+  booking,
+  PlatformId,
+  TransactionType,
+} from "../types/bookingTypes";
+import type { CashPositionData } from "../types/cashShiftTypes";
+import type { DateFormatPreference } from "../types/userSettings";
 
 import "./Home.css";
 import "../features/bookings/CheckIn.css";
@@ -48,13 +58,6 @@ const getFetchErrorMessage = (err: unknown) => {
 const roomChargeTransaction = (booking: booking) =>
   booking.transactions.find((transaction) => transaction.type === "roomCharge");
 
-const formatDisplayDate = (date: Date) =>
-  new Intl.DateTimeFormat("th-TH", {
-    calendar: "gregory",
-    day: "numeric",
-    month: "short",
-  }).format(date);
-
 const startOfDate = (date: Date) =>
   new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
@@ -67,9 +70,41 @@ const daysBetweenDates = (from: Date, to: Date) =>
     ),
   );
 
+type TodayRevenueStats = {
+  todayRevenue: number;
+  todayArrivalRevenue: number;
+  todayExtrasRevenue: number;
+  todayReductions: number;
+  todayCollectedRevenue: number;
+  todayServiceHighlights: Array<{
+    type: TransactionType;
+    count: number;
+    total: number;
+  }>;
+};
+
+const serviceHighlightMeta: Partial<
+  Record<TransactionType, { label: string; icon: string; color: string }>
+> = {
+  joinTour: { label: "Join Tour", icon: "bx-map", color: "#22c55e" },
+  motorbike: { label: "Motorbike", icon: "bx-cycling", color: "#f97316" },
+  slowBoat: { label: "Slow Boat", icon: "bx-water", color: "#14b8a6" },
+  sleeperBus: { label: "Sleeper Bus", icon: "bx-bus", color: "#6366f1" },
+  towel: { label: "Towel", icon: "bx-bath", color: "#0ea5e9" },
+  laundry: { label: "Laundry", icon: "bx-washer", color: "#3b82f6" },
+  bicycle: { label: "Bicycle", icon: "bx-cycling", color: "#eab308" },
+  car: { label: "Car", icon: "bx-car", color: "#64748b" },
+  misc: { label: "Misc", icon: "bx-dots-horizontal-rounded", color: "#64748b" },
+};
+
+const priorityTodayServiceTypes: TransactionType[] = [
+  "joinTour",
+  "motorbike",
+  "slowBoat",
+  "sleeperBus",
+];
+
 type AdminDashboardStats = {
-  dailyGrossRevenue: number;
-  dailyCollectedRevenue: number;
   monthlyGrossRevenue: number;
   monthlyCollectedRevenue: number;
   monthBookings: number;
@@ -99,13 +134,6 @@ const revenueRangeOptions: Array<{ value: RevenueRange; label: string }> = [
   { value: "1y", label: "1Y" },
 ];
 
-const revenueRangeTitleMap: Record<RevenueRange, string> = {
-  mtd: "ESR MTD",
-  "1m": "ESR 1M",
-  "3m": "ESR 3M",
-  "1y": "ESR 1Y",
-};
-
 const occupancyRangeTitleMap: Record<RevenueRange, string> = {
   mtd: "อัตราเข้าพัก MTD",
   "1m": "อัตราเข้าพัก 1M",
@@ -122,6 +150,10 @@ const dashboardHelpText = {
   bookedRevenue:
     "รายได้จากการเข้าพักที่คาดไว้หลังหักรายการลด เช่น คืนเงิน ชดเชย และปรับลบ โดยไม่รวมมัดจำ และบางยอดอาจยังไม่ได้รับเงินจริง",
   collectedRevenue: "เงินที่รับแล้วจริง เช่น เงินสด โอน บัตร หรือ OTA จ่ายแล้ว",
+  todayCollectedRevenue:
+    "เงินที่รับแล้วสำหรับการจองที่เช็คอินวันนี้เท่านั้น ไม่ว่าจะรับชำระวันไหน",
+  todayRevenue:
+    "มูลค่าการเข้าพักทั้งหมดของผู้ที่เช็คอินวันนี้ รวมบริการเสริมที่ขายวันนี้ หลังหักรายการคืนเงินและรายการลดวันนี้",
   unpaid: "ยอดจองที่ยังไม่ได้รับเงินจากลูกค้า",
   cashToday: "เงินสดรับ ลบ เงินสดจ่าย สำหรับวันที่เลือก",
   occupancy: "จำนวนแขกที่เข้าพักจริงเทียบกับจำนวนเตียงทั้งหมด",
@@ -138,59 +170,6 @@ const ExpectedStayRevenueInfo = () => (
     </span>
   </span>
 );
-
-type CashShift = {
-  _id: string;
-  businessDate: string;
-  shiftNumber: number;
-  staffUsername: string;
-  status: "open" | "closed";
-  openingMode: "counted" | "accepted_handoff";
-  handoffFromShiftId?: string;
-  depositOpeningCash: number;
-  operatingOpeningCash: number;
-  depositCashIn: number;
-  depositCashOut: number;
-  operatingCashIn: number;
-  operatingCashOut: number;
-  depositExpectedCash: number;
-  operatingExpectedCash: number;
-  depositActualCash?: number;
-  operatingActualCash?: number;
-  depositVariance?: number;
-  operatingVariance?: number;
-  note?: string;
-  startedAt: string | Date;
-  endedAt?: string | Date;
-  staff?: {
-    username: string;
-    name?: string;
-    profilePictureUrl?: string;
-  };
-  closedBy?: {
-    username: string;
-    name?: string;
-    profilePictureUrl?: string;
-  };
-};
-
-type CashPositionData = {
-  businessDate: string;
-  threshold: number;
-  activeShift: CashShift | null;
-  previousShift: CashShift | null;
-  current: {
-    depositCash: number;
-    operatingCash: number;
-  };
-  handoff: {
-    depositCash: number;
-    operatingCash: number;
-    fromShiftId?: string;
-    fromShiftNumber?: number;
-  };
-  shifts: CashShift[];
-};
 
 type ReviewBooking = booking & {
   reviewLabel: string;
@@ -228,8 +207,19 @@ const formatMoney = (value: number) =>
     maximumFractionDigits: 2,
   });
 
-const currentThaiMonthLabel = () =>
-  new Intl.DateTimeFormat("th-TH", {
+const toCumulativeRevenueSeries = (
+  series: AdminDashboardStats["revenueSeries"],
+) => {
+  let cumulativeRevenue = 0;
+
+  return series.map((point) => {
+    cumulativeRevenue += point.grossRevenue;
+    return { ...point, grossRevenue: cumulativeRevenue };
+  });
+};
+
+const currentEnglishMonthLabel = () =>
+  new Intl.DateTimeFormat("en-GB", {
     month: "long",
     calendar: "gregory",
   }).format(new Date());
@@ -250,9 +240,10 @@ const TrendLineChart = ({
           return {
             ...point,
             occupancyPercent: point.occupancyRate * 100,
-            label: new Intl.DateTimeFormat("th-TH", {
+            label: new Intl.DateTimeFormat("en-GB", {
               day: "numeric",
               month: "short",
+              calendar: "gregory",
             }).format(date),
           };
         })}
@@ -340,6 +331,7 @@ const TodayList = ({
   emptyText,
   onBookingClick,
   isBookingsThatNeedReview,
+  dateFormat,
 }: {
   title: string;
   icon: string;
@@ -347,6 +339,7 @@ const TodayList = ({
   emptyText: string;
   onBookingClick: (booking: booking) => void;
   isBookingsThatNeedReview?: boolean;
+  dateFormat: DateFormatPreference;
 }) => {
   const visibleBookings = bookings.slice(0, 6);
   const hiddenBookingCount = Math.max(
@@ -409,7 +402,11 @@ const TodayList = ({
                         </strong>
                         <span className="main__bookingMetaLine">
                           {getReviewDateLabel(booking)}{" "}
-                          {formatDisplayDate(getReviewDate(booking))}
+                          {formatPreferredDate(
+                            getReviewDate(booking),
+                            dateFormat,
+                            { includeYear: false },
+                          )}
                           {" · "}
                           <strong className="main__bookingReviewAge">
                             {getReviewOverdueLabel(booking)}
@@ -419,8 +416,13 @@ const TodayList = ({
                     ) : (
                       <>
                         <span className="main__bookingMetaLine">
-                          {formatDisplayDate(booking.checkIn)} -{" "}
-                          {formatDisplayDate(booking.checkOut)}
+                          {formatPreferredDate(booking.checkIn, dateFormat, {
+                            includeYear: false,
+                          })}{" "}
+                          -{" "}
+                          {formatPreferredDate(booking.checkOut, dateFormat, {
+                            includeYear: false,
+                          })}
                         </span>
                         <span
                           className="main__bookingMetaLine"
@@ -456,7 +458,9 @@ const TodayList = ({
 const Main = () => {
   usePageTitle("HostelFlow · หน้าแรก");
   const { user } = useAuth();
+  const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
   const navigate = useNavigate();
+  const location = useLocation();
   const [arrivals, setArrivals] = useState<booking[]>([]);
   const [departures, setDepartures] = useState<booking[]>([]);
   const [bookingsThatNeedReview, setBookingsThatNeedReview] = useState<
@@ -465,6 +469,9 @@ const Main = () => {
   const [occupancy, setOccupancy] = useState(0);
   const [loading, setLoading] = useState(true);
   const [adminLoading, setAdminLoading] = useState(false);
+  const [todayRevenueLoading, setTodayRevenueLoading] = useState(false);
+  const [todayRevenueStats, setTodayRevenueStats] =
+    useState<TodayRevenueStats | null>(null);
   const [adminStats, setAdminStats] = useState<AdminDashboardStats | null>(
     null,
   );
@@ -484,19 +491,17 @@ const Main = () => {
   const [closeNote, setCloseNote] = useState("");
   const [addBookingIsOpen, setAddBookingIsOpen] = useState(false);
   const [addBookingIsDirty, setAddBookingIsDirty] = useState(false);
-  const [financialBreakdownIsOpen, setFinancialBreakdownIsOpen] =
-    useState(false);
+  const [financialBreakdownMode, setFinancialBreakdownMode] = useState<
+    "monthly" | "today" | null
+  >(null);
+  const [financialBreakdownType, setFinancialBreakdownType] =
+    useState<TransactionType | null>(null);
   const [pendingUnsavedClose, setPendingUnsavedClose] = useState<
     (() => void) | null
   >(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  const fullFormattedDate = new Intl.DateTimeFormat("th-TH", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    calendar: "gregory",
-  }).format(new Date());
+  const fullFormattedDate = formatHeaderDate(new Date());
 
   const fetchDailyOps = useCallback(async () => {
     setLoading(true);
@@ -576,6 +581,22 @@ const Main = () => {
     }
   }, [revenueRange, user?.admin]);
 
+  const fetchTodayRevenue = useCallback(async () => {
+    setTodayRevenueLoading(true);
+    try {
+      const response = await axios.get<TodayRevenueStats>(
+        `${API_URL}/finance/today-revenue-summary`,
+        { withCredentials: true },
+      );
+      setTodayRevenueStats(response.data);
+    } catch (err) {
+      setTodayRevenueStats(null);
+      toast.error(getFetchErrorMessage(err));
+    } finally {
+      setTodayRevenueLoading(false);
+    }
+  }, []);
+
   const fetchCashClose = useCallback(async () => {
     setCashCloseLoading(true);
     try {
@@ -611,9 +632,10 @@ const Main = () => {
 
   const refreshDashboard = useCallback(async () => {
     await fetchDailyOps();
+    await fetchTodayRevenue();
     await fetchAdminStats();
     await fetchCashClose();
-  }, [fetchAdminStats, fetchCashClose, fetchDailyOps]);
+  }, [fetchAdminStats, fetchCashClose, fetchDailyOps, fetchTodayRevenue]);
 
   useEffect(() => {
     fetchDailyOps().catch((err) => toast.error(getFetchErrorMessage(err)));
@@ -624,12 +646,32 @@ const Main = () => {
   }, [fetchAdminStats]);
 
   useEffect(() => {
+    fetchTodayRevenue();
+  }, [fetchTodayRevenue]);
+
+  useEffect(() => {
     fetchCashClose();
   }, [fetchCashClose]);
+
+  useEffect(() => {
+    if (location.hash !== "#cash-close") return;
+
+    const timeoutId = window.setTimeout(() => {
+      document
+        .getElementById("cash-close")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [location.hash]);
 
   const activeCashShift = cashPosition?.activeShift || null;
   const previousCashShift = cashPosition?.previousShift || null;
   const cashShiftIsOpen = Boolean(activeCashShift);
+  const canCloseActiveShift = Boolean(
+    activeCashShift &&
+      (user?.admin || activeCashShift.staffUsername === user?.username),
+  );
   const hasPreviousCashShift = Boolean(previousCashShift);
   const previousShiftBelongsToCurrentStaff =
     previousCashShift?.staffUsername === user?.username;
@@ -669,10 +711,14 @@ const Main = () => {
     activeCashShift?.staff?.name ||
     activeCashShift?.staff?.username ||
     activeCashShift?.staffUsername;
+  const previousShiftStaffName =
+    previousCashShift?.staff?.name ||
+    previousCashShift?.staff?.username ||
+    previousCashShift?.staffUsername;
   const cashShiftTitle = activeCashShift
     ? `กะของ ${activeShiftStaffName || activeCashShift.staffUsername} เปิดอยู่`
     : hasPreviousCashShift
-      ? `รับต่อจาก Shift ${previousCashShift?.shiftNumber}`
+      ? `รับต่อจาก ${previousShiftStaffName || "กะก่อนหน้า"}`
       : "เริ่มกะแรกของวันนี้";
   const cashShiftSubtitle = activeCashShift
     ? ""
@@ -716,6 +762,9 @@ const Main = () => {
   const closeCashShift = async () => {
     if (!activeCashShift) {
       throw new Error("ยังไม่มีกะเงินสดที่เปิดอยู่");
+    }
+    if (!canCloseActiveShift) {
+      throw new Error("เฉพาะผู้รับผิดชอบกะหรือผู้ดูแลระบบเท่านั้นที่ปิดกะได้");
     }
     if (depositActualCash === "" || operatingActualCash === "") {
       throw new Error("กรุณากรอกยอดเงินสดที่นับได้ทั้งสองกล่อง");
@@ -776,37 +825,29 @@ const Main = () => {
       value: bookingsThatNeedReview.length,
     },
   ];
-  const adminRevenueGroups = adminStats
-    ? [
-        {
-          title: "วันนี้",
-          grossRevenue: adminStats.dailyGrossRevenue,
-          collectedRevenue: adminStats.dailyCollectedRevenue,
-        },
-        {
-          title: "เดือนนี้",
-          grossRevenue: adminStats.monthlyGrossRevenue,
-          collectedRevenue: adminStats.monthlyCollectedRevenue,
-        },
-      ]
-    : [
-        {
-          title: "วันนี้",
-          grossRevenue: 0,
-          collectedRevenue: 0,
-        },
-        {
-          title: "เดือนนี้",
-          grossRevenue: 0,
-          collectedRevenue: 0,
-        },
-      ];
-  const chartRevenueTotals = adminStats
-    ? adminStats.revenueSeries.reduce(
-        (total, point) => total + point.grossRevenue,
-        0,
-      )
-    : 0;
+  const revenueChartSeries = adminStats
+    ? toCumulativeRevenueSeries(adminStats.revenueSeries)
+    : [];
+  const chartRevenueTotal =
+    revenueChartSeries[revenueChartSeries.length - 1]?.grossRevenue || 0;
+  const todayServiceHighlights = [
+    ...(todayRevenueStats?.todayServiceHighlights || []),
+  ]
+    .filter((service) => service.count > 0)
+    .sort((first, second) => {
+      const firstPriority = priorityTodayServiceTypes.indexOf(first.type);
+      const secondPriority = priorityTodayServiceTypes.indexOf(second.type);
+      const normalizedFirstPriority =
+        firstPriority === -1 ? Number.MAX_SAFE_INTEGER : firstPriority;
+      const normalizedSecondPriority =
+        secondPriority === -1 ? Number.MAX_SAFE_INTEGER : secondPriority;
+
+      return (
+        normalizedFirstPriority - normalizedSecondPriority ||
+        second.total - first.total
+      );
+    })
+    .slice(0, 6);
   const occupancyFillPercent = Math.min(Math.max(occupancyRatePercent, 0), 100);
   const chartAverageOccupancy =
     adminStats && adminStats.revenueSeries.length > 0
@@ -815,14 +856,14 @@ const Main = () => {
           0,
         ) / adminStats.revenueSeries.length
       : 0;
-  const thisMonthLabel = currentThaiMonthLabel();
+  const thisMonthLabel = currentEnglishMonthLabel();
   const chartTitle =
     chartMetric === "revenue"
-      ? revenueRangeTitleMap[revenueRange]
+      ? "ESR เดือนนี้"
       : occupancyRangeTitleMap[revenueRange];
   const chartSummary =
     chartMetric === "revenue"
-      ? `${chartRevenueTotals.toLocaleString()} ฿`
+      ? `${chartRevenueTotal.toLocaleString()} ฿`
       : `${formatMoney(chartAverageOccupancy * 100)}%`;
 
   const appendToBookings = () => {
@@ -832,6 +873,14 @@ const Main = () => {
 
   const openBookingInMaster = (booking: booking) => {
     navigate(`/master?bookingId=${encodeURIComponent(booking.bookingId)}`);
+  };
+
+  const openArrivalBooking = (booking: booking) => {
+    navigate(`/arrivals?bookingId=${encodeURIComponent(booking.bookingId)}`);
+  };
+
+  const openDepartureBooking = (booking: booking) => {
+    navigate(`/departures?bookingId=${encodeURIComponent(booking.bookingId)}`);
   };
 
   return (
@@ -868,11 +917,18 @@ const Main = () => {
         />
       </Modal>
       <Modal
-        open={financialBreakdownIsOpen}
+        open={financialBreakdownMode !== null}
         className="home__modalCenter"
-        onClose={() => setFinancialBreakdownIsOpen(false)}
+        onClose={() => {
+          setFinancialBreakdownMode(null);
+          setFinancialBreakdownType(null);
+        }}
       >
-        <FinancialBreakdown />
+        <FinancialBreakdown
+          key={`${financialBreakdownMode}-${financialBreakdownType || "all"}`}
+          mode={financialBreakdownMode || "monthly"}
+          initialType={financialBreakdownType}
+        />
       </Modal>
 
       <PageHeader
@@ -889,12 +945,12 @@ const Main = () => {
           highlight
         />
         <ActionButton
-          text="เช็คอินวันนี้"
+          text="Arrivals"
           icon="bx-arrow-to-left"
           onClick={() => navigate("/arrivals")}
         />
         <ActionButton
-          text="เช็คเอาท์วันนี้"
+          text="Departures"
           icon="bx-arrow-from-left"
           onClick={() => navigate("/departures")}
         />
@@ -918,12 +974,108 @@ const Main = () => {
         ))}
       </section>
 
+      <section className="main__todayFinanceSection" aria-label="ภาพรวมวันนี้">
+        <section
+          className="main__adminPanel main__todayRevenue"
+          onClick={() => {
+            setFinancialBreakdownType(null);
+            setFinancialBreakdownMode("today");
+          }}
+          onKeyDown={(event) => {
+            if (event.target !== event.currentTarget) return;
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            setFinancialBreakdownType(null);
+            setFinancialBreakdownMode("today");
+          }}
+          role="button"
+          tabIndex={0}
+          aria-label="ดูรายละเอียดรายได้วันนี้"
+        >
+          {/* <div className="main__todayRevenueEyebrow">
+            <span>TODAY</span>
+          </div> */}
+          <div className="main__todayRevenueHeader">
+            <h2 title={dashboardHelpText.todayRevenue}>รายได้วันนี้</h2>
+            <strong>
+              {todayRevenueLoading && !todayRevenueStats
+                ? "-"
+                : `${formatMoney(todayRevenueStats?.todayRevenue || 0)} ฿`}
+            </strong>
+          </div>
+          <div className="main__todayRevenueBreakdown">
+            <div>
+              <span>การจองที่เช็คอินวันนี้</span>
+              <strong>
+                {formatMoney(todayRevenueStats?.todayArrivalRevenue || 0)} ฿
+              </strong>
+            </div>
+            <div>
+              <span>บริการเสริมวันนี้</span>
+              <strong>
+                {formatMoney(todayRevenueStats?.todayExtrasRevenue || 0)} ฿
+              </strong>
+            </div>
+            <div>
+              <span>คืนเงิน/รายการลดวันนี้</span>
+              <strong className="main__todayRevenueReduction">
+                −{formatMoney(todayRevenueStats?.todayReductions || 0)} ฿
+              </strong>
+            </div>
+            <div>
+              <span title={dashboardHelpText.todayCollectedRevenue}>
+                รับแล้วสำหรับเช็คอินวันนี้
+              </span>
+              <strong className="main__todayCollectedRevenue">
+                {formatMoney(todayRevenueStats?.todayCollectedRevenue || 0)} ฿
+              </strong>
+            </div>
+          </div>
+          {todayServiceHighlights.length > 0 && (
+            <div className="main__todayServiceStrip">
+              <div className="main__todayServiceChips">
+                {todayServiceHighlights.map((service) => {
+                const meta = serviceHighlightMeta[service.type] || {
+                  label: service.type,
+                  icon: "bx-receipt",
+                  color: "var(--primary-color)",
+                };
+
+                return (
+                      <button
+                        className="main__todayServiceChip"
+                    key={service.type}
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setFinancialBreakdownType(service.type);
+                      setFinancialBreakdownMode("today");
+                    }}
+                    style={
+                      {
+                        "--service-color": meta.color,
+                      } as React.CSSProperties
+                    }
+                  >
+                    <i className={`bx ${meta.icon}`} />
+                    <span>{meta.label}</span>
+                    <strong>{service.count}</strong>
+                  </button>
+                );
+                })}
+              </div>
+              <span className="main__todayDetailsLink">รายละเอียด ›</span>
+            </div>
+          )}
+        </section>
+      </section>
+
       {user?.admin && (adminStats || adminLoading) && (
         <section className="main__adminSection">
           <div className="main__adminHeader">
             <div>
               <i className="bx bx-bar-chart-big" />
-              <h2>การวิเคราะห์การเงิน</h2>
+              <h2>ผลการดำเนินงานเดือนนี้</h2>
             </div>
             <span>{thisMonthLabel} (เดือนนี้)</span>
           </div>
@@ -932,7 +1084,7 @@ const Main = () => {
             <div className="main__adminPrimaryColumn">
               <section
                 className="main__adminPanel main__revenueHero"
-                onClick={() => setFinancialBreakdownIsOpen(true)}
+                onClick={() => setFinancialBreakdownMode("monthly")}
               >
                 <div className="main__adminPanelHeader">
                   <div>
@@ -958,37 +1110,6 @@ const Main = () => {
                 </div>
               </section>
 
-              <section className="main__adminPanel main__revenueBreakdown">
-                {adminRevenueGroups.map((group) => (
-                  <div className="main__summaryRow" key={group.title}>
-                    <div className="main__summaryLabel">
-                      <span>{group.title}</span>
-                    </div>
-                    <div className="main__summaryMetric">
-                      <p className="main__summaryMetricLabel">
-                        <span>Expected Stay Revenue</span>
-                        <ExpectedStayRevenueInfo />
-                      </p>
-                      <strong>
-                        {adminLoading && !adminStats
-                          ? "-"
-                          : `${formatMoney(group.grossRevenue)} ฿`}
-                      </strong>
-                    </div>
-                    <div className="main__summaryMetric">
-                      <p title={dashboardHelpText.collectedRevenue}>
-                        เงินที่รับแล้ว
-                      </p>
-                      <strong className="main__summarySecondaryValue">
-                        {adminLoading && !adminStats
-                          ? "-"
-                          : `${formatMoney(group.collectedRevenue)} ฿`}
-                      </strong>
-                    </div>
-                  </div>
-                ))}
-              </section>
-
               {adminStats && (
                 <section className="main__adminPanel main__trendPanel">
                   <div className="main__cardHeader">
@@ -1007,33 +1128,44 @@ const Main = () => {
                             }
                             key={option.value}
                             type="button"
-                            onClick={() => setChartMetric(option.value)}
+                            onClick={() => {
+                              setChartMetric(option.value);
+                              if (option.value === "revenue") {
+                                setRevenueRange("mtd");
+                              }
+                            }}
                           >
                             {option.label}
                           </button>
                         ))}
                       </div>
-                      <div className="main__chartRangeControl">
-                        {revenueRangeOptions.map((option) => (
-                          <button
-                            className={
-                              option.value === revenueRange
-                                ? "main__chartRangeButton main__chartRangeButton--active"
-                                : "main__chartRangeButton"
-                            }
-                            key={option.value}
-                            type="button"
-                            onClick={() => setRevenueRange(option.value)}
-                          >
-                            {option.label}
-                          </button>
-                        ))}
-                      </div>
+                      {chartMetric === "occupancy" && (
+                        <div className="main__chartRangeControl">
+                          {revenueRangeOptions.map((option) => (
+                            <button
+                              className={
+                                option.value === revenueRange
+                                  ? "main__chartRangeButton main__chartRangeButton--active"
+                                  : "main__chartRangeButton"
+                              }
+                              key={option.value}
+                              type="button"
+                              onClick={() => setRevenueRange(option.value)}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <TrendLineChart
                     metric={chartMetric}
-                    series={adminStats.revenueSeries}
+                    series={
+                      chartMetric === "revenue"
+                        ? revenueChartSeries
+                        : adminStats.revenueSeries
+                    }
                   />
                 </section>
               )}
@@ -1065,34 +1197,14 @@ const Main = () => {
                 </div>
               </section>
 
-              <section className="main__adminPanel main__bookingPanel">
-                <div className="main__adminPanelHeader">
-                  <div>
-                    <span>Bookings</span>
-                    <h3>ยอดจอง</h3>
-                  </div>
-                  <p>เดือนนี้</p>
-                </div>
-                <div className="main__sideMetric">
-                  <p>ยอดจองเดือนนี้</p>
-                  <strong>
-                    {adminLoading && !adminStats
-                      ? "-"
-                      : (adminStats?.monthBookings || 0).toLocaleString(
-                          "th-TH",
-                        )}
-                  </strong>
-                </div>
-              </section>
-
               {adminStats && (
                 <section className="main__adminPanel main__channelPanel">
                   <div className="main__adminPanelHeader">
                     <div>
-                      <span>Channels</span>
+                      <span>Bookings by channel</span>
                       <h3>ช่องทางการจอง</h3>
                     </div>
-                    <p>{adminStats.monthBookings}</p>
+                    <p>{adminStats.monthBookings} การจอง</p>
                   </div>
                   <div className="main__channelList">
                     {adminStats.channelMix.length === 0 ? (
@@ -1140,7 +1252,7 @@ const Main = () => {
         </section>
       )}
 
-      <section className="main__cashCloseSection">
+      <section className="main__cashCloseSection" id="cash-close">
         <div className="main__cashCloseHero">
           <div
             className={
@@ -1246,6 +1358,8 @@ const Main = () => {
                       <input
                         className="boxInput"
                         type="number"
+                        min="0"
+                        disabled={!canCloseActiveShift}
                         value={depositActualCash}
                         placeholder={`${formatMoney(depositExpectedCash)} คาดไว้`}
                         onChange={(event) =>
@@ -1258,6 +1372,8 @@ const Main = () => {
                       <input
                         className="boxInput"
                         type="number"
+                        min="0"
+                        disabled={!canCloseActiveShift}
                         value={operatingActualCash}
                         placeholder={`${formatMoney(operatingExpectedCash)} คาดไว้`}
                         onChange={(event) =>
@@ -1273,6 +1389,7 @@ const Main = () => {
                       <input
                         className="boxInput"
                         type="number"
+                        min="0"
                         value={depositOpeningCash}
                         disabled={hasPreviousCashShift && !recountHandoff}
                         onChange={(event) =>
@@ -1285,6 +1402,7 @@ const Main = () => {
                       <input
                         className="boxInput"
                         type="number"
+                        min="0"
                         value={operatingOpeningCash}
                         disabled={hasPreviousCashShift && !recountHandoff}
                         onChange={(event) =>
@@ -1337,7 +1455,11 @@ const Main = () => {
                   }
                   icon="bx-save"
                   highlight
-                  disabled={cashCloseSaving || cashCloseLoading}
+                  disabled={
+                    cashCloseSaving ||
+                    cashCloseLoading ||
+                    Boolean(activeCashShift && !canCloseActiveShift)
+                  }
                   onClick={() =>
                     toast.promise(
                       activeCashShift
@@ -1379,6 +1501,7 @@ const Main = () => {
             emptyText="ไม่มีรายการจองที่ต้องตรวจสอบ"
             isBookingsThatNeedReview={true}
             onBookingClick={openBookingInMaster}
+            dateFormat={dateFormat}
           />
         ) : (
           <TodayList
@@ -1386,7 +1509,8 @@ const Main = () => {
             icon="bx-arrow-to-left"
             bookings={arrivals}
             emptyText="ไม่มีเช็คอินที่ต้องจัดการวันนี้"
-            onBookingClick={openBookingInMaster}
+            onBookingClick={openArrivalBooking}
+            dateFormat={dateFormat}
           />
         )}
         <div className="main__todayStack">
@@ -1396,7 +1520,8 @@ const Main = () => {
               icon="bx-arrow-to-left"
               bookings={arrivals}
               emptyText="ไม่มีเช็คอินที่ต้องจัดการวันนี้"
-              onBookingClick={openBookingInMaster}
+              onBookingClick={openArrivalBooking}
+              dateFormat={dateFormat}
             />
           )}
           <TodayList
@@ -1404,7 +1529,8 @@ const Main = () => {
             icon="bx-arrow-from-left"
             bookings={departures}
             emptyText="ไม่มีเช็คเอาท์ที่ต้องจัดการวันนี้"
-            onBookingClick={openBookingInMaster}
+            onBookingClick={openDepartureBooking}
+            dateFormat={dateFormat}
           />
         </div>
       </div>

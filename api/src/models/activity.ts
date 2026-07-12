@@ -16,10 +16,13 @@ export type actionType =
   | "CREATE_USER"
   | "RESET_USER_PASSWORD"
   | "UPDATE_USER"
+  | "UPDATE_USER_SETTINGS"
   | "DEACTIVATE_USER"
   | "REACTIVATE_USER"
   | "DAILY_CLOSE"
-  | "REVIEW_TRANSACTION";
+  | "REVIEW_TRANSACTION"
+  | "VIEW_PASSPORT"
+  | "EXPORT_PASSPORT_REPORT";
 
 export type activity =
   | {
@@ -46,10 +49,13 @@ export type activity =
         | "CREATE_USER"
         | "RESET_USER_PASSWORD"
         | "UPDATE_USER"
+        | "UPDATE_USER_SETTINGS"
         | "DEACTIVATE_USER"
         | "REACTIVATE_USER"
         | "DAILY_CLOSE"
-        | "REVIEW_TRANSACTION";
+        | "REVIEW_TRANSACTION"
+        | "VIEW_PASSPORT"
+        | "EXPORT_PASSPORT_REPORT";
       details: {
         changes?: Record<string, { before: any; after: any }>;
         snapshot?: {
@@ -91,10 +97,13 @@ const activitySchema = new mongoose.Schema({
       "CREATE_USER",
       "RESET_USER_PASSWORD",
       "UPDATE_USER",
+      "UPDATE_USER_SETTINGS",
       "DEACTIVATE_USER",
       "REACTIVATE_USER",
       "DAILY_CLOSE",
       "REVIEW_TRANSACTION",
+      "VIEW_PASSPORT",
+      "EXPORT_PASSPORT_REPORT",
     ],
   },
   details: {

@@ -1,0 +1,52 @@
+.cashShiftNudge {
+  align-items: center;
+  background: #f4a90012;
+  border-radius: 0.8rem;
+  color: #f4a900;
+  display: flex;
+  gap: 0.6rem;
+  margin: 1rem 0;
+  padding: 0.8rem 1rem;
+}
+
+.cashShiftNudge > i {
+  color: #f4a900;
+  flex: 0 0 auto;
+  font-size: 1.2rem;
+}
+
+.cashShiftNudge > p {
+  flex: 1;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.cashShiftNudge > button {
+  background: transparent;
+  border: 0;
+  color: #f4a900;
+  cursor: pointer;
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 0.25rem;
+  text-decoration: underline;
+}
+
+.cashShiftNudge > button:focus-visible {
+  border-radius: 0.25rem;
+  outline: 2px solid #f4a900;
+  outline-offset: 2px;
+}
+
+@media (max-width: 560px) {
+  .cashShiftNudge {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .cashShiftNudge > button {
+    margin-left: 1.8rem;
+  }
+}

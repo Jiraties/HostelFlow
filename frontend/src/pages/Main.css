@@ -340,6 +340,10 @@
   box-shadow: var(--main-shadow);
 }
 
+.main__todayFinanceSection {
+  min-width: 0;
+}
+
 .main__adminHeader,
 .main__cardHeader {
   display: flex;
@@ -609,6 +613,188 @@
 
 .main__revenueBreakdown {
   padding-block: 0.35rem;
+}
+
+.main__todayRevenue {
+  position: relative;
+  overflow: hidden;
+  padding: 1.15rem 1.35rem 1rem;
+  border: none;
+  background: #ffffff;
+  box-shadow: var(--main-shadow);
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.main__todayRevenue:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--main-shadow);
+}
+
+.main__todayRevenueEyebrow {
+  display: flex;
+  align-items: center;
+  color: #8a8a8a;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.main__todayRevenueHeader {
+  display: block;
+  margin-top: 0.25rem;
+}
+
+.main__todayRevenueBreakdown span {
+  color: #777777;
+  font-size: 0.9rem;
+}
+
+.main__todayRevenueHeader h2 {
+  color: #222222;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.main__todayRevenueHeader > strong {
+  display: block;
+  margin-top: 0.15rem;
+  color: #000000;
+  font-size: clamp(2.6rem, 4vw, 4rem);
+  font-weight: 400;
+  line-height: 0.98;
+  text-align: left;
+}
+
+.main__todayRevenueBreakdown {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding: 0.8rem 0;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #000000 6%, transparent);
+}
+
+.main__todayServiceStrip {
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+  min-width: 0;
+  margin-top: 0;
+  padding-top: 0.8rem;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #000000 6%, transparent);
+}
+
+.main__todayServiceChips {
+  display: flex;
+  gap: 0.75rem;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.main__todayServiceChips::-webkit-scrollbar {
+  display: none;
+}
+
+.main__todayServiceChip {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 0.25rem;
+  align-items: center;
+  min-height: 2rem;
+  padding: 0.35rem 0.55rem;
+  border: none;
+  border-radius: 999rem;
+  background-color: color-mix(in srgb, var(--service-color) 7%, #ffffff);
+  box-shadow: var(--light-shadow);
+  color: #333333;
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.main__todayServiceChip:hover,
+.main__todayServiceChip:focus-visible {
+  background-color: color-mix(in srgb, var(--service-color) 12%, #ffffff);
+  box-shadow: var(--main-shadow);
+  outline: none;
+}
+
+.main__todayServiceChip i {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in srgb, var(--service-color) 82%, #555555);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.main__todayServiceChip span,
+.main__todayServiceChip strong {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 1.2rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.main__todayServiceChip span {
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.main__todayServiceChip strong {
+  box-sizing: border-box;
+  min-width: 1.2rem;
+  margin-left: 0.2rem;
+  border-radius: 999rem;
+  background-color: color-mix(in srgb, var(--service-color) 78%, #ffffff);
+  color: #ffffff;
+  font-size: 0.7rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  padding-top: 1px;
+}
+
+
+.main__todayServiceChip small {
+  color: #777777;
+  font-size: 0.75rem;
+}
+
+.main__todayDetailsLink {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--primary-color);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.main__todayRevenueBreakdown div {
+  min-width: 0;
+}
+
+.main__todayRevenueBreakdown strong {
+  display: block;
+  margin-top: 0.2rem;
+  overflow: hidden;
+  color: #000000;
+  font-size: 1.15rem;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.main__todayRevenueBreakdown .main__todayRevenueReduction {
+  color: #e11d48;
+}
+
+.main__todayRevenueBreakdown .main__todayCollectedRevenue {
+  color: var(--primary-color);
 }
 
 .main__summaryRow {
@@ -1011,6 +1197,7 @@
   }
 
   .main__adminSection,
+  .main__todayFinanceSection,
   .main__cashCloseSection,
   .main__statCard,
   .main__todaySection {
@@ -1114,6 +1301,28 @@
   .main__adminPanelHeader,
   .main__summaryRow {
     align-items: flex-start;
+  }
+
+  .main__todayRevenueHeader {
+    display: block;
+  }
+
+  .main__todayRevenueHeader > strong {
+    text-align: left;
+  }
+
+  .main__todayRevenueBreakdown {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .main__todayServiceStrip {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .main__todayServiceChips {
+    width: 100%;
+    order: 3;
   }
 
   .main__channelItem {

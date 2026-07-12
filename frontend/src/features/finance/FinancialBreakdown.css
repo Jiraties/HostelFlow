@@ -148,6 +148,10 @@
   box-shadow: var(--light-shadow);
 }
 
+.financialBreakdown__modeToggle--filtered {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .financialBreakdown__modeButton {
   min-height: 2.2rem;
   padding: 0 0.9rem;
@@ -158,6 +162,7 @@
   font-family: "IBM Plex Sans Thai", sans-serif;
   font-size: 0.8rem;
   font-weight: 600;
+  white-space: nowrap;
   transition:
     background-color 0.2s ease,
     color 0.2s ease;

@@ -1,4 +1,9 @@
-import type { PaymentMethod, transcation, TransactionType } from "../models/booking";
+import type {
+  booking,
+  PaymentMethod,
+  transcation,
+  TransactionType,
+} from "../models/booking";
 
 export type TransactionDirection = "in" | "out" | "neutral";
 export type CashStashSummary = {
@@ -19,6 +24,15 @@ export type SourceAction =
 export const CASH_VARIANCE_THRESHOLD = 20;
 export const LARGE_CASH_TRANSACTION_THRESHOLD = 5000;
 export const LARGE_REFUND_THRESHOLD = 2000;
+
+export const isValidCashCount = (value: number) =>
+  Number.isFinite(value) && value >= 0;
+
+export const cashBalanceAfterMovements = (
+  openingCash: number,
+  cashIn: number,
+  cashOut: number,
+) => openingCash + cashIn - cashOut;
 
 const moneyOutTransactionTypes: TransactionType[] = [
   "depositRefund",
@@ -46,6 +60,14 @@ const revenueTransactionTypes: TransactionType[] = [
   "slowBoat",
   "joinTour",
   "extraBed",
+  "pickACraft",
+  "setMenu",
+  "sleeperBus",
+  "onlyWalk",
+  "laundry",
+  "bicycle",
+  "car",
+  "misc",
   "cardSurcharge",
 ];
 
@@ -56,6 +78,14 @@ const dashboardOriginalRevenueTransactionTypes: TransactionType[] = [
   "slowBoat",
   "joinTour",
   "extraBed",
+  "pickACraft",
+  "setMenu",
+  "sleeperBus",
+  "onlyWalk",
+  "laundry",
+  "bicycle",
+  "car",
+  "misc",
   "cardSurcharge",
 ];
 
@@ -80,6 +110,29 @@ export const transactionSignedAmount = (transaction: transcation) => {
   if (direction === "out") return -Math.abs(transaction.amount || 0);
   if (direction === "neutral") return 0;
   return Math.abs(transaction.amount || 0);
+};
+
+export const summarizeReceivedPaymentsByMethod = (transactions: transcation[]) => {
+  const totals = new Map<PaymentMethod, number>();
+
+  transactions.forEach((transaction) => {
+    if (transaction.paymentMethod === "Unpaid") return;
+
+    totals.set(
+      transaction.paymentMethod,
+      (totals.get(transaction.paymentMethod) || 0) +
+        transactionSignedAmount(transaction),
+    );
+  });
+
+  return new Map(
+    Array.from(totals.entries())
+      .map(([paymentMethod, amount]) => [
+        paymentMethod,
+        Math.max(amount, 0),
+      ] as const)
+      .filter(([, amount]) => amount > 0),
+  );
 };
 
 export const transactionCashImpact = (transaction: transcation) =>
@@ -210,6 +263,169 @@ export const transactionDashboardGrossRevenueAmount = (transaction: transcation)
     return -Math.abs(transaction.amount || 0);
   if (!transactionIsOriginalDashboardRevenue(transaction)) return 0;
   return Math.abs(transaction.amount || 0);
+};
+
+export const transactionTodayExtrasRevenueAmount = (transaction: transcation) => {
+  if (transaction.type === "roomCharge") return 0;
+
+  const amount = transactionDashboardGrossRevenueAmount(transaction);
+  return amount > 0 ? amount : 0;
+};
+
+export const transactionTodayReductionAmount = (transaction: transcation) => {
+  const amount = transactionDashboardGrossRevenueAmount(transaction);
+  return amount < 0 ? Math.abs(amount) : 0;
+};
+
+type TodayArrivalRevenueBooking = {
+  status: "booked" | "checkedIn" | "checkedOut" | "cancelled" | "noShow";
+  transactions: transcation[];
+  cancellation?: {
+    keptAmount?: number;
+  };
+};
+
+export const bookingTodayArrivalRevenueAmount = (
+  booking: TodayArrivalRevenueBooking,
+) => {
+  if (booking.status === "cancelled") {
+    const roomChargeTotal = booking.transactions.reduce(
+      (total, transaction) =>
+        transaction.type === "roomCharge"
+          ? total + Math.abs(transaction.amount || 0)
+          : total,
+      0,
+    );
+
+    return Math.min(
+      Math.max(booking.cancellation?.keptAmount || 0, 0),
+      roomChargeTotal,
+    );
+  }
+
+  if (booking.status === "noShow") {
+    return Math.max(
+      booking.transactions.reduce((total, transaction) => {
+        if (transaction.type === "roomCharge") {
+          return transaction.paymentMethod === "Unpaid"
+            ? total
+            : total + Math.abs(transaction.amount || 0);
+        }
+
+        if (
+          transaction.type === "settlementCharge" &&
+          transaction.relatedTransactionType === "roomCharge" &&
+          transaction.paymentMethod !== "Unpaid"
+        ) {
+          return total + Math.abs(transaction.amount || 0);
+        }
+
+        if (["roomRefund", "cancellationRefund"].includes(transaction.type)) {
+          return total - Math.abs(transaction.amount || 0);
+        }
+
+        return total;
+      }, 0),
+      0,
+    );
+  }
+
+  return booking.transactions.reduce(
+    (total, transaction) =>
+      transaction.type === "roomCharge"
+        ? total + Math.abs(transaction.amount || 0)
+        : total,
+    0,
+  );
+};
+
+export const calculateTodayRevenueSummary = (
+  bookings: booking[],
+  start: Date,
+  end: Date,
+) => {
+  const arrivals = bookings.filter((booking) => {
+    const checkIn = new Date(booking.checkIn);
+    return checkIn >= start && checkIn < end;
+  });
+  const todayTransactions = bookings.flatMap((booking) =>
+    (booking.transactions || [])
+      .filter((transaction) => {
+        if (!transaction.createdAt) return false;
+        const createdAt = new Date(transaction.createdAt);
+        return createdAt >= start && createdAt < end;
+      })
+      .map((transaction) => ({ booking, transaction })),
+  );
+  const todayArrivalRevenue = arrivals.reduce(
+    (sum, booking) => sum + bookingTodayArrivalRevenueAmount(booking),
+    0,
+  );
+  const todayExtrasRevenue = todayTransactions.reduce(
+    (sum, { transaction }) =>
+      sum + transactionTodayExtrasRevenueAmount(transaction),
+    0,
+  );
+  const serviceHighlights = new Map<
+    TransactionType,
+    { type: TransactionType; count: number; total: number }
+  >();
+  todayTransactions.forEach(({ transaction }) => {
+    const amount = transactionTodayExtrasRevenueAmount(transaction);
+    if (
+      amount <= 0 ||
+      ["adjustment", "cardSurcharge"].includes(transaction.type)
+    ) {
+      return;
+    }
+
+    const current = serviceHighlights.get(transaction.type) || {
+      type: transaction.type,
+      count: 0,
+      total: 0,
+    };
+    current.count += 1;
+    current.total += amount;
+    serviceHighlights.set(transaction.type, current);
+  });
+  const todayReductions = todayTransactions.reduce(
+    (sum, { booking, transaction }) => {
+      const alreadyNetted =
+        arrivals.includes(booking) &&
+        ["cancelled", "noShow"].includes(booking.status) &&
+        ["roomRefund", "cancellationRefund"].includes(transaction.type);
+      return alreadyNetted
+        ? sum
+        : sum + transactionTodayReductionAmount(transaction);
+    },
+    0,
+  );
+  const todayCollectedRevenue = arrivals.reduce(
+    (sum, booking) =>
+      sum +
+      (booking.transactions || []).reduce(
+        (bookingSum, transaction) =>
+          bookingSum +
+          transactionDashboardCollectedRevenueAmount(
+            transaction,
+            booking.transactions || [],
+          ),
+        0,
+      ),
+    0,
+  );
+
+  return {
+    todayRevenue:
+      todayArrivalRevenue + todayExtrasRevenue - todayReductions,
+    todayArrivalRevenue,
+    todayExtrasRevenue,
+    todayReductions,
+    todayCollectedRevenue,
+    todayServiceHighlights: Array.from(serviceHighlights.values()).sort(
+      (first, second) => second.total - first.total,
+    ),
+  };
 };
 
 export const transactionDashboardCollectedRevenueAmount = (

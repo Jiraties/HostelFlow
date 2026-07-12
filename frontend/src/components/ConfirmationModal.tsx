@@ -5,6 +5,7 @@ import type { booking } from "../types/bookingTypes";
 import axios from "axios";
 import toast from "react-hot-toast";
 import { API_URL } from "../config/api";
+import { useState } from "react";
 
 const ConfirmationModal = ({
   booking,
@@ -27,11 +28,15 @@ const ConfirmationModal = ({
   confirmIcon?: string;
   onConfirm?: () => void;
 }) => {
+  const [submitting, setSubmitting] = useState(false);
+
   const handleRemoveBooking = async () => {
+    if (submitting) return;
     if (!booking) {
-      throw new Error("No booking selected");
+      throw new Error("ไม่พบการจองที่ต้องการลบ");
     }
 
+    setSubmitting(true);
     try {
       await axios.delete(
         `${API_URL}/bookings/removeBooking/` + booking?.bookingId,
@@ -42,12 +47,18 @@ const ConfirmationModal = ({
       // toast.success("ลบการจองของ " + booking.name + " สำเร็จ");
       closeAllModals?.();
     } catch (err: unknown) {
-      const message =
-        axios.isAxiosError<{ error?: string }>(err) && err.response?.data.error
-          ? err.response.data.error
-          : "เกิดข้อผิดพลาดในการลบการจอง";
+      const message = axios.isAxiosError<{
+        error?: string;
+        message?: string;
+      }>(err)
+        ? err.response?.data.message ||
+          err.response?.data.error ||
+          "เกิดข้อผิดพลาดในการลบการจอง"
+        : "เกิดข้อผิดพลาดในการลบการจอง";
 
       throw new Error(message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -97,16 +108,17 @@ const ConfirmationModal = ({
               ? " confirmationModal__button--destructiveOutline"
               : "")
           }
+          disabled={submitting}
           onClick={() =>
             toast.promise(confirmHandler(), {
-              loading: `กำลังลบการจองของ ${booking?.name || ""}`,
+              loading: isDiscardChanges
+                ? "กำลังออกจากฟอร์ม..."
+                : `กำลังลบการจองของ ${booking?.name || ""}`,
               success: isDiscardChanges
                 ? "ออกจากฟอร์มแล้ว"
                 : "ลบการจองของ " + (booking?.name || "") + " สำเร็จ",
               error: (err) => {
-                if (err.response?.status === 409) {
-                  return err.response.data.message;
-                }
+                if (err instanceof Error) return err.message;
                 return isDiscardChanges
                   ? "ไม่สามารถออกจากฟอร์มได้"
                   : "เกิดข้อผิดพลาดในการลบการจอง";

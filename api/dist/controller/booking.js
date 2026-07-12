@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getNeedsReviewBookings = exports.resolveBooking = exports.cancelBooking = exports.getPassportData = exports.addTransaction = exports.manageRoomStays = exports.getBookingById = exports.getMonthCalendar = exports.checkOut = exports.checkIn = exports.removeBooking = exports.getMasterBookings = exports.getAdminDashboardStats = exports.getTodayBookings = exports.starBooking = exports.updateBookingNote = exports.editBooking = exports.getRoomAvailability = exports.newBooking = void 0;
 const booking_1 = __importDefault(require("../models/booking"));
+const cashShift_1 = __importDefault(require("../models/cashShift"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const crypto_1 = __importDefault(require("crypto"));
 const activityServices_1 = require("../services/activityServices");
@@ -31,6 +32,14 @@ const ADD_TRANSACTION_TYPES = [
     "slowBoat",
     "joinTour",
     "extraBed",
+    "pickACraft",
+    "setMenu",
+    "sleeperBus",
+    "onlyWalk",
+    "laundry",
+    "bicycle",
+    "car",
+    "misc",
 ];
 const RESOLVE_BOOKING_TRANSACTION_TYPES = [
     "roomRefund",
@@ -309,6 +318,21 @@ const buildTransactionsWithCardSurcharge = (transaction, options) => {
     }
     return transactions;
 };
+const attachActiveCashShift = async (transactions) => {
+    if (!transactions.some((transaction) => transaction.paymentMethod === "Cash")) {
+        return transactions;
+    }
+    const activeCashShift = await cashShift_1.default.findOne({
+        status: "open",
+        businessDate: formatLocalDateKey(new Date()),
+    }).sort({ startedAt: -1 });
+    if (!activeCashShift)
+        return transactions;
+    const cashShiftId = String(activeCashShift._id);
+    return transactions.map((transaction) => transaction.paymentMethod === "Cash"
+        ? { ...transaction, cashShiftId }
+        : transaction);
+};
 const formatLocalDateKey = (date) => {
     const { year, month, day } = getBusinessDateParts(date);
     return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
@@ -337,6 +361,10 @@ const getBookingBusinessDateStart = (date) => {
 };
 const newBooking = async (req, res, next) => {
     try {
+        const staffUsername = req.user?.username;
+        if (!staffUsername) {
+            return res.status(401).json({ message: "กรุณาเข้าสู่ระบบใหม่" });
+        }
         if (!req.body.booking)
             return res.status(400).json({ message: "ไม่พบข้อมูล booking" });
         const { booking } = req.body;
@@ -404,6 +432,10 @@ const newBooking = async (req, res, next) => {
                 amount: roomChargeAmount,
                 paymentMethod: booking.paymentMethod,
             };
+            const transactions = await attachActiveCashShift(buildTransactionsWithCardSurcharge(roomChargeTransaction, {
+                createdBy: req.user?.username,
+                sourceAction: "NEW_BOOKING",
+            }));
             const savedBooking = new booking_1.default({
                 name: booking.name.trim(),
                 checkIn: newCheckIn,
@@ -423,11 +455,8 @@ const newBooking = async (req, res, next) => {
                 // paymentMethod: booking.paymentMethod,
                 // deposit: null,
                 // depositRepaid: null,
-                transactions: buildTransactionsWithCardSurcharge(roomChargeTransaction, {
-                    createdBy: req.user?.username,
-                    sourceAction: "NEW_BOOKING",
-                }),
-                staffUsername: booking.staffUsername,
+                transactions,
+                staffUsername,
                 bookingId: booking.bookingId.trim(),
                 checkInByStaffUsername: null,
                 status: "booked",
@@ -789,18 +818,13 @@ const getAdminDashboardStats = async (req, res) => {
             .map((transaction) => ({
             transaction,
             bookingTransactions: booking.transactions || [],
+            bookingId: String(booking._id),
         })));
         const monthFinancialTransactions = transactionsInRange(monthFinancialBookings, startOfMonth, startOfNextMonth);
         const chartFinancialTransactions = transactionsInRange(chartFinancialBookings, chartStart, chartEnd);
-        const dailyFinancialTransactions = monthFinancialTransactions.filter(({ transaction }) => {
-            const transactionDate = new Date(transaction.createdAt || 0);
-            return transactionDate >= startOfToday && transactionDate < startOfTomorrow;
-        });
         const calculateGrossRevenue = (transactions) => transactions.reduce((sum, { transaction }) => sum + (0, financeHelpers_1.transactionDashboardGrossRevenueAmount)(transaction), 0);
         const calculateCollectedRevenue = (transactions) => transactions.reduce((sum, { transaction, bookingTransactions }) => sum +
             (0, financeHelpers_1.transactionDashboardCollectedRevenueAmount)(transaction, bookingTransactions), 0);
-        const dailyGrossRevenue = calculateGrossRevenue(dailyFinancialTransactions);
-        const dailyCollectedRevenue = calculateCollectedRevenue(dailyFinancialTransactions);
         const monthlyGrossRevenue = calculateGrossRevenue(monthFinancialTransactions);
         const monthlyCollectedRevenue = calculateCollectedRevenue(monthFinancialTransactions);
         const unpaidAmount = unpaidBookings.reduce((sum, booking) => sum + unpaidRoomChargeAmount(booking), 0);
@@ -865,11 +889,8 @@ const getAdminDashboardStats = async (req, res) => {
             occupiedCapacity: revenue.occupiedCapacity,
         }));
         res.status(200).json({
-            dailyGrossRevenue,
-            dailyCollectedRevenue,
             monthlyGrossRevenue,
             monthlyCollectedRevenue,
-            todayExpectedRevenue: dailyGrossRevenue,
             monthRoomRevenue: monthlyGrossRevenue,
             monthBookings: monthBookings.length,
             unpaidAmount,
@@ -1115,7 +1136,7 @@ const checkIn = async (req, res) => {
             passportNo: encrypt(checkInData.passportData.passportNo),
             passportName: encrypt(checkInData.passportData.passportName),
         };
-        const newTransactions = [
+        let newTransactions = [
             (0, financeHelpers_1.normalizeTransaction)({
                 type: "deposit",
                 paymentMethod: "Cash",
@@ -1155,6 +1176,7 @@ const checkIn = async (req, res) => {
                 note: "Unpaid room charge settled at check-in",
             }));
         }
+        newTransactions = await attachActiveCashShift(newTransactions);
         const checkedInAt = new Date();
         const setFields = {
             status: "checkedIn",
@@ -1290,7 +1312,7 @@ const checkOut = async (req, res) => {
         const nightsEarly = Math.max(Math.round((checkoutDateStart.getTime() - todayStart.getTime()) / 86400000), 0);
         const earlyCheckOut = nightsEarly > 0;
         const roomReleaseStatus = earlyCheckOut && !releaseRemainingNights ? "blocked" : "released";
-        const refundTransactions = remainingDepositAmount > 0
+        const refundTransactions = await attachActiveCashShift(remainingDepositAmount > 0
             ? [
                 (0, financeHelpers_1.normalizeTransaction)({
                     type: "depositRefund",
@@ -1301,7 +1323,7 @@ const checkOut = async (req, res) => {
                     sourceAction: "CHECK_OUT",
                 }),
             ]
-            : [];
+            : []);
         const updatedBooking = await (0, mutationIdempotency_1.withMutationIdempotency)(req, () => booking_1.default.findOneAndUpdate({ bookingId, status: "checkedIn" }, {
             $set: {
                 status: "checkedOut",
@@ -1656,13 +1678,13 @@ const addTransaction = async (req, res) => {
             baseTransaction.relatedTransactionId = transaction.relatedTransactionId;
         }
         const sameTypeCount = booking.transactions.filter((existingTransaction) => existingTransaction.type === transaction.type).length;
-        const newTransactions = buildTransactionsWithCardSurcharge(baseTransaction, {
+        const newTransactions = await attachActiveCashShift(buildTransactionsWithCardSurcharge(baseTransaction, {
             createdBy: req.user?.username,
             sourceAction: "ADD_TRANSACTION",
             note: transaction.note,
             reference: transaction.reference,
             sameTypeCount,
-        });
+        }));
         const updatedBooking = await (0, mutationIdempotency_1.withMutationIdempotency)(req, () => booking_1.default.findOneAndUpdate({ bookingId }, {
             $push: {
                 transactions: {
@@ -1696,7 +1718,7 @@ const addTransaction = async (req, res) => {
 exports.addTransaction = addTransaction;
 const getPassportData = async (req, res) => {
     try {
-        const { bookingId } = req.params;
+        const bookingId = String(req.params.bookingId || "");
         if (!bookingId)
             return res.status(400).json({
                 error: "MISSING",
@@ -1735,6 +1757,9 @@ const getPassportData = async (req, res) => {
             passportNo: decrypt(booking.passport.passportNo),
             passportName: decrypt(booking.passport.passportName),
         };
+        await (0, activityServices_1.logActivityStrict)(req.user?.username, "VIEW_PASSPORT", { summary: { bookingId } }, bookingId);
+        res.setHeader("Cache-Control", "no-store");
+        res.setHeader("Pragma", "no-cache");
         res.status(200).json({ passportData });
     }
     catch (err) {
@@ -1771,12 +1796,7 @@ const cancelBooking = async (req, res) => {
             return res.status(409).json({
                 message: "สามารถยกเลิกได้เฉพาะ Booking ที่ยังไม่ได้ Check-In",
             });
-        const paidByMethod = existingBooking.transactions.reduce((totals, transaction) => {
-            if (transaction.paymentMethod === "Unpaid")
-                return totals;
-            totals.set(transaction.paymentMethod, (totals.get(transaction.paymentMethod) || 0) + transaction.amount);
-            return totals;
-        }, new Map());
+        const paidByMethod = (0, financeHelpers_1.summarizeReceivedPaymentsByMethod)(existingBooking.transactions);
         const paidAmount = Array.from(paidByMethod.values()).reduce((sum, amount) => sum + amount, 0);
         const hasReceivedPayment = paidAmount > 0;
         if (hasReceivedPayment &&
@@ -1796,7 +1816,7 @@ const cancelBooking = async (req, res) => {
                 message: "ยอดคืนเงินสูง ต้องให้ Admin ดำเนินการ",
             });
         }
-        const refundTransactions = refundAmount > 0
+        const refundTransactions = await attachActiveCashShift(refundAmount > 0
             ? Array.from(paidByMethod.entries()).map(([paymentMethod, amount]) => (0, financeHelpers_1.normalizeTransaction)({
                 type: "cancellationRefund",
                 paymentMethod,
@@ -1805,7 +1825,7 @@ const cancelBooking = async (req, res) => {
                 createdBy: cancelledByStaffUsername,
                 sourceAction: "CANCEL_BOOKING",
             }))
-            : [];
+            : []);
         const updatedBooking = await (0, mutationIdempotency_1.withMutationIdempotency)(req, () => booking_1.default.findOneAndUpdate({ bookingId, status: "booked" }, {
             $set: {
                 status: "cancelled",
@@ -1942,7 +1962,7 @@ const resolveBooking = async (req, res) => {
                 message: "No-Show ต้องใช้สถานะสุดท้ายเป็น No-Show เท่านั้น",
             });
         }
-        const normalizedTransactions = [];
+        let normalizedTransactions = [];
         let sensitiveOutTotal = 0;
         let depositRefundAmount = 0;
         let cancellationRefundAmount = 0;
@@ -2008,6 +2028,7 @@ const resolveBooking = async (req, res) => {
                 message: "ยอดคืนเงินสูง ต้องให้ Admin ดำเนินการ",
             });
         }
+        normalizedTransactions = await attachActiveCashShift(normalizedTransactions);
         const now = new Date();
         const updateSet = {
             status: finalStatus,

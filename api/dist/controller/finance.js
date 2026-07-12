@@ -3,13 +3,15 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.approveReviewEvent = exports.getReviewEvents = exports.upsertDailyClose = exports.getReconciliation = exports.getExpectedStayRevenueBreakdown = void 0;
+exports.approveReviewEvent = exports.getReviewEvents = exports.upsertDailyClose = exports.closeCashShift = exports.startCashShift = exports.resolveCashShiftAudit = exports.getCashShiftAudit = exports.getCashPosition = exports.getReconciliation = exports.getTodayRevenueSummary = exports.getTodayRevenueBreakdown = exports.getExpectedStayRevenueBreakdown = void 0;
 const booking_1 = __importDefault(require("../models/booking"));
+const cashShift_1 = __importDefault(require("../models/cashShift"));
 const dailyClose_1 = __importDefault(require("../models/dailyClose"));
 const user_1 = __importDefault(require("../models/user"));
 const activityServices_1 = require("../services/activityServices");
 const financeHelpers_1 = require("../helpers/financeHelpers");
 const mutationIdempotency_1 = require("../services/mutationIdempotency");
+const cashShiftMutationLock_1 = require("../services/cashShiftMutationLock");
 const sendDuplicateMutationResponse = (res) => res.status(409).json({
     error: "DUPLICATE_REQUEST",
     message: "คำขอนี้ถูกส่งซ้ำหรือเพิ่งดำเนินการสำเร็จ กรุณารีเฟรชข้อมูล",
@@ -24,6 +26,14 @@ const expectedStayRevenueTransactionMeta = {
     slowBoat: { label: "Slow Boat", color: "#2dd4bf", icon: "bx-water" },
     joinTour: { label: "Join Tour", color: "#22c55e", icon: "bx-map" },
     extraBed: { label: "เตียงเสริม", color: "#ec4899", icon: "bx-bed" },
+    pickACraft: { label: "Pick A Craft", color: "#f59e0b", icon: "bx-palette" },
+    setMenu: { label: "Set Menu", color: "#84cc16", icon: "bx-food-menu" },
+    sleeperBus: { label: "Sleeper Bus", color: "#6366f1", icon: "bx-bus" },
+    onlyWalk: { label: "Only Walk", color: "#14b8a6", icon: "bx-walk" },
+    laundry: { label: "Laundry", color: "#60a5fa", icon: "bx-washer" },
+    bicycle: { label: "Bicycle", color: "#fb923c", icon: "bx-cycling" },
+    car: { label: "Car", color: "#64748b", icon: "bx-car" },
+    misc: { label: "Misc", color: "#94a3b8", icon: "bx-dots-horizontal-rounded" },
     cardSurcharge: {
         label: "ค่าธรรมเนียมบัตร 3%",
         color: "#94a3b8",
@@ -44,6 +54,14 @@ const expectedStayRevenueTypes = new Set([
     "slowBoat",
     "joinTour",
     "extraBed",
+    "pickACraft",
+    "setMenu",
+    "sleeperBus",
+    "onlyWalk",
+    "laundry",
+    "bicycle",
+    "car",
+    "misc",
     "cardSurcharge",
 ]);
 const expectedStayRevenueReductionTypes = new Set([
@@ -157,7 +175,7 @@ const attachDailyCloseStaffProfiles = async (dailyCloses) => {
             dailyClose.staffUsername,
             dailyClose.createdBy,
         ])),
-    ].filter(Boolean);
+    ].filter((username) => Boolean(username));
     const users = await user_1.default.find({ username: { $in: usernames } })
         .select("username name profilePictureUrl")
         .lean();
@@ -184,6 +202,284 @@ const attachDailyCloseStaffProfiles = async (dailyCloses) => {
                 : undefined,
         };
     });
+};
+const getShiftTransactions = async (shift, fallbackEnd = new Date()) => {
+    const shiftId = String(shift._id);
+    const end = shift.endedAt || fallbackEnd;
+    const bookings = await booking_1.default.find({
+        $or: [
+            { "transactions.cashShiftId": shiftId },
+            {
+                "transactions.createdAt": {
+                    $gte: shift.startedAt,
+                    $lt: end,
+                },
+            },
+        ],
+    }).lean();
+    return bookings.flatMap((booking) => (booking.transactions || [])
+        .filter((transaction) => {
+        if (transaction.cashShiftId === shiftId)
+            return true;
+        if (transaction.cashShiftId)
+            return false;
+        const createdAt = new Date(transaction.createdAt || booking.checkIn);
+        return createdAt >= shift.startedAt && createdAt < end;
+    })
+        .map((transaction) => ({
+        ...transaction,
+        bookingId: booking.bookingId,
+        guestName: booking.name,
+        staffUsername: transaction.createdBy || booking.staffUsername,
+    })));
+};
+const getUnassignedCashTransactionsBetween = async (start, end) => {
+    const bookings = await booking_1.default.find({
+        "transactions.createdAt": { $gte: start, $lt: end },
+    }).lean();
+    return bookings.flatMap((booking) => (booking.transactions || [])
+        .filter((transaction) => {
+        if (transaction.cashShiftId)
+            return false;
+        const createdAt = new Date(transaction.createdAt || booking.checkIn);
+        return createdAt >= start && createdAt < end;
+    })
+        .map((transaction) => ({
+        ...transaction,
+        bookingId: booking.bookingId,
+        guestName: booking.name,
+        staffUsername: transaction.createdBy || booking.staffUsername,
+    })));
+};
+const enrichCashShift = async (cashShift) => {
+    const shiftObject = typeof cashShift.toObject === "function" ? cashShift.toObject() : cashShift;
+    const movements = (0, financeHelpers_1.summarizeCashStashes)(await getShiftTransactions(shiftObject));
+    const depositExpectedCash = Number(shiftObject.depositOpeningCash || 0) +
+        movements.depositCashIn -
+        movements.depositCashOut;
+    const operatingExpectedCash = Number(shiftObject.operatingOpeningCash || 0) +
+        movements.operatingCashIn -
+        movements.operatingCashOut;
+    return {
+        ...shiftObject,
+        ...movements,
+        depositExpectedCash,
+        operatingExpectedCash,
+    };
+};
+const attachCashShiftStaffProfiles = async (cashShifts) => {
+    const usernames = [
+        ...new Set(cashShifts.map((cashShift) => cashShift.staffUsername)),
+    ].filter((username) => Boolean(username));
+    const users = await user_1.default.find({ username: { $in: usernames } })
+        .select("username name profilePictureUrl")
+        .lean();
+    const usersByUsername = new Map(users.map((user) => [user.username, user]));
+    return cashShifts.map((cashShift) => {
+        const staff = cashShift.staffUsername
+            ? usersByUsername.get(cashShift.staffUsername)
+            : undefined;
+        return {
+            ...cashShift,
+            staff: staff
+                ? {
+                    username: staff.username,
+                    name: staff.name,
+                    profilePictureUrl: staff.profilePictureUrl,
+                }
+                : undefined,
+        };
+    });
+};
+const getCashPositionForDate = async (businessDate) => {
+    const bounds = getBusinessDayBoundsFromKey(businessDate);
+    if (!bounds)
+        return null;
+    const shifts = await cashShift_1.default.find({ businessDate: bounds.businessDate }).sort({
+        shiftNumber: 1,
+    });
+    const activeShift = shifts.find((shift) => shift.status === "open");
+    const previousShift = [...shifts]
+        .reverse()
+        .find((shift) => shift.status === "closed");
+    const enrichedShifts = await attachCashShiftStaffProfiles(await Promise.all(shifts.map(enrichCashShift)));
+    const enrichedActiveShift = activeShift
+        ? enrichedShifts.find((shift) => String(shift._id) === String(activeShift._id))
+        : null;
+    const enrichedPreviousShift = previousShift
+        ? enrichedShifts.find((shift) => String(shift._id) === String(previousShift._id))
+        : null;
+    const unassignedStart = activeShift
+        ? activeShift.startedAt
+        : previousShift?.endedAt || bounds.start;
+    const unassignedMovements = (0, financeHelpers_1.summarizeCashStashes)(await getUnassignedCashTransactionsBetween(unassignedStart, bounds.end));
+    const currentDepositCash = enrichedActiveShift
+        ? enrichedActiveShift.depositExpectedCash
+        : (enrichedPreviousShift?.depositActualCash || 0) +
+            unassignedMovements.depositCashIn -
+            unassignedMovements.depositCashOut;
+    const currentOperatingCash = enrichedActiveShift
+        ? enrichedActiveShift.operatingExpectedCash
+        : (enrichedPreviousShift?.operatingActualCash || 0) +
+            unassignedMovements.operatingCashIn -
+            unassignedMovements.operatingCashOut;
+    return {
+        businessDate: bounds.businessDate,
+        threshold: financeHelpers_1.CASH_VARIANCE_THRESHOLD,
+        activeShift: enrichedActiveShift || null,
+        previousShift: enrichedPreviousShift || null,
+        current: {
+            depositCash: currentDepositCash,
+            operatingCash: currentOperatingCash,
+        },
+        unassignedCash: unassignedMovements,
+        handoff: {
+            depositCash: activeShift
+                ? enrichedPreviousShift?.depositActualCash || 0
+                : currentDepositCash,
+            operatingCash: activeShift
+                ? enrichedPreviousShift?.operatingActualCash || 0
+                : currentOperatingCash,
+            fromShiftId: enrichedPreviousShift
+                ? String(enrichedPreviousShift._id)
+                : undefined,
+            fromShiftNumber: enrichedPreviousShift?.shiftNumber,
+        },
+        shifts: enrichedShifts,
+    };
+};
+const hasCashMovement = (movements) => Object.values(movements).some((amount) => Math.abs(amount) > 0);
+const cashMovementTotal = (movements) => movements.depositCashIn -
+    movements.depositCashOut +
+    movements.operatingCashIn -
+    movements.operatingCashOut;
+const formatCashAuditAmount = (amount) => new Intl.NumberFormat("th-TH", { maximumFractionDigits: 2 }).format(amount);
+const getCashShiftAuditForDate = async (businessDate) => {
+    const bounds = getBusinessDayBoundsFromKey(businessDate);
+    if (!bounds)
+        return null;
+    const shifts = await cashShift_1.default.find({ businessDate: bounds.businessDate }).sort({
+        shiftNumber: 1,
+    });
+    const enrichedShifts = await attachCashShiftStaffProfiles(await Promise.all(shifts.map(enrichCashShift)));
+    const gaps = [];
+    const coverage = [];
+    if (shifts.length) {
+        coverage.push({ start: bounds.start, end: shifts[0].startedAt });
+        shifts.forEach((shift, index) => {
+            const nextShift = shifts[index + 1];
+            if (shift.endedAt && nextShift) {
+                coverage.push({ start: shift.endedAt, end: nextShift.startedAt });
+            }
+            else if (shift.endedAt && !nextShift) {
+                coverage.push({ start: shift.endedAt, end: bounds.end });
+            }
+        });
+    }
+    else {
+        coverage.push({ start: bounds.start, end: bounds.end });
+    }
+    for (const gap of coverage) {
+        if (gap.end <= gap.start)
+            continue;
+        const movements = (0, financeHelpers_1.summarizeCashStashes)(await getUnassignedCashTransactionsBetween(gap.start, gap.end));
+        if (!hasCashMovement(movements))
+            continue;
+        gaps.push({
+            from: gap.start,
+            to: gap.end,
+            movements,
+            warning: {
+                code: "unassigned_cash_activity",
+                severity: "critical",
+                message: `พบเงินสด ${formatCashAuditAmount(cashMovementTotal(movements))} บาทนอกกะเงินสด`,
+            },
+        });
+    }
+    const auditShifts = await Promise.all(enrichedShifts.map(async (shift, index) => {
+        const shiftTransactions = await getShiftTransactions(shift);
+        const flaggedTransactions = shiftTransactions.filter((transaction) => transaction.reviewStatus === "needs_review" ||
+            Boolean(transaction.reviewFlags?.length));
+        const warnings = [];
+        const depositVariance = Number(shift.depositVariance || 0);
+        const operatingVariance = Number(shift.operatingVariance || 0);
+        if (shift.status === "closed" &&
+            Math.abs(depositVariance) > financeHelpers_1.CASH_VARIANCE_THRESHOLD) {
+            warnings.push({
+                code: "deposit_variance",
+                severity: "critical",
+                message: `เงินมัดจำต่าง ${formatCashAuditAmount(depositVariance)} บาท`,
+            });
+        }
+        if (shift.status === "closed" &&
+            Math.abs(operatingVariance) > financeHelpers_1.CASH_VARIANCE_THRESHOLD) {
+            warnings.push({
+                code: "operating_variance",
+                severity: "critical",
+                message: `เงินดำเนินงานต่าง ${formatCashAuditAmount(operatingVariance)} บาท`,
+            });
+        }
+        if (shift.status === "open") {
+            warnings.push({
+                code: "open_shift",
+                severity: "warning",
+                message: "กะนี้ยังไม่ปิดยอด",
+            });
+        }
+        if (flaggedTransactions.length) {
+            warnings.push({
+                code: "flagged_transactions",
+                severity: "warning",
+                message: `มี ${flaggedTransactions.length} รายการที่ต้องตรวจ`,
+            });
+        }
+        const previousShift = enrichedShifts[index - 1];
+        let handoff;
+        if (previousShift?.endedAt) {
+            const handoffMovements = (0, financeHelpers_1.summarizeCashStashes)(await getUnassignedCashTransactionsBetween(new Date(previousShift.endedAt), new Date(shift.startedAt)));
+            const expectedDepositOpening = (0, financeHelpers_1.cashBalanceAfterMovements)(Number(previousShift.depositActualCash || 0), handoffMovements.depositCashIn, handoffMovements.depositCashOut);
+            const expectedOperatingOpening = (0, financeHelpers_1.cashBalanceAfterMovements)(Number(previousShift.operatingActualCash || 0), handoffMovements.operatingCashIn, handoffMovements.operatingCashOut);
+            const depositDifference = Number(shift.depositOpeningCash) - expectedDepositOpening;
+            const operatingDifference = Number(shift.operatingOpeningCash) - expectedOperatingOpening;
+            const mismatch = shift.openingMode === "counted" &&
+                (Math.abs(depositDifference) > financeHelpers_1.CASH_VARIANCE_THRESHOLD ||
+                    Math.abs(operatingDifference) > financeHelpers_1.CASH_VARIANCE_THRESHOLD);
+            if (mismatch) {
+                warnings.push({
+                    code: "handoff_mismatch",
+                    severity: "critical",
+                    message: "ยอดรับส่งเงินไม่ตรงกับกะก่อนหน้า",
+                });
+            }
+            handoff = {
+                fromShiftId: String(previousShift._id),
+                fromShiftNumber: previousShift.shiftNumber,
+                mode: shift.openingMode,
+                elapsedMinutes: Math.max(0, Math.round((new Date(shift.startedAt).getTime() -
+                    new Date(previousShift.endedAt).getTime()) /
+                    60000)),
+                expectedDepositOpening,
+                expectedOperatingOpening,
+                depositDifference,
+                operatingDifference,
+                movements: handoffMovements,
+                mismatch,
+            };
+        }
+        return {
+            ...shift,
+            warnings,
+            auditResolution: shift.auditResolution,
+            flaggedTransactions,
+            handoff,
+        };
+    }));
+    return {
+        businessDate: bounds.businessDate,
+        threshold: financeHelpers_1.CASH_VARIANCE_THRESHOLD,
+        shifts: auditShifts,
+        gaps,
+    };
 };
 const addBreakdownTransaction = (categories, transaction, booking, amount, direction) => {
     const meta = expectedStayRevenueTransactionMeta[transaction.type] || {
@@ -365,6 +661,121 @@ const getExpectedStayRevenueBreakdown = async (req, res) => {
     }
 };
 exports.getExpectedStayRevenueBreakdown = getExpectedStayRevenueBreakdown;
+const getTodayRevenueBreakdown = async (req, res) => {
+    try {
+        if (!req.user) {
+            return res.status(403).json({
+                message: "กรุณาเข้าสู่ระบบเพื่อดูสรุปรายได้นี้",
+            });
+        }
+        const bounds = getBusinessDayBoundsFromKey(req.query.businessDate);
+        if (!bounds) {
+            return res.status(400).json({
+                message: "Invalid business date. Use YYYY-MM-DD.",
+            });
+        }
+        const bookings = await booking_1.default.find({
+            $or: [
+                { checkIn: { $gte: bounds.start, $lt: bounds.end } },
+                { "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end } },
+            ],
+        }).lean();
+        const todaySummary = (0, financeHelpers_1.calculateTodayRevenueSummary)(bookings, bounds.start, bounds.end);
+        const categories = new Map();
+        const reductions = new Map();
+        const paymentMethods = new Map();
+        bookings.forEach((booking) => {
+            const isTodayArrival = new Date(booking.checkIn) >= bounds.start &&
+                new Date(booking.checkIn) < bounds.end;
+            if (isTodayArrival) {
+                const arrivalAmount = (0, financeHelpers_1.bookingTodayArrivalRevenueAmount)(booking);
+                const roomCharge = (booking.transactions || []).find((transaction) => transaction.type === "roomCharge");
+                if (arrivalAmount > 0 && roomCharge) {
+                    const arrivalTransaction = {
+                        ...roomCharge,
+                        amount: arrivalAmount,
+                        createdAt: booking.checkIn,
+                    };
+                    const direction = (0, financeHelpers_1.transactionDirection)(arrivalTransaction);
+                    addBreakdownTransaction(categories, arrivalTransaction, booking, arrivalAmount, direction);
+                    addPaymentMethodBreakdownTransaction(paymentMethods, arrivalTransaction, booking, arrivalAmount, direction);
+                }
+            }
+            (booking.transactions || []).forEach((transaction) => {
+                if (!transaction.createdAt)
+                    return;
+                const createdAt = new Date(transaction.createdAt);
+                if (createdAt < bounds.start || createdAt >= bounds.end)
+                    return;
+                const direction = (0, financeHelpers_1.transactionDirection)(transaction);
+                const extrasAmount = (0, financeHelpers_1.transactionTodayExtrasRevenueAmount)(transaction);
+                if (extrasAmount > 0) {
+                    addBreakdownTransaction(categories, transaction, booking, extrasAmount, direction);
+                    addPaymentMethodBreakdownTransaction(paymentMethods, transaction, booking, extrasAmount, direction);
+                }
+                const reductionAmount = (0, financeHelpers_1.transactionTodayReductionAmount)(transaction);
+                const arrivalReductionAlreadyNetted = isTodayArrival &&
+                    ["cancelled", "noShow"].includes(booking.status) &&
+                    ["roomRefund", "cancellationRefund"].includes(transaction.type);
+                if (reductionAmount > 0 && !arrivalReductionAlreadyNetted) {
+                    addBreakdownTransaction(reductions, transaction, booking, reductionAmount, direction);
+                }
+            });
+        });
+        const grossStayCharges = Array.from(categories.values()).reduce((sum, category) => sum + category.total, 0);
+        const reductionTotal = Array.from(reductions.values()).reduce((sum, category) => sum + category.total, 0);
+        const todayRevenue = todaySummary.todayRevenue;
+        const finalizedCategories = finalizeBreakdownCategories(categories, grossStayCharges);
+        const finalizedReductions = finalizeBreakdownCategories(reductions, grossStayCharges);
+        const finalizedPaymentMethods = finalizePaymentMethodBreakdowns(paymentMethods, grossStayCharges);
+        res.status(200).json({
+            period: {
+                startDate: formatBusinessDateKey(bounds.start),
+                endDate: formatBusinessDateKey(bounds.end),
+                basis: "checkInAndTransactionCreatedAt",
+            },
+            totals: {
+                grossStayCharges: Number(grossStayCharges.toFixed(2)),
+                expectedStayRevenue: Number(todayRevenue.toFixed(2)),
+                reductions: Number(reductionTotal.toFixed(2)),
+                netAfterReductions: Number(todayRevenue.toFixed(2)),
+                transactionCount: finalizedCategories.reduce((sum, category) => sum + category.transactionCount, 0) +
+                    finalizedReductions.reduce((sum, category) => sum + category.transactionCount, 0),
+            },
+            categories: finalizedCategories,
+            reductions: finalizedReductions,
+            paymentMethods: finalizedPaymentMethods,
+        });
+    }
+    catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+exports.getTodayRevenueBreakdown = getTodayRevenueBreakdown;
+const getTodayRevenueSummary = async (req, res) => {
+    try {
+        if (!req.user) {
+            return res.status(403).json({ message: "กรุณาเข้าสู่ระบบ" });
+        }
+        const bounds = getBusinessDayBoundsFromKey(req.query.businessDate);
+        if (!bounds) {
+            return res.status(400).json({
+                message: "Invalid business date. Use YYYY-MM-DD.",
+            });
+        }
+        const bookings = await booking_1.default.find({
+            $or: [
+                { checkIn: { $gte: bounds.start, $lt: bounds.end } },
+                { "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end } },
+            ],
+        }).lean();
+        res.status(200).json((0, financeHelpers_1.calculateTodayRevenueSummary)(bookings, bounds.start, bounds.end));
+    }
+    catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+exports.getTodayRevenueSummary = getTodayRevenueSummary;
 const getReconciliation = async (req, res) => {
     try {
         const staffUsername = req.user?.admin
@@ -381,10 +792,13 @@ const getReconciliation = async (req, res) => {
             ...(staffUsername ? { staffUsername } : {}),
         }).sort({ createdAt: -1, staffUsername: 1 });
         const dailyClosesWithStaff = await attachDailyCloseStaffProfiles(dailyCloses);
+        const cashPosition = await getCashPositionForDate(reconciliation.businessDate);
         res.status(200).json({
             businessDate: reconciliation.businessDate,
             threshold: financeHelpers_1.CASH_VARIANCE_THRESHOLD,
             summary: reconciliation.summary,
+            cashStashes: (0, financeHelpers_1.summarizeCashStashes)(reconciliation.transactions),
+            cashShifts: cashPosition?.shifts || [],
             transactions: reconciliation.transactions,
             dailyCloses: dailyClosesWithStaff,
         });
@@ -394,6 +808,275 @@ const getReconciliation = async (req, res) => {
     }
 };
 exports.getReconciliation = getReconciliation;
+const getCashPosition = async (req, res) => {
+    try {
+        const cashPosition = await getCashPositionForDate(req.query.date);
+        if (!cashPosition) {
+            return res.status(400).json({ message: "Invalid date format" });
+        }
+        res.status(200).json(cashPosition);
+    }
+    catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+exports.getCashPosition = getCashPosition;
+const getCashShiftAudit = async (req, res) => {
+    try {
+        if (!req.user?.admin) {
+            return res.status(403).json({
+                message: "เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถดูการตรวจสอบเงินสดได้",
+            });
+        }
+        const audit = await getCashShiftAuditForDate(req.query.date);
+        if (!audit) {
+            return res.status(400).json({ message: "Invalid date format" });
+        }
+        res.status(200).json(audit);
+    }
+    catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+exports.getCashShiftAudit = getCashShiftAudit;
+const resolveCashShiftAudit = async (req, res) => {
+    try {
+        if (!req.user?.admin || !req.user.username) {
+            return res.status(403).json({
+                message: "เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถรับทราบข้อยกเว้นได้",
+            });
+        }
+        const note = String(req.body.note || "").trim();
+        if (!note) {
+            return res.status(400).json({
+                message: "กรุณาระบุสรุปการตรวจสอบ",
+            });
+        }
+        const cashShift = await cashShift_1.default.findById(req.params.shiftId);
+        if (!cashShift) {
+            return res.status(404).json({ message: "ไม่พบกะเงินสดนี้" });
+        }
+        const audit = await getCashShiftAuditForDate(cashShift.businessDate);
+        const auditedShift = audit?.shifts.find((shift) => String(shift._id) === String(cashShift._id));
+        if (!auditedShift?.warnings.length) {
+            return res.status(400).json({
+                message: "กะนี้ไม่มีข้อยกเว้นที่ต้องรับทราบ",
+            });
+        }
+        cashShift.auditResolution = {
+            note,
+            reviewedBy: req.user.username,
+            reviewedAt: new Date(),
+        };
+        await cashShift.save();
+        await (0, activityServices_1.logActivity)(req.user.username, "DAILY_CLOSE", {
+            summary: {
+                action: "REVIEW_CASH_SHIFT_AUDIT",
+                businessDate: cashShift.businessDate,
+                shiftNumber: cashShift.shiftNumber,
+                note,
+                warningCodes: auditedShift.warnings.map((warning) => warning.code),
+            },
+        });
+        res.status(200).json({ cashShift });
+    }
+    catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+exports.resolveCashShiftAudit = resolveCashShiftAudit;
+const startCashShift = async (req, res) => {
+    try {
+        if (!req.user?.username) {
+            return res.status(401).json({ message: "กรุณาเข้าสู่ระบบใหม่" });
+        }
+        const bounds = getBusinessDayBoundsFromKey(req.body.businessDate);
+        if (!bounds) {
+            return res.status(400).json({ message: "Invalid date format" });
+        }
+        return await (0, cashShiftMutationLock_1.withCashShiftMutationLock)(bounds.businessDate, async () => {
+            const existingOpenShift = await cashShift_1.default.findOne({
+                businessDate: bounds.businessDate,
+                status: "open",
+            });
+            if (existingOpenShift) {
+                return res.status(409).json({
+                    message: "มีกะเงินสดที่เปิดอยู่แล้ว กรุณาปิดกะเดิมก่อน",
+                });
+            }
+            const previousShift = await cashShift_1.default.findOne({
+                businessDate: bounds.businessDate,
+                status: "closed",
+            }).sort({ shiftNumber: -1 });
+            const handoffMovements = previousShift?.endedAt
+                ? (0, financeHelpers_1.summarizeCashStashes)(await getUnassignedCashTransactionsBetween(previousShift.endedAt, new Date()))
+                : null;
+            const openingMode = req.body.openingMode === "accepted_handoff"
+                ? "accepted_handoff"
+                : "counted";
+            if (openingMode === "accepted_handoff" && !previousShift) {
+                return res.status(400).json({
+                    message: "ยังไม่มีกะก่อนหน้าให้รับส่งเงิน",
+                });
+            }
+            const expectedDepositOpening = (0, financeHelpers_1.cashBalanceAfterMovements)(previousShift?.depositActualCash || 0, handoffMovements?.depositCashIn || 0, handoffMovements?.depositCashOut || 0);
+            const expectedOperatingOpening = (0, financeHelpers_1.cashBalanceAfterMovements)(previousShift?.operatingActualCash || 0, handoffMovements?.operatingCashIn || 0, handoffMovements?.operatingCashOut || 0);
+            const depositOpeningCash = openingMode === "accepted_handoff"
+                ? expectedDepositOpening
+                : Number(req.body.depositOpeningCash || 0);
+            const operatingOpeningCash = openingMode === "accepted_handoff"
+                ? expectedOperatingOpening
+                : Number(req.body.operatingOpeningCash || 0);
+            if (!(0, financeHelpers_1.isValidCashCount)(depositOpeningCash) ||
+                !(0, financeHelpers_1.isValidCashCount)(operatingOpeningCash)) {
+                return res.status(400).json({ message: "ยอดเงินสดไม่ถูกต้อง" });
+            }
+            const openingVariance = Math.abs(depositOpeningCash - expectedDepositOpening) +
+                Math.abs(operatingOpeningCash - expectedOperatingOpening);
+            const openingNoteRequired = (!previousShift && openingVariance > 0) ||
+                openingVariance > financeHelpers_1.CASH_VARIANCE_THRESHOLD;
+            if (openingNoteRequired && !String(req.body.note || "").trim()) {
+                return res.status(400).json({
+                    message: "กรุณาระบุหมายเหตุเมื่อยอดรับส่งเงินไม่ตรงกัน",
+                });
+            }
+            const shiftNumber = (previousShift?.shiftNumber || 0) + 1;
+            const cashShift = await (0, mutationIdempotency_1.withMutationIdempotency)(req, () => cashShift_1.default.create({
+                businessDate: bounds.businessDate,
+                shiftNumber,
+                staffUsername: req.user?.username,
+                status: "open",
+                openingMode,
+                handoffFromShiftId: previousShift ? String(previousShift._id) : undefined,
+                depositOpeningCash,
+                operatingOpeningCash,
+                depositExpectedCash: depositOpeningCash,
+                operatingExpectedCash: operatingOpeningCash,
+                note: String(req.body.note || "").trim(),
+                startedAt: new Date(),
+                createdBy: req.user?.username,
+            }));
+            await (0, activityServices_1.logActivity)(req.user.username, "DAILY_CLOSE", {
+                summary: {
+                    action: "START_CASH_SHIFT",
+                    businessDate: bounds.businessDate,
+                    shiftNumber,
+                    openingMode,
+                    depositOpeningCash,
+                    operatingOpeningCash,
+                },
+            }).catch((err) => {
+                console.error("Failed to log cash shift start", err);
+            });
+            return res.status(201).json({ cashShift });
+        });
+    }
+    catch (err) {
+        if (err instanceof cashShiftMutationLock_1.CashShiftMutationConflictError) {
+            return res.status(409).json({
+                message: "กำลังมีการเริ่มหรือปิดกะเงินสด กรุณาลองอีกครั้ง",
+            });
+        }
+        if (err instanceof mutationIdempotency_1.IdempotencyConflictError) {
+            return sendDuplicateMutationResponse(res);
+        }
+        res.status(500).json({ error: err.message });
+    }
+};
+exports.startCashShift = startCashShift;
+const closeCashShift = async (req, res) => {
+    try {
+        if (!req.user?.username) {
+            return res.status(401).json({ message: "กรุณาเข้าสู่ระบบใหม่" });
+        }
+        const cashShift = await cashShift_1.default.findById(req.params.shiftId);
+        if (!cashShift) {
+            return res.status(404).json({ message: "ไม่พบกะเงินสดนี้" });
+        }
+        if (cashShift.status !== "open") {
+            return res.status(409).json({ message: "กะเงินสดนี้ปิดไปแล้ว" });
+        }
+        if (!req.user.admin &&
+            cashShift.staffUsername !== req.user.username) {
+            return res.status(403).json({
+                message: "เฉพาะผู้รับผิดชอบกะหรือผู้ดูแลระบบเท่านั้นที่ปิดกะได้",
+            });
+        }
+        return await (0, cashShiftMutationLock_1.withCashShiftMutationLock)(cashShift.businessDate, async () => {
+            const depositActualCash = Number(req.body.depositActualCash);
+            const operatingActualCash = Number(req.body.operatingActualCash);
+            if (!(0, financeHelpers_1.isValidCashCount)(depositActualCash) ||
+                !(0, financeHelpers_1.isValidCashCount)(operatingActualCash)) {
+                return res.status(400).json({ message: "ยอดเงินสดไม่ถูกต้อง" });
+            }
+            const movements = (0, financeHelpers_1.summarizeCashStashes)(await getShiftTransactions(cashShift));
+            const depositExpectedCash = cashShift.depositOpeningCash +
+                movements.depositCashIn -
+                movements.depositCashOut;
+            const operatingExpectedCash = cashShift.operatingOpeningCash +
+                movements.operatingCashIn -
+                movements.operatingCashOut;
+            const depositVariance = depositActualCash - depositExpectedCash;
+            const operatingVariance = operatingActualCash - operatingExpectedCash;
+            if ((Math.abs(depositVariance) > financeHelpers_1.CASH_VARIANCE_THRESHOLD ||
+                Math.abs(operatingVariance) > financeHelpers_1.CASH_VARIANCE_THRESHOLD) &&
+                !String(req.body.note || "").trim()) {
+                return res.status(400).json({
+                    message: "กรุณาระบุหมายเหตุเมื่อยอดเงินสดไม่ตรงกัน",
+                });
+            }
+            const closedShift = await (0, mutationIdempotency_1.withMutationIdempotency)(req, () => cashShift_1.default.findOneAndUpdate({ _id: cashShift._id, status: "open" }, {
+                $set: {
+                    status: "closed",
+                    depositCashIn: movements.depositCashIn,
+                    depositCashOut: movements.depositCashOut,
+                    operatingCashIn: movements.operatingCashIn,
+                    operatingCashOut: movements.operatingCashOut,
+                    depositExpectedCash,
+                    operatingExpectedCash,
+                    depositActualCash,
+                    operatingActualCash,
+                    depositVariance,
+                    operatingVariance,
+                    note: String(req.body.note || cashShift.note || "").trim(),
+                    endedAt: new Date(),
+                    closedBy: req.user?.username,
+                },
+            }, { returnDocument: "after" }));
+            if (!closedShift) {
+                return res.status(409).json({ message: "กะเงินสดนี้ปิดไปแล้ว" });
+            }
+            await (0, activityServices_1.logActivity)(req.user.username, "DAILY_CLOSE", {
+                summary: {
+                    action: "CLOSE_CASH_SHIFT",
+                    businessDate: cashShift.businessDate,
+                    shiftNumber: cashShift.shiftNumber,
+                    depositExpectedCash,
+                    depositActualCash,
+                    depositVariance,
+                    operatingExpectedCash,
+                    operatingActualCash,
+                    operatingVariance,
+                },
+            }).catch((err) => {
+                console.error("Failed to log cash shift close", err);
+            });
+            return res.status(200).json({ cashShift: closedShift });
+        });
+    }
+    catch (err) {
+        if (err instanceof cashShiftMutationLock_1.CashShiftMutationConflictError) {
+            return res.status(409).json({
+                message: "กำลังมีการเริ่มหรือปิดกะเงินสด กรุณาลองอีกครั้ง",
+            });
+        }
+        if (err instanceof mutationIdempotency_1.IdempotencyConflictError) {
+            return sendDuplicateMutationResponse(res);
+        }
+        res.status(500).json({ error: err.message });
+    }
+};
+exports.closeCashShift = closeCashShift;
 const upsertDailyClose = async (req, res) => {
     try {
         const staffUsername = req.user?.admin && typeof req.body.staffUsername === "string"
@@ -405,7 +1088,7 @@ const upsertDailyClose = async (req, res) => {
         const requestUsername = req.user.username;
         const actualCash = Number(req.body.actualCash);
         const openingCash = Number(req.body.openingCash || 0);
-        if (!Number.isFinite(actualCash) || !Number.isFinite(openingCash)) {
+        if (!(0, financeHelpers_1.isValidCashCount)(actualCash) || !(0, financeHelpers_1.isValidCashCount)(openingCash)) {
             return res.status(400).json({ message: "ยอดเงินสดไม่ถูกต้อง" });
         }
         const reconciliation = await getTransactionsForBusinessDate(req.body.businessDate, staffUsername);
@@ -415,7 +1098,7 @@ const upsertDailyClose = async (req, res) => {
         const expectedCash = openingCash + reconciliation.summary.cashIn - reconciliation.summary.cashOut;
         const variance = actualCash - expectedCash;
         if (Math.abs(variance) > financeHelpers_1.CASH_VARIANCE_THRESHOLD &&
-            typeof req.body.note !== "string") {
+            !String(req.body.note || "").trim()) {
             return res.status(400).json({
                 message: "กรุณาระบุหมายเหตุเมื่อยอดเงินสดไม่ตรงกัน",
             });

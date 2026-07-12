@@ -62,13 +62,19 @@ const PageHeader = ({
         {(meta || onRefresh) && (
           <div className="pageHeader__meta">
             {meta || (
-              <p>ข้อมูลอัปเดตล่าสุดเมื่อ {formatLastUpdated(lastUpdated)}</p>
+              <p className="pageHeader__updatedAt">
+                อัปเดตล่าสุด {formatLastUpdated(lastUpdated)}
+              </p>
             )}
             {onRefresh && (
-              <i
-                className="bx bx-refresh pageHeader__refreshIcon"
+              <button
+                className="pageHeader__refreshAction"
+                type="button"
+                aria-label="อัปเดตข้อมูล"
                 onClick={handleRefresh}
-              />
+              >
+                <i className="bx bx-refresh pageHeader__refreshIcon" />
+              </button>
             )}
           </div>
         )}

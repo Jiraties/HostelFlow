@@ -4,6 +4,12 @@ import type { Document } from "mongoose";
 export type CashShiftStatus = "open" | "closed";
 export type CashShiftOpeningMode = "counted" | "accepted_handoff";
 
+export interface CashShiftAuditResolution {
+  note: string;
+  reviewedBy: string;
+  reviewedAt: Date;
+}
+
 export interface cashShift extends Document {
   businessDate: string;
   shiftNumber: number;
@@ -28,6 +34,7 @@ export interface cashShift extends Document {
   endedAt?: Date;
   createdBy: string;
   closedBy?: string;
+  auditResolution?: CashShiftAuditResolution;
 }
 
 const cashShiftSchema = new mongoose.Schema({
@@ -63,6 +70,11 @@ const cashShiftSchema = new mongoose.Schema({
   endedAt: { type: Date },
   createdBy: { type: String, required: true },
   closedBy: { type: String },
+  auditResolution: {
+    note: { type: String },
+    reviewedBy: { type: String },
+    reviewedAt: { type: Date },
+  },
 });
 
 cashShiftSchema.index({ businessDate: 1, shiftNumber: 1 }, { unique: true });

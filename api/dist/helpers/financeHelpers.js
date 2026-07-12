@@ -1,9 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.transactionFallsOnBusinessDate = exports.summarizeTransactions = exports.normalizeTransaction = exports.transactionNeedsReview = exports.transactionUnpaidAmount = exports.transactionDepositLiabilityDelta = exports.transactionDashboardCollectedRevenueAmount = exports.transactionDashboardGrossRevenueAmount = exports.transactionRefundAmount = exports.transactionRevenueAmount = exports.transactionIsRevenue = exports.transactionCashImpact = exports.transactionSignedAmount = exports.transactionDirection = exports.LARGE_REFUND_THRESHOLD = exports.LARGE_CASH_TRANSACTION_THRESHOLD = exports.CASH_VARIANCE_THRESHOLD = void 0;
+exports.transactionFallsOnBusinessDate = exports.summarizeTransactions = exports.normalizeTransaction = exports.transactionNeedsReview = exports.transactionUnpaidAmount = exports.transactionDepositLiabilityDelta = exports.transactionDashboardCollectedRevenueAmount = exports.calculateTodayRevenueSummary = exports.bookingTodayArrivalRevenueAmount = exports.transactionTodayReductionAmount = exports.transactionTodayExtrasRevenueAmount = exports.transactionDashboardGrossRevenueAmount = exports.transactionRefundAmount = exports.transactionRevenueAmount = exports.transactionIsRevenue = exports.summarizeCashStashes = exports.transactionCashStashImpact = exports.emptyCashStashSummary = exports.transactionCashImpact = exports.summarizeReceivedPaymentsByMethod = exports.transactionSignedAmount = exports.transactionDirection = exports.cashBalanceAfterMovements = exports.isValidCashCount = exports.LARGE_REFUND_THRESHOLD = exports.LARGE_CASH_TRANSACTION_THRESHOLD = exports.CASH_VARIANCE_THRESHOLD = void 0;
 exports.CASH_VARIANCE_THRESHOLD = 20;
 exports.LARGE_CASH_TRANSACTION_THRESHOLD = 5000;
 exports.LARGE_REFUND_THRESHOLD = 2000;
+const isValidCashCount = (value) => Number.isFinite(value) && value >= 0;
+exports.isValidCashCount = isValidCashCount;
+const cashBalanceAfterMovements = (openingCash, cashIn, cashOut) => openingCash + cashIn - cashOut;
+exports.cashBalanceAfterMovements = cashBalanceAfterMovements;
 const moneyOutTransactionTypes = [
     "depositRefund",
     "cancellationRefund",
@@ -28,6 +32,14 @@ const revenueTransactionTypes = [
     "slowBoat",
     "joinTour",
     "extraBed",
+    "pickACraft",
+    "setMenu",
+    "sleeperBus",
+    "onlyWalk",
+    "laundry",
+    "bicycle",
+    "car",
+    "misc",
     "cardSurcharge",
 ];
 const dashboardOriginalRevenueTransactionTypes = [
@@ -37,6 +49,14 @@ const dashboardOriginalRevenueTransactionTypes = [
     "slowBoat",
     "joinTour",
     "extraBed",
+    "pickACraft",
+    "setMenu",
+    "sleeperBus",
+    "onlyWalk",
+    "laundry",
+    "bicycle",
+    "car",
+    "misc",
     "cardSurcharge",
 ];
 const dashboardRevenueRefundTransactionTypes = [
@@ -63,8 +83,68 @@ const transactionSignedAmount = (transaction) => {
     return Math.abs(transaction.amount || 0);
 };
 exports.transactionSignedAmount = transactionSignedAmount;
+const summarizeReceivedPaymentsByMethod = (transactions) => {
+    const totals = new Map();
+    transactions.forEach((transaction) => {
+        if (transaction.paymentMethod === "Unpaid")
+            return;
+        totals.set(transaction.paymentMethod, (totals.get(transaction.paymentMethod) || 0) +
+            (0, exports.transactionSignedAmount)(transaction));
+    });
+    return new Map(Array.from(totals.entries())
+        .map(([paymentMethod, amount]) => [
+        paymentMethod,
+        Math.max(amount, 0),
+    ])
+        .filter(([, amount]) => amount > 0));
+};
+exports.summarizeReceivedPaymentsByMethod = summarizeReceivedPaymentsByMethod;
 const transactionCashImpact = (transaction) => transaction.paymentMethod === "Cash" ? (0, exports.transactionSignedAmount)(transaction) : 0;
 exports.transactionCashImpact = transactionCashImpact;
+const emptyCashStashSummary = () => ({
+    depositCashIn: 0,
+    depositCashOut: 0,
+    operatingCashIn: 0,
+    operatingCashOut: 0,
+});
+exports.emptyCashStashSummary = emptyCashStashSummary;
+const transactionCashStashImpact = (transaction) => {
+    const summary = (0, exports.emptyCashStashSummary)();
+    if (transaction.paymentMethod !== "Cash")
+        return summary;
+    const amount = Math.abs(transaction.amount || 0);
+    if (amount === 0)
+        return summary;
+    if (transaction.type === "deposit") {
+        summary.depositCashIn += amount;
+        return summary;
+    }
+    if (transaction.type === "depositRefund") {
+        summary.depositCashOut += amount;
+        return summary;
+    }
+    if (transaction.type === "depositKept") {
+        summary.depositCashOut += amount;
+        summary.operatingCashIn += amount;
+        return summary;
+    }
+    const signedAmount = (0, exports.transactionSignedAmount)(transaction);
+    if (signedAmount > 0)
+        summary.operatingCashIn += signedAmount;
+    if (signedAmount < 0)
+        summary.operatingCashOut += Math.abs(signedAmount);
+    return summary;
+};
+exports.transactionCashStashImpact = transactionCashStashImpact;
+const summarizeCashStashes = (transactions) => transactions.reduce((summary, transaction) => {
+    const impact = (0, exports.transactionCashStashImpact)(transaction);
+    summary.depositCashIn += impact.depositCashIn;
+    summary.depositCashOut += impact.depositCashOut;
+    summary.operatingCashIn += impact.operatingCashIn;
+    summary.operatingCashOut += impact.operatingCashOut;
+    return summary;
+}, (0, exports.emptyCashStashSummary)());
+exports.summarizeCashStashes = summarizeCashStashes;
 const transactionIsRevenue = (transaction) => transaction.paymentMethod !== "Unpaid" &&
     revenueTransactionTypes.includes(transaction.type);
 exports.transactionIsRevenue = transactionIsRevenue;
@@ -111,6 +191,100 @@ const transactionDashboardGrossRevenueAmount = (transaction) => {
     return Math.abs(transaction.amount || 0);
 };
 exports.transactionDashboardGrossRevenueAmount = transactionDashboardGrossRevenueAmount;
+const transactionTodayExtrasRevenueAmount = (transaction) => {
+    if (transaction.type === "roomCharge")
+        return 0;
+    const amount = (0, exports.transactionDashboardGrossRevenueAmount)(transaction);
+    return amount > 0 ? amount : 0;
+};
+exports.transactionTodayExtrasRevenueAmount = transactionTodayExtrasRevenueAmount;
+const transactionTodayReductionAmount = (transaction) => {
+    const amount = (0, exports.transactionDashboardGrossRevenueAmount)(transaction);
+    return amount < 0 ? Math.abs(amount) : 0;
+};
+exports.transactionTodayReductionAmount = transactionTodayReductionAmount;
+const bookingTodayArrivalRevenueAmount = (booking) => {
+    if (booking.status === "cancelled") {
+        const roomChargeTotal = booking.transactions.reduce((total, transaction) => transaction.type === "roomCharge"
+            ? total + Math.abs(transaction.amount || 0)
+            : total, 0);
+        return Math.min(Math.max(booking.cancellation?.keptAmount || 0, 0), roomChargeTotal);
+    }
+    if (booking.status === "noShow") {
+        return Math.max(booking.transactions.reduce((total, transaction) => {
+            if (transaction.type === "roomCharge") {
+                return transaction.paymentMethod === "Unpaid"
+                    ? total
+                    : total + Math.abs(transaction.amount || 0);
+            }
+            if (transaction.type === "settlementCharge" &&
+                transaction.relatedTransactionType === "roomCharge" &&
+                transaction.paymentMethod !== "Unpaid") {
+                return total + Math.abs(transaction.amount || 0);
+            }
+            if (["roomRefund", "cancellationRefund"].includes(transaction.type)) {
+                return total - Math.abs(transaction.amount || 0);
+            }
+            return total;
+        }, 0), 0);
+    }
+    return booking.transactions.reduce((total, transaction) => transaction.type === "roomCharge"
+        ? total + Math.abs(transaction.amount || 0)
+        : total, 0);
+};
+exports.bookingTodayArrivalRevenueAmount = bookingTodayArrivalRevenueAmount;
+const calculateTodayRevenueSummary = (bookings, start, end) => {
+    const arrivals = bookings.filter((booking) => {
+        const checkIn = new Date(booking.checkIn);
+        return checkIn >= start && checkIn < end;
+    });
+    const todayTransactions = bookings.flatMap((booking) => (booking.transactions || [])
+        .filter((transaction) => {
+        if (!transaction.createdAt)
+            return false;
+        const createdAt = new Date(transaction.createdAt);
+        return createdAt >= start && createdAt < end;
+    })
+        .map((transaction) => ({ booking, transaction })));
+    const todayArrivalRevenue = arrivals.reduce((sum, booking) => sum + (0, exports.bookingTodayArrivalRevenueAmount)(booking), 0);
+    const todayExtrasRevenue = todayTransactions.reduce((sum, { transaction }) => sum + (0, exports.transactionTodayExtrasRevenueAmount)(transaction), 0);
+    const serviceHighlights = new Map();
+    todayTransactions.forEach(({ transaction }) => {
+        const amount = (0, exports.transactionTodayExtrasRevenueAmount)(transaction);
+        if (amount <= 0 ||
+            ["adjustment", "cardSurcharge"].includes(transaction.type)) {
+            return;
+        }
+        const current = serviceHighlights.get(transaction.type) || {
+            type: transaction.type,
+            count: 0,
+            total: 0,
+        };
+        current.count += 1;
+        current.total += amount;
+        serviceHighlights.set(transaction.type, current);
+    });
+    const todayReductions = todayTransactions.reduce((sum, { booking, transaction }) => {
+        const alreadyNetted = arrivals.includes(booking) &&
+            ["cancelled", "noShow"].includes(booking.status) &&
+            ["roomRefund", "cancellationRefund"].includes(transaction.type);
+        return alreadyNetted
+            ? sum
+            : sum + (0, exports.transactionTodayReductionAmount)(transaction);
+    }, 0);
+    const todayCollectedRevenue = arrivals.reduce((sum, booking) => sum +
+        (booking.transactions || []).reduce((bookingSum, transaction) => bookingSum +
+            (0, exports.transactionDashboardCollectedRevenueAmount)(transaction, booking.transactions || []), 0), 0);
+    return {
+        todayRevenue: todayArrivalRevenue + todayExtrasRevenue - todayReductions,
+        todayArrivalRevenue,
+        todayExtrasRevenue,
+        todayReductions,
+        todayCollectedRevenue,
+        todayServiceHighlights: Array.from(serviceHighlights.values()).sort((first, second) => second.total - first.total),
+    };
+};
+exports.calculateTodayRevenueSummary = calculateTodayRevenueSummary;
 const transactionDashboardCollectedRevenueAmount = (transaction, transactions = []) => {
     if (transaction.paymentMethod === "Unpaid")
         return 0;

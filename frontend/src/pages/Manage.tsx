@@ -17,6 +17,8 @@ import type { ManagedStaffUser } from "../components/ManageUser";
 import { requestUnsavedModalClose } from "../helpers/modalGuards";
 import UnsavedChangesModal from "../components/UnsavedChangesModal";
 import usePageTitle from "../hooks/useTitle";
+import { formatDisplayDateTime } from "../helpers/displayDate";
+import type { DateFormatPreference } from "../types/userSettings";
 
 type StaffUser = ManagedStaffUser;
 
@@ -24,29 +26,6 @@ type ActivityStats = {
   totalActions: number;
   byStaff: Array<{ staffUsername: string; count: number }>;
   byAction: Array<{ action: actionType; count: number }>;
-};
-
-type FinanceSummary = {
-  revenue: number;
-  cashIn: number;
-  cashOut: number;
-  netTotal: number;
-  refunds: number;
-  depositLiability: number;
-  cardSurcharges: number;
-  unpaidBalance: number;
-};
-
-type DailyClose = {
-  businessDate: string;
-  staffUsername: string;
-  openingCash: number;
-  expectedCash: number;
-  actualCash: number;
-  variance: number;
-  cashIn: number;
-  cashOut: number;
-  note?: string;
 };
 
 type ReviewTransaction = {
@@ -67,12 +46,70 @@ type ReviewTransaction = {
   note?: string;
 };
 
-type ReconciliationData = {
+type CashAuditWarning = {
+  code: string;
+  severity: "warning" | "critical";
+  message: string;
+};
+
+type CashAuditMovements = {
+  depositCashIn: number;
+  depositCashOut: number;
+  operatingCashIn: number;
+  operatingCashOut: number;
+};
+
+type CashAuditShift = {
+  _id: string;
+  shiftNumber: number;
+  status: "open" | "closed";
+  openingMode: "counted" | "accepted_handoff";
+  depositOpeningCash: number;
+  operatingOpeningCash: number;
+  depositCashIn: number;
+  depositCashOut: number;
+  operatingCashIn: number;
+  operatingCashOut: number;
+  depositExpectedCash: number;
+  operatingExpectedCash: number;
+  depositActualCash?: number;
+  operatingActualCash?: number;
+  depositVariance?: number;
+  operatingVariance?: number;
+  note?: string;
+  startedAt: string | Date;
+  endedAt?: string | Date;
+  staff?: { username: string; name?: string; profilePictureUrl?: string };
+  warnings: CashAuditWarning[];
+  flaggedTransactions: ReviewTransaction[];
+  auditResolution?: {
+    note: string;
+    reviewedBy: string;
+    reviewedAt: string | Date;
+  };
+  handoff?: {
+    fromShiftNumber: number;
+    mode: "counted" | "accepted_handoff";
+    elapsedMinutes: number;
+    expectedDepositOpening: number;
+    expectedOperatingOpening: number;
+    depositDifference: number;
+    operatingDifference: number;
+    movements: CashAuditMovements;
+    mismatch: boolean;
+  };
+};
+
+type CashShiftAudit = {
   businessDate: string;
   threshold: number;
-  summary: FinanceSummary;
-  transactions: ReviewTransaction[];
-  dailyCloses: DailyClose[];
+  shifts: CashAuditShift[];
+  gaps: Array<{
+    from: string | Date;
+    to: string | Date;
+    movements: CashAuditMovements;
+    warning: CashAuditWarning;
+  }>;
 };
 
 type NewUserForm = {
@@ -99,6 +136,7 @@ const actionMap = {
   CREATE_USER: { icon: "bx-user-plus", text: "สร้างผู้ใช้" },
   RESET_USER_PASSWORD: { icon: "bx-key", text: "เปลี่ยนรหัสผ่าน" },
   UPDATE_USER: { icon: "bx-user-cog", text: "แก้ไขผู้ใช้" },
+  UPDATE_USER_SETTINGS: { icon: "bx-cog", text: "แก้ไขการตั้งค่า" },
   DEACTIVATE_USER: { icon: "bx-user-x", text: "ปิดใช้งานผู้ใช้" },
   REACTIVATE_USER: { icon: "bx-user-check", text: "เปิดใช้งานผู้ใช้" },
   LOGIN: { icon: "bx-arrow-in-right-square-half", text: "เข้าสู่ระบบ" },
@@ -123,6 +161,14 @@ const transactionTypeLabels: Record<string, string> = {
   slowBoat: "Slow Boat",
   joinTour: "Join Tour",
   extraBed: "เตียงเสริม",
+  pickACraft: "Pick A Craft",
+  setMenu: "Set Menu",
+  sleeperBus: "Sleeper Bus",
+  onlyWalk: "Only Walk",
+  laundry: "Laundry",
+  bicycle: "Bicycle",
+  car: "Car",
+  misc: "Misc",
   cardSurcharge: "ค่าธรรมเนียมบัตร",
 };
 
@@ -142,15 +188,17 @@ const emptyNewUserForm: NewUserForm = {
   admin: false,
 };
 
-const formatDateTime = (date: string | Date) =>
-  new Date(date).toLocaleString("th-TH", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
+const formatDateTime = (
+  date: string | Date,
+  dateFormat: DateFormatPreference,
+) => formatDisplayDateTime(date, dateFormat);
+
+const formatTime = (date: string | Date) =>
+  new Intl.DateTimeFormat("th-TH", {
     hour: "2-digit",
     minute: "2-digit",
-    calendar: "gregory",
-  });
+    hourCycle: "h23",
+  }).format(new Date(date));
 
 const todayInputValue = () => {
   const date = new Date();
@@ -176,46 +224,130 @@ const transactionLabel = (type: string) => transactionTypeLabels[type] || type;
 const reviewFlagLabel = (flag: string) => reviewFlagLabels[flag] || flag;
 
 const signedTransactionAmount = (transaction: ReviewTransaction) => {
-  if (transaction.direction === "out") return -Math.abs(transaction.amount || 0);
+  if (transaction.direction === "out")
+    return -Math.abs(transaction.amount || 0);
   if (transaction.direction === "neutral") return 0;
   return Math.abs(transaction.amount || 0);
 };
 
-const FinanceReconciliation = ({
-  reconciliation,
+const hasCashMismatch = (shift: CashAuditShift) =>
+  shift.warnings.some((warning) =>
+    ["deposit_variance", "operating_variance", "handoff_mismatch"].includes(
+      warning.code,
+    ),
+  );
+
+const CashCloseAudit = ({
+  audit,
   reviewEvents,
   financeDate,
   onDateChange,
   onApproveTransaction,
+  onResolveShift,
   approvingTransactionId,
   loading,
+  dateFormat,
 }: {
-  reconciliation: ReconciliationData | null;
+  audit: CashShiftAudit | null;
   reviewEvents: ReviewTransaction[];
   financeDate: string;
   onDateChange: (value: string) => void;
   onApproveTransaction: (transaction: ReviewTransaction) => void;
+  onResolveShift: (shiftId: string, note: string) => Promise<void>;
   approvingTransactionId: string | null;
   loading: boolean;
+  dateFormat: DateFormatPreference;
 }) => {
-  const summary = reconciliation?.summary;
-  const reviewedCount = reconciliation?.transactions.filter(
-    (transaction) => transaction.reviewStatus === "reviewed",
+  const [expandedShiftId, setExpandedShiftId] = useState<string | null>(null);
+  const [resolutionNotes, setResolutionNotes] = useState<
+    Record<string, string>
+  >({});
+  const [resolvingShiftId, setResolvingShiftId] = useState<string | null>(null);
+  const shifts = audit?.shifts || [];
+  const closedShiftCount = shifts.filter(
+    (shift) => shift.status === "closed",
   ).length;
+  const openShiftCount = shifts.length - closedShiftCount;
+  const variance = shifts.reduce(
+    (total, shift) =>
+      total +
+      Math.abs(shift.depositVariance || 0) +
+      Math.abs(shift.operatingVariance || 0),
+    0,
+  );
+  const unresolvedCount =
+    (audit?.gaps.length || 0) +
+    shifts.filter((shift) => shift.warnings.length && !shift.auditResolution)
+      .length;
+
+  const resolveShift = async (shiftId: string) => {
+    const note = resolutionNotes[shiftId]?.trim();
+    if (!note) {
+      toast.error("กรุณาระบุสรุปการตรวจสอบก่อนรับทราบ");
+      return;
+    }
+    setResolvingShiftId(shiftId);
+    try {
+      await onResolveShift(shiftId, note);
+      setResolutionNotes((current) => ({ ...current, [shiftId]: "" }));
+      toast.success("บันทึกการรับทราบแล้ว");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "บันทึกการรับทราบไม่สำเร็จ",
+      );
+    } finally {
+      setResolvingShiftId(null);
+    }
+  };
 
   return (
     <section className="manage__finance">
-      <div className="manage__sectionHeader">
-        <div>
-          <i className="bx bx-currency-notes" />
-          <div>
-            <h2>ปิดยอดเงินสดประจำวัน</h2>
-            <p>สรุปยอดเงินสดและรายการที่ควรตรวจประจำวัน</p>
-          </div>
+      <div className="manage__cashAuditHero">
+        <div className="manage__cashAuditHeroIcon">
+          <i
+            className={openShiftCount ? "bx bx-currency-notes" : "bx bx-check"}
+          />
         </div>
-        <div className="manage__financeHeaderActions">
-          <span>{reviewEvents.length} รอตรวจ</span>
-          <span>{reconciliation?.dailyCloses.length || 0} การปิดยอด</span>
+        <div className="manage__cashAuditHeroCopy">
+          <p>ตรวจสอบเงินสดประจำวัน</p>
+          <h2>
+            {loading
+              ? "กำลังตรวจสอบเงินสด"
+              : unresolvedCount
+                ? "มีเงินสดที่ต้องตรวจสอบ"
+                : openShiftCount
+                  ? "ยังมีเงินสดที่รอปิดยอด"
+                  : shifts.length
+                    ? "ยอดเงินสดวันนี้เรียบร้อย"
+                    : "ยังไม่มีการปิดยอดเงินสด"}
+          </h2>
+          <span>
+            {shifts.length
+              ? `${unresolvedCount} จุดที่ต้องตรวจ · ปิดยอดแล้ว ${closedShiftCount} รายการ`
+              : "เลือกวันที่ต้องการตรวจสอบ"}
+          </span>
+        </div>
+        <div className="manage__cashAuditToolbar">
+          <strong
+            className={
+              "manage__cashAuditBadge" +
+              (unresolvedCount
+                ? " manage__cashAuditBadge--attention"
+                : openShiftCount
+                  ? " manage__cashAuditBadge--open"
+                  : shifts.length
+                    ? " manage__cashAuditBadge--complete"
+                    : "")
+            }
+          >
+            {unresolvedCount
+              ? "ต้องตรวจ"
+              : openShiftCount
+                ? "รอปิดยอด"
+                : shifts.length
+                  ? "เรียบร้อย"
+                  : "ไม่มีข้อมูล"}
+          </strong>
           <input
             className="boxInput manage__dateInput"
             type="date"
@@ -225,152 +357,368 @@ const FinanceReconciliation = ({
         </div>
       </div>
 
-      <div className="manage__financeOverview">
+      <div className="manage__auditOverview">
         <div>
-          <p>เงินที่รับแล้ว</p>
-          <strong>{formatMoney(summary?.revenue || 0)} ฿</strong>
+          <p>ปิดยอดแล้ว</p>
+          <strong>
+            {closedShiftCount}/{shifts.length}
+          </strong>
         </div>
         <div>
-          <p>ยอดสุทธิ</p>
-          <strong>{formatMoney(summary?.netTotal || 0)} ฿</strong>
+          <p>กะที่ยังเปิด</p>
+          <strong className={openShiftCount ? "manage__auditWarningText" : ""}>
+            {openShiftCount}
+          </strong>
         </div>
         <div>
-          <p>รายการตรวจแล้ว</p>
-          <strong>{reviewedCount || 0}</strong>
+          <p>ยอดต่างรวม</p>
+          <strong
+            className={
+              variance > (audit?.threshold || 0)
+                ? "manage__auditDangerText"
+                : ""
+            }
+          >
+            {formatMoney(variance)} ฿
+          </strong>
         </div>
         <div>
-          <p>รอตรวจ</p>
-          <strong>{reviewEvents.length}</strong>
+          <p>ข้อยกเว้นค้าง</p>
+          <strong className={unresolvedCount ? "manage__auditDangerText" : ""}>
+            {unresolvedCount}
+          </strong>
         </div>
       </div>
 
-      <div className="manage__financeGrid">
-        <div className="manage__financePanel">
-          <h3>ยอดวันนี้</h3>
-          <div className="manage__financeStatsGrid">
-            <div>
-              <p>รับเงินสด</p>
-              <strong>{formatMoney(summary?.cashIn || 0)} ฿</strong>
-            </div>
-            <div>
-              <p>จ่ายเงินสด</p>
-              <strong>{formatMoney(summary?.cashOut || 0)} ฿</strong>
-            </div>
-            <div>
-              <p>คืนเงิน</p>
-              <strong>{formatMoney(summary?.refunds || 0)} ฿</strong>
-            </div>
-            <div>
-              <p>ค้างชำระ</p>
-              <strong>{formatMoney(summary?.unpaidBalance || 0)} ฿</strong>
-            </div>
+      <div className="manage__cashChain" aria-label="Cash custody chain">
+        {loading ? (
+          <div className="manage__emptyState">
+            <i className="bx bx-loader-alt" />
+            <p>กำลังโหลดสายรับผิดชอบเงินสด</p>
           </div>
-        </div>
-
-        <div className="manage__financePanel">
-          <div className="manage__financePanelHeader">
-            <h3>คิวอนุมัติรายการ</h3>
-            <span>{reviewEvents.length}</span>
+        ) : shifts.length === 0 ? (
+          <div className="manage__emptyState">
+            <i className="bx bx-wallet" />
+            <p>ยังไม่มีกะเงินสดในวันเลือก</p>
           </div>
-          <div className="manage__reviewList">
-            {loading ? (
-              <div className="manage__emptyState">
-                <i className="bx bx-loader-alt" />
-                <p>กำลังโหลดรายการตรวจสอบ</p>
-              </div>
-            ) : reviewEvents.length === 0 ? (
-              <div className="manage__emptyState">
-                <i className="bx bx-check-shield" />
-                <p>ไม่มีรายการที่ต้องตรวจ</p>
-              </div>
-            ) : (
-              reviewEvents.map((transaction, index) => (
+        ) : (
+          shifts.map((shift, index) => (
+            <div className="manage__cashChainItem" key={shift._id}>
+              {index > 0 && shift.handoff && (
                 <div
-                  className="manage__reviewItem"
-                  key={transactionKey(transaction, index)}
+                  className={
+                    "manage__handoff " +
+                    (shift.handoff.mismatch ? "manage__handoff--warning" : "")
+                  }
                 >
-                  <div className="manage__reviewMain">
-                    <div className="manage__reviewTitleRow">
-                      <strong>
-                        {transaction.guestName || transaction.bookingId || "-"}
-                      </strong>
-                      <span
-                        className={
-                          "manage__reviewAmount" +
-                          (signedTransactionAmount(transaction) < 0
-                            ? " manage__reviewAmount--out"
-                            : "")
-                        }
-                      >
-                        {formatMoney(signedTransactionAmount(transaction))} ฿
-                      </span>
-                    </div>
-                    <p>
-                      {transactionLabel(transaction.type)} ·{" "}
-                      {transaction.paymentMethod} ·{" "}
-                      {transaction.staffUsername || "-"}
-                    </p>
-                    <div className="manage__reviewMeta">
-                      {transaction.bookingId && <span>{transaction.bookingId}</span>}
-                      {transaction.createdAt && (
-                        <span>{formatDateTime(transaction.createdAt)}</span>
-                      )}
-                      {transaction.reference && (
-                        <span>Ref: {transaction.reference}</span>
-                      )}
-                    </div>
-                    {(transaction.reviewFlags || []).length > 0 && (
-                      <div className="manage__reviewFlags">
-                        {transaction.reviewFlags?.map((flag) => (
-                          <span key={flag}>{reviewFlagLabel(flag)}</span>
-                        ))}
-                      </div>
-                    )}
-                    {transaction.note && (
-                      <p className="manage__reviewNote">{transaction.note}</p>
-                    )}
+                  <div className="manage__handoffLine" />
+                  <span>
+                    {shift.handoff.mode === "accepted_handoff"
+                      ? "ส่งต่อเงินสด"
+                      : "นับรับเงินใหม่"}
+                  </span>
+                </div>
+              )}
+              <article
+                className={
+                  "manage__cashShiftCard " +
+                  (shift.warnings.length ? "manage__cashShiftCard--alert" : "")
+                }
+              >
+                <div className="manage__cashShiftBody">
+                <div className="manage__cashShiftHeader">
+                  <div>
+                    <strong>
+                      {shift.staff?.name ||
+                        shift.staff?.username ||
+                        "ไม่ทราบผู้รับผิดชอบ"}
+                    </strong>
+                    <small>
+                      {shift.endedAt
+                        ? `เริ่ม ${formatTime(shift.startedAt)} · ปิด ${formatTime(shift.endedAt)}`
+                        : `เริ่ม ${formatTime(shift.startedAt)} · ยังไม่ปิดยอด`}
+                    </small>
                   </div>
-                  <div className="manage__reviewActions">
-                    <button
-                      type="button"
-                      aria-label="อนุมัติรายการ"
-                      disabled={
-                        !transaction._id ||
-                        !transaction.bookingId ||
-                        approvingTransactionId === transaction._id
+                  <div className="manage__cashShiftStatusGroup">
+                    {hasCashMismatch(shift) && (
+                      <span
+                        className="manage__cashMismatchIcon"
+                        title="ยอดเงินสดไม่ตรง"
+                      >
+                        <i className="bx bx-error-alt" />
+                      </span>
+                    )}
+                    <span
+                      className={
+                        "manage__shiftStatus manage__shiftStatus--" +
+                        shift.status
                       }
-                      className="manage__approveAction"
-                      onClick={() => onApproveTransaction(transaction)}
                     >
-                      <i
-                        className={`bx ${
-                          approvingTransactionId === transaction._id
-                            ? "bx-loader-alt"
-                            : "bx-check"
-                        }`}
-                      />
-                    </button>
+                      {shift.status === "closed" ? "ปิดยอดแล้ว" : "ยังเปิดอยู่"}
+                    </span>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
-        </div>
+                <div className="manage__cashMath">
+                  <div className="manage__cashMathTile manage__cashMathTile--deposit">
+                    <div className="manage__cashMathTileHeader">
+                      <i className="bx bx-lock-alt" />
+                      <span>เงินสดมัดจำ</span>
+                    </div>
+                    <strong>
+                      {formatMoney(
+                        shift.depositActualCash ?? shift.depositExpectedCash,
+                      )}{" "}
+                      ฿
+                    </strong>
+                    <small>
+                      คาดไว้ {formatMoney(shift.depositExpectedCash)} · ต่าง{" "}
+                      {formatMoney(shift.depositVariance || 0)}
+                    </small>
+                  </div>
+                  <div className="manage__cashMathTile manage__cashMathTile--operating">
+                    <div className="manage__cashMathTileHeader">
+                      <i className="bx bx-wallet" />
+                      <span>เงินสดทั่วไป</span>
+                    </div>
+                    <strong>
+                      {formatMoney(
+                        shift.operatingActualCash ??
+                          shift.operatingExpectedCash,
+                      )}{" "}
+                      ฿
+                    </strong>
+                    <small>
+                      คาดไว้ {formatMoney(shift.operatingExpectedCash)} · ต่าง{" "}
+                      {formatMoney(shift.operatingVariance || 0)}
+                    </small>
+                  </div>
+                </div>
+                {shift.warnings.length > 0 && (
+                  <div className="manage__auditBadges">
+                    {shift.warnings.map((warning) => (
+                      <span
+                        key={warning.code}
+                        className={
+                          warning.severity === "critical"
+                            ? "manage__auditBadge--critical"
+                            : ""
+                        }
+                      >
+                        {warning.message}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {expandedShiftId === shift._id && (
+                  <div className="manage__auditDetails">
+                    <div className="manage__auditEquations">
+                      <p>
+                        มัดจำ: {formatMoney(shift.depositOpeningCash)} +{" "}
+                        {formatMoney(shift.depositCashIn)} −{" "}
+                        {formatMoney(shift.depositCashOut)} ={" "}
+                        {formatMoney(shift.depositExpectedCash)} ฿
+                      </p>
+                      <p>
+                        ดำเนินงาน: {formatMoney(shift.operatingOpeningCash)} +{" "}
+                        {formatMoney(shift.operatingCashIn)} −{" "}
+                        {formatMoney(shift.operatingCashOut)} ={" "}
+                        {formatMoney(shift.operatingExpectedCash)} ฿
+                      </p>
+                    </div>
+                    {shift.handoff && (
+                      <p className="manage__auditHandoffDetail">
+                        ยอดรับจากคนก่อน: มัดจำ{" "}
+                        {formatMoney(shift.handoff.expectedDepositOpening)} /
+                        เงินสดทั่วไป{" "}
+                        {formatMoney(shift.handoff.expectedOperatingOpening)} ฿
+                      </p>
+                    )}
+                    {shift.note && (
+                      <p className="manage__auditNote">
+                        หมายเหตุ: {shift.note}
+                      </p>
+                    )}
+                    {shift.flaggedTransactions.length > 0 && (
+                      <div className="manage__auditFlaggedTransactions">
+                        <strong>รายการที่ต้องตรวจสอบ</strong>
+                        {shift.flaggedTransactions.map(
+                          (transaction, transactionIndex) => (
+                            <p
+                              key={transactionKey(
+                                transaction,
+                                transactionIndex,
+                              )}
+                            >
+                              {transaction.guestName ||
+                                transaction.bookingId ||
+                                "-"}{" "}
+                              · {transactionLabel(transaction.type)} ·{" "}
+                              {formatMoney(
+                                signedTransactionAmount(transaction),
+                              )}{" "}
+                              ฿
+                            </p>
+                          ),
+                        )}
+                      </div>
+                    )}
+                    {shift.auditResolution ? (
+                      <p className="manage__auditResolved">
+                        รับทราบโดย {shift.auditResolution.reviewedBy}:{" "}
+                        {shift.auditResolution.note}
+                      </p>
+                    ) : shift.warnings.length > 0 ? (
+                      <div className="manage__auditResolve">
+                        <textarea
+                          value={resolutionNotes[shift._id] || ""}
+                          onChange={(event) =>
+                            setResolutionNotes((current) => ({
+                              ...current,
+                              [shift._id]: event.target.value,
+                            }))
+                          }
+                          placeholder="สรุปสิ่งที่ตรวจพบและการดำเนินการ"
+                        />
+                        <button
+                          type="button"
+                          disabled={resolvingShiftId === shift._id}
+                          onClick={() => void resolveShift(shift._id)}
+                        >
+                          รับทราบข้อยกเว้น
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+                </div>
+                <button
+                  type="button"
+                  className="manage__auditDetailsButton"
+                  onClick={() =>
+                    setExpandedShiftId(
+                      expandedShiftId === shift._id ? null : shift._id,
+                    )
+                  }
+                >
+                  <span>
+                    {expandedShiftId === shift._id
+                      ? "ซ่อนรายละเอียด"
+                      : "เปิดรายละเอียด"}
+                  </span>
+                  <i
+                    className={
+                      expandedShiftId === shift._id
+                        ? "bx bx-chevron-up"
+                        : "bx bx-chevron-down"
+                    }
+                  />
+                </button>
+              </article>
+            </div>
+          ))
+        )}
       </div>
 
-      {reconciliation?.dailyCloses.length ? (
-        <div className="manage__dailyCloseList">
-          {reconciliation.dailyCloses.map((dailyClose) => (
-            <span
-              key={`${dailyClose.businessDate}-${dailyClose.staffUsername}`}
-            >
-              {dailyClose.staffUsername}: actual{" "}
-              {formatMoney(dailyClose.actualCash)} ฿ / variance{" "}
-              {formatMoney(dailyClose.variance)} ฿
-            </span>
+      {audit?.gaps.length ? (
+        <div className="manage__cashGaps">
+          {audit.gaps.map((gap, index) => (
+            <p key={`${gap.from}-${index}`}>
+              <i className="bx bx-error-circle" /> {gap.warning.message} ·
+              ระหว่าง {formatTime(gap.from)} – {formatTime(gap.to)}
+            </p>
           ))}
         </div>
       ) : null}
+
+      <div className="manage__financePanel">
+        <div className="manage__financePanelHeader">
+          <h3>คิวอนุมัติรายการ</h3>
+          <span>{reviewEvents.length}</span>
+        </div>
+        <div className="manage__reviewList">
+          {loading ? (
+            <div className="manage__emptyState">
+              <i className="bx bx-loader-alt" />
+              <p>กำลังโหลดรายการตรวจสอบ</p>
+            </div>
+          ) : reviewEvents.length === 0 ? (
+            <div className="manage__emptyState">
+              <i className="bx bx-check-shield" />
+              <p>ไม่มีรายการที่ต้องตรวจ</p>
+            </div>
+          ) : (
+            reviewEvents.map((transaction, index) => (
+              <div
+                className="manage__reviewItem"
+                key={transactionKey(transaction, index)}
+              >
+                <div className="manage__reviewMain">
+                  <div className="manage__reviewTitleRow">
+                    <strong>
+                      {transaction.guestName || transaction.bookingId || "-"}
+                    </strong>
+                    <span
+                      className={
+                        "manage__reviewAmount" +
+                        (signedTransactionAmount(transaction) < 0
+                          ? " manage__reviewAmount--out"
+                          : "")
+                      }
+                    >
+                      {formatMoney(signedTransactionAmount(transaction))} ฿
+                    </span>
+                  </div>
+                  <p>
+                    {transactionLabel(transaction.type)} ·{" "}
+                    {transaction.paymentMethod} ·{" "}
+                    {transaction.staffUsername || "-"}
+                  </p>
+                  <div className="manage__reviewMeta">
+                    {transaction.bookingId && (
+                      <span>{transaction.bookingId}</span>
+                    )}
+                    {transaction.createdAt && (
+                      <span>
+                        {formatDateTime(transaction.createdAt, dateFormat)}
+                      </span>
+                    )}
+                    {transaction.reference && (
+                      <span>Ref: {transaction.reference}</span>
+                    )}
+                  </div>
+                  {(transaction.reviewFlags || []).length > 0 && (
+                    <div className="manage__reviewFlags">
+                      {transaction.reviewFlags?.map((flag) => (
+                        <span key={flag}>{reviewFlagLabel(flag)}</span>
+                      ))}
+                    </div>
+                  )}
+                  {transaction.note && (
+                    <p className="manage__reviewNote">{transaction.note}</p>
+                  )}
+                </div>
+                <div className="manage__reviewActions">
+                  <button
+                    type="button"
+                    aria-label="อนุมัติรายการ"
+                    disabled={
+                      !transaction._id ||
+                      !transaction.bookingId ||
+                      approvingTransactionId === transaction._id
+                    }
+                    className="manage__approveAction"
+                    onClick={() => onApproveTransaction(transaction)}
+                  >
+                    <i
+                      className={`bx ${approvingTransactionId === transaction._id ? "bx-loader-alt" : "bx-check"}`}
+                    />
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </section>
   );
 };
@@ -378,6 +726,7 @@ const FinanceReconciliation = ({
 const Manage = () => {
   usePageTitle("HostelFlow · จัดการระบบ");
   const { user: currentUser } = useAuth();
+  const dateFormat = currentUser?.settings.dateFormat || "dd/MM/yyyy";
   const [users, setUsers] = useState<StaffUser[]>([]);
   const [activities, setActivities] = useState<activity[]>([]);
   const [stats, setStats] = useState<ActivityStats | null>(null);
@@ -397,8 +746,9 @@ const Manage = () => {
     string | null
   >(null);
   const [financeDate, setFinanceDate] = useState(todayInputValue());
-  const [reconciliation, setReconciliation] =
-    useState<ReconciliationData | null>(null);
+  const [cashShiftAudit, setCashShiftAudit] = useState<CashShiftAudit | null>(
+    null,
+  );
   const [reviewEvents, setReviewEvents] = useState<ReviewTransaction[]>([]);
   const [approvingTransactionId, setApprovingTransactionId] = useState<
     string | null
@@ -409,19 +759,19 @@ const Manage = () => {
       usersResponse,
       activitiesResponse,
       statsResponse,
-      reconciliationResponse,
       reviewEventsResponse,
+      cashShiftAuditResponse,
     ] = await Promise.all([
       axios.get(`${API_URL}/auth/users`, { withCredentials: true }),
       axios.get(`${API_URL}/activities/admin`, { withCredentials: true }),
       axios.get(`${API_URL}/activities/admin/stats`, {
         withCredentials: true,
       }),
-      axios.get(`${API_URL}/finance/reconciliation`, {
+      axios.get(`${API_URL}/finance/review-events`, {
         params: { date: financeDate },
         withCredentials: true,
       }),
-      axios.get(`${API_URL}/finance/review-events`, {
+      axios.get(`${API_URL}/finance/cash-shift-audit`, {
         params: { date: financeDate },
         withCredentials: true,
       }),
@@ -430,8 +780,8 @@ const Manage = () => {
     setUsers(usersResponse.data.users);
     setActivities(activitiesResponse.data.activities);
     setStats(statsResponse.data);
-    setReconciliation(reconciliationResponse.data);
     setReviewEvents(reviewEventsResponse.data.transactions);
+    setCashShiftAudit(cashShiftAuditResponse.data);
     setLastUpdated(new Date());
   };
 
@@ -445,19 +795,19 @@ const Manage = () => {
           usersResponse,
           activitiesResponse,
           statsResponse,
-          reconciliationResponse,
           reviewEventsResponse,
+          cashShiftAuditResponse,
         ] = await Promise.all([
           axios.get(`${API_URL}/auth/users`, { withCredentials: true }),
           axios.get(`${API_URL}/activities/admin`, { withCredentials: true }),
           axios.get(`${API_URL}/activities/admin/stats`, {
             withCredentials: true,
           }),
-          axios.get(`${API_URL}/finance/reconciliation`, {
+          axios.get(`${API_URL}/finance/review-events`, {
             params: { date: financeDate },
             withCredentials: true,
           }),
-          axios.get(`${API_URL}/finance/review-events`, {
+          axios.get(`${API_URL}/finance/cash-shift-audit`, {
             params: { date: financeDate },
             withCredentials: true,
           }),
@@ -467,8 +817,8 @@ const Manage = () => {
         setUsers(usersResponse.data.users);
         setActivities(activitiesResponse.data.activities);
         setStats(statsResponse.data);
-        setReconciliation(reconciliationResponse.data);
         setReviewEvents(reviewEventsResponse.data.transactions);
+        setCashShiftAudit(cashShiftAuditResponse.data);
         setLastUpdated(new Date());
       } finally {
         if (!ignore) setLoading(false);
@@ -584,6 +934,27 @@ const Manage = () => {
     }
   };
 
+  const resolveCashShiftAuditHandler = async (
+    shiftId: string,
+    note: string,
+  ) => {
+    try {
+      await axios.patch(
+        `${API_URL}/finance/cash-shifts/${shiftId}/audit-resolution`,
+        { note },
+        { withCredentials: true },
+      );
+      await fetchManageData();
+    } catch (err) {
+      if (axios.isAxiosError(err)) {
+        throw new Error(
+          err.response?.data?.message || "บันทึกการรับทราบไม่สำเร็จ",
+        );
+      }
+      throw err;
+    }
+  };
+
   const manageApi = {
     actionMap,
     activities,
@@ -692,14 +1063,16 @@ const Manage = () => {
         ))}
       </section>
 
-      <FinanceReconciliation
-        reconciliation={reconciliation}
+      <CashCloseAudit
+        audit={cashShiftAudit}
         reviewEvents={reviewEvents}
         financeDate={financeDate}
         onDateChange={setFinanceDate}
         onApproveTransaction={approveTransactionHandler}
+        onResolveShift={resolveCashShiftAuditHandler}
         approvingTransactionId={approvingTransactionId}
         loading={loading}
+        dateFormat={dateFormat}
       />
 
       <section className="manage__staffSection">

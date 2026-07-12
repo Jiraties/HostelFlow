@@ -7,6 +7,7 @@ import en from "i18n-iso-countries/langs/en.json";
 import { customStyles } from "../../helpers/selectStyling";
 import ActionButton from "../../components/ActionButton";
 import ModalCloseButton from "../../components/ModalCloseButton";
+import CashShiftNudge from "../../components/CashShiftNudge";
 import { roomChargeTransaction } from "../../helpers/bookingHelpers";
 import type { OptionType } from "../../helpers/selectStyling";
 import axios from "axios";
@@ -149,6 +150,7 @@ const CheckIn = ({
       cashTotal += Number(receivedCash) - roomCharge.amount;
     }
   }
+  const hasCashMovement = cashTotal > 0;
 
   const checkInHandler = async () => {
     if (
@@ -243,6 +245,7 @@ const CheckIn = ({
               </p>
             </div>
           )}
+          {hasCashMovement && <CashShiftNudge />}
         </div>
       </div>
       <div className="checkIn__grid">

@@ -4,6 +4,7 @@ import axios from "axios";
 import toast from "react-hot-toast";
 import ActionButton from "../../components/ActionButton";
 import ModalCloseButton from "../../components/ModalCloseButton";
+import CashShiftNudge from "../../components/CashShiftNudge";
 import { API_URL } from "../../config/api";
 import { formatBookingDates } from "../../helpers/bookingHelpers";
 import { paymentMethodOptions } from "../../helpers/options";
@@ -361,7 +362,16 @@ const ResolveBooking = ({
       )}`,
     }));
 
-  const activeRows = moneyAdjustmentEnabled ? rows : [];
+  const activeRows = useMemo(
+    () => (moneyAdjustmentEnabled ? rows : []),
+    [moneyAdjustmentEnabled, rows],
+  );
+  const hasCashMovement = activeRows.some(
+    (row) =>
+      row.paymentMethod === "Cash" &&
+      row.direction !== "neutral" &&
+      Number(row.amount) > 0,
+  );
 
   const totals = useMemo(
     () =>
@@ -583,6 +593,7 @@ const ResolveBooking = ({
           </p>
         )}
       </div>
+      {hasCashMovement && <CashShiftNudge />}
 
       <section className="resolveBooking__section">
         <p className="addBooking__label">เกิดอะไรขึ้นกับรายการจองนี้?</p>

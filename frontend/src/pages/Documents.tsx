@@ -12,6 +12,8 @@ import { customStyles } from "../helpers/selectStyling";
 import { API_URL } from "../config/api";
 import { paymentMethodOptions, platformOptions } from "../helpers/options";
 import usePageTitle from "../hooks/useTitle";
+import { useAuth } from "../context/AuthContext";
+import { formatDisplayDate, formatHeaderDate } from "../helpers/displayDate";
 
 import type { SingleValue } from "react-select";
 import type { OptionType } from "../helpers/selectStyling";
@@ -88,7 +90,9 @@ const hotelDestinationCountryOptions = [
 
 const Documents = () => {
   usePageTitle("HostelFlow · เอกสาร");
+  const { user } = useAuth();
   const navigate = useNavigate();
+  const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
   const today = new Date();
   const currentMonth = formatInputMonth(today);
   const currentDate = formatInputDate(today);
@@ -113,12 +117,7 @@ const Documents = () => {
   const [bookingExporting, setBookingExporting] = useState(false);
   const [immigrationExporting, setImmigrationExporting] = useState(false);
   const [hotelExporting, setHotelExporting] = useState(false);
-  const fullFormattedDate = new Intl.DateTimeFormat("th-TH", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    calendar: "gregory",
-  }).format(new Date());
+  const fullFormattedDate = formatHeaderDate(new Date());
   const lastUpdated = new Date();
 
   const selectValue = (options: OptionType[], value: string) =>
@@ -200,12 +199,7 @@ const Documents = () => {
                 <div className="documents__missingMeta">
                   <strong>{booking.reason || "Passport ไม่ครบ"}</strong>
                   <span>
-                    {new Date(booking.checkOut).toLocaleDateString("th-TH", {
-                      day: "2-digit",
-                      month: "short",
-                      year: "numeric",
-                      calendar: "gregory",
-                    })}
+                    {formatDisplayDate(booking.checkOut, dateFormat)}
                   </span>
                 </div>
               </button>

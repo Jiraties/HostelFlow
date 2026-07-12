@@ -8,6 +8,21 @@
   padding: 2rem;
 }
 
+.viewBooking__loadError {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  justify-content: center;
+  min-height: 20rem;
+  text-align: center;
+}
+
+.viewBooking__loadError > i {
+  color: var(--red);
+  font-size: 3rem;
+}
+
 .viewBooking__wrapper,
 .viewBooking__mainLeft,
 .viewBooking__priceList {

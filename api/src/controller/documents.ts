@@ -24,6 +24,12 @@ import {
   formatRoomStayRooms,
   getPrimaryRoomId,
 } from "../helpers/roomStayHelpers";
+import { logActivityStrict } from "../services/activityServices";
+
+const setSensitiveDownloadHeaders = (res: Response) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("Pragma", "no-cache");
+};
 
 const platformMap: Record<string, { label: string; color: string }> = {
   BOOK: { label: "Booking.com", color: "003580" },
@@ -48,6 +54,14 @@ const transactionMap: Record<string, string> = {
   slowBoat: "Slow Boat",
   joinTour: "Join Tour",
   extraBed: "เตียงเสริม",
+  pickACraft: "Pick A Craft",
+  setMenu: "Set Menu",
+  sleeperBus: "Sleeper Bus",
+  onlyWalk: "Only Walk",
+  laundry: "Laundry",
+  bicycle: "Bicycle",
+  car: "Car",
+  misc: "Misc",
   cardSurcharge: "ค่าธรรมเนียมบัตร 3%",
 };
 
@@ -721,6 +735,15 @@ export const getImmigrationReport = async (req: Request, res: Response) => {
       `attachment; filename=immigration-${date}.xlsx`,
     );
 
+    await logActivityStrict(req.user?.username, "EXPORT_PASSPORT_REPORT", {
+      summary: {
+        reportType: "immigration",
+        businessDate: date,
+        bookingCount: bookings.length,
+      },
+    });
+    setSensitiveDownloadHeaders(res);
+
     await workbook.xlsx.write(res);
     res.end();
   } catch (err) {
@@ -838,6 +861,15 @@ export const getHotelAccomodationReport = async (
       "Content-Disposition",
       `attachment; filename=hotel-accommodation-${date}.xlsx`,
     );
+
+    await logActivityStrict(req.user?.username, "EXPORT_PASSPORT_REPORT", {
+      summary: {
+        reportType: "hotel_accommodation",
+        businessDate: date,
+        bookingCount: bookings.length,
+      },
+    });
+    setSensitiveDownloadHeaders(res);
 
     await workbook.xlsx.write(res);
     res.end();

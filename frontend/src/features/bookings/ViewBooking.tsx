@@ -27,6 +27,7 @@ import {
 } from "../../helpers/roomStayHelpers.ts";
 import { Modal } from "@mui/material";
 import { useAuth } from "../../context/AuthContext.tsx";
+import { formatDisplayDate } from "../../helpers/displayDate.ts";
 
 import type { booking, ResolutionOutcome } from "../../types/bookingTypes";
 
@@ -70,6 +71,18 @@ const transactionMap = {
   slowBoat: { icon: "bx-water", name: "Slow Boat", color: "#2dd4bf" },
   joinTour: { icon: "bx-map", name: "Join Tour", color: "#22c55e" },
   extraBed: { icon: "bx-bed", name: "เตียงเสริม", color: "#ec4899" },
+  pickACraft: { icon: "bx-palette", name: "Pick A Craft", color: "#f59e0b" },
+  setMenu: { icon: "bx-food-menu", name: "Set Menu", color: "#84cc16" },
+  sleeperBus: { icon: "bx-bus", name: "Sleeper Bus", color: "#6366f1" },
+  onlyWalk: { icon: "bx-walk", name: "Only Walk", color: "#14b8a6" },
+  laundry: { icon: "bx-washer", name: "Laundry", color: "#60a5fa" },
+  bicycle: { icon: "bx-cycling", name: "Bicycle", color: "#fb923c" },
+  car: { icon: "bx-car", name: "Car", color: "#64748b" },
+  misc: {
+    icon: "bx-dots-horizontal-rounded",
+    name: "Misc",
+    color: "#94a3b8",
+  },
   cardSurcharge: {
     icon: "bx-credit-card-alt",
     name: "ค่าธรรมเนียมบัตร 3%",
@@ -91,6 +104,8 @@ const ViewBooking = ({
   removeBookingHandler: (booking: booking) => void;
 }) => {
   const [data, setData] = useState<booking | null>(booking || null);
+  const [loadError, setLoadError] = useState("");
+  const [loadRetryKey, setLoadRetryKey] = useState(0);
   const [manageRoomStaysIsOpen, setManageRoomStaysIsOpen] = useState(false);
   const [editBookingIsOpen, setEditBookingIsOpen] = useState(false);
   const [addTransactionIsOpen, setAddTransactionIsOpen] = useState(false);
@@ -125,6 +140,7 @@ const ViewBooking = ({
   ] = useState(false);
   const priceListRef = useRef<HTMLDivElement | null>(null);
   const { user } = useAuth();
+  const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
 
   const updateTransactionOverflowAlert = () => {
     const priceList = priceListRef.current;
@@ -168,6 +184,7 @@ const ViewBooking = ({
     if (!booking) return;
 
     setData(booking);
+    setLoadError("");
     setNoteDraft(booking.note || "");
     setNoteIsEditing(false);
     setLoading(false);
@@ -180,6 +197,7 @@ const ViewBooking = ({
     const fetchBooking = async () => {
       try {
         setLoading(true);
+        setLoadError("");
 
         const res = await axios.get(
           `${API_URL}/bookings/getBookingById/` + bookingId,
@@ -190,14 +208,23 @@ const ViewBooking = ({
         setData(formattedBooking);
         setNoteDraft(formattedBooking.note || "");
       } catch (err) {
-        console.error(err);
+        const message = axios.isAxiosError<{
+          error?: string;
+          message?: string;
+        }>(err)
+          ? err.response?.data.message || err.response?.data.error
+          : null;
+
+        setLoadError(
+          message || "ไม่สามารถโหลดข้อมูลการจองได้ กรุณาลองอีกครั้ง",
+        );
       } finally {
         setLoading(false);
       }
     };
 
     fetchBooking();
-  }, [bookingId, data]);
+  }, [bookingId, data, loadRetryKey]);
 
   useEffect(() => {
     const animationFrame = requestAnimationFrame(
@@ -206,6 +233,23 @@ const ViewBooking = ({
 
     return () => cancelAnimationFrame(animationFrame);
   }, [data?.transactions.length, transactionOverflowAlertDismissed]);
+
+  if (!loading && loadError && !data) {
+    return (
+      <div className="viewBooking__wrapper viewBooking__loadError">
+        {onClose && <ModalCloseButton onClick={onClose} />}
+        <i className="bx bx-error-circle" />
+        <h1>โหลดข้อมูลการจองไม่สำเร็จ</h1>
+        <p>{loadError}</p>
+        <ActionButton
+          text="ลองโหลดอีกครั้ง"
+          icon="bx-refresh"
+          highlight
+          onClick={() => setLoadRetryKey((key) => key + 1)}
+        />
+      </div>
+    );
+  }
 
   if (loading || !data) {
     return (
@@ -958,20 +1002,14 @@ const ViewBooking = ({
             <div className="viewBooking__item">
               <span className="viewBooking__label">Check-In: </span>
               <p className="viewBooking__infoText">
-                {new Intl.DateTimeFormat("th-TH", {
-                  calendar: "gregory",
-                  dateStyle: "medium",
-                }).format(data.checkIn)}{" "}
+                {formatDisplayDate(data.checkIn, dateFormat)}{" "}
                 <span className="viewBooking__nights">{data.nights} คืน</span>
               </p>
             </div>
             <div className="viewBooking__item">
               <span className="viewBooking__label">Check-Out </span>
               <p className="viewBooking__infoText">
-                {new Intl.DateTimeFormat("th-TH", {
-                  calendar: "gregory",
-                  dateStyle: "medium",
-                }).format(data.checkOut)}
+                {formatDisplayDate(data.checkOut, dateFormat)}
               </p>
             </div>
 
@@ -1093,15 +1131,13 @@ const ViewBooking = ({
                   <h3>{formatRoomStayRooms(roomStay)}</h3>
                   <div className="viewBooking__roomStay--dates">
                     <p className="viewBooking__roomStay--from">
-                      {new Date(roomStay.from).toLocaleDateString("th-TH", {
-                        day: "2-digit",
-                        month: "short",
+                      {formatDisplayDate(roomStay.from, dateFormat, {
+                        includeYear: false,
                       })}
                     </p>
                     <p className="viewBooking__roomStay--to">
-                      {new Date(roomStay.to).toLocaleDateString("th-TH", {
-                        day: "2-digit",
-                        month: "short",
+                      {formatDisplayDate(roomStay.to, dateFormat, {
+                        includeYear: false,
                       })}
                     </p>
                   </div>
@@ -1137,16 +1173,18 @@ const ViewBooking = ({
                     <i className="bx bx-edit" />
                     แก้ไข
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      removeBookingHandler(data);
-                      setMoreActionsIsOpen(false);
-                    }}
-                  >
-                    <i className="bx bx-trash" />
-                    ลบ
-                  </button>
+                  {user?.admin && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        removeBookingHandler(data);
+                        setMoreActionsIsOpen(false);
+                      }}
+                    >
+                      <i className="bx bx-trash" />
+                      ลบ
+                    </button>
+                  )}
                   {data.status === "booked" && (
                     <button
                       type="button"

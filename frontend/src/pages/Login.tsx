@@ -1,7 +1,7 @@
 import Logo from "../components/Logo";
 
 import { useAuth } from "../context/AuthContext";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { API_URL } from "../config/api";
 import axios from "axios";
 import usePageTitle from "../hooks/useTitle";
@@ -16,6 +16,7 @@ const Login = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState({ code: 0, message: "" });
   const [shake, setShake] = useState(false);
+  const loginInFlight = useRef(false);
 
   const triggerShake = () => {
     setShake(true);
@@ -27,11 +28,13 @@ const Login = () => {
   ) => {
     event.preventDefault();
 
-    if (isLoading) return;
+    if (loginInFlight.current) return;
+    loginInFlight.current = true;
     setIsLoading(true);
+    setError({ code: 0, message: "" });
 
     try {
-      const response = await axios.post(
+      await axios.post(
         `${API_URL}/auth/login`,
         {
           username: username,
@@ -40,14 +43,25 @@ const Login = () => {
         { withCredentials: true },
       );
 
-      login(response.data.user);
-      console.log(response.data.user);
-
-      setIsLoading(false);
-    } catch (err: any) {
-      setError({ code: err.response.status, message: err.response.data.error });
-      setIsLoading(false);
+      // Do not render protected pages until the browser proves that it is
+      // sending the same session cookie the backend just issued.
+      const sessionResponse = await axios.get(`${API_URL}/auth/me`, {
+        withCredentials: true,
+      });
+      login(sessionResponse.data.user);
+    } catch (err: unknown) {
+      const status = axios.isAxiosError(err) ? err.response?.status || 0 : 0;
+      const responseMessage = axios.isAxiosError(err)
+        ? err.response?.data?.error || err.response?.data?.message
+        : undefined;
+      setError({
+        code: status,
+        message: responseMessage || "ไม่สามารถเข้าสู่ระบบได้ กรุณาลองอีกครั้ง",
+      });
       triggerShake();
+    } finally {
+      loginInFlight.current = false;
+      setIsLoading(false);
     }
   };
 

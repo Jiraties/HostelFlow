@@ -3,12 +3,15 @@ import axios from "axios";
 import toast from "react-hot-toast";
 import ActionButton from "../../components/ActionButton";
 import ModalCloseButton from "../../components/ModalCloseButton";
+import CashShiftNudge from "../../components/CashShiftNudge";
 import type { booking } from "../../types/bookingTypes";
 
 import { API_URL } from "../../config/api";
 import { formatBookingDates } from "../../helpers/bookingHelpers";
 import { platformMap } from "../../helpers/maps";
 import { formatRoomStayRooms } from "../../helpers/roomStayHelpers";
+import { useAuth } from "../../context/AuthContext";
+import { formatDisplayDate } from "../../helpers/displayDate";
 
 import "./CheckIn.css";
 import "./Cancellation.css";
@@ -31,6 +34,8 @@ const CheckOut = ({
   handleCheckOutSuccess,
   onRecordPayment,
 }: CheckOutProps) => {
+  const { user } = useAuth();
+  const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
   const [releaseRemainingNights, setReleaseRemainingNights] = useState(true);
   const [confirmedDepositRefund, setConfirmedDepositRefund] = useState(false);
   const [confirmedStillUnpaid, setConfirmedStillUnpaid] = useState(false);
@@ -101,6 +106,8 @@ const CheckOut = ({
     0,
   );
   const hasUnpaidBalance = unpaidRoomChargeAmount > 0;
+  const hasCashMovement =
+    depositPaymentMethod === "Cash" && remainingDepositAmount > 0;
 
   useEffect(() => {
     onDirtyChange?.(
@@ -119,7 +126,7 @@ const CheckOut = ({
   ]);
 
   const checkOutHandler = async () => {
-    if (!confirmedDepositRefund) {
+    if (remainingDepositAmount > 0 && !confirmedDepositRefund) {
       throw new Error("กรุณายืนยันการคืนมัดจำ");
     }
 
@@ -166,6 +173,7 @@ const CheckOut = ({
             </p>
           </div>
         )}
+        {hasCashMovement && <CashShiftNudge />}
       </div>
 
       <div className="checkOut__grid">
@@ -196,20 +204,14 @@ const CheckOut = ({
           <div className="viewBooking__item">
             <span className="viewBooking__label">Check-In: </span>
             <p className="viewBooking__infoText">
-              {new Intl.DateTimeFormat("th-TH", {
-                calendar: "gregory",
-                dateStyle: "medium",
-              }).format(booking.checkIn)}{" "}
+              {formatDisplayDate(booking.checkIn, dateFormat)}{" "}
               <span className="viewBooking__nights">{booking.nights} คืน</span>
             </p>
           </div>
           <div className="viewBooking__item">
             <span className="viewBooking__label">Check-Out </span>
             <p className="viewBooking__infoText">
-              {new Intl.DateTimeFormat("th-TH", {
-                calendar: "gregory",
-                dateStyle: "medium",
-              }).format(booking.checkOut)}
+              {formatDisplayDate(booking.checkOut, dateFormat)}
             </p>
           </div>
         </div>
@@ -275,21 +277,27 @@ const CheckOut = ({
             <div className="checkIn__paymentConfirmationTotal">
               <div className="checkIn__totalsBreakdown">
                 <div className="checkIn__totalRow cash-total">
-                  <p>ยอดเงินสดที่ต้องคืน:</p>
+                  <p>
+                    {remainingDepositAmount > 0
+                      ? "ยอดเงินสดที่ต้องคืน:"
+                      : "ไม่มียอดมัดจำที่ต้องคืน"}
+                  </p>
                   <p className="checkIn__paymentConfirmationTotalText">
                     {formatCurrency(remainingDepositAmount)}
                   </p>
                 </div>
               </div>
-              <label className="checkbox">
-                ยืนยันคืนเงิน
-                <input
-                  type="checkbox"
-                  checked={confirmedDepositRefund}
-                  onChange={(e) => setConfirmedDepositRefund(e.target.checked)}
-                />
-                <span className="box"></span>
-              </label>
+              {remainingDepositAmount > 0 && (
+                <label className="checkbox">
+                  ยืนยันคืนเงิน
+                  <input
+                    type="checkbox"
+                    checked={confirmedDepositRefund}
+                    onChange={(e) => setConfirmedDepositRefund(e.target.checked)}
+                  />
+                  <span className="box"></span>
+                </label>
+              )}
             </div>
           </div>
 

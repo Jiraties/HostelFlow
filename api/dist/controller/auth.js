@@ -3,9 +3,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.setProfilePicture = exports.logout = exports.me = exports.login = exports.updateUser = exports.resetUserPassword = exports.adminCreateUser = exports.listUsers = exports.createUser = void 0;
+exports.setProfilePicture = exports.logout = exports.me = exports.login = exports.updateMySettings = exports.updateUser = exports.resetUserPassword = exports.adminCreateUser = exports.listUsers = void 0;
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const user_1 = __importDefault(require("../models/user"));
+const user_2 = require("../models/user");
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const activityServices_1 = require("../services/activityServices");
@@ -17,36 +18,54 @@ const authCookieOptions = {
     sameSite: "lax",
     path: "/",
 };
-const createUser = async (req, res, next) => {
-    try {
-        const { username, password, secretCode, admin, name } = req.body;
-        console.log(req.body);
-        if (secretCode !== process.env.SECRET_CODE)
-            throw new Error("To create a new account please provide the correct secret code");
-        const hashedPassword = await bcrypt_1.default.hash(password, 10);
-        const user = new user_1.default({
-            username,
-            password: hashedPassword,
-            admin,
-            name,
-            profilePictureUrl: "/uploads/default.jpg",
-        });
-        await user.save();
-        res.status(201).json({ message: "User created successfully" });
-    }
-    catch (err) {
-        return res.status(400).json({ error: err.message });
-    }
+const SESSION_LIFETIME_MS = 24 * 60 * 60 * 1000;
+const activeSessionError = {
+    error: "บัญชีนี้กำลังใช้งานอยู่บนอุปกรณ์อื่น กรุณาออกจากระบบบนอุปกรณ์เดิมก่อน",
+    code: "ACTIVE_SESSION_EXISTS",
 };
-exports.createUser = createUser;
-const sanitizeUser = (user) => ({
-    userId: String(user._id),
-    username: user.username,
-    name: user.name,
-    admin: user.admin,
-    active: user.active !== false,
-    profilePictureUrl: user.profilePictureUrl || "/uploads/default.jpg",
+const normalizeUserSettings = (settings) => ({
+    calendarColorMode: settings?.calendarColorMode || user_2.defaultUserSettings.calendarColorMode,
+    calendarDensity: settings?.calendarDensity || user_2.defaultUserSettings.calendarDensity,
+    tableDensity: settings?.tableDensity || user_2.defaultUserSettings.tableDensity,
+    defaultPlatformId: settings?.defaultPlatformId ?? user_2.defaultUserSettings.defaultPlatformId,
+    defaultPaymentMethod: settings?.defaultPaymentMethod ?? user_2.defaultUserSettings.defaultPaymentMethod,
+    dateFormat: settings?.dateFormat || user_2.defaultUserSettings.dateFormat,
 });
+const sanitizeUser = (user) => {
+    const settings = user.settings && typeof user.settings.toObject === "function"
+        ? user.settings.toObject()
+        : user.settings;
+    return {
+        userId: String(user._id),
+        username: user.username,
+        name: user.name,
+        admin: user.admin,
+        active: user.active !== false,
+        profilePictureUrl: user.profilePictureUrl || "/uploads/default.jpg",
+        settings: normalizeUserSettings(settings),
+    };
+};
+const settingsOptions = {
+    calendarColorMode: ["status", "source"],
+    calendarDensity: ["compact", "comfortable", "spacious"],
+    tableDensity: ["compact", "comfortable", "spacious"],
+    defaultPlatformId: ["", "BOOK", "HOST", "TRAV", "AGOD", "WALK"],
+    defaultPaymentMethod: ["", "OTA", "Cash", "Card", "Transfer", "Unpaid"],
+    dateFormat: ["dd/MM/yyyy", "d MMM yyyy"],
+};
+const normalizeSettingsUpdate = (body) => {
+    const updates = {};
+    Object.keys(settingsOptions).forEach((key) => {
+        const value = body[key];
+        if (value === undefined)
+            return;
+        if (!settingsOptions[key].includes(value)) {
+            throw new Error("ค่าการตั้งค่าไม่ถูกต้อง");
+        }
+        updates[key] = value;
+    });
+    return updates;
+};
 const listUsers = async (req, res) => {
     try {
         if (!req.user?.admin) {
@@ -236,9 +255,43 @@ const updateUser = async (req, res) => {
     }
 };
 exports.updateUser = updateUser;
+const updateMySettings = async (req, res) => {
+    try {
+        if (!req.user)
+            return res.status(401).json({ message: "Unauthorized" });
+        const updates = normalizeSettingsUpdate(req.body || {});
+        if (Object.keys(updates).length === 0) {
+            const user = await user_1.default.findById(req.user.userId).select("_id username name admin active profilePictureUrl settings");
+            if (!user)
+                return res.status(404).json({ message: "ไม่พบผู้ใช้" });
+            return res.status(200).json({
+                message: "ไม่มีข้อมูลที่เปลี่ยนแปลง",
+                user: sanitizeUser(user),
+            });
+        }
+        const $set = Object.fromEntries(Object.entries(updates).map(([key, value]) => [`settings.${key}`, value]));
+        const updatedUser = await user_1.default.findByIdAndUpdate(req.user.userId, { $set }, { returnDocument: "after" }).select("_id username name admin active profilePictureUrl settings");
+        if (!updatedUser)
+            return res.status(404).json({ message: "ไม่พบผู้ใช้" });
+        (0, activityServices_1.logActivity)(req.user.username, "UPDATE_USER_SETTINGS", {
+            summary: {
+                updatedSettings: Object.keys(updates),
+            },
+        }).catch((err) => {
+            console.error("Failed to log settings update activity", err);
+        });
+        return res.status(200).json({
+            message: "บันทึกการตั้งค่าเรียบร้อยแล้ว",
+            user: sanitizeUser(updatedUser),
+        });
+    }
+    catch (err) {
+        return res.status(400).json({ message: err.message });
+    }
+};
+exports.updateMySettings = updateMySettings;
 const login = async (req, res, next) => {
     try {
-        console.log("LOGGIN IN! ");
         const { username, password } = req.body;
         if (!username || !password)
             return res.status(400).json({ error: "กรุณากรอกอีเมลและรหัสผ่านให้ครบ" });
@@ -258,17 +311,46 @@ const login = async (req, res, next) => {
         }
         if (!process.env.JWT_SECRET)
             throw new Error("JWT_SECRET not found serverside");
-        const sessionId = (0, crypto_1.randomUUID)();
-        await user_1.default.findByIdAndUpdate(user._id, {
+        const now = new Date();
+        const sessionCutoff = new Date(now.getTime() - SESSION_LIFETIME_MS);
+        let requestSessionId;
+        if (req.cookies.token) {
+            try {
+                const existingToken = jsonwebtoken_1.default.verify(req.cookies.token, process.env.JWT_SECRET);
+                if (String(existingToken.userId) === String(user._id) &&
+                    existingToken.sessionId === user.currentSessionId) {
+                    requestSessionId = existingToken.sessionId;
+                }
+            }
+            catch {
+                // An expired or invalid cookie does not own the active session.
+            }
+        }
+        const sessionId = requestSessionId || (0, crypto_1.randomUUID)();
+        const sessionUser = await user_1.default.findOneAndUpdate(requestSessionId
+            ? { _id: user._id, currentSessionId: requestSessionId }
+            : {
+                _id: user._id,
+                $or: [
+                    { currentSessionId: { $exists: false } },
+                    { currentSessionId: null },
+                    { currentSessionIssuedAt: { $exists: false } },
+                    { currentSessionIssuedAt: { $lte: sessionCutoff } },
+                ],
+            }, {
             $set: {
                 currentSessionId: sessionId,
-                currentSessionIssuedAt: new Date(),
+                currentSessionIssuedAt: now,
             },
-        });
+        }, { returnDocument: "after" });
+        if (!sessionUser) {
+            (0, activityServices_1.logActivity)(username, "LOGIN", { success: false }).catch(() => { });
+            return res.status(409).json(activeSessionError);
+        }
         const token = jsonwebtoken_1.default.sign({
             userId: user._id,
-            admin: user.admin,
-            username: user.username,
+            admin: sessionUser.admin,
+            username: sessionUser.username,
             sessionId,
         }, process.env.JWT_SECRET, {
             expiresIn: "1d",
@@ -276,14 +358,7 @@ const login = async (req, res, next) => {
         res.cookie("token", token, authCookieOptions);
         res.status(200).json({
             message: "Logged In Successfully.",
-            user: {
-                userId: String(user._id),
-                username: user.username,
-                name: user.name,
-                admin: user.admin,
-                active: true,
-                profilePictureUrl: user.profilePictureUrl,
-            },
+            user: sanitizeUser(sessionUser),
         });
         (0, activityServices_1.logActivity)(username, "LOGIN", { success: true });
     }
@@ -294,21 +369,13 @@ const login = async (req, res, next) => {
 exports.login = login;
 const me = async (req, res, next) => {
     try {
-        console.log(req.user);
         if (!req.user)
             return res.status(401).json({ error: "Not Authorized" });
         const user = await user_1.default.findById(req.user?.userId);
         if (!user)
             throw new Error("Token authorized but user not found.");
         res.status(200).json({
-            user: {
-                userId: String(user._id),
-                username: user.username,
-                name: user.name,
-                admin: user.admin,
-                active: user.active !== false,
-                profilePictureUrl: user.profilePictureUrl,
-            },
+            user: sanitizeUser(user),
             message: "Successfully fetched user info",
         });
     }
@@ -323,9 +390,7 @@ const logout = async (req, res) => {
     }
     res.clearCookie("token", authCookieOptions);
     res.status(200).json({ message: "Successfully logged out" });
-    console.log(req.user);
     (0, activityServices_1.logActivity)(req.user?.username, "LOGOUT", { success: true });
-    console.log("Logged Out");
 };
 exports.logout = logout;
 const setProfilePicture = async (req, res) => {
@@ -344,12 +409,7 @@ const setProfilePicture = async (req, res) => {
             return res.status(404).json({ message: "ไม่พบผู้ใช้" });
         return res.status(200).json({
             message: "อัปเดตรูปโปรไฟล์เรียบร้อยแล้ว",
-            user: {
-                username: updatedUser.username,
-                name: updatedUser.name,
-                admin: updatedUser.admin,
-                profilePictureUrl: updatedUser.profilePictureUrl,
-            },
+            user: sanitizeUser(updatedUser),
         });
     }
     catch (err) {

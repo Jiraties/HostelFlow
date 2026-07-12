@@ -20,6 +20,8 @@ import "./Spreadsheet.css";
 import { platformMap } from "../../helpers/maps.ts";
 import { roomChargeDisplayPaymentMethod } from "../../helpers/bookingHelpers.ts";
 import { formatRoomStayRooms } from "../../helpers/roomStayHelpers.ts";
+import { useAuth } from "../../context/AuthContext.tsx";
+import { formatDisplayDate } from "../../helpers/displayDate.ts";
 
 type SpreadsheetStatus = "arrivals" | "departures" | "master";
 
@@ -181,7 +183,24 @@ const Spreadsheet = ({
   };
 }) => {
   const modules = [AllCommunityModule];
+  const { user } = useAuth();
   const isMaster = status === "master";
+  const tableDensity = user?.settings.tableDensity || "comfortable";
+  const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
+  const rowHeight =
+    tableDensity === "compact"
+      ? 36
+      : tableDensity === "spacious"
+        ? 54
+        : undefined;
+  const headerHeight =
+    tableDensity === "compact"
+      ? 40
+      : tableDensity === "spacious"
+        ? 52
+        : undefined;
+  const separatorRowHeight =
+    tableDensity === "compact" ? 34 : tableDensity === "spacious" ? 50 : 42;
   const gridApiRef = useRef<GridApi<SpreadsheetRow> | null>(null);
   const hasScrolledToTodayRef = useRef(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -199,23 +218,10 @@ const Spreadsheet = ({
 
   const dateValueFormater = (
     params: ValueFormatterParams<SpreadsheetRow, Date>,
-  ) =>
-    params.value
-      ? new Intl.DateTimeFormat("th-TH", {
-          calendar: "gregory",
-          day: "numeric",
-          month: "short",
-          year: "2-digit",
-        }).format(params.value)
-      : "";
+  ) => (params.value ? formatDisplayDate(params.value, dateFormat) : "");
 
   const separatorDateFormatter = (date: Date) =>
-    new Intl.DateTimeFormat("th-TH", {
-      calendar: "gregory",
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    }).format(date);
+    formatDisplayDate(date, dateFormat);
 
   const rowData = useMemo<SpreadsheetRow[]>(() => {
     if (!isMaster) {
@@ -296,7 +302,14 @@ const Spreadsheet = ({
     }
 
     return rows;
-  }, [bookings, isMaster, masterRange?.from, masterRange?.to, todayKey]);
+  }, [
+    bookings,
+    dateFormat,
+    isMaster,
+    masterRange?.from,
+    masterRange?.to,
+    todayKey,
+  ]);
 
   const scrollToTodaySeparator = useCallback(() => {
     const api = gridApiRef.current;
@@ -326,18 +339,24 @@ const Spreadsheet = ({
       {
         field: "name",
         headerName: "ชื่อ",
+        flex: 1.3,
+        minWidth: 180,
         filter: true,
         cellRenderer: nameCell,
       },
       {
         field: "checkIn",
+        width: 128,
+        minWidth: 128,
         valueFormatter: dateValueFormater,
       },
       {
         field: "checkOut",
+        width: 128,
+        minWidth: 128,
         valueFormatter: dateValueFormater,
       },
-      { field: "nights", headerName: "คืน" },
+      { field: "nights", headerName: "คืน", width: 76, minWidth: 76 },
       {
         valueGetter: (params: ValueGetterParams<SpreadsheetRow>) => {
           if (isSeparatorRow(params.data)) return "";
@@ -347,19 +366,22 @@ const Spreadsheet = ({
         },
         headerName: "ห้อง",
         filter: true,
-        minWidth: 110,
-        maxWidth: 180,
+        flex: 1,
+        minWidth: 160,
         cellClass: "spreadsheet__roomCell",
       },
       {
         field: "platformId",
         headerName: "ช่องทางการจอง",
         filter: true,
+        width: 170,
+        minWidth: 160,
         cellRenderer: platformCell,
       },
       {
         headerName: "ค่าห้อง",
-        maxWidth: 130,
+        width: 140,
+        minWidth: 135,
         valueGetter: (params: ValueGetterParams<SpreadsheetRow>) => {
           if (isSeparatorRow(params.data)) return undefined;
           return params.data?.transactions?.find(
@@ -385,6 +407,8 @@ const Spreadsheet = ({
         },
         headerName: "ช่องทางการจ่าย",
         filter: true,
+        width: 145,
+        minWidth: 140,
         cellClassRules: {
           red: (param: CellClassParams<SpreadsheetRow>) =>
             param.value === "Unpaid",
@@ -394,13 +418,17 @@ const Spreadsheet = ({
         field: "bookingId",
         headerName: "Booking ID",
         filter: true,
+        width: 150,
+        minWidth: 140,
         sortable: false,
       },
       {
         field: "checkInByStaffUsername",
         headerName: "เช็คอินโดย",
+        width: 130,
+        minWidth: 120,
       },
-      { field: "note", sortable: false },
+      { field: "note", flex: 1.1, minWidth: 180, sortable: false },
       {
         field: "status",
         headerName: isMobile ? "" : "สถานะ Check-In",
@@ -442,7 +470,7 @@ const Spreadsheet = ({
     ];
 
     return columns;
-  }, [isMaster, isMobile]);
+  }, [dateFormat, isMaster, isMobile]);
 
   const onRowDoubleClicked = (event: RowClickedEvent<SpreadsheetRow>) => {
     if (!event.data || isSeparatorRow(event.data)) return;
@@ -475,6 +503,11 @@ const Spreadsheet = ({
   return (
     <AgGridProvider modules={modules}>
       <div
+        className={
+          tableDensity === "spacious"
+            ? "spreadsheet spreadsheet--spacious"
+            : "spreadsheet"
+        }
         style={{
           boxShadow: "rgba(149, 157, 165, 0.25) 0px 8px 24px",
           height: "100%",
@@ -491,13 +524,14 @@ const Spreadsheet = ({
           }}
           suppressDragLeaveHidesColumns
           theme={myTheme}
+          rowHeight={rowHeight}
+          headerHeight={headerHeight}
           onGridReady={onGridReady}
           postSortRows={postSortRows}
           rowClassRules={{
             spreadsheet__starredRow: (params) =>
               !isSeparatorRow(params.data) && Boolean(params.data?.starred),
           }}
-          autoSizeStrategy={{ type: "fitCellContents" }}
           getRowId={(params) =>
             isSeparatorRow(params.data)
               ? `separator-${params.data.dateKey}`
@@ -517,7 +551,7 @@ const Spreadsheet = ({
             </div>
           )}
           getRowHeight={(params: RowHeightParams<SpreadsheetRow>) =>
-            isSeparatorRow(params.data) ? 42 : undefined
+            isSeparatorRow(params.data) ? separatorRowHeight : rowHeight
           }
           loadingOverlayComponent={CustomLoadingOverlay}
           onFirstDataRendered={scrollToTodaySeparator}

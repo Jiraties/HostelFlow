@@ -25,6 +25,7 @@ import { customStyles } from "../helpers/selectStyling";
 import { API_URL } from "../config/api";
 import { requestUnsavedModalClose } from "../helpers/modalGuards";
 import usePageTitle from "../hooks/useTitle";
+import { formatHeaderDate } from "../helpers/displayDate";
 
 import type { booking } from "../types/bookingTypes";
 import type { OptionType } from "../helpers/selectStyling";
@@ -102,18 +103,16 @@ const Home = ({ status }: { status: HomeStatus }) => {
   usePageTitle(
     `HostelFlow · ${
       status === "arrivals"
-        ? "เช็คอินวันนี้"
+        ? "Arrivals"
         : status === "departures"
-          ? "เช็คเอาท์วันนี้"
+          ? "Departures"
           : "รายการจองทั้งหมด"
     }`,
   );
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const isMaster = status === "master";
-  const bookingIdQuery = isMaster
-    ? searchParams.get("bookingId")?.trim() || ""
-    : "";
+  const bookingIdQuery = searchParams.get("bookingId")?.trim() || "";
   const [addBookingIsOpen, setAddBookingIsOpen] = useState(false);
   const [addBookingIsDirty, setAddBookingIsDirty] = useState(false);
   const [pendingUnsavedClose, setPendingUnsavedClose] = useState<
@@ -161,12 +160,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
     );
   }, [bookingIdQuery, isMaster]);
 
-  const fullFormattedDate = new Intl.DateTimeFormat("th-TH", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    calendar: "gregory",
-  }).format(new Date());
+  const fullFormattedDate = formatHeaderDate(new Date());
   const today = new Date();
   const bookingCheckInIsToday = (booking: booking) =>
     booking.checkIn.toDateString() === today.toDateString();
@@ -300,8 +294,8 @@ const Home = ({ status }: { status: HomeStatus }) => {
             helperText: cashShiftHelperText,
           },
           // {
-            //   id: "deposit",
-            //   label: "มัดจำที่ต้องคืน (฿)",
+          //   id: "deposit",
+          //   label: "มัดจำที่ต้องคืน (฿)",
           //   value: stats.cashReturn,
           // },
           {
@@ -341,7 +335,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
   };
 
   const clearBookingIdQueryParam = () => {
-    if (!isMaster || !searchParams.has("bookingId")) return;
+    if (!searchParams.has("bookingId")) return;
 
     const nextSearchParams = new URLSearchParams(searchParams);
     nextSearchParams.delete("bookingId");
@@ -444,7 +438,6 @@ const Home = ({ status }: { status: HomeStatus }) => {
 
   useEffect(() => {
     if (
-      !isMaster ||
       loading ||
       !bookingIdQuery ||
       openedBookingIdFromQueryRef.current === bookingIdQuery
@@ -460,7 +453,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
 
     openedBookingIdFromQueryRef.current = bookingIdQuery;
     setViewBookingBooking(bookingToOpen);
-  }, [bookingIdQuery, bookings, isMaster, loading]);
+  }, [bookingIdQuery, bookings, loading]);
 
   const renderMasterFilterFields = () => (
     <div className="home__masterFiltersInner">
@@ -573,7 +566,8 @@ const Home = ({ status }: { status: HomeStatus }) => {
           requestUnsavedModalClose(
             addBookingIsDirty,
             () => setAddBookingIsOpen(false),
-            () => setPendingUnsavedClose(() => () => setAddBookingIsOpen(false)),
+            () =>
+              setPendingUnsavedClose(() => () => setAddBookingIsOpen(false)),
           )
         }
       >
@@ -643,7 +637,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
         </div>
       </Modal>
       <PageHeader
-        title={`${status === "arrivals" ? "เช็คอินวันนี้ | " : status === "departures" ? "เช็คเอาท์วันนี้ | " : ""}${fullFormattedDate}`}
+        title={`${status === "arrivals" ? "Arrivals | " : status === "departures" ? "Departures | " : ""}${fullFormattedDate}`}
         lastUpdated={lastUpdated}
         onRefresh={fetchBookings}
       />

@@ -14,7 +14,21 @@ import path from "path";
 dotenv.config();
 
 const app = express();
-const port = process.env.PORT;
+const port = Number(process.env.PORT) || 3000;
+
+const validateEnvironment = () => {
+  const missing = ["MONGO_URI", "JWT_SECRET", "CRYPTO_SECRET"].filter(
+    (name) => !process.env[name]?.trim(),
+  );
+
+  if (missing.length > 0) {
+    throw new Error(`Missing required environment variables: ${missing.join(", ")}`);
+  }
+
+  if (!/^[a-fA-F0-9]{64}$/.test(process.env.CRYPTO_SECRET!)) {
+    throw new Error("CRYPTO_SECRET must be a 64-character hexadecimal key");
+  }
+};
 
 const defaultAllowedOrigins = [
   "http://localhost:5173",
@@ -48,12 +62,18 @@ app.use(
     credentials: true,
   }),
 );
-app.use(express.json());
+app.disable("x-powered-by");
+app.use(express.json({ limit: "100kb" }));
 app.use(cookieParser());
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 app.get("/health", (_req, res) => {
-  res.status(200).json({ status: "ok" });
+  const databaseReady = mongoose.connection.readyState === 1;
+
+  res.status(databaseReady ? 200 : 503).json({
+    status: databaseReady ? "ok" : "degraded",
+    database: databaseReady ? "connected" : "unavailable",
+  });
 });
 
 app.use("/auth", authRouter);
@@ -62,9 +82,15 @@ app.use("/documents", authMiddleware, documentsRouter);
 app.use("/activities", authMiddleware, activitiesRouter);
 app.use("/finance", authMiddleware, financeRouter);
 
-mongoose
-  .connect(process.env.MONGO_URI || "")
-  .then(() => console.log("Connected To MongoDB"))
-  .catch((err) => console.error(err));
+const startServer = async () => {
+  validateEnvironment();
+  await mongoose.connect(process.env.MONGO_URI!);
+  console.log("Connected To MongoDB");
 
-app.listen(port, () => console.log(`Server is running on port ${port}`));
+  app.listen(port, () => console.log(`Server is running on port ${port}`));
+};
+
+startServer().catch((err) => {
+  console.error("Server startup failed", err);
+  process.exitCode = 1;
+});

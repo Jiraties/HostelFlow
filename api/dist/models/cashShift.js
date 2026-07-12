@@ -1,0 +1,50 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const mongoose_1 = __importDefault(require("mongoose"));
+const cashShiftSchema = new mongoose_1.default.Schema({
+    businessDate: { type: String, required: true },
+    shiftNumber: { type: Number, required: true },
+    staffUsername: { type: String, required: true },
+    status: {
+        type: String,
+        enum: ["open", "closed"],
+        default: "open",
+        required: true,
+    },
+    openingMode: {
+        type: String,
+        enum: ["counted", "accepted_handoff"],
+        required: true,
+    },
+    handoffFromShiftId: { type: String },
+    depositOpeningCash: { type: Number, required: true },
+    operatingOpeningCash: { type: Number, required: true },
+    depositCashIn: { type: Number, default: 0 },
+    depositCashOut: { type: Number, default: 0 },
+    operatingCashIn: { type: Number, default: 0 },
+    operatingCashOut: { type: Number, default: 0 },
+    depositExpectedCash: { type: Number, required: true },
+    operatingExpectedCash: { type: Number, required: true },
+    depositActualCash: { type: Number },
+    operatingActualCash: { type: Number },
+    depositVariance: { type: Number },
+    operatingVariance: { type: Number },
+    note: { type: String },
+    startedAt: { type: Date, default: Date.now },
+    endedAt: { type: Date },
+    createdBy: { type: String, required: true },
+    closedBy: { type: String },
+    auditResolution: {
+        note: { type: String },
+        reviewedBy: { type: String },
+        reviewedAt: { type: Date },
+    },
+});
+cashShiftSchema.index({ businessDate: 1, shiftNumber: 1 }, { unique: true });
+cashShiftSchema.index({ businessDate: 1, status: 1 });
+cashShiftSchema.index({ businessDate: 1, startedAt: 1 });
+exports.default = mongoose_1.default.model("CashShift", cashShiftSchema);
+//# sourceMappingURL=cashShift.js.map

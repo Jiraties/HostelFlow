@@ -83,6 +83,7 @@ const ManageRoomStays = ({
   const [occupiedRoomIdsByStay, setOccupiedRoomIdsByStay] = useState<
     Record<number, string[]>
   >({});
+  const [submitting, setSubmitting] = useState(false);
 
   const roomStayAvailabilityKey = useMemo(
     () =>
@@ -182,6 +183,7 @@ const ManageRoomStays = ({
   );
 
   const addEmptyRoomStay = () => {
+    if (submitting) return;
     if (roomStays.length + 1 > 5)
       return toast.error("สามารถเพิ่มห้องได้มากสุด 5 ห้องในการจองเดียว");
     setRoomStays((prevRoomStays) => {
@@ -193,7 +195,9 @@ const ManageRoomStays = ({
   const isLastStay = (index: number) => index === roomStays.length - 1;
 
   const removeRoomStay = () => {
-    if (roomStays.length - 1 < 1) return toast.error("");
+    if (submitting) return;
+    if (roomStays.length - 1 < 1)
+      return toast.error("ต้องมีช่วงพักอย่างน้อย 1 ช่วง");
     setRoomStays((prevRoomStays) => {
       const updated = [...prevRoomStays];
       updated.pop();
@@ -202,6 +206,7 @@ const ManageRoomStays = ({
   };
 
   const patchRoomStays = async () => {
+    if (submitting) return;
     const roomStaysWithBoundaries = applyBookingBoundaries(roomStays);
     const hasEmpty = roomStaysWithBoundaries.some(
       (stay) => !getRoomStayRoomIds(stay).length || !stay.from || !stay.to,
@@ -216,15 +221,20 @@ const ManageRoomStays = ({
       throw new Error("วันที่เข้าพักต้องมาก่อนวันที่ออก");
     }
 
-    const response = await axios.patch(
-      `${API_URL}/bookings/manageRoomStays/${bookingId}`,
-      { roomStays: roomStaysWithBoundaries },
-      { withCredentials: true },
-    );
+    setSubmitting(true);
+    try {
+      const response = await axios.patch(
+        `${API_URL}/bookings/manageRoomStays/${bookingId}`,
+        { roomStays: roomStaysWithBoundaries },
+        { withCredentials: true },
+      );
 
-    if (response.status !== 200) throw new Error(response.data.message);
-    if (response.data.booking)
-      onUpdated?.(formatBookingDates(response.data.booking));
+      if (response.status !== 200) throw new Error(response.data.message);
+      if (response.data.booking)
+        onUpdated?.(formatBookingDates(response.data.booking));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -358,6 +368,7 @@ const ManageRoomStays = ({
           <ActionButton
             text="เพิ่มช่วงพัก"
             icon="bx-plus"
+            disabled={submitting}
             onClick={() => addEmptyRoomStay()}
           />
 
@@ -365,6 +376,7 @@ const ManageRoomStays = ({
             <ActionButton
               text="ลดช่วงพัก"
               icon="bx-minus"
+              disabled={submitting}
               onClick={() => removeRoomStay()}
             />
           )}
@@ -374,6 +386,7 @@ const ManageRoomStays = ({
           text="แก้ไข"
           icon="bx-edit"
           highlight
+          disabled={submitting}
           onClick={() => {
             toast.promise(patchRoomStays(), {
               loading: "กำลังอัปเดตข้อมูล...",

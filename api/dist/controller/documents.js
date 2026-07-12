@@ -12,6 +12,11 @@ const passportHelpers_1 = require("../helpers/passportHelpers");
 const dateHelpers_1 = require("../helpers/dateHelpers");
 const financeHelpers_1 = require("../helpers/financeHelpers");
 const roomStayHelpers_1 = require("../helpers/roomStayHelpers");
+const activityServices_1 = require("../services/activityServices");
+const setSensitiveDownloadHeaders = (res) => {
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Pragma", "no-cache");
+};
 const platformMap = {
     BOOK: { label: "Booking.com", color: "003580" },
     HOST: { label: "Hostelworld", color: "F15A24" },
@@ -34,6 +39,14 @@ const transactionMap = {
     slowBoat: "Slow Boat",
     joinTour: "Join Tour",
     extraBed: "เตียงเสริม",
+    pickACraft: "Pick A Craft",
+    setMenu: "Set Menu",
+    sleeperBus: "Sleeper Bus",
+    onlyWalk: "Only Walk",
+    laundry: "Laundry",
+    bicycle: "Bicycle",
+    car: "Car",
+    misc: "Misc",
     cardSurcharge: "ค่าธรรมเนียมบัตร 3%",
 };
 const hotelAccommodationHeaders = [
@@ -515,6 +528,14 @@ const getImmigrationReport = async (req, res) => {
         });
         res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         res.setHeader("Content-Disposition", `attachment; filename=immigration-${date}.xlsx`);
+        await (0, activityServices_1.logActivityStrict)(req.user?.username, "EXPORT_PASSPORT_REPORT", {
+            summary: {
+                reportType: "immigration",
+                businessDate: date,
+                bookingCount: bookings.length,
+            },
+        });
+        setSensitiveDownloadHeaders(res);
         await workbook.xlsx.write(res);
         res.end();
     }
@@ -583,6 +604,14 @@ const getHotelAccomodationReport = async (req, res) => {
         });
         res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         res.setHeader("Content-Disposition", `attachment; filename=hotel-accommodation-${date}.xlsx`);
+        await (0, activityServices_1.logActivityStrict)(req.user?.username, "EXPORT_PASSPORT_REPORT", {
+            summary: {
+                reportType: "hotel_accommodation",
+                businessDate: date,
+                bookingCount: bookings.length,
+            },
+        });
+        setSensitiveDownloadHeaders(res);
         await workbook.xlsx.write(res);
         res.end();
     }

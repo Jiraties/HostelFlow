@@ -4,6 +4,12 @@ import axios from "axios";
 import { useEffect, useMemo, useState } from "react";
 
 import { API_URL } from "../../config/api";
+import { useAuth } from "../../context/AuthContext";
+import {
+  formatDisplayDate,
+  formatDisplayDateTime,
+} from "../../helpers/displayDate";
+import type { DateFormatPreference } from "../../types/userSettings";
 import type {
   PaymentMethod,
   PlatformId,
@@ -54,7 +60,7 @@ type ExpectedStayRevenueBreakdownResponse = {
   period: {
     startDate: string;
     endDate: string;
-    basis: "transactionCreatedAt";
+    basis: "transactionCreatedAt" | "checkInAndTransactionCreatedAt";
   };
   totals: {
     grossStayCharges: number;
@@ -88,35 +94,21 @@ const formatMoney = (value: number) =>
     maximumFractionDigits: 2,
   });
 
-const formatDateTime = (date?: string | Date) =>
-  date
-    ? new Date(date).toLocaleString("th-TH", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        calendar: "gregory",
-      })
-    : "-";
+const formatDateTime = (
+  date: string | Date | undefined,
+  dateFormat: DateFormatPreference,
+) => (date ? formatDisplayDateTime(date, dateFormat) : "-");
 
-const formatDate = (date: string) =>
-  new Date(`${date}T00:00:00`).toLocaleDateString("th-TH", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    calendar: "gregory",
-  });
+const formatDate = (date: string, dateFormat: DateFormatPreference) =>
+  formatDisplayDate(`${date}T00:00:00`, dateFormat);
 
-const formatExclusiveEndDate = (date: string) => {
+const formatExclusiveEndDate = (
+  date: string,
+  dateFormat: DateFormatPreference,
+) => {
   const exclusiveEnd = new Date(`${date}T00:00:00`);
   exclusiveEnd.setDate(exclusiveEnd.getDate() - 1);
-  return exclusiveEnd.toLocaleDateString("th-TH", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    calendar: "gregory",
-  });
+  return formatDisplayDate(exclusiveEnd, dateFormat);
 };
 
 const paymentMethodLabel: Record<PaymentMethod, string> = {
@@ -155,20 +147,24 @@ const BreakdownSection = ({
   title,
   emptyText,
   groups,
+  dateFormat,
   negative = false,
 }: {
   title: string;
   emptyText: string;
   groups: BreakdownDisplayGroup[];
+  dateFormat: DateFormatPreference;
   negative?: boolean;
 }) => {
-  const [openGroupKey, setOpenGroupKey] = useState<string | null>(
-    groups[0]?.key ?? null,
-  );
-
-  useEffect(() => {
-    setOpenGroupKey(groups[0]?.key ?? null);
-  }, [groups, title]);
+  const [openGroupKey, setOpenGroupKey] = useState<
+    string | null | undefined
+  >(undefined);
+  const activeOpenGroupKey =
+    openGroupKey === null
+      ? null
+      : groups.some((group) => group.key === openGroupKey)
+        ? openGroupKey
+        : groups[0]?.key;
 
   return (
     <section className="financialBreakdown__section">
@@ -182,7 +178,7 @@ const BreakdownSection = ({
       ) : (
         <div className="financialBreakdown__categoryList">
           {groups.map((group) => {
-            const isOpen = openGroupKey === group.key;
+            const isOpen = activeOpenGroupKey === group.key;
 
             return (
               <article
@@ -247,7 +243,7 @@ const BreakdownSection = ({
                           <strong>{transaction.guestName}</strong>
                           <span>
                             {transaction.bookingId} · {transaction.label} ·{" "}
-                            {formatDateTime(transaction.createdAt)}
+                            {formatDateTime(transaction.createdAt, dateFormat)}
                           </span>
                         </div>
                         <div className="financialBreakdown__transactionSide">
@@ -275,12 +271,23 @@ const BreakdownSection = ({
   );
 };
 
-const FinancialBreakdown = () => {
+const FinancialBreakdown = ({
+  mode = "monthly",
+  initialType = null,
+}: {
+  mode?: "monthly" | "today";
+  initialType?: TransactionType | null;
+}) => {
+  const { user } = useAuth();
+  const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
   const [breakdown, setBreakdown] =
     useState<ExpectedStayRevenueBreakdownResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [breakdownMode, setBreakdownMode] = useState<BreakdownMode>("type");
+  const [selectedType, setSelectedType] = useState<TransactionType | null>(
+    initialType,
+  );
   const typeGroups = useMemo<BreakdownDisplayGroup[]>(
     () =>
       (breakdown?.categories || []).map((category) => ({
@@ -310,7 +317,11 @@ const FinancialBreakdown = () => {
     [breakdown],
   );
   const activeGroups =
-    breakdownMode === "type" ? typeGroups : paymentMethodGroups;
+    breakdownMode === "type"
+      ? selectedType
+        ? typeGroups.filter((group) => group.key === selectedType)
+        : typeGroups
+      : paymentMethodGroups;
   const activeTitle =
     breakdownMode === "type" ? "แหล่งที่มาของรายได้" : "ช่องทางชำระเงิน";
   const activeEmptyText =
@@ -340,7 +351,9 @@ const FinancialBreakdown = () => {
 
       try {
         const response = await axios.get<ExpectedStayRevenueBreakdownResponse>(
-          `${API_URL}/finance/expected-stay-revenue-breakdown`,
+          mode === "today"
+            ? `${API_URL}/finance/today-revenue-breakdown`
+            : `${API_URL}/finance/expected-stay-revenue-breakdown`,
           { withCredentials: true },
         );
 
@@ -360,21 +373,25 @@ const FinancialBreakdown = () => {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [mode]);
 
   return (
     <div className="viewBooking__wrapper">
       <div className="financialBreakdown__header">
         <div>
-          <h1 className="viewBooking__name">Expected Stay Revenue</h1>
+          <h1 className="viewBooking__name">
+            {mode === "today" ? "Today’s Revenue" : "Expected Stay Revenue"}
+          </h1>
           <p>
-            รายได้จากการเข้าพักหลังหักรายการลดรายได้ ไม่รวมมัดจำและรายการรับเงินจริง
+            {mode === "today"
+              ? "มูลค่าการจองที่เช็คอินวันนี้ รวมบริการเสริมวันนี้ หลังหักรายการลดรายได้"
+              : "รายได้จากการเข้าพักหลังหักรายการลดรายได้ ไม่รวมมัดจำและรายการรับเงินจริง"}
           </p>
         </div>
         {breakdown && (
           <span>
-            {formatDate(breakdown.period.startDate)} -{" "}
-            {formatExclusiveEndDate(breakdown.period.endDate)}
+            {formatDate(breakdown.period.startDate, dateFormat)} -{" "}
+            {formatExclusiveEndDate(breakdown.period.endDate, dateFormat)}
           </span>
         )}
       </div>
@@ -397,14 +414,16 @@ const FinancialBreakdown = () => {
         <>
           <section className="financialBreakdown__summary">
             <div className="financialBreakdown__summaryPrimary">
-              <p>Expected Stay Revenue</p>
+              <p>{mode === "today" ? "Today’s Revenue" : "Expected Stay Revenue"}</p>
               <strong>
                 {formatMoney(breakdown.totals.expectedStayRevenue)} ฿
               </strong>
             </div>
             <div className="financialBreakdown__summaryMeta">
               <span>
-                <small>Gross Stay Charges</small>
+                <small>
+                  {mode === "today" ? "ก่อนหักรายการลด" : "Gross Stay Charges"}
+                </small>
                 <strong>
                   {formatMoney(breakdown.totals.grossStayCharges)} ฿
                 </strong>
@@ -425,7 +444,22 @@ const FinancialBreakdown = () => {
               <h2>{activeTitle}</h2>
               <p>สัดส่วนรายได้และรายละเอียดรายการ</p>
             </div>
-            <div className="financialBreakdown__modeToggle">
+            <div
+              className={
+                selectedType && breakdownMode === "type"
+                  ? "financialBreakdown__modeToggle financialBreakdown__modeToggle--filtered"
+                  : "financialBreakdown__modeToggle"
+              }
+            >
+              {selectedType && breakdownMode === "type" && (
+                <button
+                  className="financialBreakdown__modeButton financialBreakdown__modeButton--active"
+                  type="button"
+                  onClick={() => setSelectedType(null)}
+                >
+                  ดูทั้งหมด
+                </button>
+              )}
               <button
                 className={
                   breakdownMode === "type"
@@ -457,7 +491,7 @@ const FinancialBreakdown = () => {
                 ? "financialBreakdown__distributionBar"
                 : "financialBreakdown__distributionBar financialBreakdown__distributionBar--empty"
             }
-            aria-label={`Expected Stay Revenue distribution across ${activeGroups.length} ${breakdownMode} categories`}
+            aria-label={`${mode === "today" ? "Today’s Revenue" : "Expected Stay Revenue"} distribution across ${activeGroups.length} ${breakdownMode} categories`}
           >
             {activeGroups.map((group) => (
               <span
@@ -494,11 +528,13 @@ const FinancialBreakdown = () => {
                 title={activeTitle}
                 emptyText={activeEmptyText}
                 groups={activeGroups}
+                dateFormat={dateFormat}
               />
               <BreakdownSection
                 title="Reductions"
                 emptyText="ยังไม่มีรายการลดรายได้ในช่วงนี้"
                 groups={reductionGroups}
+                dateFormat={dateFormat}
                 negative
               />
             </>

@@ -40,6 +40,14 @@ export type TransactionType =
   | "slowBoat"
   | "joinTour"
   | "extraBed"
+  | "pickACraft"
+  | "setMenu"
+  | "sleeperBus"
+  | "onlyWalk"
+  | "laundry"
+  | "bicycle"
+  | "car"
+  | "misc"
   | "cardSurcharge";
 
 export type ResolutionOutcome =
@@ -193,6 +201,14 @@ const transactionSchema = new mongoose.Schema({
       "slowBoat",
       "joinTour",
       "extraBed",
+      "pickACraft",
+      "setMenu",
+      "sleeperBus",
+      "onlyWalk",
+      "laundry",
+      "bicycle",
+      "car",
+      "misc",
       "cardSurcharge",
     ],
   },
@@ -223,6 +239,14 @@ const transactionSchema = new mongoose.Schema({
       "slowBoat",
       "joinTour",
       "extraBed",
+      "pickACraft",
+      "setMenu",
+      "sleeperBus",
+      "onlyWalk",
+      "laundry",
+      "bicycle",
+      "car",
+      "misc",
     ],
     required: false,
   },

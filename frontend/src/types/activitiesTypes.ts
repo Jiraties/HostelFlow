@@ -14,6 +14,7 @@ export type actionType =
   | "CREATE_USER"
   | "RESET_USER_PASSWORD"
   | "UPDATE_USER"
+  | "UPDATE_USER_SETTINGS"
   | "DEACTIVATE_USER"
   | "REACTIVATE_USER"
   | "DAILY_CLOSE"
@@ -35,6 +36,14 @@ export type TransactionType =
   | "slowBoat"
   | "joinTour"
   | "extraBed"
+  | "pickACraft"
+  | "setMenu"
+  | "sleeperBus"
+  | "onlyWalk"
+  | "laundry"
+  | "bicycle"
+  | "car"
+  | "misc"
   | "cardSurcharge";
 
 export type PaymentMethod = "OTA" | "Cash" | "Card" | "Transfer" | "Unpaid";

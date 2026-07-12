@@ -8,6 +8,11 @@ import type {
   transaction,
 } from "../../types/activitiesTypes";
 import { formatRoomStayRooms } from "../../helpers/roomStayHelpers";
+import { useAuth } from "../../context/AuthContext";
+import {
+  formatDisplayDate,
+  formatDisplayDateTime,
+} from "../../helpers/displayDate";
 
 const ACTIVITY_PAGE_SIZE = 10;
 
@@ -42,6 +47,10 @@ const actionMap = {
   UPDATE_USER: {
     icon: "bx-user-cog",
     text: "แก้ไขผู้ใช้",
+  },
+  UPDATE_USER_SETTINGS: {
+    icon: "bx-cog",
+    text: "แก้ไขการตั้งค่า",
   },
   DEACTIVATE_USER: {
     icon: "bx-user-x",
@@ -85,6 +94,14 @@ const transactionLabelMap = {
   slowBoat: "Slow Boat",
   joinTour: "Join Tour",
   extraBed: "เตียงเสริม",
+  pickACraft: "Pick A Craft",
+  setMenu: "Set Menu",
+  sleeperBus: "Sleeper Bus",
+  onlyWalk: "Only Walk",
+  laundry: "Laundry",
+  bicycle: "Bicycle",
+  car: "Car",
+  misc: "Misc",
   cardSurcharge: "ค่าธรรมเนียมบัตร",
 } satisfies Record<transaction["type"], string>;
 
@@ -94,29 +111,24 @@ const formatCurrency = (amount: number) =>
     maximumFractionDigits: 2,
   });
 
-const formatDate = (date: string | Date) =>
-  new Date(date).toLocaleDateString("th-TH", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    calendar: "gregory",
-  });
+const formatDate = (
+  date: string | Date,
+  dateFormat: "dd/MM/yyyy" | "d MMM yyyy",
+) => formatDisplayDate(date, dateFormat);
 
-const formatActivityDate = (date: Date) =>
-  `${date.toLocaleTimeString("th-TH", {
-    hour: "2-digit",
-    minute: "2-digit",
-  })} - ${date.toLocaleDateString("th-TH", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-    calendar: "gregory",
-  })}`;
+const formatActivityDate = (
+  date: Date,
+  dateFormat: "dd/MM/yyyy" | "d MMM yyyy",
+) => formatDisplayDateTime(date, dateFormat);
 
-const formatRoomStay = (stay: roomStay) =>
-  `${formatRoomStayRooms(stay)}: ${formatDate(stay.from)} - ${formatDate(
-    stay.to,
-  )}`;
+const formatRoomStay = (
+  stay: roomStay,
+  dateFormat: "dd/MM/yyyy" | "d MMM yyyy",
+) =>
+  `${formatRoomStayRooms(stay)}: ${formatDate(
+    stay.from,
+    dateFormat,
+  )} - ${formatDate(stay.to, dateFormat)}`;
 
 const getAddedTransactions = (item: activity) => {
   if (item.action !== "ADD_TRANSACTION") return [];
@@ -150,7 +162,13 @@ const getRoomStayChange = (item: activity) => {
   };
 };
 
-const ActivityHeader = ({ item }: { item: activity }) => {
+const ActivityHeader = ({
+  item,
+  dateFormat,
+}: {
+  item: activity;
+  dateFormat: "dd/MM/yyyy" | "d MMM yyyy";
+}) => {
   const action = actionMap[item.action];
   const date = new Date(item.timestamp);
 
@@ -159,13 +177,15 @@ const ActivityHeader = ({ item }: { item: activity }) => {
       <i className={`bx settings__activityIcon ${action.icon}`} />
       <div>
         <h3>{action.text}</h3>
-        <p>{formatActivityDate(date)}</p>
+        <p>{formatActivityDate(date, dateFormat)}</p>
       </div>
     </div>
   );
 };
 
 const RecentActivities = ({ userId }: { userId?: string }) => {
+  const { user } = useAuth();
+  const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
   const [activities, setActivities] = useState<activity[]>([]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
@@ -222,7 +242,7 @@ const RecentActivities = ({ userId }: { userId?: string }) => {
       setLoading(false);
       setLoadingMore(false);
     },
-    [],
+    [userId],
   );
 
   useEffect(() => {
@@ -280,7 +300,7 @@ const RecentActivities = ({ userId }: { userId?: string }) => {
         if (item.action === "NEW_BOOKING" || item.action === "REMOVE_BOOKING") {
           return (
             <div className="settings__activity" key={item.timestamp.toString()}>
-              <ActivityHeader item={item} />
+              <ActivityHeader item={item} dateFormat={dateFormat} />
 
               <div className="settings__activityDetails">
                 <p>
@@ -288,15 +308,17 @@ const RecentActivities = ({ userId }: { userId?: string }) => {
                 </p>
                 <p>
                   <strong>Check In:</strong>{" "}
-                  {new Date(
+                  {formatDate(
                     item.details.snapshot?.checkIn || "",
-                  ).toLocaleDateString("th-TH", { calendar: "gregory" })}
+                    dateFormat,
+                  )}
                 </p>
                 <p>
                   <strong>Check Out:</strong>{" "}
-                  {new Date(
+                  {formatDate(
                     item.details.snapshot?.checkOut || "",
-                  ).toLocaleDateString("th-TH", { calendar: "gregory" })}
+                    dateFormat,
+                  )}
                 </p>
                 <p>
                   <strong>ห้อง:</strong>{" "}
@@ -328,7 +350,7 @@ const RecentActivities = ({ userId }: { userId?: string }) => {
 
           return (
             <div className="settings__activity" key={item.timestamp.toString()}>
-              <ActivityHeader item={item} />
+              <ActivityHeader item={item} dateFormat={dateFormat} />
 
               <div className="settings__activityDetails">
                 <p>
@@ -351,7 +373,7 @@ const RecentActivities = ({ userId }: { userId?: string }) => {
 
           return (
             <div className="settings__activity" key={item.timestamp.toString()}>
-              <ActivityHeader item={item} />
+              <ActivityHeader item={item} dateFormat={dateFormat} />
 
               <div className="settings__activityDetails">
                 <p>
@@ -359,11 +381,15 @@ const RecentActivities = ({ userId }: { userId?: string }) => {
                 </p>
                 <p>
                   <strong>ก่อนแก้:</strong>{" "}
-                  {roomStayChange?.before.map(formatRoomStay).join(", ") || "-"}
+                  {roomStayChange?.before
+                    .map((stay) => formatRoomStay(stay, dateFormat))
+                    .join(", ") || "-"}
                 </p>
                 <p>
                   <strong>หลังแก้:</strong>{" "}
-                  {roomStayChange?.after.map(formatRoomStay).join(", ") || "-"}
+                  {roomStayChange?.after
+                    .map((stay) => formatRoomStay(stay, dateFormat))
+                    .join(", ") || "-"}
                 </p>
               </div>
             </div>
@@ -372,7 +398,7 @@ const RecentActivities = ({ userId }: { userId?: string }) => {
 
         return (
           <div className="settings__activity" key={item.timestamp.toString()}>
-            <ActivityHeader item={item} />
+            <ActivityHeader item={item} dateFormat={dateFormat} />
           </div>
         );
       })}

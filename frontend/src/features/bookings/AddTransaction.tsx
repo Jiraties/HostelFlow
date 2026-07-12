@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 import axios from "axios";
 import ActionButton from "../../components/ActionButton";
 import ModalCloseButton from "../../components/ModalCloseButton";
+import CashShiftNudge from "../../components/CashShiftNudge";
 import { API_URL } from "../../config/api";
 import { formatBookingDates } from "../../helpers/bookingHelpers";
 import { paymentMethodOptions } from "../../helpers/options";
@@ -32,6 +33,14 @@ const transactionTypeOptions: OptionType[] = [
   { value: "extraBed", label: "เตียงเสริม", color: "#ec4899" },
   { value: "joinTour", label: "Join Tour", color: "#22c55e" },
   { value: "slowBoat", label: "Slow Boat", color: "#2dd4bf" },
+  { value: "pickACraft", label: "Pick A Craft", color: "#f59e0b" },
+  { value: "setMenu", label: "Set Menu", color: "#84cc16" },
+  { value: "sleeperBus", label: "Sleeper Bus", color: "#6366f1" },
+  { value: "onlyWalk", label: "Only Walk", color: "#14b8a6" },
+  { value: "laundry", label: "Laundry", color: "#60a5fa" },
+  { value: "bicycle", label: "Bicycle", color: "#fb923c" },
+  { value: "car", label: "Car", color: "#64748b" },
+  { value: "misc", label: "Misc", color: "#94a3b8" },
   { value: "adjustment", label: "ปรับราคา", color: "#a78bfa" },
   { value: "deposit", label: "รับมัดจำ", color: "#facc15" },
   { value: "depositRefund", label: "คืนมัดจำ", color: "#f87171" },
@@ -132,6 +141,8 @@ const AddTransaction = ({
   const totalGuestPays = validAmount + cardSurcharge;
   const needsNote = formData.type === "adjustment" || formData.type === "depositRefund";
   const canAttachTransaction = formData.type === "adjustment";
+  const hasCashMovement =
+    formData.paymentMethod === "Cash" && validAmount > 0;
   const transactionAttachmentOptions: OptionType[] = transactions
     .filter((transaction) => transaction._id)
     .map((transaction) => ({
@@ -202,6 +213,7 @@ const AddTransaction = ({
       </div>
 
       <div className="addTransaction__form">
+        {hasCashMovement && <CashShiftNudge />}
         <div>
           <p className="addBooking__label">ประเภทรายการ</p>
           <Select<OptionType>

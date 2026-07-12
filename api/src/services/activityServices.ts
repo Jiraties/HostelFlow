@@ -1,7 +1,7 @@
 import Activity from "../models/activity";
 import type { actionType } from "../models/activity";
 
-export const logActivity = async (
+export const logActivityStrict = async (
   staffUsername: string | undefined,
   action: actionType,
   details: {
@@ -26,4 +26,22 @@ export const logActivity = async (
     details,
     bookingId,
   });
+};
+
+export const logActivity = async (
+  ...args: Parameters<typeof logActivityStrict>
+) => {
+  try {
+    return await logActivityStrict(...args);
+  } catch (err) {
+    const [staffUsername, action, , bookingId] = args;
+    console.error("Failed to record activity", {
+      staffUsername: staffUsername || "system",
+      action,
+      bookingId,
+      error: err instanceof Error ? err.message : "Unknown activity error",
+    });
+
+    return null;
+  }
 };

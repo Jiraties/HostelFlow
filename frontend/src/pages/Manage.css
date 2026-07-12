@@ -159,8 +159,8 @@
   padding: 0.2rem 0.5rem;
   margin-left: 0.3rem;
   border-radius: 999rem;
-  color: #b91c1c;
-  background-color: #fee2e2;
+  color: var(--red);
+  background-color: color-mix(in srgb, var(--red) 12%, #fff);
   font-size: 0.75rem;
   font-weight: 500;
 }
@@ -219,6 +219,87 @@
 
 .manage__dateInput {
   max-width: 12rem;
+}
+
+.manage__cashAuditHero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  min-width: 0;
+  padding: 0.15rem 0.1rem 0.35rem;
+}
+
+.manage__cashAuditToolbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: max-content;
+}
+
+.manage__cashAuditHeroIcon {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  background-color: color-mix(in srgb, var(--primary-color) 13%, #fff);
+  color: var(--primary-color);
+  font-size: 1.5rem;
+}
+
+.manage__cashAuditHeroCopy p,
+.manage__cashAuditHeroCopy h2,
+.manage__cashAuditHeroCopy span {
+  margin: 0;
+}
+
+.manage__cashAuditHeroCopy p,
+.manage__cashAuditHeroCopy span {
+  color: #777;
+  font-size: 0.9rem;
+}
+
+.manage__cashAuditHeroCopy h2 {
+  margin: 0.1rem 0;
+  color: var(--text);
+  font-size: 1.28rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.manage__cashAuditHeroMeta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.manage__cashAuditBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.25rem;
+  padding: 0.35rem 0.8rem;
+  border-radius: 999rem;
+  background-color: var(--light-background);
+  color: #666;
+  font-size: 0.9rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.manage__cashAuditBadge--open,
+.manage__cashAuditBadge--complete {
+  background-color: color-mix(in srgb, var(--green) 20%, #fff);
+  color: var(--green);
+}
+
+.manage__cashAuditBadge--attention {
+  background-color: color-mix(in srgb, var(--red) 20%, #fff);
+  color: var(--red);
 }
 
 .manage__finance {
@@ -284,6 +365,373 @@
   overflow-wrap: anywhere;
   font-size: 1.35rem;
   font-weight: 500;
+}
+
+.manage__auditOverview {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.manage__auditOverview > div {
+  min-width: 0;
+  padding: 1rem;
+  border-radius: 1.25rem;
+  background: var(--background);
+  box-shadow: var(--light-shadow);
+}
+
+.manage__auditOverview p,
+.manage__auditOverview strong {
+  margin: 0;
+}
+
+.manage__auditOverview p {
+  color: var(--text);
+  opacity: 0.76;
+  font-size: 0.92rem;
+}
+
+.manage__auditOverview strong {
+  display: block;
+  margin-top: 0.35rem;
+  font-weight: 500;
+  font-size: 1.35rem;
+}
+
+.manage__auditWarningText {
+  color: #b45309;
+}
+.manage__auditDangerText {
+  color: var(--red);
+}
+
+.manage__cashChain {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  overflow-x: auto;
+  padding: 0.35rem 0 0.75rem;
+  scrollbar-width: thin;
+}
+
+.manage__cashChainItem {
+  display: flex;
+  align-items: flex-start;
+  flex: 0 0 auto;
+}
+
+.manage__handoff {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  width: 5rem;
+  padding-top: 2.5rem;
+  color: var(--text);
+  opacity: 0.76;
+  font-size: 0.84rem;
+  text-align: center;
+}
+
+.manage__handoffLine {
+  width: 100%;
+  height: 5px;
+  border-radius: 99rem;
+  background: #eeeeee;
+}
+
+.manage__handoff--warning {
+  color: var(--red);
+}
+.manage__handoff--warning .manage__handoffLine {
+  background: var(--red);
+}
+
+.manage__cashShiftCard {
+  display: flex;
+  flex-direction: column;
+  width: min(21rem, 78vw);
+  min-height: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 1.25rem;
+  background: var(--background);
+  box-shadow: var(--light-shadow);
+  overflow: hidden;
+}
+
+.manage__cashShiftBody {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.8rem;
+  min-width: 0;
+  padding: 1.05rem;
+}
+
+.manage__cashShiftCard--alert {
+  border-color: transparent;
+}
+
+.manage__cashShiftHeader,
+.manage__cashMath,
+.manage__auditBadges,
+.manage__auditResolve {
+  display: flex;
+}
+
+.manage__cashShiftHeader {
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.manage__cashShiftStatusGroup {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.manage__cashMismatchIcon {
+  display: grid;
+  place-items: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 50%;
+  background: #fef3c7;
+  color: #a16207;
+  font-size: 1.1rem;
+}
+
+.manage__cashShiftHeader > div {
+  min-width: 0;
+}
+.manage__cashShiftHeader strong,
+.manage__cashShiftHeader small {
+  display: block;
+}
+.manage__cashShiftHeader strong {
+  overflow: hidden;
+  font-size: 1.05rem;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.manage__cashShiftHeader small {
+  margin-top: 0.35rem;
+  color: var(--text);
+  opacity: 0.72;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.manage__shiftNumber {
+  display: block;
+  color: var(--primary-color);
+  font-size: 0.84rem;
+  font-weight: 500;
+}
+
+.manage__shiftStatus {
+  flex: 0 0 auto;
+  height: fit-content;
+  padding: 0.22rem 0.5rem;
+  border-radius: 99rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.manage__shiftStatus--closed {
+  color: #047857;
+  background: #d1fae5;
+}
+.manage__shiftStatus--open {
+  color: #b45309;
+  background: #fef3c7;
+}
+
+.manage__cashMath {
+  gap: 0.6rem;
+  margin-top: 0;
+}
+
+.manage__cashMath > div {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0.75rem;
+  border-radius: 0.85rem;
+  background: var(--background);
+  box-shadow: var(--light-shadow);
+}
+
+.manage__cashMathTileHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.manage__cashMathTileHeader i {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background-color: color-mix(in srgb, var(--primary-color) 18%, #fff);
+  color: var(--primary-color);
+  font-size: 1rem;
+}
+
+.manage__cashMathTile--deposit .manage__cashMathTileHeader i {
+  background-color: color-mix(in srgb, #facc15 28%, #fff);
+  color: #a16207;
+}
+
+.manage__cashMath span,
+.manage__cashMath strong,
+.manage__cashMath small {
+  display: block;
+}
+.manage__cashMath span,
+.manage__cashMath small {
+  color: var(--text);
+  opacity: 0.72;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+.manage__cashMath strong {
+  margin: 0.35rem 0;
+  font-size: 1.1rem;
+  font-weight: 500;
+}
+
+.manage__auditBadges {
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0;
+}
+.manage__auditBadges span {
+  padding: 0.2rem 0.45rem;
+  border-radius: 99rem;
+  color: #92400e;
+  background: #fef3c7;
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+.manage__auditBadges .manage__auditBadge--critical {
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 18%, #fff);
+}
+
+.manage__auditDetailsButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: 100%;
+  margin-top: auto;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  box-sizing: border-box;
+  padding: 0.9rem 1.05rem;
+  background: transparent;
+  border-top: 1px solid #eee;
+  color: #888888;
+  border-radius: 0 0 1.25rem 1.25rem;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.manage__auditDetailsButton i {
+  position: absolute;
+  right: 1.05rem;
+  color: #888888;
+  font-size: 1.2rem;
+}
+
+.manage__auditDetails {
+  margin-top: 0;
+  padding-top: 1rem;
+  border-top: 1px solid #eee;
+}
+.manage__auditDetails p {
+  margin: 0.55rem 0;
+  color: var(--text);
+  opacity: 0.82;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+.manage__auditEquations {
+  padding: 0.8rem;
+  border-radius: 0.75rem;
+  background: var(--background);
+  box-shadow: var(--light-shadow);
+}
+.manage__auditFlaggedTransactions {
+  margin-top: 1rem;
+}
+.manage__auditFlaggedTransactions strong {
+  font-size: 0.92rem;
+  font-weight: 500;
+}
+.manage__auditNote {
+  font-style: italic;
+}
+.manage__auditResolved {
+  padding: 0.6rem;
+  border-radius: 0.75rem;
+  color: #047857 !important;
+  background: var(--background);
+  box-shadow: var(--light-shadow);
+}
+
+.manage__auditResolve {
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+.manage__auditResolve textarea {
+  min-height: 5rem;
+  resize: vertical;
+  padding: 0.75rem;
+  border: none;
+  box-shadow: var(--light-shadow);
+  border-radius: 0.7rem;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.manage__auditResolve button {
+  border: 0;
+  border-radius: 0.7rem;
+  padding: 0.7rem;
+  color: #fff;
+  background: var(--primary-color);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+.manage__auditResolve button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.manage__cashGaps {
+  padding: 0.75rem 1rem;
+  border-radius: 1rem;
+  color: var(--red);
+  box-shadow: var(--light-shadow);
+}
+.manage__cashGaps p {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
 }
 
 .manage__financePanel {
@@ -492,7 +940,7 @@
 }
 
 .manage__negative {
-  color: #dc2626;
+  color: var(--red);
 }
 
 .manage__dailyCloseList {
@@ -517,7 +965,8 @@
   }
 
   .manage__overview,
-  .manage__financeOverview {
+  .manage__financeOverview,
+  .manage__auditOverview {
     grid-template-columns: 1fr 1fr;
   }
 
@@ -556,6 +1005,15 @@
     flex-direction: column;
   }
 
+  .manage__cashAuditHero {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .manage__cashAuditToolbar {
+    grid-column: 1 / -1;
+    justify-self: end;
+  }
+
   .manage__dateInput {
     max-width: none;
   }
@@ -572,11 +1030,39 @@
   .manage__financeStatsGrid {
     grid-template-columns: 1fr;
   }
+
+  .manage__cashChain {
+    flex-direction: column;
+    overflow: visible;
+    padding: 0;
+  }
+
+  .manage__cashChainItem {
+    flex-direction: column;
+  }
+
+  .manage__handoff {
+    align-items: center;
+    justify-content: center;
+    width: auto;
+    min-height: 3.25rem;
+    padding-top: 0;
+  }
+
+  .manage__handoffLine {
+    width: 2px;
+    height: 1.5rem;
+  }
+
+  .manage__cashShiftCard {
+    width: auto;
+  }
 }
 
 @media (max-width: 520px) {
   .manage__overview,
-  .manage__financeOverview {
+  .manage__financeOverview,
+  .manage__auditOverview {
     grid-template-columns: 1fr;
   }
 

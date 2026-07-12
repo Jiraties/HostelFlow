@@ -13,8 +13,14 @@ import type {
 import { logActivity } from "../services/activityServices";
 import {
   CASH_VARIANCE_THRESHOLD,
+  bookingTodayArrivalRevenueAmount,
+  calculateTodayRevenueSummary,
+  cashBalanceAfterMovements,
+  isValidCashCount,
   summarizeTransactions,
   summarizeCashStashes,
+  transactionTodayExtrasRevenueAmount,
+  transactionTodayReductionAmount,
   transactionDirection,
   transactionFallsOnBusinessDate,
 } from "../helpers/financeHelpers";
@@ -22,6 +28,10 @@ import {
   IdempotencyConflictError,
   withMutationIdempotency,
 } from "../services/mutationIdempotency";
+import {
+  CashShiftMutationConflictError,
+  withCashShiftMutationLock,
+} from "../services/cashShiftMutationLock";
 
 const sendDuplicateMutationResponse = (res: Response) =>
   res.status(409).json({
@@ -42,6 +52,14 @@ const expectedStayRevenueTransactionMeta: Partial<
   slowBoat: { label: "Slow Boat", color: "#2dd4bf", icon: "bx-water" },
   joinTour: { label: "Join Tour", color: "#22c55e", icon: "bx-map" },
   extraBed: { label: "เตียงเสริม", color: "#ec4899", icon: "bx-bed" },
+  pickACraft: { label: "Pick A Craft", color: "#f59e0b", icon: "bx-palette" },
+  setMenu: { label: "Set Menu", color: "#84cc16", icon: "bx-food-menu" },
+  sleeperBus: { label: "Sleeper Bus", color: "#6366f1", icon: "bx-bus" },
+  onlyWalk: { label: "Only Walk", color: "#14b8a6", icon: "bx-walk" },
+  laundry: { label: "Laundry", color: "#60a5fa", icon: "bx-washer" },
+  bicycle: { label: "Bicycle", color: "#fb923c", icon: "bx-cycling" },
+  car: { label: "Car", color: "#64748b", icon: "bx-car" },
+  misc: { label: "Misc", color: "#94a3b8", icon: "bx-dots-horizontal-rounded" },
   cardSurcharge: {
     label: "ค่าธรรมเนียมบัตร 3%",
     color: "#94a3b8",
@@ -63,6 +81,14 @@ const expectedStayRevenueTypes = new Set<TransactionType>([
   "slowBoat",
   "joinTour",
   "extraBed",
+  "pickACraft",
+  "setMenu",
+  "sleeperBus",
+  "onlyWalk",
+  "laundry",
+  "bicycle",
+  "car",
+  "misc",
   "cardSurcharge",
 ]);
 
@@ -421,6 +447,11 @@ const getCashPositionForDate = async (businessDate?: string) => {
         (shift) => String((shift as any)._id) === String(activeShift._id),
       )
     : null;
+  const enrichedPreviousShift = previousShift
+    ? enrichedShifts.find(
+        (shift) => String((shift as any)._id) === String(previousShift._id),
+      )
+    : null;
   const unassignedStart = activeShift
     ? activeShift.startedAt
     : previousShift?.endedAt || bounds.start;
@@ -429,12 +460,12 @@ const getCashPositionForDate = async (businessDate?: string) => {
   );
   const currentDepositCash = enrichedActiveShift
     ? enrichedActiveShift.depositExpectedCash
-    : (previousShift?.depositActualCash || 0) +
+    : (enrichedPreviousShift?.depositActualCash || 0) +
       unassignedMovements.depositCashIn -
       unassignedMovements.depositCashOut;
   const currentOperatingCash = enrichedActiveShift
     ? enrichedActiveShift.operatingExpectedCash
-    : (previousShift?.operatingActualCash || 0) +
+    : (enrichedPreviousShift?.operatingActualCash || 0) +
       unassignedMovements.operatingCashIn -
       unassignedMovements.operatingCashOut;
 
@@ -442,19 +473,216 @@ const getCashPositionForDate = async (businessDate?: string) => {
     businessDate: bounds.businessDate,
     threshold: CASH_VARIANCE_THRESHOLD,
     activeShift: enrichedActiveShift || null,
-    previousShift: previousShift || null,
+    previousShift: enrichedPreviousShift || null,
     current: {
       depositCash: currentDepositCash,
       operatingCash: currentOperatingCash,
     },
     unassignedCash: unassignedMovements,
     handoff: {
-      depositCash: previousShift?.depositActualCash || 0,
-      operatingCash: previousShift?.operatingActualCash || 0,
-      fromShiftId: previousShift ? String(previousShift._id) : undefined,
-      fromShiftNumber: previousShift?.shiftNumber,
+      depositCash: activeShift
+        ? enrichedPreviousShift?.depositActualCash || 0
+        : currentDepositCash,
+      operatingCash: activeShift
+        ? enrichedPreviousShift?.operatingActualCash || 0
+        : currentOperatingCash,
+      fromShiftId: enrichedPreviousShift
+        ? String(enrichedPreviousShift._id)
+        : undefined,
+      fromShiftNumber: enrichedPreviousShift?.shiftNumber,
     },
     shifts: enrichedShifts,
+  };
+};
+
+type CashAuditWarning = {
+  code:
+    | "deposit_variance"
+    | "operating_variance"
+    | "handoff_mismatch"
+    | "open_shift"
+    | "flagged_transactions"
+    | "unassigned_cash_activity";
+  severity: "warning" | "critical";
+  message: string;
+};
+
+const hasCashMovement = (movements: ReturnType<typeof summarizeCashStashes>) =>
+  Object.values(movements).some((amount) => Math.abs(amount) > 0);
+
+const cashMovementTotal = (movements: ReturnType<typeof summarizeCashStashes>) =>
+  movements.depositCashIn -
+  movements.depositCashOut +
+  movements.operatingCashIn -
+  movements.operatingCashOut;
+
+const formatCashAuditAmount = (amount: number) =>
+  new Intl.NumberFormat("th-TH", { maximumFractionDigits: 2 }).format(amount);
+
+const getCashShiftAuditForDate = async (businessDate?: string) => {
+  const bounds = getBusinessDayBoundsFromKey(businessDate);
+  if (!bounds) return null;
+
+  const shifts = await CashShift.find({ businessDate: bounds.businessDate }).sort({
+    shiftNumber: 1,
+  });
+  const enrichedShifts = await attachCashShiftStaffProfiles(
+    await Promise.all(shifts.map(enrichCashShift)),
+  );
+  const gaps: Array<{
+    from: Date;
+    to: Date;
+    movements: ReturnType<typeof summarizeCashStashes>;
+    warning: CashAuditWarning;
+  }> = [];
+
+  const coverage: Array<{ start: Date; end: Date }> = [];
+  if (shifts.length) {
+    coverage.push({ start: bounds.start, end: shifts[0].startedAt });
+    shifts.forEach((shift, index) => {
+      const nextShift = shifts[index + 1];
+      if (shift.endedAt && nextShift) {
+        coverage.push({ start: shift.endedAt, end: nextShift.startedAt });
+      } else if (shift.endedAt && !nextShift) {
+        coverage.push({ start: shift.endedAt, end: bounds.end });
+      }
+    });
+  } else {
+    coverage.push({ start: bounds.start, end: bounds.end });
+  }
+
+  for (const gap of coverage) {
+    if (gap.end <= gap.start) continue;
+    const movements = summarizeCashStashes(
+      await getUnassignedCashTransactionsBetween(gap.start, gap.end),
+    );
+    if (!hasCashMovement(movements)) continue;
+    gaps.push({
+      from: gap.start,
+      to: gap.end,
+      movements,
+      warning: {
+        code: "unassigned_cash_activity",
+        severity: "critical",
+        message: `พบเงินสด ${formatCashAuditAmount(cashMovementTotal(movements))} บาทนอกกะเงินสด`,
+      },
+    });
+  }
+
+  const auditShifts = await Promise.all(
+    enrichedShifts.map(async (shift, index) => {
+      const shiftTransactions = await getShiftTransactions(shift as { _id?: unknown; startedAt: Date; endedAt?: Date });
+      const flaggedTransactions = shiftTransactions.filter(
+        (transaction) =>
+          transaction.reviewStatus === "needs_review" ||
+          Boolean(transaction.reviewFlags?.length),
+      );
+      const warnings: CashAuditWarning[] = [];
+      const depositVariance = Number(shift.depositVariance || 0);
+      const operatingVariance = Number(shift.operatingVariance || 0);
+      if (
+        shift.status === "closed" &&
+        Math.abs(depositVariance) > CASH_VARIANCE_THRESHOLD
+      ) {
+        warnings.push({
+          code: "deposit_variance",
+          severity: "critical",
+          message: `เงินมัดจำต่าง ${formatCashAuditAmount(depositVariance)} บาท`,
+        });
+      }
+      if (
+        shift.status === "closed" &&
+        Math.abs(operatingVariance) > CASH_VARIANCE_THRESHOLD
+      ) {
+        warnings.push({
+          code: "operating_variance",
+          severity: "critical",
+          message: `เงินดำเนินงานต่าง ${formatCashAuditAmount(operatingVariance)} บาท`,
+        });
+      }
+      if (shift.status === "open") {
+        warnings.push({
+          code: "open_shift",
+          severity: "warning",
+          message: "กะนี้ยังไม่ปิดยอด",
+        });
+      }
+      if (flaggedTransactions.length) {
+        warnings.push({
+          code: "flagged_transactions",
+          severity: "warning",
+          message: `มี ${flaggedTransactions.length} รายการที่ต้องตรวจ`,
+        });
+      }
+
+      const previousShift = enrichedShifts[index - 1];
+      let handoff: Record<string, unknown> | undefined;
+      if (previousShift?.endedAt) {
+        const handoffMovements = summarizeCashStashes(
+          await getUnassignedCashTransactionsBetween(
+            new Date(previousShift.endedAt),
+            new Date(shift.startedAt),
+          ),
+        );
+        const expectedDepositOpening = cashBalanceAfterMovements(
+          Number(previousShift.depositActualCash || 0),
+          handoffMovements.depositCashIn,
+          handoffMovements.depositCashOut,
+        );
+        const expectedOperatingOpening = cashBalanceAfterMovements(
+          Number(previousShift.operatingActualCash || 0),
+          handoffMovements.operatingCashIn,
+          handoffMovements.operatingCashOut,
+        );
+        const depositDifference = Number(shift.depositOpeningCash) - expectedDepositOpening;
+        const operatingDifference = Number(shift.operatingOpeningCash) - expectedOperatingOpening;
+        const mismatch =
+          shift.openingMode === "counted" &&
+          (Math.abs(depositDifference) > CASH_VARIANCE_THRESHOLD ||
+            Math.abs(operatingDifference) > CASH_VARIANCE_THRESHOLD);
+        if (mismatch) {
+          warnings.push({
+            code: "handoff_mismatch",
+            severity: "critical",
+            message: "ยอดรับส่งเงินไม่ตรงกับกะก่อนหน้า",
+          });
+        }
+        handoff = {
+          fromShiftId: String(previousShift._id),
+          fromShiftNumber: previousShift.shiftNumber,
+          mode: shift.openingMode,
+          elapsedMinutes: Math.max(
+            0,
+            Math.round(
+              (new Date(shift.startedAt).getTime() -
+                new Date(previousShift.endedAt).getTime()) /
+                60000,
+            ),
+          ),
+          expectedDepositOpening,
+          expectedOperatingOpening,
+          depositDifference,
+          operatingDifference,
+          movements: handoffMovements,
+          mismatch,
+        };
+      }
+
+      return {
+        ...shift,
+        warnings,
+        auditResolution: shift.auditResolution,
+        flaggedTransactions,
+        handoff,
+      };
+    }),
+  );
+
+  return {
+    businessDate: bounds.businessDate,
+    threshold: CASH_VARIANCE_THRESHOLD,
+    shifts: auditShifts,
+    gaps,
   };
 };
 
@@ -737,6 +965,205 @@ export const getExpectedStayRevenueBreakdown = async (
   }
 };
 
+export const getTodayRevenueBreakdown = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(403).json({
+        message: "กรุณาเข้าสู่ระบบเพื่อดูสรุปรายได้นี้",
+      });
+    }
+
+    const bounds = getBusinessDayBoundsFromKey(
+      req.query.businessDate as string | undefined,
+    );
+    if (!bounds) {
+      return res.status(400).json({
+        message: "Invalid business date. Use YYYY-MM-DD.",
+      });
+    }
+
+    const bookings = await Booking.find({
+      $or: [
+        { checkIn: { $gte: bounds.start, $lt: bounds.end } },
+        { "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end } },
+      ],
+    }).lean<booking[]>();
+    const todaySummary = calculateTodayRevenueSummary(
+      bookings,
+      bounds.start,
+      bounds.end,
+    );
+    const categories = new Map<
+      TransactionType,
+      ExpectedStayRevenueBreakdownCategory
+    >();
+    const reductions = new Map<
+      TransactionType,
+      ExpectedStayRevenueBreakdownCategory
+    >();
+    const paymentMethods = new Map<
+      PaymentMethod,
+      ExpectedStayRevenuePaymentMethodBreakdown
+    >();
+
+    bookings.forEach((booking) => {
+      const isTodayArrival =
+        new Date(booking.checkIn) >= bounds.start &&
+        new Date(booking.checkIn) < bounds.end;
+
+      if (isTodayArrival) {
+        const arrivalAmount = bookingTodayArrivalRevenueAmount(booking);
+        const roomCharge = (booking.transactions || []).find(
+          (transaction) => transaction.type === "roomCharge",
+        );
+
+        if (arrivalAmount > 0 && roomCharge) {
+          const arrivalTransaction = {
+            ...roomCharge,
+            amount: arrivalAmount,
+            createdAt: booking.checkIn,
+          };
+          const direction = transactionDirection(arrivalTransaction);
+          addBreakdownTransaction(
+            categories,
+            arrivalTransaction,
+            booking,
+            arrivalAmount,
+            direction,
+          );
+          addPaymentMethodBreakdownTransaction(
+            paymentMethods,
+            arrivalTransaction,
+            booking,
+            arrivalAmount,
+            direction,
+          );
+        }
+      }
+
+      (booking.transactions || []).forEach((transaction) => {
+        if (!transaction.createdAt) return;
+        const createdAt = new Date(transaction.createdAt);
+        if (createdAt < bounds.start || createdAt >= bounds.end) return;
+
+        const direction = transactionDirection(transaction);
+        const extrasAmount = transactionTodayExtrasRevenueAmount(transaction);
+        if (extrasAmount > 0) {
+          addBreakdownTransaction(
+            categories,
+            transaction,
+            booking,
+            extrasAmount,
+            direction,
+          );
+          addPaymentMethodBreakdownTransaction(
+            paymentMethods,
+            transaction,
+            booking,
+            extrasAmount,
+            direction,
+          );
+        }
+
+        const reductionAmount = transactionTodayReductionAmount(transaction);
+        const arrivalReductionAlreadyNetted =
+          isTodayArrival &&
+          ["cancelled", "noShow"].includes(booking.status) &&
+          ["roomRefund", "cancellationRefund"].includes(transaction.type);
+        if (reductionAmount > 0 && !arrivalReductionAlreadyNetted) {
+          addBreakdownTransaction(
+            reductions,
+            transaction,
+            booking,
+            reductionAmount,
+            direction,
+          );
+        }
+      });
+    });
+
+    const grossStayCharges = Array.from(categories.values()).reduce(
+      (sum, category) => sum + category.total,
+      0,
+    );
+    const reductionTotal = Array.from(reductions.values()).reduce(
+      (sum, category) => sum + category.total,
+      0,
+    );
+    const todayRevenue = todaySummary.todayRevenue;
+    const finalizedCategories = finalizeBreakdownCategories(
+      categories,
+      grossStayCharges,
+    );
+    const finalizedReductions = finalizeBreakdownCategories(
+      reductions,
+      grossStayCharges,
+    );
+    const finalizedPaymentMethods = finalizePaymentMethodBreakdowns(
+      paymentMethods,
+      grossStayCharges,
+    );
+
+    res.status(200).json({
+      period: {
+        startDate: formatBusinessDateKey(bounds.start),
+        endDate: formatBusinessDateKey(bounds.end),
+        basis: "checkInAndTransactionCreatedAt",
+      },
+      totals: {
+        grossStayCharges: Number(grossStayCharges.toFixed(2)),
+        expectedStayRevenue: Number(todayRevenue.toFixed(2)),
+        reductions: Number(reductionTotal.toFixed(2)),
+        netAfterReductions: Number(todayRevenue.toFixed(2)),
+        transactionCount:
+          finalizedCategories.reduce(
+            (sum, category) => sum + category.transactionCount,
+            0,
+          ) +
+          finalizedReductions.reduce(
+            (sum, category) => sum + category.transactionCount,
+            0,
+          ),
+      },
+      categories: finalizedCategories,
+      reductions: finalizedReductions,
+      paymentMethods: finalizedPaymentMethods,
+    });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+};
+
+export const getTodayRevenueSummary = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(403).json({ message: "กรุณาเข้าสู่ระบบ" });
+    }
+
+    const bounds = getBusinessDayBoundsFromKey(
+      req.query.businessDate as string | undefined,
+    );
+    if (!bounds) {
+      return res.status(400).json({
+        message: "Invalid business date. Use YYYY-MM-DD.",
+      });
+    }
+
+    const bookings = await Booking.find({
+      $or: [
+        { checkIn: { $gte: bounds.start, $lt: bounds.end } },
+        { "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end } },
+      ],
+    }).lean<booking[]>();
+
+    res.status(200).json(
+      calculateTodayRevenueSummary(bookings, bounds.start, bounds.end),
+    );
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+};
+
 export const getReconciliation = async (req: Request, res: Response) => {
   try {
     const staffUsername = req.user?.admin
@@ -791,6 +1218,79 @@ export const getCashPosition = async (req: Request, res: Response) => {
   }
 };
 
+export const getCashShiftAudit = async (req: Request, res: Response) => {
+  try {
+    if (!req.user?.admin) {
+      return res.status(403).json({
+        message: "เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถดูการตรวจสอบเงินสดได้",
+      });
+    }
+
+    const audit = await getCashShiftAuditForDate(
+      req.query.date as string | undefined,
+    );
+    if (!audit) {
+      return res.status(400).json({ message: "Invalid date format" });
+    }
+
+    res.status(200).json(audit);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+};
+
+export const resolveCashShiftAudit = async (req: Request, res: Response) => {
+  try {
+    if (!req.user?.admin || !req.user.username) {
+      return res.status(403).json({
+        message: "เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถรับทราบข้อยกเว้นได้",
+      });
+    }
+
+    const note = String(req.body.note || "").trim();
+    if (!note) {
+      return res.status(400).json({
+        message: "กรุณาระบุสรุปการตรวจสอบ",
+      });
+    }
+
+    const cashShift = await CashShift.findById(req.params.shiftId);
+    if (!cashShift) {
+      return res.status(404).json({ message: "ไม่พบกะเงินสดนี้" });
+    }
+
+    const audit = await getCashShiftAuditForDate(cashShift.businessDate);
+    const auditedShift = audit?.shifts.find(
+      (shift) => String(shift._id) === String(cashShift._id),
+    );
+    if (!auditedShift?.warnings.length) {
+      return res.status(400).json({
+        message: "กะนี้ไม่มีข้อยกเว้นที่ต้องรับทราบ",
+      });
+    }
+
+    cashShift.auditResolution = {
+      note,
+      reviewedBy: req.user.username,
+      reviewedAt: new Date(),
+    };
+    await cashShift.save();
+    await logActivity(req.user.username, "DAILY_CLOSE", {
+      summary: {
+        action: "REVIEW_CASH_SHIFT_AUDIT",
+        businessDate: cashShift.businessDate,
+        shiftNumber: cashShift.shiftNumber,
+        note,
+        warningCodes: auditedShift.warnings.map((warning) => warning.code),
+      },
+    });
+
+    res.status(200).json({ cashShift });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+};
+
 export const startCashShift = async (req: Request, res: Response) => {
   try {
     if (!req.user?.username) {
@@ -802,6 +1302,7 @@ export const startCashShift = async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Invalid date format" });
     }
 
+    return await withCashShiftMutationLock(bounds.businessDate, async () => {
     const existingOpenShift = await CashShift.findOne({
       businessDate: bounds.businessDate,
       status: "open",
@@ -817,6 +1318,14 @@ export const startCashShift = async (req: Request, res: Response) => {
       businessDate: bounds.businessDate,
       status: "closed",
     }).sort({ shiftNumber: -1 });
+    const handoffMovements = previousShift?.endedAt
+      ? summarizeCashStashes(
+          await getUnassignedCashTransactionsBetween(
+            previousShift.endedAt,
+            new Date(),
+          ),
+        )
+      : null;
     const openingMode =
       req.body.openingMode === "accepted_handoff"
         ? "accepted_handoff"
@@ -828,8 +1337,16 @@ export const startCashShift = async (req: Request, res: Response) => {
       });
     }
 
-    const expectedDepositOpening = previousShift?.depositActualCash || 0;
-    const expectedOperatingOpening = previousShift?.operatingActualCash || 0;
+    const expectedDepositOpening = cashBalanceAfterMovements(
+      previousShift?.depositActualCash || 0,
+      handoffMovements?.depositCashIn || 0,
+      handoffMovements?.depositCashOut || 0,
+    );
+    const expectedOperatingOpening = cashBalanceAfterMovements(
+      previousShift?.operatingActualCash || 0,
+      handoffMovements?.operatingCashIn || 0,
+      handoffMovements?.operatingCashOut || 0,
+    );
     const depositOpeningCash =
       openingMode === "accepted_handoff"
         ? expectedDepositOpening
@@ -840,8 +1357,8 @@ export const startCashShift = async (req: Request, res: Response) => {
         : Number(req.body.operatingOpeningCash || 0);
 
     if (
-      !Number.isFinite(depositOpeningCash) ||
-      !Number.isFinite(operatingOpeningCash)
+      !isValidCashCount(depositOpeningCash) ||
+      !isValidCashCount(operatingOpeningCash)
     ) {
       return res.status(400).json({ message: "ยอดเงินสดไม่ถูกต้อง" });
     }
@@ -877,7 +1394,7 @@ export const startCashShift = async (req: Request, res: Response) => {
       }),
     );
 
-    await logActivity(req.user.username, "DAILY_CLOSE", {
+    await logActivity(req.user!.username, "DAILY_CLOSE", {
       summary: {
         action: "START_CASH_SHIFT",
         businessDate: bounds.businessDate,
@@ -886,10 +1403,18 @@ export const startCashShift = async (req: Request, res: Response) => {
         depositOpeningCash,
         operatingOpeningCash,
       },
+    }).catch((err) => {
+      console.error("Failed to log cash shift start", err);
     });
 
-    res.status(201).json({ cashShift });
+    return res.status(201).json({ cashShift });
+    });
   } catch (err) {
+    if (err instanceof CashShiftMutationConflictError) {
+      return res.status(409).json({
+        message: "กำลังมีการเริ่มหรือปิดกะเงินสด กรุณาลองอีกครั้ง",
+      });
+    }
     if (err instanceof IdempotencyConflictError) {
       return sendDuplicateMutationResponse(res);
     }
@@ -913,11 +1438,22 @@ export const closeCashShift = async (req: Request, res: Response) => {
       return res.status(409).json({ message: "กะเงินสดนี้ปิดไปแล้ว" });
     }
 
+    if (
+      !req.user.admin &&
+      cashShift.staffUsername !== req.user.username
+    ) {
+      return res.status(403).json({
+        message: "เฉพาะผู้รับผิดชอบกะหรือผู้ดูแลระบบเท่านั้นที่ปิดกะได้",
+      });
+    }
+
+    return await withCashShiftMutationLock(cashShift.businessDate, async () => {
+
     const depositActualCash = Number(req.body.depositActualCash);
     const operatingActualCash = Number(req.body.operatingActualCash);
     if (
-      !Number.isFinite(depositActualCash) ||
-      !Number.isFinite(operatingActualCash)
+      !isValidCashCount(depositActualCash) ||
+      !isValidCashCount(operatingActualCash)
     ) {
       return res.status(400).json({ message: "ยอดเงินสดไม่ถูกต้อง" });
     }
@@ -945,8 +1481,8 @@ export const closeCashShift = async (req: Request, res: Response) => {
     }
 
     const closedShift = await withMutationIdempotency(req, () =>
-      CashShift.findByIdAndUpdate(
-        cashShift._id,
+      CashShift.findOneAndUpdate(
+        { _id: cashShift._id, status: "open" },
         {
           $set: {
             status: "closed",
@@ -969,7 +1505,11 @@ export const closeCashShift = async (req: Request, res: Response) => {
       ),
     );
 
-    await logActivity(req.user.username, "DAILY_CLOSE", {
+    if (!closedShift) {
+      return res.status(409).json({ message: "กะเงินสดนี้ปิดไปแล้ว" });
+    }
+
+    await logActivity(req.user!.username, "DAILY_CLOSE", {
       summary: {
         action: "CLOSE_CASH_SHIFT",
         businessDate: cashShift.businessDate,
@@ -981,10 +1521,18 @@ export const closeCashShift = async (req: Request, res: Response) => {
         operatingActualCash,
         operatingVariance,
       },
+    }).catch((err) => {
+      console.error("Failed to log cash shift close", err);
     });
 
-    res.status(200).json({ cashShift: closedShift });
+    return res.status(200).json({ cashShift: closedShift });
+    });
   } catch (err) {
+    if (err instanceof CashShiftMutationConflictError) {
+      return res.status(409).json({
+        message: "กำลังมีการเริ่มหรือปิดกะเงินสด กรุณาลองอีกครั้ง",
+      });
+    }
     if (err instanceof IdempotencyConflictError) {
       return sendDuplicateMutationResponse(res);
     }
@@ -1008,7 +1556,7 @@ export const upsertDailyClose = async (req: Request, res: Response) => {
     const actualCash = Number(req.body.actualCash);
     const openingCash = Number(req.body.openingCash || 0);
 
-    if (!Number.isFinite(actualCash) || !Number.isFinite(openingCash)) {
+    if (!isValidCashCount(actualCash) || !isValidCashCount(openingCash)) {
       return res.status(400).json({ message: "ยอดเงินสดไม่ถูกต้อง" });
     }
 
@@ -1027,7 +1575,7 @@ export const upsertDailyClose = async (req: Request, res: Response) => {
 
     if (
       Math.abs(variance) > CASH_VARIANCE_THRESHOLD &&
-      typeof req.body.note !== "string"
+      !String(req.body.note || "").trim()
     ) {
       return res.status(400).json({
         message: "กรุณาระบุหมายเหตุเมื่อยอดเงินสดไม่ตรงกัน",

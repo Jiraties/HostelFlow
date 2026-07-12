@@ -1,4 +1,3 @@
-import ActionButton from "../components/ActionButton";
 import "./Settings.css";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
@@ -7,6 +6,80 @@ import { API_URL } from "../config/api";
 import RecentActivities from "../features/activities/RecentActivities";
 import PageHeader from "../components/PageHeader";
 import usePageTitle from "../hooks/useTitle";
+import SettingsItem from "../features/settings/SettingsItem";
+import toast from "react-hot-toast";
+import { paymentMethodOptions, platformOptions } from "../helpers/options";
+import type { UserSettings } from "../types/userSettings";
+
+const settingsSelectOptions = {
+  calendarColorMode: [
+    { value: "status", label: "สีตาม Status" },
+    { value: "source", label: "สีตาม Platform" },
+  ],
+  calendarDensity: [
+    { value: "compact", label: "กระชับ" },
+    { value: "comfortable", label: "ปกติ" },
+    { value: "spacious", label: "กว้าง" },
+  ],
+  tableDensity: [
+    { value: "compact", label: "กระชับ" },
+    { value: "comfortable", label: "ปกติ" },
+    { value: "spacious", label: "กว้าง" },
+  ],
+  dateFormat: [
+    { value: "dd/MM/yyyy", label: "DD/MM/YYYY" },
+    { value: "d MMM yyyy", label: "D MMM YYYY" },
+  ],
+};
+
+const settingsFields: {
+  key: keyof UserSettings;
+  label: string;
+  options: { value: string; label: string }[];
+}[] = [
+  {
+    key: "calendarColorMode",
+    label: "สีในปฏิทิน",
+    options: settingsSelectOptions.calendarColorMode,
+  },
+  {
+    key: "calendarDensity",
+    label: "ความหนาแน่นปฏิทิน",
+    options: settingsSelectOptions.calendarDensity,
+  },
+  {
+    key: "tableDensity",
+    label: "ความหนาแน่นตาราง",
+    options: settingsSelectOptions.tableDensity,
+  },
+  {
+    key: "defaultPlatformId",
+    label: "ช่องทางการจองเริ่มต้น",
+    options: [
+      { value: "", label: "ไม่ตั้งค่าเริ่มต้น" },
+      ...platformOptions.map((option) => ({
+        value: option.value,
+        label: option.label,
+      })),
+    ],
+  },
+  {
+    key: "defaultPaymentMethod",
+    label: "ช่องทางการชำระเงินเริ่มต้น",
+    options: [
+      { value: "", label: "ไม่ตั้งค่าเริ่มต้น" },
+      ...paymentMethodOptions.map((option) => ({
+        value: option.value,
+        label: option.label,
+      })),
+    ],
+  },
+  {
+    key: "dateFormat",
+    label: "รูปแบบวันที่",
+    options: settingsSelectOptions.dateFormat,
+  },
+];
 
 const Settings = () => {
   usePageTitle("HostelFlow · ตั้งค่า");
@@ -58,6 +131,50 @@ const Settings = () => {
     }
   };
 
+  const updateSetting = async <K extends keyof UserSettings>(
+    key: K,
+    value: UserSettings[K],
+  ) => {
+    if (!user) return;
+
+    const previousUser = user;
+    const optimisticUser = {
+      ...user,
+      settings: {
+        ...user.settings,
+        [key]: value,
+      },
+    };
+
+    login(optimisticUser);
+
+    try {
+      const response = await axios.patch(
+        `${API_URL}/auth/me/settings`,
+        { [key]: value },
+        { withCredentials: true },
+      );
+
+      login({
+        ...response.data.user,
+        settings: {
+          ...(response.data.user?.settings || {}),
+          [key]: value,
+        },
+      });
+      toast.success("บันทึกการตั้งค่าแล้ว");
+    } catch (err) {
+      login(previousUser);
+      const errorMessage = axios.isAxiosError(err)
+        ? err.response?.status === 404
+          ? "ไม่พบ API สำหรับบันทึกการตั้งค่า กรุณารีสตาร์ท backend"
+          : err.response?.data?.message || "บันทึกการตั้งค่าไม่สำเร็จ"
+        : "บันทึกการตั้งค่าไม่สำเร็จ";
+
+      toast.error(errorMessage);
+    }
+  };
+
   return (
     <main className="settings">
       <PageHeader title="ตั้งค่า และ ประวัติ" />
@@ -91,15 +208,44 @@ const Settings = () => {
             </div>
           </div>
 
-          <div className="settings__item">
-            <p>ออกจากระบบ</p>
-            <ActionButton
-              text="ออกจากระบบ"
-              icon="bx-arrow-out-right-square-half"
-              onClick={logoutHandler}
-              className="settings__logout"
-            />
-          </div>
+          <SettingsItem
+            label="ออกจากระบบ"
+            buttonLabel="ออกจากระบบ"
+            action={logoutHandler}
+            icon="bx-arrow-out-right-square-half"
+            buttonClassName="settings__logout"
+          />
+
+          <hr className="settings__separator" />
+
+          {/* <div className="settings__fields"> */}
+          {settingsFields.map((field) => (
+            <label className="settings__field" key={field.key}>
+              <span className="settings__fieldCopy">
+                <span className="settings__fieldLabel">{field.label}</span>
+              </span>
+              <span className="settings__selectWrap">
+                <select
+                  className="settings__select"
+                  value={String(user?.settings[field.key] ?? "")}
+                  onChange={(event) =>
+                    updateSetting(
+                      field.key,
+                      event.target.value as UserSettings[typeof field.key],
+                    )
+                  }
+                >
+                  {field.options.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <i className="bx bx-chevron-down" aria-hidden="true" />
+              </span>
+            </label>
+          ))}
+          {/* </div> */}
         </div>
         <RecentActivities />
       </div>

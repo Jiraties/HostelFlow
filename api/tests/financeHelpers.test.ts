@@ -2,13 +2,20 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  bookingTodayArrivalRevenueAmount,
+  calculateTodayRevenueSummary,
+  cashBalanceAfterMovements,
+  isValidCashCount,
+  summarizeReceivedPaymentsByMethod,
   summarizeCashStashes,
   summarizeTransactions,
   transactionDashboardCollectedRevenueAmount,
   transactionDashboardGrossRevenueAmount,
   transactionFallsOnBusinessDate,
+  transactionTodayExtrasRevenueAmount,
+  transactionTodayReductionAmount,
 } from "../src/helpers/financeHelpers";
-import type { transcation } from "../src/models/booking";
+import type { booking, transcation } from "../src/models/booking";
 
 test("summarizeTransactions separates cash, deposits, refunds, card fees, and unpaid balances", () => {
   const roomCharge: transcation = {
@@ -101,6 +108,31 @@ test("summarizeCashStashes separates deposit cash from operating cash", () => {
   });
 });
 
+test("summarizeReceivedPaymentsByMethod nets prior refunds and outgoing corrections", () => {
+  const summary = summarizeReceivedPaymentsByMethod([
+    { type: "roomCharge", paymentMethod: "Card", amount: 1000 },
+    { type: "deposit", paymentMethod: "Cash", amount: 200 },
+    { type: "depositRefund", paymentMethod: "Cash", amount: 200 },
+    {
+      type: "adjustment",
+      paymentMethod: "Card",
+      direction: "out",
+      amount: 100,
+    },
+    { type: "roomCharge", paymentMethod: "Unpaid", amount: 500 },
+  ]);
+
+  assert.deepEqual(Array.from(summary.entries()), [["Card", 900]]);
+});
+
+test("cash close validation rejects negative counts and carries handoff movements", () => {
+  assert.equal(isValidCashCount(0), true);
+  assert.equal(isValidCashCount(1200.5), true);
+  assert.equal(isValidCashCount(-1), false);
+  assert.equal(isValidCashCount(Number.NaN), false);
+  assert.equal(cashBalanceAfterMovements(1000, 250, 75), 1175);
+});
+
 test("dashboard gross revenue counts unpaid room revenue while collected revenue waits for settlement", () => {
   const unpaidRoomCharge: transcation = {
     _id: "room-charge-2",
@@ -153,6 +185,123 @@ test("dashboard expected stay revenue deducts stay revenue reductions", () => {
   );
 
   assert.equal(expectedStayRevenue, 1000);
+});
+
+test("today arrival revenue recognizes the whole stay on check-in day", () => {
+  assert.equal(
+    bookingTodayArrivalRevenueAmount({
+      status: "checkedIn",
+      transactions: [
+        { type: "roomCharge", paymentMethod: "Unpaid", amount: 3000 },
+        { type: "deposit", paymentMethod: "Cash", amount: 500 },
+      ],
+    }),
+    3000,
+  );
+});
+
+test("today arrival revenue uses retained value for cancelled and no-show arrivals", () => {
+  assert.equal(
+    bookingTodayArrivalRevenueAmount({
+      status: "cancelled",
+      cancellation: { keptAmount: 1200 },
+      transactions: [
+        { type: "roomCharge", paymentMethod: "Cash", amount: 2000 },
+        { type: "deposit", paymentMethod: "Cash", amount: 500 },
+        { type: "cancellationRefund", paymentMethod: "Cash", amount: 800 },
+      ],
+    }),
+    1200,
+  );
+  assert.equal(
+    bookingTodayArrivalRevenueAmount({
+      status: "noShow",
+      transactions: [
+        { type: "roomCharge", paymentMethod: "Unpaid", amount: 1500 },
+      ],
+    }),
+    0,
+  );
+  assert.equal(
+    bookingTodayArrivalRevenueAmount({
+      status: "noShow",
+      transactions: [
+        { type: "roomCharge", paymentMethod: "Cash", amount: 1500 },
+        { type: "roomRefund", paymentMethod: "Cash", amount: 500 },
+      ],
+    }),
+    1000,
+  );
+});
+
+test("today extras and reductions exclude room charges and money movements", () => {
+  const towel: transcation = {
+    type: "towel",
+    paymentMethod: "Cash",
+    amount: 100,
+  };
+  const refund: transcation = {
+    type: "roomRefund",
+    paymentMethod: "Cash",
+    amount: 40,
+  };
+  const settlement: transcation = {
+    type: "settlementCharge",
+    paymentMethod: "Cash",
+    relatedTransactionType: "roomCharge",
+    amount: 900,
+  };
+
+  assert.equal(transactionTodayExtrasRevenueAmount(towel), 100);
+  assert.equal(transactionTodayExtrasRevenueAmount(settlement), 0);
+  assert.equal(transactionTodayReductionAmount(refund), 40);
+  assert.equal(transactionTodayReductionAmount(towel), 0);
+});
+
+test("today revenue summary excludes future arrivals while including today's extras", () => {
+  const start = new Date("2026-07-11T17:00:00.000Z");
+  const end = new Date("2026-07-12T17:00:00.000Z");
+  const bookings = [
+    {
+      checkIn: new Date("2026-07-12T00:00:00.000Z"),
+      status: "checkedIn",
+      transactions: [
+        {
+          type: "roomCharge",
+          paymentMethod: "Cash",
+          amount: 2000,
+          createdAt: new Date("2026-07-01T00:00:00.000Z"),
+        },
+        {
+          type: "towel",
+          paymentMethod: "Cash",
+          amount: 100,
+          createdAt: new Date("2026-07-12T02:00:00.000Z"),
+        },
+      ],
+    },
+    {
+      checkIn: new Date("2026-07-22T00:00:00.000Z"),
+      status: "booked",
+      transactions: [
+        {
+          type: "roomCharge",
+          paymentMethod: "Cash",
+          amount: 3000,
+          createdAt: new Date("2026-07-12T03:00:00.000Z"),
+        },
+      ],
+    },
+  ] as unknown as booking[];
+
+  assert.deepEqual(calculateTodayRevenueSummary(bookings, start, end), {
+    todayRevenue: 2100,
+    todayArrivalRevenue: 2000,
+    todayExtrasRevenue: 100,
+    todayReductions: 0,
+    todayCollectedRevenue: 2100,
+    todayServiceHighlights: [{ type: "towel", count: 1, total: 100 }],
+  });
 });
 
 test("transactionFallsOnBusinessDate honors explicit Bangkok business-day UTC bounds", () => {

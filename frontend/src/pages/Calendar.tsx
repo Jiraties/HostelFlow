@@ -4,11 +4,12 @@ import ViewBooking from "../features/bookings/ViewBooking";
 import AddBooking from "../features/bookings/AddBooking.tsx";
 import PageHeader from "../components/PageHeader.tsx";
 import axios from "axios";
+import toast from "react-hot-toast";
 
 import type { booking, PlatformId } from "../types/bookingTypes";
 import { platformMap } from "../helpers/maps.ts";
 
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { Modal } from "@mui/material";
 import type { ReactNode } from "react";
 import { calculateNights } from "../helpers/bookingHelpers";
@@ -19,6 +20,8 @@ import { requestUnsavedModalClose } from "../helpers/modalGuards";
 import { formatLocalDate, isSameDay } from "../helpers/bookingHelpers";
 import { getRoomStayRoomIds } from "../helpers/roomStayHelpers";
 import usePageTitle from "../hooks/useTitle";
+import { useAuth } from "../context/AuthContext";
+import { platformOptions } from "../helpers/options";
 // import { dummyBooking } from "./test.tsx";
 
 import "./Calendar.css";
@@ -53,7 +56,13 @@ const statusColorMap: Record<booking["status"], string> = {
   noShow: "#6b7280",
 };
 
-const calendarLegendItems = [
+type CalendarLegendItem = {
+  label: string;
+  color: string;
+  type?: "outline";
+};
+
+const calendarLegendItems: CalendarLegendItem[] = [
   { label: "รอเช็คอิน", color: "#00ADEF" },
   { label: "เข้าพัก", color: statusColorMap.checkedIn },
   { label: "เช็คเอาท์", color: statusColorMap.checkedOut },
@@ -61,9 +70,35 @@ const calendarLegendItems = [
   { label: "ค้างชำระ", color: "#ef4444", type: "outline" },
 ];
 
+const sourceLegendItems: CalendarLegendItem[] = platformOptions.map((platform) => ({
+  label: platform.label,
+  color: platform.color,
+}));
+
+const getDateInMonth = (year: number, month: number) =>
+  new Date(year, month + 1, 0).getDate();
+
+const startOfCalendarDay = (date: Date) =>
+  new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
 const Calendar = () => {
   usePageTitle("HostelFlow · ตารางการจอง");
+  const { user } = useAuth();
   const today = new Date();
+  const calendarColorMode = user?.settings.calendarColorMode || "status";
+  const calendarDensity = user?.settings.calendarDensity || "comfortable";
+  const calendarLegend =
+    calendarColorMode === "source" ? sourceLegendItems : calendarLegendItems;
+  const dayColumnWidth =
+    calendarDensity === "compact"
+      ? "3.25rem"
+      : calendarDensity === "spacious"
+        ? "4.8rem"
+        : "4rem";
+  const roomRowHeight =
+    calendarDensity === "compact"
+      ? "2.4rem"
+      : "3rem";
 
   const timelineRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
@@ -92,13 +127,6 @@ const Calendar = () => {
     isOpen: false,
     booking: null,
   });
-
-  const getDateInMonth = (year: number, month: number) => {
-    return new Date(year, month + 1, 0).getDate();
-  };
-
-  const startOfCalendarDay = (date: Date) =>
-    new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
   const calendarDays: Date[] = useMemo(() => {
     return Array.from(
@@ -162,9 +190,12 @@ const Calendar = () => {
   const mergedBookingBlocks: ReactNode[] = [];
 
   const renderedDayHeaders = calendarDays.map((day, i) => {
-    const monthAndDate = new Intl.DateTimeFormat("en-US", {
-      day: "numeric",
+    const weekday = new Intl.DateTimeFormat("en-US", {
       weekday: "short",
+      calendar: "gregory",
+    }).format(day);
+    const dateLabel = new Intl.DateTimeFormat("en-GB", {
+      day: "numeric",
       calendar: "gregory",
     }).format(day);
 
@@ -176,7 +207,7 @@ const Calendar = () => {
         style={{ gridRow: 1 }}
       >
         <p style={i === todayIndex ? { color: "red" } : {}}>
-          {monthAndDate.split(" ")[1]}
+          {dateLabel}
         </p>
         <p
           style={
@@ -185,7 +216,7 @@ const Calendar = () => {
               : { fontWeight: 600 }
           }
         >
-          {monthAndDate.split(" ")[0]}
+          {weekday}
         </p>
       </div>
     );
@@ -320,8 +351,9 @@ const Calendar = () => {
             gridColumn: `${position.startingDate + 2} / span ${position.span}`,
             gridRow,
             backgroundColor:
-              statusColorMap[booking.status] ||
-              platformMap[booking.platformId].color,
+              calendarColorMode === "source"
+                ? platformMap[booking.platformId].color
+                : statusColorMap[booking.status],
             borderTopLeftRadius: position.continuesBefore ? 0 : "0.5rem",
             borderBottomLeftRadius: position.continuesBefore ? 0 : "0.5rem",
             borderTopRightRadius: position.continuesAfter ? 0 : "0.5rem",
@@ -401,7 +433,7 @@ const Calendar = () => {
     setMonth(11);
   };
 
-  const getRooms = async () => {
+  const getRooms = useCallback(async () => {
     const fetchedRooms = await axios.get(
       `${API_URL}/bookings/getMonthCalendar?month=${month}&year=${year}`,
       {
@@ -411,11 +443,23 @@ const Calendar = () => {
 
     setRooms(fetchedRooms.data);
     setLastUpdated(new Date());
-  };
+  }, [month, setLastUpdated, setRooms, year]);
+
+  const showCalendarLoadError = useCallback((err: unknown) => {
+    const message = axios.isAxiosError<{ message?: string; error?: string }>(err)
+      ? err.response?.data.message || err.response?.data.error
+      : null;
+
+    toast.error(message || "ไม่สามารถโหลดตารางห้องได้ กรุณาลองใหม่อีกครั้ง");
+  }, []);
 
   useEffect(() => {
-    getRooms();
-  }, [month, year, location]);
+    const timeoutId = window.setTimeout(() => {
+      getRooms().catch(showCalendarLoadError);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [getRooms, location, showCalendarLoadError]);
 
   const isfirstRun = useRef(true);
   useEffect(() => {
@@ -430,12 +474,12 @@ const Calendar = () => {
       inline: "start",
     });
     isfirstRun.current = false;
-  }, [month, year]);
+  }, [month, todayIndex, year]);
 
   const closeAllModals = () => {
     setViewBookingBooking(null);
     setConfirmationModalIsOpen({ isOpen: false, booking: null });
-    getRooms();
+    getRooms().catch(showCalendarLoadError);
   };
 
   const removeBookingHandler = (booking: booking) => {
@@ -461,7 +505,7 @@ const Calendar = () => {
           booking={null}
           bookingId={viewBookingBooking?.bookingId}
           onClose={() => setViewBookingBooking(null)}
-          onUpdated={() => getRooms()}
+          onUpdated={() => getRooms().catch(showCalendarLoadError)}
           removeBookingHandler={removeBookingHandler}
         />
       </Modal>
@@ -509,8 +553,7 @@ const Calendar = () => {
         title={
           <span className="calendar__monthSelector">
             <i className="bx bx-caret-left" onClick={() => previousMonth()} />
-            {new Intl.DateTimeFormat("th-TH", {
-              day: undefined,
+            {new Intl.DateTimeFormat("en-GB", {
               month: "long",
               year: "numeric",
               calendar: "gregory",
@@ -523,7 +566,7 @@ const Calendar = () => {
       />
 
       <div className="calendar__legend" aria-label="คำอธิบายสถานะในปฏิทิน">
-        {calendarLegendItems.map((item) => (
+        {calendarLegend.map((item) => (
           <div className="calendar__legendItem" key={item.label}>
             <span
               className={
@@ -542,8 +585,8 @@ const Calendar = () => {
         <div
           className="timeline"
           style={{
-            gridTemplateColumns: `var(--timeline-room-column-width, 10rem) repeat(${getDateInMonth(year, month)}, 4rem)`,
-            gridTemplateRows: `repeat(${rooms.length + 1}, 3rem)`,
+            gridTemplateColumns: `var(--timeline-room-column-width, 10rem) repeat(${getDateInMonth(year, month)}, ${dayColumnWidth})`,
+            gridTemplateRows: `repeat(${rooms.length + 1}, ${roomRowHeight})`,
           }}
         >
           <div
