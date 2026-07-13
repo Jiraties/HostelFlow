@@ -1995,6 +1995,7 @@ type CalendarBooking = {
   bookingId: string;
   platformId: PlatformId;
   status: Status;
+  isUnpaid: boolean;
 };
 
 type Room = {
@@ -2064,6 +2065,22 @@ export const getMonthCalendar = async (req: Request, res: Response) => {
     ];
 
     monthOfBookings.forEach((booking) => {
+      const roomCharge = booking.transactions.find(
+        (transaction) => transaction.type === "roomCharge",
+      );
+      const hasRoomChargeSettlement = roomCharge
+        ? booking.transactions.some(
+            (transaction) =>
+              transaction.type === "settlementCharge" &&
+              transaction.relatedTransactionType === "roomCharge" &&
+              transaction.relatedTransactionId === String(roomCharge._id) &&
+              transaction.paymentMethod !== "Unpaid",
+          )
+        : false;
+      const isUnpaid =
+        !roomCharge ||
+        (roomCharge.paymentMethod === "Unpaid" && !hasRoomChargeSettlement);
+
       booking.roomStays.forEach((roomStay) => {
         getRoomStayRoomIds(roomStay).forEach((roomId) => {
           const roomWithMatchingId = rooms.find((room) => room.roomId === roomId);
@@ -2074,6 +2091,7 @@ export const getMonthCalendar = async (req: Request, res: Response) => {
             from: roomStay.from,
             to: roomStay.to,
             status: booking.status,
+            isUnpaid,
           });
         });
       });

@@ -22,6 +22,7 @@ import {
 } from "../../helpers/bookingHelpers.ts";
 import { requestUnsavedModalClose } from "../../helpers/modalGuards.ts";
 import {
+  formatCompactRoomNames,
   formatRoomStayRooms,
   getRoomStayRoomIds,
 } from "../../helpers/roomStayHelpers.ts";
@@ -410,7 +411,9 @@ const ViewBooking = ({
   };
 
   const compactRoomsName = data.roomStays.map(formatRoomStayRooms).join(", ");
-  const fullRoomsName = data.roomStays.flatMap(getRoomStayRoomIds).join(", ");
+  const fullRoomsName = formatCompactRoomNames(
+    data.roomStays.flatMap(getRoomStayRoomIds),
+  );
 
   const formatTransactionAmount = (
     transaction: booking["transactions"][number],

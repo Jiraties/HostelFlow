@@ -1,4 +1,5 @@
 import type { OptionType } from "./selectStyling";
+import { formatShortRoomName } from "./roomStayHelpers";
 
 export const platformOptions = [
   { value: "BOOK", label: "Booking.com", color: "#003580" },
@@ -68,4 +69,4 @@ export const roomIdOptions: OptionType[] = [
   { value: "Wicker 4", label: "Wicker 4" },
   { value: "Wicker 5", label: "Wicker 5" },
   { value: "Wicker 6", label: "Wicker 6" },
-];
+].map((option) => ({ ...option, label: formatShortRoomName(option.value) }));

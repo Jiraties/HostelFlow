@@ -670,7 +670,7 @@ const Main = () => {
   const cashShiftIsOpen = Boolean(activeCashShift);
   const canCloseActiveShift = Boolean(
     activeCashShift &&
-      (user?.admin || activeCashShift.staffUsername === user?.username),
+    (user?.admin || activeCashShift.staffUsername === user?.username),
   );
   const hasPreviousCashShift = Boolean(previousCashShift);
   const previousShiftBelongsToCurrentStaff =
@@ -1035,33 +1035,33 @@ const Main = () => {
             <div className="main__todayServiceStrip">
               <div className="main__todayServiceChips">
                 {todayServiceHighlights.map((service) => {
-                const meta = serviceHighlightMeta[service.type] || {
-                  label: service.type,
-                  icon: "bx-receipt",
-                  color: "var(--primary-color)",
-                };
+                  const meta = serviceHighlightMeta[service.type] || {
+                    label: service.type,
+                    icon: "bx-receipt",
+                    color: "var(--primary-color)",
+                  };
 
-                return (
-                      <button
-                        className="main__todayServiceChip"
-                    key={service.type}
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setFinancialBreakdownType(service.type);
-                      setFinancialBreakdownMode("today");
-                    }}
-                    style={
-                      {
-                        "--service-color": meta.color,
-                      } as React.CSSProperties
-                    }
-                  >
-                    <i className={`bx ${meta.icon}`} />
-                    <span>{meta.label}</span>
-                    <strong>{service.count}</strong>
-                  </button>
-                );
+                  return (
+                    <button
+                      className="main__todayServiceChip"
+                      key={service.type}
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setFinancialBreakdownType(service.type);
+                        setFinancialBreakdownMode("today");
+                      }}
+                      style={
+                        {
+                          "--service-color": meta.color,
+                        } as React.CSSProperties
+                      }
+                    >
+                      <i className={`bx ${meta.icon}`} />
+                      <span>{meta.label}</span>
+                      <strong>{service.count}</strong>
+                    </button>
+                  );
                 })}
               </div>
               <span className="main__todayDetailsLink">รายละเอียด ›</span>
@@ -1268,7 +1268,6 @@ const Main = () => {
             />
           </div>
           <div>
-            <p>กะเงินสดวันนี้</p>
             <h2>{cashCloseIsComplete ? "ปิดกะเงินสดแล้ว" : cashShiftTitle}</h2>
             {!cashCloseIsComplete && cashShiftSubtitle ? (
               <span>{cashShiftSubtitle}</span>
@@ -1322,26 +1321,24 @@ const Main = () => {
               <div className="main__cashCloseTile main__cashCloseTile--deposit">
                 <div className="main__cashCloseTileHeader">
                   <i className="bx bx-lock-alt" />
-                  <span>เงินสดมัดจำ</span>
+                  <span>เงินมัดจำ</span>
                 </div>
                 <strong>
                   {cashCloseLoading
                     ? "-"
                     : `${formatMoney(cashPosition?.current.depositCash || 0)} ฿`}
                 </strong>
-                <p>เงินมัดจำในลิ้นชัก</p>
               </div>
               <div className="main__cashCloseTile main__cashCloseTile--operating">
                 <div className="main__cashCloseTileHeader">
                   <i className="bx bx-wallet" />
-                  <span>เงินสดทั่วไป</span>
+                  <span>รายได้เงินสด</span>
                 </div>
                 <strong>
                   {cashCloseLoading
                     ? "-"
                     : `${formatMoney(cashPosition?.current.operatingCash || 0)} ฿`}
                 </strong>
-                <p>เงินสดทั่วไปในลิ้นชัก</p>
               </div>
             </div>
 
@@ -1354,7 +1351,7 @@ const Main = () => {
                 {activeCashShift ? (
                   <>
                     <label>
-                      <span>นับเงินมัดจำปิดกะ</span>
+                      <span>เงินมัดจำ</span>
                       <input
                         className="boxInput"
                         type="number"
@@ -1368,7 +1365,7 @@ const Main = () => {
                       />
                     </label>
                     <label>
-                      <span>นับเงินทั่วไปปิดกะ</span>
+                      <span>รายได้เงินสด</span>
                       <input
                         className="boxInput"
                         type="number"
@@ -1385,7 +1382,7 @@ const Main = () => {
                 ) : (
                   <>
                     <label>
-                      <span>เงินมัดจำเริ่มกะ</span>
+                      <span>เงินมัดจำ</span>
                       <input
                         className="boxInput"
                         type="number"
@@ -1398,7 +1395,7 @@ const Main = () => {
                       />
                     </label>
                     <label>
-                      <span>เงินทั่วไปเริ่มกะ</span>
+                      <span>รายได้เงินสด</span>
                       <input
                         className="boxInput"
                         type="number"

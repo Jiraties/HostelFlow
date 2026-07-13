@@ -18,6 +18,26 @@ export const getRoomStayRoomIds = (roomStay: RoomStayLike) => {
 export const getPrimaryRoomId = (roomStay: RoomStayLike) =>
   getRoomStayRoomIds(roomStay)[0] || "";
 
+const roomPrefixAbbreviations: Record<string, string> = {
+  Siesta: "S",
+  Marquisette: "M",
+  Homespan: "H",
+  Veranda: "V",
+  Wicker: "W",
+};
+
+const formatRoomPrefix = (prefix: string) =>
+  roomPrefixAbbreviations[prefix] || prefix;
+
+export const formatShortRoomName = (roomId: string) => {
+  const normalizedRoomId = roomId.trim().replace(/\s+/g, " ");
+  const match = normalizedRoomId.match(/^(.+?)\s+(\d+)$/);
+
+  if (!match) return normalizedRoomId;
+
+  return `${formatRoomPrefix(match[1])} ${match[2]}`;
+};
+
 type ParsedNumberedRoom = {
   original: string;
   prefix: string;
@@ -77,10 +97,15 @@ export const formatCompactRoomNames = (roomIds: string[]) => {
 
   const compactNumberedRooms = Array.from(parsedGroups.entries()).map(
     ([prefix, rooms]) =>
-      `${prefix} ${formatNumberRanges(rooms.map((room) => room.number))}`,
+      `${formatRoomPrefix(prefix)} ${formatNumberRanges(
+        rooms.map((room) => room.number),
+      )}`,
   );
 
-  return [...unparsedRoomIds, ...compactNumberedRooms].join(", ");
+  return [
+    ...unparsedRoomIds.map(formatShortRoomName),
+    ...compactNumberedRooms,
+  ].join(", ");
 };
 
 export const formatRoomStayRooms = (roomStay: RoomStayLike) =>

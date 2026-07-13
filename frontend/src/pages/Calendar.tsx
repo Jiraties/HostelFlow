@@ -12,7 +12,10 @@ import { platformMap } from "../helpers/maps.ts";
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { Modal } from "@mui/material";
 import type { ReactNode } from "react";
-import { calculateNights } from "../helpers/bookingHelpers";
+import {
+  calculateNights,
+  roomChargeDisplayPaymentMethod,
+} from "../helpers/bookingHelpers";
 import { useLocation } from "react-router";
 import { formatBookingDates } from "../helpers/bookingHelpers";
 import { API_URL } from "../config/api.ts";
@@ -33,6 +36,7 @@ type CalendarBooking = {
   bookingId: string;
   platformId: PlatformId;
   status: booking["status"];
+  isUnpaid: boolean;
 };
 
 type Room = {
@@ -59,7 +63,7 @@ const statusColorMap: Record<booking["status"], string> = {
 type CalendarLegendItem = {
   label: string;
   color: string;
-  type?: "outline";
+  type?: "accent";
 };
 
 const calendarLegendItems: CalendarLegendItem[] = [
@@ -67,7 +71,7 @@ const calendarLegendItems: CalendarLegendItem[] = [
   { label: "เข้าพัก", color: statusColorMap.checkedIn },
   { label: "เช็คเอาท์", color: statusColorMap.checkedOut },
   { label: "ยกเลิก / No-show", color: statusColorMap.cancelled },
-  { label: "ค้างชำระ", color: "#ef4444", type: "outline" },
+  { label: "ค้างชำระ", color: "#ff5269", type: "accent" },
 ];
 
 const sourceLegendItems: CalendarLegendItem[] = platformOptions.map((platform) => ({
@@ -80,6 +84,13 @@ const getDateInMonth = (year: number, month: number) =>
 
 const startOfCalendarDay = (date: Date) =>
   new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+const monthNames = Array.from({ length: 12 }, (_, month) =>
+  new Intl.DateTimeFormat("en-GB", {
+    month: "long",
+    calendar: "gregory",
+  }).format(new Date(2024, month, 1)),
+);
 
 const Calendar = () => {
   usePageTitle("HostelFlow · ตารางการจอง");
@@ -101,6 +112,7 @@ const Calendar = () => {
       : "3rem";
 
   const timelineRef = useRef<HTMLDivElement>(null);
+  const monthPickerRef = useRef<HTMLSpanElement>(null);
   const location = useLocation();
   const [addBookingIsOpen, setAddBookingIsOpen] = useState(false);
   const [addBookingIsDirty, setAddBookingIsDirty] = useState(false);
@@ -116,6 +128,7 @@ const Calendar = () => {
   });
   const [month, setMonth] = useState(today.getMonth()); // JS MONTH 0=Jan 1=Feb 4=May
   const [year, setYear] = useState(today.getFullYear());
+  const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [viewBookingBooking, setViewBookingBooking] = useState<booking | null>(
     null,
@@ -285,7 +298,7 @@ const Calendar = () => {
           style={{
             gridColumn: `${dayIndex + 2}`,
             gridRow,
-            backgroundColor: isToday ? "#ff000010" : undefined, // 🔥 slight red
+            backgroundColor: isToday ? "#0000000a" : undefined, // subtle grey
           }}
           onClick={() => handleAddBooking(room.roomId, day)}
           title={`Add booking: ${room.roomId} — ${day.toDateString()}`}
@@ -340,7 +353,9 @@ const Calendar = () => {
 
       mergedBookingBlocks.push(
         <div
-          className="timeline__item timeline__bookedRoomItem"
+          className={`timeline__item timeline__bookedRoomItem${
+            booking.isUnpaid ? " timeline__bookedRoomItem--unpaid" : ""
+          }`}
           title={
             booking.name +
             " (" +
@@ -410,6 +425,7 @@ const Calendar = () => {
               bookingId: formattedBooking.bookingId,
               platformId: formattedBooking.platformId,
               status: formattedBooking.status,
+              isUnpaid: roomChargeDisplayPaymentMethod(formattedBooking) === "Unpaid",
             },
           ],
         };
@@ -420,6 +436,7 @@ const Calendar = () => {
   };
 
   const nextMonth = () => {
+    setIsMonthPickerOpen(false);
     if (month < 11) return setMonth(month + 1);
 
     setYear(year + 1);
@@ -427,11 +444,37 @@ const Calendar = () => {
   };
 
   const previousMonth = () => {
+    setIsMonthPickerOpen(false);
     if (month - 1 > -1) return setMonth(month - 1);
 
     setYear(year - 1);
     setMonth(11);
   };
+
+  const selectMonth = (selectedMonth: number) => {
+    setMonth(selectedMonth);
+    setIsMonthPickerOpen(false);
+  };
+
+  useEffect(() => {
+    if (!isMonthPickerOpen) return;
+
+    const closeMonthPicker = (event: MouseEvent) => {
+      if (!monthPickerRef.current?.contains(event.target as Node)) {
+        setIsMonthPickerOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsMonthPickerOpen(false);
+    };
+
+    document.addEventListener("mousedown", closeMonthPicker);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeMonthPicker);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isMonthPickerOpen]);
 
   const getRooms = useCallback(async () => {
     const fetchedRooms = await axios.get(
@@ -552,13 +595,79 @@ const Calendar = () => {
       <PageHeader
         title={
           <span className="calendar__monthSelector">
-            <i className="bx bx-caret-left" onClick={() => previousMonth()} />
-            {new Intl.DateTimeFormat("en-GB", {
-              month: "long",
-              year: "numeric",
-              calendar: "gregory",
-            }).format(new Date(year, month, 1))}
-            <i className="bx bx-caret-right" onClick={() => nextMonth()} />
+            <button
+              className="calendar__monthNavButton"
+              type="button"
+              aria-label="Previous month"
+              onClick={previousMonth}
+            >
+              <i className="bx bx-caret-left" aria-hidden="true" />
+            </button>
+            <span className="calendar__monthPicker" ref={monthPickerRef}>
+              <button
+                className="calendar__monthPickerTrigger"
+                type="button"
+                aria-expanded={isMonthPickerOpen}
+                aria-haspopup="dialog"
+                onClick={() => setIsMonthPickerOpen((isOpen) => !isOpen)}
+              >
+                {new Intl.DateTimeFormat("en-GB", {
+                  month: "long",
+                  year: "numeric",
+                  calendar: "gregory",
+                }).format(new Date(year, month, 1))}
+                <i className="bx bx-chevron-down" aria-hidden="true" />
+              </button>
+              {isMonthPickerOpen && (
+                <span
+                  className="calendar__monthPickerPanel"
+                  role="dialog"
+                  aria-label="Choose month"
+                >
+                  <span className="calendar__monthPickerYear">
+                    <button
+                      type="button"
+                      aria-label="Previous year"
+                      onClick={() => setYear((currentYear) => currentYear - 1)}
+                    >
+                      <i className="bx bx-chevron-left" aria-hidden="true" />
+                    </button>
+                    <span>{year}</span>
+                    <button
+                      type="button"
+                      aria-label="Next year"
+                      onClick={() => setYear((currentYear) => currentYear + 1)}
+                    >
+                      <i className="bx bx-chevron-right" aria-hidden="true" />
+                    </button>
+                  </span>
+                  <span className="calendar__monthPickerMonths">
+                    {monthNames.map((monthName, monthIndex) => (
+                      <button
+                        className={
+                          monthIndex === month
+                            ? "calendar__monthPickerMonth calendar__monthPickerMonth--selected"
+                            : "calendar__monthPickerMonth"
+                        }
+                        type="button"
+                        key={monthName}
+                        onClick={() => selectMonth(monthIndex)}
+                      >
+                        {monthName.slice(0, 3)}
+                      </button>
+                    ))}
+                  </span>
+                </span>
+              )}
+            </span>
+            <button
+              className="calendar__monthNavButton"
+              type="button"
+              aria-label="Next month"
+              onClick={nextMonth}
+            >
+              <i className="bx bx-caret-right" aria-hidden="true" />
+            </button>
           </span>
         }
         lastUpdated={lastUpdated}
@@ -569,11 +678,9 @@ const Calendar = () => {
         {calendarLegend.map((item) => (
           <div className="calendar__legendItem" key={item.label}>
             <span
-              className={
-                item.type === "outline"
-                  ? "calendar__legendDot calendar__legendDot--outline"
-                  : "calendar__legendDot"
-              }
+              className={`calendar__legendDot${
+                item.type ? ` calendar__legendDot--${item.type}` : ""
+              }`}
               style={{ backgroundColor: item.color }}
             />
             <p>{item.label}</p>

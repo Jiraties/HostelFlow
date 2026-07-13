@@ -258,13 +258,13 @@ const Home = ({ status }: { status: HomeStatus }) => {
           // },
           {
             id: "depositStash",
-            label: "เงินสดมัดจำ (฿)",
+            label: "เงินมัดจำ (฿)",
             value: stats.depositStash,
             helperText: cashShiftHelperText,
           },
           {
             id: "operatingStash",
-            label: "เงินสดทั่วไป (฿)",
+            label: "รายได้เงินสด (฿)",
             value: stats.operatingStash,
             helperText: cashShiftHelperText,
           },
@@ -283,13 +283,13 @@ const Home = ({ status }: { status: HomeStatus }) => {
           { id: "deposit", label: "มัดจำที่ต้องคืน (฿)", value: stats.deposit },
           {
             id: "depositStash",
-            label: "เงินสดมัดจำ (฿)",
+            label: "เงินมัดจำ (฿)",
             value: stats.depositStash,
             helperText: cashShiftHelperText,
           },
           {
             id: "operatingStash",
-            label: "เงินสดทั่วไป (฿)",
+            label: "รายได้เงินสด (฿)",
             value: stats.operatingStash,
             helperText: cashShiftHelperText,
           },

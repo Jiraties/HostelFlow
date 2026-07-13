@@ -7,7 +7,10 @@ import type {
   roomStay,
   transaction,
 } from "../../types/activitiesTypes";
-import { formatRoomStayRooms } from "../../helpers/roomStayHelpers";
+import {
+  formatCompactRoomNames,
+  formatRoomStayRooms,
+} from "../../helpers/roomStayHelpers";
 import { useAuth } from "../../context/AuthContext";
 import {
   formatDisplayDate,
@@ -322,8 +325,12 @@ const RecentActivities = ({ userId }: { userId?: string }) => {
                 </p>
                 <p>
                   <strong>ห้อง:</strong>{" "}
-                  {item.details.snapshot?.roomIds?.join(", ") ||
-                    item.details.snapshot?.roomId}
+                  {formatCompactRoomNames(
+                    item.details.snapshot?.roomIds ||
+                      (item.details.snapshot?.roomId
+                        ? [item.details.snapshot.roomId]
+                        : []),
+                  )}
                 </p>
                 <p>
                   <strong>ช่องทางการจอง:</strong>{" "}

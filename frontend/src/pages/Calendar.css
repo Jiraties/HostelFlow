@@ -99,6 +99,21 @@
   opacity: 0.9;
 }
 
+.timeline__bookedRoomItem--unpaid {
+  box-shadow:
+    var(--main-shadow),
+    inset 0 0 0 1px #ffffff70;
+}
+
+.timeline__bookedRoomItem--unpaid::before {
+  background: #ff5269;
+  border-radius: inherit;
+  content: "";
+  inset: 0.35rem auto 0.35rem 0.35rem;
+  position: absolute;
+  width: 0.28rem;
+}
+
 .timeline__bookedRoomItem p {
   font-weight: 500;
   text-overflow: ellipsis;
@@ -111,6 +126,124 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
+}
+
+.calendar__monthPicker {
+  position: relative;
+}
+
+.calendar__monthNavButton,
+.calendar__monthPickerTrigger {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+}
+
+.calendar__monthNavButton {
+  border-radius: 1rem;
+  box-shadow: var(--main-shadow);
+  color: var(--primary-color);
+  justify-content: center;
+  padding: 0.5rem;
+  transition-duration: 0.1s;
+}
+
+.calendar__monthNavButton:hover {
+  transform: scale(1.1);
+}
+
+.calendar__monthPickerTrigger {
+  border-radius: 0.5rem;
+  gap: 0.35rem;
+  padding: 0.2rem 0.35rem;
+}
+
+.calendar__monthPickerTrigger:hover,
+.calendar__monthPickerTrigger:focus-visible {
+  background: #00000008;
+}
+
+.calendar__monthNavButton:focus-visible,
+.calendar__monthPickerTrigger:focus-visible,
+.calendar__monthPickerPanel button:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+.calendar__monthPickerPanel {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.85rem;
+  box-shadow: 0 0.75rem 2rem #0000001f;
+  display: block;
+  left: 50%;
+  min-width: 16rem;
+  padding: 0.75rem;
+  position: absolute;
+  top: calc(100% + 0.55rem);
+  transform: translateX(-50%);
+  z-index: 10;
+}
+
+.calendar__monthPickerYear {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.65rem;
+}
+
+.calendar__monthPickerYear span {
+  font-size: 0.95rem;
+}
+
+.calendar__monthPickerYear button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 0.45rem;
+  color: var(--primary-color);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 1.15rem;
+  height: 2rem;
+  justify-content: center;
+  width: 2rem;
+}
+
+.calendar__monthPickerYear button:hover,
+.calendar__monthPickerMonth:hover {
+  background: #00000008;
+}
+
+.calendar__monthPickerMonths {
+  display: grid;
+  gap: 0.25rem;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.calendar__monthPickerMonth {
+  background: transparent;
+  border: 0;
+  border-radius: 0.45rem;
+  color: #374151;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  padding: 0.55rem 0.3rem;
+}
+
+.calendar__monthPickerMonth--selected {
+  background: var(--primary-color);
+  color: white;
+}
+
+.calendar__monthPickerMonth--selected:hover {
+  background: var(--primary-color);
+  filter: brightness(0.95);
 }
 
 .calendar__legend {
@@ -136,22 +269,12 @@
   width: 0.7rem;
 }
 
-.calendar__legendDot--outline {
-  background: #fff !important;
-  border: 2px solid #ef4444;
-}
-
-.calendar__monthSelector i {
-  padding: 0.5rem;
-  cursor: pointer;
-  box-shadow: var(--main-shadow);
-  border-radius: 1rem;
-  color: var(--primary-color);
-  transition-duration: 0.1s;
-}
-
-.calendar__monthSelector i:hover {
-  transform: scale(1.1);
+.calendar__legendDot--accent {
+  background: #ff5269 !important;
+  border-radius: 999px;
+  box-shadow: 0 0 0.45rem #ff526980;
+  height: 1rem;
+  width: 0.28rem;
 }
 
 .timeline__emptyCell {
@@ -240,8 +363,13 @@
     gap: 0.5rem;
   }
 
-  .calendar__monthSelector i {
+  .calendar__monthNavButton {
     border-radius: 0.85rem;
+  }
+
+  .calendar__monthPickerPanel {
+    left: 0;
+    transform: none;
   }
 
   .timeline__wrapper {

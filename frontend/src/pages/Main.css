@@ -251,8 +251,8 @@
 }
 
 .main__cashCloseTile--deposit .main__cashCloseTileHeader i {
-  background-color: color-mix(in srgb, #facc15 18%, #fff);
-  color: #a16207;
+  background-color: #fff5cd;
+  color: #dcba32;
 }
 
 .main__cashCloseTile--operating .main__cashCloseTileHeader i {
@@ -324,6 +324,10 @@
   padding-inline: 1.15rem;
   border-radius: 0.95rem;
   box-shadow: var(--light-shadow);
+}
+
+.main__cashCloseForm .home__action:hover {
+  transform: scale(1.02);
 }
 
 .main__cashCloseForm .home__action p {
@@ -759,7 +763,6 @@
   font-variant-numeric: tabular-nums;
   padding-top: 1px;
 }
-
 
 .main__todayServiceChip small {
   color: #777777;
