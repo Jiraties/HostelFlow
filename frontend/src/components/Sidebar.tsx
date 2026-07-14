@@ -49,8 +49,9 @@ const Sidebar = () => {
           link: "/departures",
           icon: "bx-arrow-from-left",
         },
-        { id: 5, label: "ตารางการจอง", link: "/calendar", icon: "bx-calendar" },
-        { id: 4, label: "รายการจองทั้งหมด", link: "/master", icon: "bx-table" },
+        { id: 5, label: "ปฏิทิน", link: "/calendar", icon: "bx-calendar" },
+
+        { id: 4, label: "รายการทั้งหมด", link: "/master", icon: "bx-table" },
         { id: 6, label: "เอกสาร", link: "/documents", icon: "bx-article" },
         {
           id: 8,

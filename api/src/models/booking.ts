@@ -117,6 +117,7 @@ interface Checkout {
   checkedOutByStaffUsername: string;
   earlyCheckOut: boolean;
   nightsEarly: number;
+  depositDisposition?: "returned" | "kept";
 }
 
 interface Resolution {
@@ -316,6 +317,11 @@ const checkoutSchema = new mongoose.Schema(
     checkedOutByStaffUsername: { type: String, required: true },
     earlyCheckOut: { type: Boolean, default: false },
     nightsEarly: { type: Number, default: 0 },
+    depositDisposition: {
+      type: String,
+      enum: ["returned", "kept"],
+      required: false,
+    },
   },
   { _id: false },
 );

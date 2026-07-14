@@ -3,12 +3,15 @@
   align-items: center;
   gap: 0.5rem;
   padding: 1rem;
+  border: 0;
   background-color: var(--background);
   box-shadow: var(--main-shadow);
   border-radius: 2rem;
   cursor: pointer;
   min-width: 0;
   box-sizing: border-box;
+  font: inherit;
+  text-align: left;
 }
 
 .home__action p {
@@ -44,6 +47,10 @@
 .home__actionDisabled {
   background-color: #dcdcdc;
   color: #696969;
+}
+
+.home__action:disabled {
+  cursor: not-allowed;
 }
 
 .home__actionDisabled i {

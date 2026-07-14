@@ -4,6 +4,24 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importDefault(require("mongoose"));
+const depositPreparationBookingSchema = new mongoose_1.default.Schema({
+    bookingId: { type: String, required: true },
+    guestName: { type: String, required: true },
+    checkOut: { type: Date, required: true },
+    amount: { type: Number, required: true },
+}, { _id: false });
+const depositPreparationSchema = new mongoose_1.default.Schema({
+    targetBusinessDate: { type: String, required: true },
+    requiredAmount: { type: Number, required: true },
+    preparedAmount: { type: Number, required: true },
+    adjustment: { type: Number, required: true },
+    checkoutCount: { type: Number, required: true },
+    refundBookingCount: { type: Number, required: true },
+    bookings: { type: [depositPreparationBookingSchema], default: [] },
+    calculatedAt: { type: Date, required: true },
+    preparedAt: { type: Date, required: true },
+    preparedBy: { type: String, required: true },
+}, { _id: false });
 const cashShiftSchema = new mongoose_1.default.Schema({
     businessDate: { type: String, required: true },
     shiftNumber: { type: Number, required: true },
@@ -42,9 +60,15 @@ const cashShiftSchema = new mongoose_1.default.Schema({
         reviewedBy: { type: String },
         reviewedAt: { type: Date },
     },
+    isFinalDayClose: { type: Boolean, default: false },
+    depositPreparation: { type: depositPreparationSchema },
 });
 cashShiftSchema.index({ businessDate: 1, shiftNumber: 1 }, { unique: true });
 cashShiftSchema.index({ businessDate: 1, status: 1 });
 cashShiftSchema.index({ businessDate: 1, startedAt: 1 });
+cashShiftSchema.index({ businessDate: 1, isFinalDayClose: 1 }, {
+    unique: true,
+    partialFilterExpression: { isFinalDayClose: true },
+});
 exports.default = mongoose_1.default.model("CashShift", cashShiftSchema);
 //# sourceMappingURL=cashShift.js.map

@@ -81,7 +81,7 @@
   margin: 0.1rem 0;
   color: var(--text);
   font-size: 1.28rem;
-  font-weight: 600;
+  font-weight: 500;
   overflow-wrap: anywhere;
 }
 
@@ -290,6 +290,17 @@
 
 .main__cashCloseNote {
   grid-column: 1 / -1;
+}
+
+.main__cashCloseActions {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr);
+  gap: 0.75rem;
+  grid-column: 1 / -1;
+}
+
+.main__cashCloseActions .home__action {
+  grid-column: auto;
 }
 
 .main__cashCloseToggle {
@@ -1228,6 +1239,10 @@
   .main__cashCloseForm .home__action,
   .main__cashCloseNote {
     grid-column: 1 / -1;
+  }
+
+  .main__cashCloseActions {
+    grid-template-columns: 1fr;
   }
 
   .main__cashCloseForm .home__action {

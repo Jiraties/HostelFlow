@@ -1,3 +1,32 @@
+export type DepositRequirementBooking = {
+  bookingId: string;
+  guestName: string;
+  checkOut: string | Date;
+  amount: number;
+};
+
+export type DepositRequirement = {
+  businessDate: string;
+  total: number;
+  checkoutCount: number;
+  refundBookingCount: number;
+  bookings: DepositRequirementBooking[];
+  calculatedAt: string | Date;
+};
+
+export type DepositPreparation = {
+  targetBusinessDate: string;
+  requiredAmount: number;
+  preparedAmount: number;
+  adjustment: number;
+  checkoutCount: number;
+  refundBookingCount: number;
+  bookings: DepositRequirementBooking[];
+  calculatedAt: string | Date;
+  preparedAt: string | Date;
+  preparedBy: string;
+};
+
 export type CashShift = {
   _id: string;
   businessDate: string;
@@ -31,6 +60,8 @@ export type CashShift = {
     name?: string;
     profilePictureUrl?: string;
   };
+  isFinalDayClose?: boolean;
+  depositPreparation?: DepositPreparation;
 };
 
 export type CashPositionData = {
@@ -39,6 +70,14 @@ export type CashPositionData = {
   activeShift: CashShift | null;
   previousShift: CashShift | null;
   current: { depositCash: number; operatingCash: number };
+  openingDepositRequirement: DepositRequirement;
+  tomorrowDepositRequirement: DepositRequirement;
+  preparedForToday:
+    | (DepositPreparation & {
+        sourceBusinessDate: string;
+        sourceShiftNumber: number;
+      })
+    | null;
   handoff: {
     depositCash: number;
     operatingCash: number;

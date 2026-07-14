@@ -61,7 +61,11 @@ const transactionMap = {
     color: "#22c55e",
   },
   compensation: { icon: "bx-gift", name: "ชดเชยลูกค้า", color: "#38bdf8" },
-  depositKept: { icon: "bx-lock-keyhole", name: "เก็บมัดจำ", color: "#facc15" },
+  depositKept: {
+    icon: "bx-lock-keyhole",
+    name: "เก็บมัดจำเป็นรายได้",
+    color: "#facc15",
+  },
   paymentCorrection: {
     icon: "bx-arrow-right-left",
     name: "แก้ไขการชำระเงิน",
@@ -1115,7 +1119,7 @@ const ViewBooking = ({
                 className="viewBooking__addTransaction"
                 onClick={() => setAddTransactionIsOpen(true)}
               >
-                <i className="bx bx-dollar" />
+                <i className="bx bx-plus" />
                 <p>เพิ่มรายการใช้จ่าย</p>
               </div>
             </div>
@@ -1150,7 +1154,7 @@ const ViewBooking = ({
                 className="viewBooking__addTransaction"
                 onClick={() => setManageRoomStaysIsOpen(true)}
               >
-                <i className="bx bx-bed" />
+                <i className="bx bx-edit-alt" />
                 <p>จัดการช่วงการเข้าพัก</p>
               </div>
             </div>

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.transactionFallsOnBusinessDate = exports.summarizeTransactions = exports.normalizeTransaction = exports.transactionNeedsReview = exports.transactionUnpaidAmount = exports.transactionDepositLiabilityDelta = exports.transactionDashboardCollectedRevenueAmount = exports.calculateTodayRevenueSummary = exports.bookingTodayArrivalRevenueAmount = exports.transactionTodayReductionAmount = exports.transactionTodayExtrasRevenueAmount = exports.transactionDashboardGrossRevenueAmount = exports.transactionRefundAmount = exports.transactionRevenueAmount = exports.transactionIsRevenue = exports.summarizeCashStashes = exports.transactionCashStashImpact = exports.emptyCashStashSummary = exports.transactionCashImpact = exports.summarizeReceivedPaymentsByMethod = exports.transactionSignedAmount = exports.transactionDirection = exports.cashBalanceAfterMovements = exports.isValidCashCount = exports.LARGE_REFUND_THRESHOLD = exports.LARGE_CASH_TRANSACTION_THRESHOLD = exports.CASH_VARIANCE_THRESHOLD = void 0;
+exports.transactionFallsOnBusinessDate = exports.summarizeTransactions = exports.normalizeTransaction = exports.transactionNeedsReview = exports.transactionUnpaidAmount = exports.bookingRemainingDepositAmount = exports.transactionDepositLiabilityDelta = exports.transactionDashboardCollectedRevenueAmount = exports.calculateTodayRevenueSummary = exports.bookingTodayArrivalRevenueAmount = exports.transactionTodayReductionAmount = exports.transactionTodayExtrasRevenueAmount = exports.transactionDashboardGrossRevenueAmount = exports.transactionRefundAmount = exports.transactionRevenueAmount = exports.transactionIsRevenue = exports.summarizeCashStashes = exports.transactionCashStashImpact = exports.emptyCashStashSummary = exports.transactionCashImpact = exports.summarizeReceivedPaymentsByMethod = exports.transactionSignedAmount = exports.transactionDirection = exports.cashBalanceAfterMovements = exports.isValidCashCount = exports.LARGE_REFUND_THRESHOLD = exports.LARGE_CASH_TRANSACTION_THRESHOLD = exports.CASH_VARIANCE_THRESHOLD = void 0;
 exports.CASH_VARIANCE_THRESHOLD = 20;
 exports.LARGE_CASH_TRANSACTION_THRESHOLD = 5000;
 exports.LARGE_REFUND_THRESHOLD = 2000;
@@ -20,13 +20,13 @@ const nonRevenueTransactionTypes = [
     "cancellationRefund",
     "roomRefund",
     "compensation",
-    "depositKept",
 ];
 const revenueTransactionTypes = [
     "roomCharge",
     "adjustment",
     "settlementCharge",
     "paymentCorrection",
+    "depositKept",
     "towel",
     "motorbike",
     "slowBoat",
@@ -44,6 +44,7 @@ const revenueTransactionTypes = [
 ];
 const dashboardOriginalRevenueTransactionTypes = [
     "roomCharge",
+    "depositKept",
     "towel",
     "motorbike",
     "slowBoat",
@@ -182,8 +183,6 @@ const transactionIsAdditionalCollectedRevenue = (transaction) => transaction.typ
     transaction.paymentMethod !== "Unpaid" &&
     (0, exports.transactionDirection)(transaction) === "in";
 const transactionDashboardGrossRevenueAmount = (transaction) => {
-    // depositKept may later become other income by explicit accounting policy.
-    // For the dashboard summary, all deposit-related transactions stay excluded.
     if (transactionIsRevenueReduction(transaction))
         return -Math.abs(transaction.amount || 0);
     if (!transactionIsOriginalDashboardRevenue(transaction))
@@ -302,11 +301,14 @@ exports.transactionDashboardCollectedRevenueAmount = transactionDashboardCollect
 const transactionDepositLiabilityDelta = (transaction) => {
     if (transaction.type === "deposit")
         return Math.abs(transaction.amount || 0);
-    if (transaction.type === "depositRefund" || transaction.type === "depositKept")
+    if (transaction.type === "depositRefund" ||
+        transaction.type === "depositKept")
         return -Math.abs(transaction.amount || 0);
     return 0;
 };
 exports.transactionDepositLiabilityDelta = transactionDepositLiabilityDelta;
+const bookingRemainingDepositAmount = (transactions) => Math.max(transactions.reduce((total, transaction) => total + (0, exports.transactionDepositLiabilityDelta)(transaction), 0), 0);
+exports.bookingRemainingDepositAmount = bookingRemainingDepositAmount;
 const transactionUnpaidAmount = (transaction) => transaction.paymentMethod === "Unpaid" ? Math.abs(transaction.amount || 0) : 0;
 exports.transactionUnpaidAmount = transactionUnpaidAmount;
 const transactionNeedsReview = (transaction, sameTypeCount = 0) => {
@@ -317,8 +319,7 @@ const transactionNeedsReview = (transaction, sameTypeCount = 0) => {
         flags.push("negative_adjustment");
     }
     if (direction === "out" &&
-        transaction.type !== "adjustment" &&
-        transaction.type !== "depositRefund") {
+        !["adjustment", "depositRefund"].includes(transaction.type)) {
         flags.push("refund");
     }
     if (direction === "out" &&

@@ -77,6 +77,7 @@ interface Checkout {
   checkedOutByStaffUsername: string;
   earlyCheckOut: boolean;
   nightsEarly: number;
+  depositDisposition?: "returned" | "kept";
 }
 
 interface Resolution {

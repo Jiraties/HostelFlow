@@ -100,7 +100,7 @@ const transactionLabelMap = {
   roomRefund: "คืนค่าห้อง",
   settlementCharge: "เก็บเงินเพิ่ม",
   compensation: "ชดเชยลูกค้า",
-  depositKept: "เก็บมัดจำ",
+  depositKept: "เก็บมัดจำเป็นรายได้",
   paymentCorrection: "แก้ไขการชำระเงิน",
   towel: "ผ้าเช็ดตัว",
   motorbike: "มอเตอร์ไซค์",

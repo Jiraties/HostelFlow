@@ -18,36 +18,37 @@
 }
 
 .checkOut__unpaidWarning {
-  border: 1px solid #fecaca;
   background: #fef2f2;
-  border-radius: 1rem;
+  border-radius: 0.75rem;
   color: #7f1d1d;
   display: flex;
+  font-family: "IBM Plex Sans Thai", sans-serif;
+  font-size: 0.95rem;
   flex-direction: column;
-  gap: 0.85rem;
+  gap: 0.75rem;
+  line-height: 1.45;
   margin-bottom: 1rem;
-  padding: 1rem;
+  padding: 0.85rem 1rem;
 }
 
 .checkOut__unpaidHeader {
   align-items: center;
   display: flex;
-  gap: 0.75rem;
+  gap: 0.65rem;
 }
 
 .checkOut__unpaidHeader i {
   color: #dc2626;
-  font-size: 1.5rem;
+  font-size: 1.15rem;
 }
 
 .checkOut__unpaidHeader p {
-  font-size: 0.85rem;
   margin-bottom: 0.15rem;
 }
 
 .checkOut__unpaidHeader strong {
   color: #dc2626;
-  font-size: 1.25rem;
+  font-size: 1.05rem;
   font-weight: 600;
 }
 
@@ -62,7 +63,6 @@
 .checkOut__recordPaymentButton {
   align-items: center;
   background: #fff;
-  border: 1px solid #fecaca;
   border-radius: 0.75rem;
   color: #991b1b;
   cursor: pointer;
@@ -70,6 +70,7 @@
   font-family: "IBM Plex Sans Thai", sans-serif;
   gap: 0.4rem;
   padding: 0.65rem 0.9rem;
+  box-shadow: var(--light-shadow);
 }
 
 .checkOut__recordPaymentButton:hover {
@@ -84,6 +85,83 @@
   padding: 1rem;
   border-radius: 1rem;
   box-shadow: var(--main-shadow);
+}
+
+.checkOut__depositChoices {
+  display: grid;
+  gap: 0.75rem;
+  width: 100%;
+  margin-top: 1rem;
+}
+
+.checkOut__grid .checkIn__paymentConfirmationTotal {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.checkOut__depositChoice {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border: 0;
+  border-radius: 1rem;
+  background-color: var(--background);
+  color: var(--text);
+  box-shadow: var(--light-shadow);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.checkOut__depositChoice > i {
+  flex: 0 0 auto;
+  color: #888888;
+  font-size: 1.5rem;
+}
+
+.checkOut__depositChoice span,
+.checkOut__depositChoice strong,
+.checkOut__depositChoice small {
+  display: block;
+}
+
+.checkOut__depositChoice strong {
+  font-weight: 500;
+}
+
+.checkOut__depositChoice small {
+  margin-top: 0.15rem;
+  color: #777777;
+}
+
+.checkOut__depositChoice--active {
+  background-color: color-mix(in srgb, var(--primary-color) 9%, #ffffff);
+  box-shadow: var(--main-shadow);
+}
+
+.checkOut__depositChoice--active > i {
+  color: var(--primary-color);
+}
+
+.checkOut__keptDepositNotice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 1rem;
+  background-color: #fff8dd;
+  color: #6f5a12;
+  box-shadow: var(--light-shadow);
+  line-height: 1.5;
+}
+
+.checkOut__keptDepositNotice i {
+  flex: 0 0 auto;
+  margin-top: 0.15rem;
+  font-size: 1.25rem;
 }
 
 .checkOut__earlyReminder {

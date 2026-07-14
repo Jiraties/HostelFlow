@@ -1,11 +1,14 @@
 .cashShiftNudge {
   align-items: center;
   background: #f4a90012;
-  border-radius: 0.8rem;
+  border-radius: 0.75rem;
   display: flex;
-  gap: 0.6rem;
+  font-family: "IBM Plex Sans Thai", sans-serif;
+  font-size: 0.95rem;
+  gap: 0.65rem;
+  line-height: 1.45;
   margin: 1rem 0;
-  padding: 0.8rem 1rem;
+  padding: 0.85rem 1rem;
 }
 
 .bookingNoticeStack {
@@ -26,11 +29,10 @@
 .cashShiftNudge > i {
   color: #f4a900;
   flex: 0 0 auto;
-  font-size: 1.2rem;
+  font-size: 1.15rem;
 }
 
 .cashShiftNudge > p {
-  font-size: 1.1rem;
   flex: 1;
 }
 
@@ -41,8 +43,8 @@
   cursor: pointer;
   flex: 0 0 auto;
   font: inherit;
-  font-size: 0.85rem;
-  font-weight: 700;
+  font-size: inherit;
+  font-weight: 600;
   padding: 0.25rem;
   text-decoration: underline;
 }

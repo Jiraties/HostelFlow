@@ -10,6 +10,7 @@ import {
 } from "../services/activityServices";
 import {
   LARGE_REFUND_THRESHOLD,
+  bookingRemainingDepositAmount,
   normalizeTransaction,
   summarizeReceivedPaymentsByMethod,
   summarizeTransactions,
@@ -1817,18 +1818,30 @@ export const checkIn = async (req: Request, res: Response) => {
 export const checkOut = async (req: Request, res: Response) => {
   try {
     const { bookingId } = req.params;
-    const { depositReturned, releaseRemainingNights = true } = req.body;
+    const {
+      depositReturned,
+      depositDisposition: requestedDepositDisposition,
+      releaseRemainingNights = true,
+    } = req.body;
     const checkedOutByStaffUsername = req.user?.username;
+
+    const depositDisposition =
+      requestedDepositDisposition ||
+      (depositReturned === true
+        ? "returned"
+        : depositReturned === false
+          ? "kept"
+          : undefined);
 
     if (!bookingId)
       return res.status(400).json({
         message: "กรุณาแนบข้อมูล bookingId เพื่อดำเนินการ check-out",
       });
 
-    if (typeof depositReturned !== "boolean") {
+    if (!["returned", "kept"].includes(depositDisposition || "")) {
       return res.status(400).json({
         error: "INVALID_PAYLOAD",
-        message: "กรุณายืนยันการคืนมัดจำ",
+        message: "กรุณาระบุว่าคืนมัดจำแล้วหรือแขกยอมเสียมัดจำ",
       });
     }
 
@@ -1860,25 +1873,15 @@ export const checkOut = async (req: Request, res: Response) => {
       });
     }
 
-    const depositAmount = existingBooking.transactions
-      .filter((transaction) => transaction.type === "deposit")
-      .reduce((sum, transaction) => sum + transaction.amount, 0);
-    const refundedDepositAmount = existingBooking.transactions
-      .filter((transaction) => transaction.type === "depositRefund")
-      .reduce((sum, transaction) => sum + transaction.amount, 0);
-    const remainingDepositAmount = Math.max(
-      depositAmount - refundedDepositAmount,
-      0,
+    const remainingDepositAmount = bookingRemainingDepositAmount(
+      existingBooking.transactions,
     );
 
-    if (remainingDepositAmount > 0 && !depositReturned) {
-      return res.status(400).json({
-        error: "DEPOSIT_NOT_CONFIRMED",
-        message: "กรุณายืนยันการคืนมัดจำก่อน check-out",
-      });
-    }
-
-    if (!req.user?.admin && remainingDepositAmount >= LARGE_REFUND_THRESHOLD) {
+    if (
+      depositDisposition === "returned" &&
+      !req.user?.admin &&
+      remainingDepositAmount >= LARGE_REFUND_THRESHOLD
+    ) {
       return res.status(403).json({
         error: "ADMIN_APPROVAL_REQUIRED",
         message: "ยอดคืนเงินสูง ต้องให้ Admin ดำเนินการ",
@@ -1901,18 +1904,26 @@ export const checkOut = async (req: Request, res: Response) => {
     const earlyCheckOut = nightsEarly > 0;
     const roomReleaseStatus =
       earlyCheckOut && !releaseRemainingNights ? "blocked" : "released";
-    const refundTransactions: transcation[] = await attachActiveCashShift(
+    const depositTransactionsToRecord: transcation[] = await attachActiveCashShift(
       remainingDepositAmount > 0
         ? [
             normalizeTransaction(
               {
-                type: "depositRefund",
+                type:
+                  depositDisposition === "kept"
+                    ? "depositKept"
+                    : "depositRefund",
                 paymentMethod: "Cash",
+                direction: depositDisposition === "kept" ? "in" : undefined,
                 amount: remainingDepositAmount,
               },
               {
                 createdBy: checkedOutByStaffUsername,
                 sourceAction: "CHECK_OUT",
+                note:
+                  depositDisposition === "kept"
+                    ? "แขกยอมเสียมัดจำ รับเป็นรายได้"
+                    : undefined,
               },
             ),
           ]
@@ -1927,18 +1938,22 @@ export const checkOut = async (req: Request, res: Response) => {
             status: "checkedOut",
             checkout: {
               roomReleaseStatus,
-              depositRefundAmount: remainingDepositAmount,
+              depositRefundAmount:
+                depositDisposition === "returned"
+                  ? remainingDepositAmount
+                  : 0,
+              depositDisposition,
               checkedOutAt: new Date(),
               checkedOutByStaffUsername,
               earlyCheckOut,
               nightsEarly,
             },
           },
-          ...(refundTransactions.length > 0
+          ...(depositTransactionsToRecord.length > 0
             ? {
                 $push: {
                   transactions: {
-                    $each: refundTransactions,
+                    $each: depositTransactionsToRecord,
                   },
                 },
               }
@@ -1971,7 +1986,11 @@ export const checkOut = async (req: Request, res: Response) => {
           },
         },
         summary: {
-          depositRefundAmount: remainingDepositAmount,
+          depositRefundAmount:
+            depositDisposition === "returned" ? remainingDepositAmount : 0,
+          depositKeptAmount:
+            depositDisposition === "kept" ? remainingDepositAmount : 0,
+          depositDisposition,
           roomReleaseStatus,
           earlyCheckOut,
           nightsEarly,

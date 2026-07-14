@@ -7,6 +7,7 @@ const ActionButton = ({
   className = "",
   highlight = false,
   disabled = false,
+  ariaLabel,
 }: {
   text: string;
   icon: string;
@@ -14,11 +15,13 @@ const ActionButton = ({
   className?: string;
   highlight?: boolean;
   disabled?: boolean;
+  ariaLabel?: string;
 }) => {
   const isIconOnly = text.trim().length === 0;
 
   return (
-    <div
+    <button
+      type="button"
       className={
         "home__action " +
         className +
@@ -26,11 +29,13 @@ const ActionButton = ({
         (highlight ? " home__actionHighlight" : "") +
         (disabled ? " home__actionDisabled" : "")
       }
-      onClick={disabled ? () => {} : onClick}
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={isIconOnly ? ariaLabel || "ดำเนินการ" : undefined}
     >
       {!isIconOnly && <p>{text}</p>}
       <i className={`bx ${icon}`} />
-    </div>
+    </button>
   );
 };
 

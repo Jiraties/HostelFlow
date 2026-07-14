@@ -19,6 +19,7 @@ import UnsavedChangesModal from "../components/UnsavedChangesModal";
 import usePageTitle from "../hooks/useTitle";
 import { formatDisplayDateTime } from "../helpers/displayDate";
 import type { DateFormatPreference } from "../types/userSettings";
+import type { DepositPreparation } from "../types/cashShiftTypes";
 
 type StaffUser = ManagedStaffUser;
 
@@ -76,6 +77,8 @@ type CashAuditShift = {
   operatingActualCash?: number;
   depositVariance?: number;
   operatingVariance?: number;
+  isFinalDayClose?: boolean;
+  depositPreparation?: DepositPreparation;
   note?: string;
   startedAt: string | Date;
   endedAt?: string | Date;
@@ -159,7 +162,7 @@ const transactionTypeLabels: Record<string, string> = {
   roomRefund: "คืนค่าห้อง",
   settlementCharge: "Settlement Charge",
   compensation: "ชดเชยลูกค้า",
-  depositKept: "เก็บมัดจำ",
+  depositKept: "เก็บมัดจำเป็นรายได้",
   paymentCorrection: "แก้ไขการชำระเงิน",
   towel: "ผ้าเช็ดตัว",
   motorbike: "มอเตอร์ไซค์",
@@ -461,6 +464,11 @@ const CashCloseAudit = ({
                     >
                       {shift.status === "closed" ? "ปิดยอดแล้ว" : "ยังเปิดอยู่"}
                     </span>
+                    {shift.isFinalDayClose && (
+                      <span className="manage__shiftStatus manage__shiftStatus--final">
+                        ปิดวันแล้ว
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="manage__cashMath">
@@ -520,7 +528,18 @@ const CashCloseAudit = ({
                       <p>
                         มัดจำ: {formatMoney(shift.depositOpeningCash)} +{" "}
                         {formatMoney(shift.depositCashIn)} −{" "}
-                        {formatMoney(shift.depositCashOut)} ={" "}
+                        {formatMoney(shift.depositCashOut)}{" "}
+                        {shift.depositPreparation ? (
+                          <>
+                            {shift.depositPreparation.adjustment >= 0 ? "+" : "−"}{" "}
+                            {formatMoney(
+                              Math.abs(shift.depositPreparation.adjustment),
+                            )}{" "}
+                            (เตรียมพรุ่งนี้) ={" "}
+                          </>
+                        ) : (
+                          "= "
+                        )}
                         {formatMoney(shift.depositExpectedCash)} ฿
                       </p>
                       <p>
@@ -542,6 +561,25 @@ const CashCloseAudit = ({
                       <p className="manage__auditNote">
                         หมายเหตุ: {shift.note}
                       </p>
+                    )}
+                    {shift.depositPreparation && (
+                      <div className="manage__depositPreparationAudit">
+                        <strong>
+                          เตรียมคืนมัดจำวันที่ {shift.depositPreparation.targetBusinessDate}
+                        </strong>
+                        <p>
+                          ต้องใช้ {formatMoney(shift.depositPreparation.requiredAmount)} ฿ ·
+                          นับได้ {" "}
+                          {formatMoney(shift.depositPreparation.preparedAmount)} ฿ ·{" "}
+                          {shift.depositPreparation.refundBookingCount} การจอง
+                        </p>
+                        {shift.depositPreparation.bookings.map((booking) => (
+                          <p key={booking.bookingId}>
+                            {booking.guestName} · {booking.bookingId} ·{" "}
+                            {formatMoney(booking.amount)} ฿
+                          </p>
+                        ))}
+                      </div>
                     )}
                     {shift.flaggedTransactions.length > 0 && (
                       <div className="manage__auditFlaggedTransactions">

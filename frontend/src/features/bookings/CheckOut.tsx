@@ -26,6 +26,8 @@ type CheckOutProps = {
   onRecordPayment?: () => void;
 };
 
+type DepositDisposition = "returned" | "kept";
+
 const CheckOut = ({
   onClose,
   booking,
@@ -37,7 +39,8 @@ const CheckOut = ({
   const { user } = useAuth();
   const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
   const [releaseRemainingNights, setReleaseRemainingNights] = useState(true);
-  const [confirmedDepositRefund, setConfirmedDepositRefund] = useState(false);
+  const [depositDisposition, setDepositDisposition] =
+    useState<DepositDisposition | null>(null);
   const [confirmedStillUnpaid, setConfirmedStillUnpaid] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const today = new Date();
@@ -77,8 +80,11 @@ const CheckOut = ({
   const refundedDepositAmount = booking.transactions
     .filter((transaction) => transaction.type === "depositRefund")
     .reduce((total, transaction) => total + transaction.amount, 0);
+  const retainedDepositAmount = booking.transactions
+    .filter((transaction) => transaction.type === "depositKept")
+    .reduce((total, transaction) => total + transaction.amount, 0);
   const remainingDepositAmount = Math.max(
-    depositAmount - refundedDepositAmount,
+    depositAmount - refundedDepositAmount - retainedDepositAmount,
     0,
   );
   const depositPaymentMethod = depositTransactions[0]?.paymentMethod || "Cash";
@@ -111,14 +117,14 @@ const CheckOut = ({
 
   useEffect(() => {
     onDirtyChange?.(
-      confirmedDepositRefund ||
+      depositDisposition !== null ||
         confirmedStillUnpaid ||
         (isEarlyCheckOut && !releaseRemainingNights),
     );
 
     return () => onDirtyChange?.(false);
   }, [
-    confirmedDepositRefund,
+    depositDisposition,
     confirmedStillUnpaid,
     isEarlyCheckOut,
     onDirtyChange,
@@ -126,8 +132,8 @@ const CheckOut = ({
   ]);
 
   const checkOutHandler = async () => {
-    if (remainingDepositAmount > 0 && !confirmedDepositRefund) {
-      throw new Error("กรุณายืนยันการคืนมัดจำ");
+    if (remainingDepositAmount > 0 && !depositDisposition) {
+      throw new Error("กรุณาเลือกวิธีจัดการมัดจำก่อนเช็คเอาท์");
     }
 
     if (hasUnpaidBalance && !confirmedStillUnpaid) {
@@ -142,7 +148,7 @@ const CheckOut = ({
       const response = await axios.patch(
         `${API_URL}/bookings/checkOut/${booking.bookingId}`,
         {
-          depositReturned: confirmedDepositRefund,
+          depositDisposition: depositDisposition || "returned",
           releaseRemainingNights,
           confirmedStillUnpaid,
         },
@@ -292,18 +298,61 @@ const CheckOut = ({
                 </div>
               </div>
               {remainingDepositAmount > 0 && (
-                <label className="checkbox">
-                  ยืนยันคืนเงิน
-                  <input
-                    type="checkbox"
-                    checked={confirmedDepositRefund}
-                    onChange={(e) => setConfirmedDepositRefund(e.target.checked)}
-                  />
-                  <span className="box"></span>
-                </label>
+                <div
+                  className="checkOut__depositChoices"
+                  role="radiogroup"
+                  aria-label="วิธีจัดการเงินมัดจำ"
+                >
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={depositDisposition === "returned"}
+                    className={
+                      "checkOut__depositChoice" +
+                      (depositDisposition === "returned"
+                        ? " checkOut__depositChoice--active"
+                        : "")
+                    }
+                    onClick={() => setDepositDisposition("returned")}
+                  >
+                    <i className="bx bx-check-circle" />
+                    <span>
+                      <strong>คืนมัดจำให้แขกแล้ว</strong>
+                      <small>นำเงินออกจากกองมัดจำและมอบให้แขก</small>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={depositDisposition === "kept"}
+                    className={
+                      "checkOut__depositChoice" +
+                      (depositDisposition === "kept"
+                        ? " checkOut__depositChoice--active"
+                        : "")
+                    }
+                    onClick={() => setDepositDisposition("kept")}
+                  >
+                    <i className="bx bx-wallet" />
+                    <span>
+                      <strong>แขกยอมเสียมัดจำ</strong>
+                      <small>ย้ายเงินเข้ากองรายได้เงินสด</small>
+                    </span>
+                  </button>
+                </div>
               )}
             </div>
           </div>
+
+          {depositDisposition === "kept" && (
+            <div className="checkOut__keptDepositNotice">
+              <i className="bx bx-info-circle" />
+              <p>
+                เงิน {formatCurrency(remainingDepositAmount)} จะย้ายออกจากกองมัดจำ
+                และนับเป็นรายได้ในกองรายได้เงินสดทันที
+              </p>
+            </div>
+          )}
 
           {isEarlyCheckOut && (
             <section className="checkOut__section">

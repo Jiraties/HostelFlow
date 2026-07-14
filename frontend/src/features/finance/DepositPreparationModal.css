@@ -1,0 +1,348 @@
+.depositPreparationModal {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+  width: min(48rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  padding: 2rem;
+  overflow-y: auto;
+  border-radius: 1rem;
+  outline: none;
+  background-color: var(--background);
+  box-shadow: var(--main-shadow);
+  box-sizing: border-box;
+  scrollbar-color: #d4d4d4 transparent;
+  scrollbar-width: thin;
+}
+
+.depositPreparationModal::-webkit-scrollbar {
+  width: 0.5rem;
+}
+
+.depositPreparationModal::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.depositPreparationModal::-webkit-scrollbar-thumb {
+  border-radius: 999rem;
+  background-color: #d4d4d4;
+}
+
+.depositPreparationModal__close {
+  position: absolute;
+  top: 1.5rem;
+  right: 1.5rem;
+  display: grid;
+  place-items: center;
+  width: 2.65rem;
+  height: 2.65rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background-color: var(--background);
+  color: var(--text);
+  box-shadow: var(--light-shadow);
+  cursor: pointer;
+  font-size: 1.55rem;
+}
+
+.depositPreparationModal__close:disabled,
+.depositPreparationModal__footer button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.depositPreparationModal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.depositPreparationModal__header p {
+  margin-top: 0.55rem;
+  color: #777777;
+  line-height: 1.5;
+}
+
+.depositPreparationModal__header > span {
+  flex: 0 0 auto;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999rem;
+  background-color: #f4f6f8;
+  color: #555555;
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.depositPreparationModal__header h2 {
+  margin: 0;
+  color: var(--text);
+  margin-top: 1rem;
+  font-size: 32px;
+  font-weight: 500;
+}
+
+.depositPreparationModal__overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(15rem, 0.85fr);
+  gap: 1rem;
+}
+
+.depositPreparationModal__total,
+.depositPreparationModal__transfer {
+  min-width: 0;
+  border-radius: 1.5rem;
+  background-color: var(--background);
+  box-shadow: var(--light-shadow);
+}
+
+.depositPreparationModal__total {
+  padding: 1.4rem;
+}
+
+.depositPreparationModal__total p,
+.depositPreparationModal__total span {
+  color: #777777;
+}
+
+.depositPreparationModal__total strong {
+  display: block;
+  margin: 0.2rem 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: clamp(2.15rem, 5vw, 3rem);
+  font-weight: 400;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.depositPreparationModal__total span {
+  font-size: 0.9rem;
+}
+
+.depositPreparationModal__transfer {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 1.15rem;
+  background-color: color-mix(in srgb, #fff5cd 55%, var(--background));
+}
+
+.depositPreparationModal__transfer > i {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background-color: var(--background);
+  color: #b28b00;
+  box-shadow: var(--light-shadow);
+  font-size: 1.45rem;
+}
+
+.depositPreparationModal__transfer div {
+  min-width: 0;
+}
+
+.depositPreparationModal__transfer span,
+.depositPreparationModal__transfer strong {
+  display: block;
+}
+
+.depositPreparationModal__transfer span {
+  margin-bottom: 0.15rem;
+  color: #806a19;
+  font-size: 0.82rem;
+}
+
+.depositPreparationModal__transfer strong {
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.depositPreparationModal__bookings > header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.depositPreparationModal__bookings h3 {
+  color: var(--text);
+  font-size: 1.15rem;
+  font-weight: 500;
+}
+
+.depositPreparationModal__bookings header p,
+.depositPreparationModal__bookings header > span {
+  color: #777777;
+  font-size: 0.85rem;
+}
+
+.depositPreparationModal__bookings header > span {
+  flex: 0 0 auto;
+  padding: 0.4rem 0.7rem;
+  border-radius: 999rem;
+  background-color: var(--light-background);
+  box-shadow: var(--light-shadow);
+}
+
+.depositPreparationModal__bookings ul {
+  display: grid;
+  gap: 0.7rem;
+  max-height: 13rem;
+  padding: 0.25rem;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.depositPreparationModal__bookings li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 1rem;
+  background-color: var(--background);
+  box-shadow: var(--light-shadow);
+}
+
+.depositPreparationModal__bookings li div {
+  min-width: 0;
+}
+
+.depositPreparationModal__bookings li strong,
+.depositPreparationModal__bookings li small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.depositPreparationModal__bookings li strong {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.depositPreparationModal__bookings li small {
+  color: #888888;
+}
+
+.depositPreparationModal__bookings li > span {
+  flex: 0 0 auto;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.depositPreparationModal__empty {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  background-color: var(--background);
+  box-shadow: var(--light-shadow);
+}
+
+.depositPreparationModal__empty > i {
+  color: var(--green);
+  font-size: 1.75rem;
+}
+
+.depositPreparationModal__empty strong,
+.depositPreparationModal__empty span {
+  display: block;
+}
+
+.depositPreparationModal__empty strong {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.depositPreparationModal__empty span {
+  color: #777777;
+  font-size: 0.85rem;
+}
+
+.depositPreparationModal__counts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.depositPreparationModal__counts label,
+.depositPreparationModal__note {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 0;
+  color: #000;
+  font-size: 0.9rem;
+}
+
+.depositPreparationModal__footer {
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.depositPreparationModal__footer > button:first-child {
+  padding: 0.85rem 1.25rem;
+  border: 0;
+  background-color: transparent;
+  color: #666666;
+  cursor: pointer;
+  font: inherit;
+}
+
+.depositPreparationModal__footer .home__action {
+  justify-content: center;
+  min-height: 3.35rem;
+  border-radius: 2rem;
+}
+
+@media (max-width: 700px) {
+  .depositPreparationModal {
+    gap: 1.35rem;
+    width: calc(100vw - 1rem);
+    max-height: calc(100vh - 1rem);
+    padding: 1.25rem;
+    border-radius: 1.5rem;
+  }
+
+  .depositPreparationModal__close {
+    top: 1rem;
+    right: 1rem;
+  }
+
+  .depositPreparationModal__overview,
+  .depositPreparationModal__counts {
+    grid-template-columns: 1fr;
+  }
+
+  .depositPreparationModal__header {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .depositPreparationModal__bookings li small {
+    display: none;
+  }
+
+  .depositPreparationModal__footer {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .depositPreparationModal__footer > button:first-child {
+    grid-row: 2;
+  }
+}

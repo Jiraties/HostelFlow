@@ -138,6 +138,11 @@ const checkoutSchema = new mongoose_1.default.Schema({
     checkedOutByStaffUsername: { type: String, required: true },
     earlyCheckOut: { type: Boolean, default: false },
     nightsEarly: { type: Number, default: 0 },
+    depositDisposition: {
+        type: String,
+        enum: ["returned", "kept"],
+        required: false,
+    },
 }, { _id: false });
 const resolutionSchema = new mongoose_1.default.Schema({
     outcome: {

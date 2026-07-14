@@ -47,7 +47,6 @@ const nonRevenueTransactionTypes: TransactionType[] = [
   "cancellationRefund",
   "roomRefund",
   "compensation",
-  "depositKept",
 ];
 
 const revenueTransactionTypes: TransactionType[] = [
@@ -55,6 +54,7 @@ const revenueTransactionTypes: TransactionType[] = [
   "adjustment",
   "settlementCharge",
   "paymentCorrection",
+  "depositKept",
   "towel",
   "motorbike",
   "slowBoat",
@@ -73,6 +73,7 @@ const revenueTransactionTypes: TransactionType[] = [
 
 const dashboardOriginalRevenueTransactionTypes: TransactionType[] = [
   "roomCharge",
+  "depositKept",
   "towel",
   "motorbike",
   "slowBoat",
@@ -257,8 +258,6 @@ const transactionIsAdditionalCollectedRevenue = (transaction: transcation) =>
   transactionDirection(transaction) === "in";
 
 export const transactionDashboardGrossRevenueAmount = (transaction: transcation) => {
-  // depositKept may later become other income by explicit accounting policy.
-  // For the dashboard summary, all deposit-related transactions stay excluded.
   if (transactionIsRevenueReduction(transaction))
     return -Math.abs(transaction.amount || 0);
   if (!transactionIsOriginalDashboardRevenue(transaction)) return 0;
@@ -451,10 +450,23 @@ export const transactionDashboardCollectedRevenueAmount = (
 
 export const transactionDepositLiabilityDelta = (transaction: transcation) => {
   if (transaction.type === "deposit") return Math.abs(transaction.amount || 0);
-  if (transaction.type === "depositRefund" || transaction.type === "depositKept")
+  if (
+    transaction.type === "depositRefund" ||
+    transaction.type === "depositKept"
+  )
     return -Math.abs(transaction.amount || 0);
   return 0;
 };
+
+export const bookingRemainingDepositAmount = (transactions: transcation[]) =>
+  Math.max(
+    transactions.reduce(
+      (total, transaction) =>
+        total + transactionDepositLiabilityDelta(transaction),
+      0,
+    ),
+    0,
+  );
 
 export const transactionUnpaidAmount = (transaction: transcation) =>
   transaction.paymentMethod === "Unpaid" ? Math.abs(transaction.amount || 0) : 0;
@@ -472,8 +484,7 @@ export const transactionNeedsReview = (
   }
   if (
     direction === "out" &&
-    transaction.type !== "adjustment" &&
-    transaction.type !== "depositRefund"
+    !["adjustment", "depositRefund"].includes(transaction.type)
   ) {
     flags.push("refund");
   }

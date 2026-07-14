@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   bookingTodayArrivalRevenueAmount,
+  bookingRemainingDepositAmount,
   calculateTodayRevenueSummary,
   cashBalanceAfterMovements,
   isValidCashCount,
@@ -106,6 +107,55 @@ test("summarizeCashStashes separates deposit cash from operating cash", () => {
     operatingCashIn: 1250,
     operatingCashOut: 300,
   });
+});
+
+test("remaining deposit subtracts refunds and retained deposits without going negative", () => {
+  assert.equal(
+    bookingRemainingDepositAmount([
+      { type: "deposit", paymentMethod: "Cash", amount: 500 },
+      { type: "depositRefund", paymentMethod: "Cash", amount: 200 },
+      {
+        type: "depositKept",
+        paymentMethod: "Cash",
+        direction: "neutral",
+        amount: 100,
+      },
+    ]),
+    200,
+  );
+  assert.equal(
+    bookingRemainingDepositAmount([
+      { type: "deposit", paymentMethod: "Cash", amount: 200 },
+      { type: "depositRefund", paymentMethod: "Cash", amount: 300 },
+    ]),
+    0,
+  );
+});
+
+test("forfeited deposits move into operating cash and become revenue", () => {
+  const transactions: transcation[] = [
+    { type: "deposit", paymentMethod: "Cash", amount: 500 },
+    {
+      type: "depositKept",
+      paymentMethod: "Cash",
+      direction: "in",
+      amount: 500,
+    },
+  ];
+
+  assert.equal(bookingRemainingDepositAmount(transactions), 0);
+  assert.deepEqual(summarizeCashStashes(transactions), {
+    depositCashIn: 500,
+    depositCashOut: 500,
+    operatingCashIn: 500,
+    operatingCashOut: 0,
+  });
+  assert.equal(summarizeTransactions(transactions).revenue, 500);
+  assert.equal(transactionDashboardGrossRevenueAmount(transactions[1]), 500);
+  assert.equal(
+    transactionDashboardCollectedRevenueAmount(transactions[1], transactions),
+    500,
+  );
 });
 
 test("summarizeReceivedPaymentsByMethod nets prior refunds and outgoing corrections", () => {

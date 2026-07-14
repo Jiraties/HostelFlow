@@ -17,9 +17,10 @@ import type { Request, Response } from "express";
 import type { EncryptedField } from "../models/booking";
 import { formatDateAD } from "../helpers/dateHelpers";
 import {
-  transactionSignedAmount,
-  transactionRevenueAmount,
-} from "../helpers/financeHelpers";
+  bookingsReportDepositCollectedTotal,
+  bookingsReportRoomChargeTotal,
+  bookingsReportTransactionAmount,
+} from "../helpers/bookingsReportHelpers";
 import {
   formatRoomStayRooms,
   getPrimaryRoomId,
@@ -47,7 +48,7 @@ const transactionMap: Record<string, string> = {
   roomRefund: "คืนค่าห้อง",
   settlementCharge: "Settlement Charge",
   compensation: "ชดเชยลูกค้า",
-  depositKept: "เก็บมัดจำ",
+  depositKept: "เก็บมัดจำเป็นรายได้",
   paymentCorrection: "แก้ไขการชำระเงิน",
   towel: "ผ้าเช็ดตัว",
   motorbike: "มอเตอร์ไซค์",
@@ -141,35 +142,6 @@ const formatReportTime = (date?: Date) => {
 
   return `${hours}.${minutes}`;
 };
-
-const transactionTotal = (
-  transactions: { type: string; amount: number; paymentMethod: string }[],
-  type?: string,
-) =>
-  transactions
-    .filter((transaction) => !type || transaction.type === type)
-    .reduce(
-      (sum, transaction) =>
-        sum +
-        transactionSignedAmount(
-          transaction as Parameters<typeof transactionSignedAmount>[0],
-        ),
-      0,
-    );
-
-const roomChargeTotal = (
-  transactions: { type: string; amount: number; paymentMethod: string }[],
-) =>
-  transactions
-    .filter((transaction) => transaction.type === "roomCharge")
-    .reduce(
-      (sum, transaction) =>
-        sum +
-        transactionRevenueAmount(
-          transaction as Parameters<typeof transactionRevenueAmount>[0],
-        ),
-      0,
-    );
 
 const dateQuery = (date: string) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
@@ -407,8 +379,8 @@ const makeCellBold = (row: ExcelJs.Row, key: string) => {
 };
 
 const applyImportantCellStyle = (row: ExcelJs.Row) => {
-  ["name", "rooms", "roomCharge", "total", "paymentMethods"].forEach((key) =>
-    makeCellBold(row, key),
+  ["name", "rooms", "amount", "depositCollected", "paymentMethods"].forEach(
+    (key) => makeCellBold(row, key),
   );
 };
 
@@ -480,8 +452,8 @@ export const getBookingsReport = async (req: Request, res: Response) => {
       { header: "จองจาก", key: "platformId", width: 12 },
       { header: "สถานะ", key: "status", width: 14 },
       { header: "ห้อง", key: "rooms", width: 24 },
-      { header: "ค่าห้อง", key: "roomCharge", width: 14 },
-      { header: "ยอดรวม", key: "total", width: 14 },
+      { header: "ยอดเงิน", key: "amount", width: 14 },
+      { header: "เงินมัดจำที่รับ", key: "depositCollected", width: 16 },
       { header: "ชำระเงิน", key: "paymentMethods", width: 20 },
       { header: "Staff", key: "staffUsername", width: 18 },
       { header: "Note", key: "note", width: 30 },
@@ -520,8 +492,8 @@ export const getBookingsReport = async (req: Request, res: Response) => {
         platformId: platform.label,
         status: booking.status,
         rooms: booking.roomStays.map(formatRoomStayRooms).join(", "),
-        roomCharge: roomChargeTotal(transactions),
-        total: transactionTotal(transactions),
+        amount: bookingsReportRoomChargeTotal(transactions),
+        depositCollected: bookingsReportDepositCollectedTotal(transactions),
         paymentMethods,
         staffUsername: booking.staffUsername,
         note: booking.note || "",
@@ -538,8 +510,15 @@ export const getBookingsReport = async (req: Request, res: Response) => {
       platformCell.alignment = { vertical: "middle", horizontal: "center" };
 
       transactions
-        .filter((transaction) => transaction.type !== "roomCharge")
-        .forEach((transaction) => {
+        .map((transaction) => ({
+          transaction,
+          amount: bookingsReportTransactionAmount(transaction),
+        }))
+        .filter(
+          ({ transaction, amount }) =>
+            transaction.type !== "roomCharge" && amount !== 0,
+        )
+        .forEach(({ transaction, amount }) => {
           const transactionLabel =
             transactionMap[transaction.type] || transaction.type;
           const transactionRow = sheet.addRow({
@@ -551,8 +530,8 @@ export const getBookingsReport = async (req: Request, res: Response) => {
             platformId: "Misc",
             status: booking.status,
             rooms: transactionLabel,
-            roomCharge: "",
-            total: transactionSignedAmount(transaction),
+            amount,
+            depositCollected: "",
             paymentMethods: transaction.paymentMethod,
             staffUsername: booking.staffUsername,
             note: "",
@@ -561,7 +540,7 @@ export const getBookingsReport = async (req: Request, res: Response) => {
           transactionRow.eachCell((cell, colNumber) => {
             cell.font = { color: { argb: "FF000000" } };
 
-            if (colNumber !== 6 && colNumber !== 10) {
+            if (colNumber !== 6 && colNumber !== 9) {
               cell.fill = {
                 type: "pattern",
                 pattern: "solid",
@@ -584,8 +563,8 @@ export const getBookingsReport = async (req: Request, res: Response) => {
         });
     });
 
-    sheet.getColumn("roomCharge").numFmt = '#,##0 "บาท"';
-    sheet.getColumn("total").numFmt = '#,##0 "บาท"';
+    sheet.getColumn("amount").numFmt = '#,##0 "บาท"';
+    sheet.getColumn("depositCollected").numFmt = '#,##0 "บาท"';
     sheet.views = [{ state: "frozen", ySplit: 1 }];
 
     res.setHeader(
