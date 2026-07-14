@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const booking_1 = require("../controller/booking");
+const passportAuthorization_1 = require("../middleware/passportAuthorization");
 const bookingsRouter = express_1.default.Router();
 bookingsRouter.post("/newBooking", booking_1.newBooking);
 bookingsRouter.patch("/editBooking/:bookingId", booking_1.editBooking);
@@ -24,6 +25,6 @@ bookingsRouter.patch("/cancelBooking/:bookingId", booking_1.cancelBooking);
 bookingsRouter.patch("/resolveBooking/:bookingId", booking_1.resolveBooking);
 bookingsRouter.get("/getMonthCalendar", booking_1.getMonthCalendar);
 bookingsRouter.get("/getBookingById/:bookingId", booking_1.getBookingById);
-bookingsRouter.get("/getPassportData/:bookingId", booking_1.getPassportData);
+bookingsRouter.get("/getPassportData/:bookingId", passportAuthorization_1.requirePassportAccess, booking_1.getPassportData);
 exports.default = bookingsRouter;
 //# sourceMappingURL=bookings.js.map

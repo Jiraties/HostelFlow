@@ -1,0 +1,367 @@
+import assert from "node:assert/strict";
+import { after, before, beforeEach, test } from "node:test";
+import os from "node:os";
+import crypto from "node:crypto";
+import bcrypt from "bcrypt";
+import mongoose from "mongoose";
+import { MongoMemoryReplSet } from "mongodb-memory-server";
+
+import Activity from "../src/models/activity";
+import Booking, { PASSPORT_SENSITIVE_SELECT } from "../src/models/booking";
+import LoginAttempt from "../src/models/loginAttempt";
+import User from "../src/models/user";
+import { requirePassportAccess } from "../src/middleware/passportAuthorization";
+import {
+  LOGIN_COOLDOWN_MS,
+  assertLoginAllowed,
+  loginAttemptKeys,
+  recordLoginFailure,
+} from "../src/services/loginProtection";
+import {
+  trustProxyHops,
+  validateProductionWebSecurity,
+} from "../src/config/runtimeSecurity";
+
+type AuthController = typeof import("../src/controller/auth");
+type BookingController = typeof import("../src/controller/booking");
+type CapturedResponse = {
+  statusCode: number;
+  body: any;
+  headers: Record<string, string>;
+  cookieValue?: string;
+  cookieOptions?: Record<string, unknown>;
+  status: (code: number) => CapturedResponse;
+  json: (body: any) => CapturedResponse;
+  setHeader: (name: string, value: string) => CapturedResponse;
+  cookie: (
+    name: string,
+    value: string,
+    options: Record<string, unknown>,
+  ) => CapturedResponse;
+};
+
+const response = (): CapturedResponse => ({
+  statusCode: 200,
+  body: undefined,
+  headers: {},
+  status(code) {
+    this.statusCode = code;
+    return this;
+  },
+  json(body) {
+    this.body = body;
+    return this;
+  },
+  setHeader(name, value) {
+    this.headers[name.toLowerCase()] = value;
+    return this;
+  },
+  cookie(_name, value, options) {
+    this.cookieValue = value;
+    this.cookieOptions = options;
+    return this;
+  },
+});
+
+const loginRequest = (
+  username: string,
+  password: string,
+  ip = "203.0.113.10",
+) =>
+  ({
+    body: { username, password },
+    cookies: {},
+    ip,
+    socket: { remoteAddress: ip },
+  }) as any;
+
+const encrypt = (plaintext: string) => {
+  const key = Buffer.from(process.env.CRYPTO_SECRET!, "hex");
+  const iv = Buffer.alloc(12, 7);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const cipherText = Buffer.concat([
+    cipher.update(plaintext, "utf8"),
+    cipher.final(),
+  ]).toString("hex");
+  return {
+    cipherText,
+    iv: iv.toString("hex"),
+    authTag: cipher.getAuthTag().toString("hex"),
+  };
+};
+
+let replicaSet: MongoMemoryReplSet;
+let authController: AuthController;
+let bookingController: BookingController;
+
+before(async () => {
+  replicaSet = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
+  await mongoose.connect(replicaSet.getUri(), { dbName: "hostelflow_phase3" });
+  await Promise.all([
+    Activity.syncIndexes(),
+    Booking.syncIndexes(),
+    LoginAttempt.syncIndexes(),
+    User.syncIndexes(),
+  ]);
+
+  process.env.CRYPTO_SECRET = "22".repeat(32);
+  process.env.JWT_SECRET = "synthetic-jwt-secret-for-tests";
+  const previousCwd = process.cwd();
+  process.chdir(os.tmpdir());
+  authController = require("../src/controller/auth");
+  bookingController = require("../src/controller/booking");
+  process.chdir(previousCwd);
+});
+
+after(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  await mongoose.disconnect();
+  await replicaSet.stop();
+});
+
+beforeEach(async () => {
+  process.env.NODE_ENV = "test";
+  await Promise.all(
+    Object.values(mongoose.connection.collections).map((collection) =>
+      collection.deleteMany({}),
+    ),
+  );
+});
+
+test("passport authorization matrix denies unauthenticated and staff access", () => {
+  for (const [user, expectedStatus, expectedNext] of [
+    [undefined, 401, false],
+    [{ username: "staff", admin: false }, 403, false],
+    [{ username: "admin", admin: true }, 200, true],
+  ] as const) {
+    const res = response();
+    let nextCalled = false;
+    requirePassportAccess(
+      { user } as any,
+      res as any,
+      (() => {
+        nextCalled = true;
+      }) as any,
+    );
+    assert.equal(res.statusCode, expectedStatus);
+    assert.equal(nextCalled, expectedNext);
+  }
+});
+
+test("ordinary booking reads exclude encrypted passport material by default", async () => {
+  await Booking.create({
+    name: "Synthetic Passport Guest",
+    bookingId: "PASSPORT-1",
+    status: "checkedIn",
+    passport: {
+      passportHash: "synthetic-hash",
+      namePrefix: "Ms",
+      nationality: "TH",
+      passportNo: encrypt("SYNTHETIC-NUMBER"),
+      passportName: encrypt("Synthetic Passport Guest"),
+    },
+  });
+
+  const ordinary = await Booking.findOne({ bookingId: "PASSPORT-1" }).lean();
+  const ordinaryJson = JSON.stringify(ordinary);
+  assert.equal(ordinaryJson.includes("passportHash"), false);
+  assert.equal(ordinaryJson.includes("cipherText"), false);
+  assert.equal(ordinaryJson.includes("authTag"), false);
+  assert.equal(ordinaryJson.includes('"iv"'), false);
+
+  const controllerResponse = response();
+  await bookingController.getBookingById(
+    { params: { bookingId: "PASSPORT-1" } } as any,
+    controllerResponse as any,
+  );
+  assert.equal(controllerResponse.statusCode, 200);
+  assert.equal(JSON.stringify(controllerResponse.body).includes("cipherText"), false);
+
+  const privileged = await Booking.findOne({ bookingId: "PASSPORT-1" })
+    .select(
+      `passport.namePrefix passport.nationality ${PASSPORT_SENSITIVE_SELECT}`,
+    )
+    .lean();
+  assert.ok(privileged?.passport?.passportNo?.cipherText);
+});
+
+test("authorized passport reveal decrypts, audits and disables caching", async () => {
+  await Booking.create({
+    name: "Synthetic Authorized Guest",
+    bookingId: "PASSPORT-2",
+    status: "checkedIn",
+    passport: {
+      passportHash: "synthetic-hash",
+      namePrefix: "Mr",
+      nationality: "US",
+      passportNo: encrypt("SYNTHETIC-42"),
+      passportName: encrypt("Synthetic Authorized Guest"),
+    },
+  });
+
+  const res = response();
+  await bookingController.getPassportData(
+    {
+      params: { bookingId: "PASSPORT-2" },
+      user: { userId: "admin-id", username: "admin", admin: true },
+    } as any,
+    res as any,
+  );
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.passportData.passportNo, "SYNTHETIC-42");
+  assert.equal(res.headers["cache-control"], "no-store");
+  const audit = await Activity.findOne({ action: "VIEW_PASSPORT" }).lean();
+  assert.ok(audit);
+  assert.equal(JSON.stringify(audit).includes("SYNTHETIC-42"), false);
+});
+
+test("Mongo-backed login cooldown limits both IP and account identifiers", async () => {
+  const password = "synthetic-password-123";
+  await User.create({
+    username: "staff",
+    password: await bcrypt.hash(password, 10),
+    name: "Synthetic Staff",
+    admin: false,
+    active: true,
+  });
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const res = response();
+    await authController.login(
+      loginRequest("staff", "wrong-password"),
+      res as any,
+      (() => undefined) as any,
+    );
+    assert.equal(res.statusCode, 401);
+    assert.equal(res.body.error, "AUTHENTICATION_FAILED");
+  }
+
+  const sameAccount = response();
+  await authController.login(
+    loginRequest("staff", "wrong-password", "198.51.100.20"),
+    sameAccount as any,
+    (() => undefined) as any,
+  );
+  assert.equal(sameAccount.statusCode, 429);
+
+  const sameIp = response();
+  await authController.login(
+    loginRequest("another-user", "wrong-password"),
+    sameIp as any,
+    (() => undefined) as any,
+  );
+  assert.equal(sameIp.statusCode, 429);
+  assert.ok(Number(sameIp.headers["retry-after"]) > 0);
+
+  const keys = loginAttemptKeys(loginRequest("staff", password), "staff");
+  await assert.doesNotReject(
+    assertLoginAllowed(keys, new Date(Date.now() + LOGIN_COOLDOWN_MS + 1000)),
+  );
+});
+
+test("concurrent limiter writes remain atomic across shared MongoDB state", async () => {
+  const req = loginRequest("distributed-user", "wrong-password");
+  const keys = loginAttemptKeys(req, "distributed-user");
+  await Promise.all(
+    Array.from({ length: 5 }, () => recordLoginFailure(keys)),
+  );
+
+  const records = await LoginAttempt.find({ key: { $in: keys } }).lean();
+  assert.equal(records.length, 2);
+  records.forEach((record) => {
+    assert.equal(record.failureCount, 5);
+    assert.ok(record.blockedUntil && record.blockedUntil > new Date());
+  });
+});
+
+test("successful login clears failures and production cookies remain secure", async () => {
+  const password = "synthetic-password-123";
+  await User.create({
+    username: "admin",
+    password: await bcrypt.hash(password, 10),
+    name: "Synthetic Admin",
+    admin: true,
+    active: true,
+  });
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await authController.login(
+      loginRequest("admin", "wrong-password"),
+      response() as any,
+      (() => undefined) as any,
+    );
+  }
+
+  process.env.NODE_ENV = "production";
+  const res = response();
+  const req = loginRequest("admin", password);
+  await authController.login(req, res as any, (() => undefined) as any);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.cookieOptions?.httpOnly, true);
+  assert.equal(res.cookieOptions?.secure, true);
+  assert.equal(res.cookieOptions?.sameSite, "lax");
+  assert.equal(
+    await LoginAttempt.countDocuments({ key: { $in: loginAttemptKeys(req, "admin") } }),
+    0,
+  );
+});
+
+test("inactive users get generic failure and weak passwords are rejected", async () => {
+  await User.create({
+    username: "inactive",
+    password: await bcrypt.hash("synthetic-password-123", 10),
+    name: "Inactive Synthetic User",
+    admin: false,
+    active: false,
+  });
+  const inactiveResponse = response();
+  await authController.login(
+    loginRequest("inactive", "synthetic-password-123"),
+    inactiveResponse as any,
+    (() => undefined) as any,
+  );
+  assert.equal(inactiveResponse.statusCode, 401);
+  assert.equal(inactiveResponse.body.error, "AUTHENTICATION_FAILED");
+
+  const weakCreate = response();
+  await authController.adminCreateUser(
+    {
+      user: { userId: "admin-id", username: "admin", admin: true },
+      body: { username: "weak", name: "Weak User", password: "short" },
+    } as any,
+    weakCreate as any,
+  );
+  assert.equal(weakCreate.statusCode, 400);
+  assert.equal(weakCreate.body.error, "WEAK_PASSWORD");
+});
+
+test("production web security requires exact HTTPS origins and proxy hops", () => {
+  assert.throws(
+    () => validateProductionWebSecurity({ NODE_ENV: "production" }),
+    /ALLOWED_ORIGINS/,
+  );
+  assert.throws(
+    () =>
+      validateProductionWebSecurity({
+        NODE_ENV: "production",
+        ALLOWED_ORIGINS: "http://example.test",
+      }),
+    /HTTPS origins/,
+  );
+  assert.throws(
+    () =>
+      validateProductionWebSecurity({
+        NODE_ENV: "production",
+        ALLOWED_ORIGINS: "https://hostelflow.example",
+      }),
+    /TRUST_PROXY_HOPS/,
+  );
+  assert.doesNotThrow(() =>
+    validateProductionWebSecurity({
+      NODE_ENV: "production",
+      ALLOWED_ORIGINS: "https://hostelflow.example",
+      TRUST_PROXY_HOPS: "1",
+    }),
+  );
+  assert.equal(trustProxyHops({ TRUST_PROXY_HOPS: "2" }), 2);
+});

@@ -1,5 +1,7 @@
-import Booking, { PaymentMethod } from "../models/booking";
-import CashShift from "../models/cashShift";
+import Booking, {
+  PASSPORT_SENSITIVE_SELECT,
+  PaymentMethod,
+} from "../models/booking";
 import dotenv from "dotenv";
 import crypto from "crypto";
 
@@ -49,16 +51,33 @@ import {
   IdempotencyConflictError,
   withMutationIdempotency,
 } from "../services/mutationIdempotency";
+import {
+  CashShiftLedgerConflictError,
+  withCashLedgerTransaction,
+} from "../services/cashLedgerTransaction";
+import {
+  FinancialTransactionPolicyError,
+  canonicalTransactionDirection,
+  enforceAddTransactionPolicy,
+} from "../services/financialTransactionPolicy";
+import {
+  activeRoomInventory,
+  invalidRoomIds,
+  roomGuestCapacity,
+} from "../config/roomInventory";
+import { formatDestinationCountryForReport } from "../helpers/passportHelpers";
+import {
+  bookingRevisionPredicate,
+  expectedBookingRevision,
+  sendBookingRevisionConflict,
+} from "../services/bookingConcurrency";
 
 dotenv.config();
 
-const TOTAL_GUEST_CAPACITY = 52;
-const ROOM_GUEST_CAPACITY: Record<string, number> = {
-  Balcony: 2,
-  Window: 2,
-  "Pottery 1": 3,
-  "Pottery 2": 3,
-};
+const TOTAL_GUEST_CAPACITY = activeRoomInventory().reduce(
+  (total, room) => total + room.capacity,
+  0,
+);
 const CARD_SURCHARGE_RATE = 0.03;
 const ADD_TRANSACTION_TYPES: TransactionType[] = [
   "deposit",
@@ -135,6 +154,7 @@ const SENSITIVE_SETTLEMENT_TYPES: TransactionType[] = [
   "paymentCorrection",
 ];
 const ROOM_BLOCKING_BOOKING_FILTER = {
+  voided: { $ne: true },
   $or: [
     { status: { $nin: ["cancelled", "checkedOut", "noShow"] } },
     { "cancellation.roomReleaseStatus": "blocked" },
@@ -335,8 +355,7 @@ const bookingOccupiedCapacityOnDate = (
   }, 0);
 };
 
-const getRoomGuestCapacity = (roomId: string) =>
-  ROOM_GUEST_CAPACITY[roomId] ?? 1;
+const getRoomGuestCapacity = roomGuestCapacity;
 
 const getRequestedRoomIds = (booking: { roomIds?: string[]; roomId?: string }) =>
   getRoomStayRoomIds({
@@ -479,25 +498,6 @@ const buildTransactionsWithCardSurcharge = (
   return transactions;
 };
 
-const attachActiveCashShift = async (transactions: transcation[]) => {
-  if (!transactions.some((transaction) => transaction.paymentMethod === "Cash")) {
-    return transactions;
-  }
-
-  const activeCashShift = await CashShift.findOne({
-    status: "open",
-    businessDate: formatLocalDateKey(new Date()),
-  }).sort({ startedAt: -1 });
-  if (!activeCashShift) return transactions;
-
-  const cashShiftId = String(activeCashShift._id);
-  return transactions.map((transaction) =>
-    transaction.paymentMethod === "Cash"
-      ? { ...transaction, cashShiftId }
-      : transaction,
-  );
-};
-
 const formatLocalDateKey = (date: Date) => {
   const { year, month, day } = getBusinessDateParts(date);
 
@@ -590,6 +590,13 @@ export const newBooking = async (
         message: "เลือกห้องซ้ำกัน",
       });
     }
+    const invalidRequestedRooms = invalidRoomIds(requestedRoomIds);
+    if (invalidRequestedRooms.length > 0) {
+      return res.status(400).json({
+        error: "INVALID_ROOM_ID",
+        message: `ไม่พบห้องที่เปิดใช้งาน: ${invalidRequestedRooms.join(", ")}`,
+      });
+    }
 
     const roomChargeAmount = Number(booking.price);
 
@@ -638,43 +645,42 @@ export const newBooking = async (
           paymentMethod: booking.paymentMethod,
         };
 
-        const transactions = await attachActiveCashShift(
-          buildTransactionsWithCardSurcharge(roomChargeTransaction, {
+        const transactions = buildTransactionsWithCardSurcharge(
+          roomChargeTransaction,
+          {
             createdBy: req.user?.username,
             sourceAction: "NEW_BOOKING",
-          }),
+          },
         );
 
-        const savedBooking = new Booking({
-          name: booking.name.trim(),
-          checkIn: newCheckIn,
-          checkOut: newCheckOut,
-          nights: calculateNights(booking.checkIn, booking.checkOut),
-          platformId: booking.platformId,
-          roomStays: [
-            {
-              roomIds: requestedRoomIds,
-              from: newCheckIn,
-              to: newCheckOut,
-            },
-          ],
-          note: booking.note || "",
-
-          // ------- OLD TRANSACTION STRUCTURE --------
-          // price: booking.price,
-          // paymentMethod: booking.paymentMethod,
-          // deposit: null,
-          // depositRepaid: null,
-
+        const savedBooking = await withCashLedgerTransaction(
           transactions,
+          async (assignedTransactions, session) => {
+            const bookingDocument = new Booking({
+              name: booking.name.trim(),
+              checkIn: newCheckIn,
+              checkOut: newCheckOut,
+              nights: calculateNights(booking.checkIn, booking.checkOut),
+              platformId: booking.platformId,
+              roomStays: [
+                {
+                  roomIds: requestedRoomIds,
+                  from: newCheckIn,
+                  to: newCheckOut,
+                },
+              ],
+              note: booking.note || "",
+              transactions: assignedTransactions,
+              staffUsername,
+              bookingId: booking.bookingId.trim(),
+              checkInByStaffUsername: null,
+              status: "booked",
+            });
 
-          staffUsername,
-          bookingId: booking.bookingId.trim(),
-          checkInByStaffUsername: null,
-          status: "booked",
-        });
-
-        await savedBooking.save();
+            await bookingDocument.save({ session });
+            return bookingDocument;
+          },
+        );
 
         return { savedBooking };
       },
@@ -705,6 +711,9 @@ export const newBooking = async (
       },
     });
   } catch (err: any) {
+    if (err instanceof CashShiftLedgerConflictError) {
+      return res.status(409).json({ error: err.code, message: err.message });
+    }
     if (err instanceof RoomMutationConflictError) {
       return res.status(409).json({
         message: "ห้องนี้กำลังถูกแก้ไขโดยผู้ใช้อื่น กรุณาลองอีกครั้ง",
@@ -778,6 +787,7 @@ export const getRoomAvailability = async (req: Request, res: Response) => {
 };
 
 type EditBookingBody = {
+  expectedRevision: number;
   booking: {
     name: string;
     checkIn: string;
@@ -806,6 +816,7 @@ export const editBooking = async (
   try {
     const { booking } = req.body;
     const { bookingId } = req.params;
+    const expectedRevision = expectedBookingRevision(req.body.expectedRevision);
 
     if (
       !booking ||
@@ -816,6 +827,12 @@ export const editBooking = async (
     ) {
       return res.status(400).json({
         message: "กรุณากรอกข้อมูลให้ครบทุกช่อง",
+      });
+    }
+    if (expectedRevision === null) {
+      return res.status(400).json({
+        error: "EXPECTED_REVISION_REQUIRED",
+        message: "กรุณารีเฟรชข้อมูลการจองก่อนแก้ไข",
       });
     }
 
@@ -833,9 +850,14 @@ export const editBooking = async (
       return res.status(404).json({ message: "Booking not found" });
     }
 
-    if (existingBooking.status === "checkedOut") {
+    if ((existingBooking.revision || 0) !== expectedRevision) {
+      return sendBookingRevisionConflict(res, bookingId);
+    }
+    if (existingBooking.status !== "booked" || existingBooking.voided) {
       return res.status(409).json({
-        message: "ไม่สามารถแก้ไข booking ที่ check-out แล้ว",
+        error: "BOOKING_LIFECYCLE_CONFLICT",
+        message: "แก้ไขข้อมูลหลักได้เฉพาะการจองที่ยังไม่เช็คอิน",
+        booking: existingBooking,
       });
     }
 
@@ -873,6 +895,13 @@ export const editBooking = async (
     }
 
     const roomIds = getUniqueRoomIdsFromRoomStays(correctedRoomStays);
+    const invalidEditedRooms = invalidRoomIds(roomIds);
+    if (invalidEditedRooms.length > 0) {
+      return res.status(400).json({
+        error: "INVALID_ROOM_ID",
+        message: `ไม่พบห้องที่เปิดใช้งาน: ${invalidEditedRooms.join(", ")}`,
+      });
+    }
 
     const editResult = await withRoomMutationLocks(
       correctedRoomStays,
@@ -896,7 +925,12 @@ export const editBooking = async (
         }
 
         const updatedBooking = await Booking.findOneAndUpdate(
-          { bookingId },
+          {
+            bookingId,
+            status: "booked",
+            voided: { $ne: true },
+            ...bookingRevisionPredicate(expectedRevision),
+          },
           {
             $set: {
               name: booking.name,
@@ -907,8 +941,9 @@ export const editBooking = async (
               note: booking.note || "",
               roomStays: correctedRoomStays,
             },
+            $inc: { revision: 1 },
           },
-          { returnDocument: "after" },
+          { returnDocument: "after", runValidators: true },
         );
 
         return { updatedBooking };
@@ -922,6 +957,9 @@ export const editBooking = async (
     }
 
     const updatedBooking = editResult.updatedBooking;
+    if (!updatedBooking) {
+      return sendBookingRevisionConflict(res, bookingId);
+    }
 
     logActivity(
       req.user?.username,
@@ -1460,7 +1498,22 @@ export const removeBooking = async (req: Request, res: Response) => {
   try {
     if (!req.user?.admin) {
       return res.status(403).json({
-        message: "เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถลบการจองได้",
+        message: "เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถ void การจองได้",
+      });
+    }
+
+    const reason = String(req.body?.reason || "").trim();
+    const expectedRevision = expectedBookingRevision(req.body?.expectedRevision);
+    if (!reason) {
+      return res.status(400).json({
+        error: "VOID_REASON_REQUIRED",
+        message: "กรุณาระบุเหตุผลที่ void การจอง",
+      });
+    }
+    if (expectedRevision === null) {
+      return res.status(400).json({
+        error: "EXPECTED_REVISION_REQUIRED",
+        message: "กรุณารีเฟรชข้อมูลการจองก่อน void",
       });
     }
 
@@ -1471,36 +1524,57 @@ export const removeBooking = async (req: Request, res: Response) => {
         message: "ไม่พบ booking นี้",
       });
 
-    if (booking.status !== "booked") {
+    if ((booking.revision || 0) !== expectedRevision) {
+      return sendBookingRevisionConflict(res, bookingId);
+    }
+    if (booking.status !== "booked" || booking.voided) {
       return res.status(409).json({
-        message: "ลบได้เฉพาะ booking ที่ยังไม่ได้ check-in",
+        error: "BOOKING_LIFECYCLE_CONFLICT",
+        message: "void ได้เฉพาะ booking ที่ยังไม่ได้ check-in และยังไม่ถูก void",
+        booking,
       });
     }
 
-    const deletedBooking = await withMutationIdempotency(req, () =>
-      Booking.findOneAndDelete({ bookingId }),
+    const voidedBooking = await withMutationIdempotency(req, () =>
+      Booking.findOneAndUpdate(
+        {
+          bookingId,
+          status: "booked",
+          voided: { $ne: true },
+          ...bookingRevisionPredicate(expectedRevision),
+        },
+        {
+          $set: {
+            status: "cancelled",
+            voided: true,
+            voidedAt: new Date(),
+            voidedBy: req.user?.username,
+            voidReason: reason,
+          },
+          $inc: { revision: 1 },
+        },
+        { returnDocument: "after", runValidators: true },
+      ),
     );
 
-    if (!deletedBooking)
-      return res.status(400).json({
-        message: "Deletion Unsuccessfull",
-      });
+    if (!voidedBooking) return sendBookingRevisionConflict(res, bookingId);
 
     res.status(200).json({
-      removedBooking: deletedBooking,
-      message: `Successfully deleted bookingId: ${bookingId}`,
+      booking: voidedBooking,
+      message: `Voided bookingId: ${bookingId}`,
     });
 
     logActivity(req.user?.username, "REMOVE_BOOKING", {
       snapshot: {
-        name: deletedBooking.name,
-        checkIn: deletedBooking.checkIn,
-        checkOut: deletedBooking.checkOut,
-        platformId: deletedBooking.platformId,
-        roomIds: getRoomStayRoomIds(deletedBooking.roomStays?.[0] || {}),
-        price: deletedBooking.transactions?.[0]?.amount,
-        paymentMethod: deletedBooking.transactions?.[0]?.paymentMethod,
-        bookingId: deletedBooking.bookingId,
+        name: voidedBooking.name,
+        checkIn: voidedBooking.checkIn,
+        checkOut: voidedBooking.checkOut,
+        platformId: voidedBooking.platformId,
+        roomIds: getRoomStayRoomIds(voidedBooking.roomStays?.[0] || {}),
+        bookingId: voidedBooking.bookingId,
+        transactionCount: voidedBooking.transactions.length,
+        voidedBy: req.user?.username,
+        voidReason: reason,
       },
     });
   } catch (err) {
@@ -1513,6 +1587,7 @@ export const removeBooking = async (req: Request, res: Response) => {
 };
 
 type checkInData = {
+  expectedRevision: number;
   deposit: number;
   unpaidPayment?: {
     paymentMethod: PaymentMethod;
@@ -1523,6 +1598,7 @@ type checkInData = {
     passportNo: string;
     passportName: string;
     nationality: string;
+    nextDestinationCountry: string;
   };
 };
 
@@ -1530,6 +1606,16 @@ export const checkIn = async (req: Request, res: Response) => {
   try {
     const { bookingId } = req.params;
     const checkInData: checkInData = req.body;
+    const expectedRevision = expectedBookingRevision(
+      checkInData.expectedRevision,
+    );
+
+    if (expectedRevision === null) {
+      return res.status(400).json({
+        error: "EXPECTED_REVISION_REQUIRED",
+        message: "กรุณารีเฟรชข้อมูลการจองก่อน check-in",
+      });
+    }
 
     if (!bookingId)
       return res.status(400).json({
@@ -1539,6 +1625,7 @@ export const checkIn = async (req: Request, res: Response) => {
     if (
       !checkInData.passportData?.namePrefix ||
       !checkInData.passportData?.nationality ||
+      !checkInData.passportData?.nextDestinationCountry ||
       !checkInData.passportData?.passportNo ||
       !checkInData.passportData?.passportName ||
       checkInData.deposit == null
@@ -1551,6 +1638,16 @@ export const checkIn = async (req: Request, res: Response) => {
     if (!NAME_PREFIXES.includes(checkInData.passportData.namePrefix)) {
       return res.status(400).json({
         message: "คำนำหน้าชื่อไม่ถูกต้อง",
+      });
+    }
+
+    const nextDestinationCountry = formatDestinationCountryForReport(
+      checkInData.passportData.nextDestinationCountry,
+    );
+
+    if (!nextDestinationCountry) {
+      return res.status(400).json({
+        message: "ประเทศปลายทางถัดไปไม่รองรับในรายงาน รร.",
       });
     }
 
@@ -1567,6 +1664,17 @@ export const checkIn = async (req: Request, res: Response) => {
     if (!existingBooking) {
       return res.status(404).json({
         message: "ไม่พบ booking นี้",
+      });
+    }
+
+    if ((existingBooking.revision || 0) !== expectedRevision) {
+      return sendBookingRevisionConflict(res, bookingId);
+    }
+    if (existingBooking.voided) {
+      return res.status(409).json({
+        error: "BOOKING_LIFECYCLE_CONFLICT",
+        message: "ไม่สามารถ check-in การจองที่ถูก void",
+        booking: existingBooking,
       });
     }
 
@@ -1664,6 +1772,7 @@ export const checkIn = async (req: Request, res: Response) => {
       passportHash: hashPassport(checkInData.passportData.passportNo),
       namePrefix: checkInData.passportData.namePrefix,
       nationality: checkInData.passportData.nationality,
+      nextDestinationCountry: nextDestinationCountry.value,
       passportNo: encrypt(checkInData.passportData.passportNo),
       passportName: encrypt(checkInData.passportData.passportName),
     };
@@ -1686,7 +1795,7 @@ export const checkIn = async (req: Request, res: Response) => {
       checkInData.unpaidPayment?.roundingAdjustment || 0,
     );
 
-    if (!Number.isFinite(roundingAdjustment)) {
+    if (!Number.isFinite(roundingAdjustment) || roundingAdjustment < 0) {
       return res.status(400).json({
         message: "ยอดปรับเศษเงินไม่ถูกต้อง",
       });
@@ -1727,8 +1836,6 @@ export const checkIn = async (req: Request, res: Response) => {
         ),
       );
     }
-    newTransactions = await attachActiveCashShift(newTransactions);
-
     const checkedInAt = new Date();
     const setFields: Record<string, unknown> = {
       status: "checkedIn",
@@ -1740,16 +1847,9 @@ export const checkIn = async (req: Request, res: Response) => {
     const updateQuery: Record<string, unknown> = {
       bookingId,
       status: "booked",
+      voided: { $ne: true },
+      ...bookingRevisionPredicate(expectedRevision),
     };
-    const updateOperation: Record<string, unknown> = {
-      $push: {
-        transactions: {
-          $each: newTransactions,
-        },
-      },
-      $set: setFields,
-    };
-
     if (checkInData.unpaidPayment && unpaidRoomCharge) {
       updateQuery.transactions = {
         $elemMatch: {
@@ -1767,15 +1867,31 @@ export const checkIn = async (req: Request, res: Response) => {
     }
 
     const updatedBooking = await withMutationIdempotency(req, () =>
-      Booking.findOneAndUpdate(updateQuery, updateOperation, {
-        returnDocument: "after",
-      }),
+      withCashLedgerTransaction(
+        newTransactions,
+        (assignedTransactions, session) =>
+          Booking.findOneAndUpdate(
+            updateQuery,
+            {
+              $push: {
+                transactions: {
+                  $each: assignedTransactions,
+                },
+              },
+              $set: setFields,
+              $inc: { revision: 1 },
+            },
+            { returnDocument: "after", session, runValidators: true },
+          ),
+      ),
     );
 
     if (!updatedBooking) {
-      return res.status(409).json({
-        message: "booking นี้ไม่สามารถ check-in ซ้ำได้",
-      });
+      return sendBookingRevisionConflict(
+        res,
+        bookingId,
+        "สถานะการจองเปลี่ยนไปแล้ว กรุณารีเฟรชก่อน check-in",
+      );
     }
 
     const sanitizedBooking = updatedBooking?.toObject();
@@ -1807,6 +1923,9 @@ export const checkIn = async (req: Request, res: Response) => {
       String(bookingId),
     );
   } catch (err) {
+    if (err instanceof CashShiftLedgerConflictError) {
+      return res.status(409).json({ error: err.code, message: err.message });
+    }
     if (err instanceof IdempotencyConflictError) {
       return sendDuplicateMutationResponse(res);
     }
@@ -1823,7 +1942,15 @@ export const checkOut = async (req: Request, res: Response) => {
       depositDisposition: requestedDepositDisposition,
       releaseRemainingNights = true,
     } = req.body;
+    const expectedRevision = expectedBookingRevision(req.body.expectedRevision);
     const checkedOutByStaffUsername = req.user?.username;
+
+    if (expectedRevision === null) {
+      return res.status(400).json({
+        error: "EXPECTED_REVISION_REQUIRED",
+        message: "กรุณารีเฟรชข้อมูลการจองก่อน check-out",
+      });
+    }
 
     const depositDisposition =
       requestedDepositDisposition ||
@@ -1867,6 +1994,10 @@ export const checkOut = async (req: Request, res: Response) => {
       });
     }
 
+    if ((existingBooking.revision || 0) !== expectedRevision) {
+      return sendBookingRevisionConflict(res, bookingId);
+    }
+
     if (existingBooking.status !== "checkedIn") {
       return res.status(409).json({
         message: "สามารถ check-out ได้เฉพาะ booking ที่ check-in แล้ว",
@@ -1904,7 +2035,7 @@ export const checkOut = async (req: Request, res: Response) => {
     const earlyCheckOut = nightsEarly > 0;
     const roomReleaseStatus =
       earlyCheckOut && !releaseRemainingNights ? "blocked" : "released";
-    const depositTransactionsToRecord: transcation[] = await attachActiveCashShift(
+    const depositTransactionsToRecord: transcation[] =
       remainingDepositAmount > 0
         ? [
             normalizeTransaction(
@@ -1927,46 +2058,57 @@ export const checkOut = async (req: Request, res: Response) => {
               },
             ),
           ]
-        : [],
-    );
+        : [];
 
     const updatedBooking = await withMutationIdempotency(req, () =>
-      Booking.findOneAndUpdate(
-        { bookingId, status: "checkedIn" },
-        {
-          $set: {
-            status: "checkedOut",
-            checkout: {
-              roomReleaseStatus,
-              depositRefundAmount:
-                depositDisposition === "returned"
-                  ? remainingDepositAmount
-                  : 0,
-              depositDisposition,
-              checkedOutAt: new Date(),
-              checkedOutByStaffUsername,
-              earlyCheckOut,
-              nightsEarly,
+      withCashLedgerTransaction(
+        depositTransactionsToRecord,
+        (assignedTransactions, session) =>
+          Booking.findOneAndUpdate(
+            {
+              bookingId,
+              status: "checkedIn",
+              voided: { $ne: true },
+              ...bookingRevisionPredicate(expectedRevision),
             },
-          },
-          ...(depositTransactionsToRecord.length > 0
-            ? {
-                $push: {
-                  transactions: {
-                    $each: depositTransactionsToRecord,
-                  },
+            {
+              $set: {
+                status: "checkedOut",
+                checkout: {
+                  roomReleaseStatus,
+                  depositRefundAmount:
+                    depositDisposition === "returned"
+                      ? remainingDepositAmount
+                      : 0,
+                  depositDisposition,
+                  checkedOutAt: new Date(),
+                  checkedOutByStaffUsername,
+                  earlyCheckOut,
+                  nightsEarly,
                 },
-              }
-            : {}),
-        },
-        { returnDocument: "after" },
+              },
+              ...(assignedTransactions.length > 0
+                ? {
+                    $push: {
+                      transactions: {
+                        $each: assignedTransactions,
+                      },
+                    },
+                  }
+                : {}),
+              $inc: { revision: 1 },
+            },
+            { returnDocument: "after", session, runValidators: true },
+          ),
       ),
     );
 
     if (!updatedBooking) {
-      return res.status(404).json({
-        message: "ไม่พบ booking นี้",
-      });
+      return sendBookingRevisionConflict(
+        res,
+        bookingId,
+        "สถานะการจองเปลี่ยนไปแล้ว กรุณารีเฟรชก่อน check-out",
+      );
     }
 
     res.status(200).json({
@@ -1999,6 +2141,9 @@ export const checkOut = async (req: Request, res: Response) => {
       String(bookingId),
     );
   } catch (err) {
+    if (err instanceof CashShiftLedgerConflictError) {
+      return res.status(409).json({ error: err.code, message: err.message });
+    }
     if (err instanceof IdempotencyConflictError) {
       return sendDuplicateMutationResponse(res);
     }
@@ -2039,49 +2184,10 @@ export const getMonthCalendar = async (req: Request, res: Response) => {
       checkOut: { $gt: startingDate },
     });
 
-    const rooms: Room[] = [
-      {
-        roomId: "Balcony",
-        bookings: [],
-      },
-      {
-        roomId: "Window",
-        bookings: [],
-      },
-      {
-        roomId: "Pottery 1",
-        bookings: [],
-      },
-      {
-        roomId: "Pottery 2",
-        bookings: [],
-      },
-
-      ...Array.from({ length: 14 }, (_, i) => ({
-        roomId: `Siesta ${i + 1}`,
-        bookings: [],
-      })),
-
-      ...Array.from({ length: 8 }, (_, i) => ({
-        roomId: `Marquisette ${i + 1}`,
-        bookings: [],
-      })),
-
-      ...Array.from({ length: 8 }, (_, i) => ({
-        roomId: `Homespan ${i + 1}`,
-        bookings: [],
-      })),
-
-      ...Array.from({ length: 6 }, (_, i) => ({
-        roomId: `Veranda ${i + 1}`,
-        bookings: [],
-      })),
-
-      ...Array.from({ length: 6 }, (_, i) => ({
-        roomId: `Wicker ${i + 1}`,
-        bookings: [],
-      })),
-    ];
+    const rooms: Room[] = activeRoomInventory().map((room) => ({
+      roomId: room.id,
+      bookings: [],
+    }));
 
     monthOfBookings.forEach((booking) => {
       const roomCharge = booking.transactions.find(
@@ -2142,6 +2248,14 @@ export const manageRoomStays = async (req: Request, res: Response) => {
   try {
     const { roomStays } = req.body;
     const { bookingId } = req.params;
+    const expectedRevision = expectedBookingRevision(req.body.expectedRevision);
+
+    if (expectedRevision === null) {
+      return res.status(400).json({
+        error: "EXPECTED_REVISION_REQUIRED",
+        message: "กรุณารีเฟรชข้อมูลการจองก่อนย้ายห้อง",
+      });
+    }
 
     if (
       !Array.isArray(roomStays) ||
@@ -2194,10 +2308,14 @@ export const manageRoomStays = async (req: Request, res: Response) => {
       return res.status(404).json({ message: "Booking not found" });
     }
 
-    if (booking.status === "checkedOut") {
+    if ((booking.revision || 0) !== expectedRevision) {
+      return sendBookingRevisionConflict(res, bookingId);
+    }
+    if (booking.status !== "booked" || booking.voided) {
       return res.status(409).json({
-        error: "BOOKING_CHECKED_OUT",
-        message: "ไม่สามารถแก้ไขช่วงพักของ booking ที่ check-out แล้ว",
+        error: "BOOKING_LIFECYCLE_CONFLICT",
+        message: "ย้ายห้องหรือวันที่ได้เฉพาะการจองที่ยังไม่เช็คอิน",
+        booking,
       });
     }
 
@@ -2230,6 +2348,13 @@ export const manageRoomStays = async (req: Request, res: Response) => {
     }
 
     const roomIds = getUniqueRoomIdsFromRoomStays(sorted);
+    const invalidManagedRooms = invalidRoomIds(roomIds);
+    if (invalidManagedRooms.length > 0) {
+      return res.status(400).json({
+        error: "INVALID_ROOM_ID",
+        message: `ไม่พบห้องที่เปิดใช้งาน: ${invalidManagedRooms.join(", ")}`,
+      });
+    }
     const minFrom = new Date(sorted[0].from);
     const maxTo = new Date(sorted[sorted.length - 1].to);
 
@@ -2254,13 +2379,19 @@ export const manageRoomStays = async (req: Request, res: Response) => {
       }
 
       const updatedBooking = await Booking.findOneAndUpdate(
-        { bookingId },
+        {
+          bookingId,
+          status: "booked",
+          voided: { $ne: true },
+          ...bookingRevisionPredicate(expectedRevision),
+        },
         {
           $set: {
             roomStays: sorted,
           },
+          $inc: { revision: 1 },
         },
-        { returnDocument: "after" },
+        { returnDocument: "after", runValidators: true },
       );
 
       return { updatedBooking };
@@ -2274,6 +2405,9 @@ export const manageRoomStays = async (req: Request, res: Response) => {
     }
 
     const updatedBooking = manageResult.updatedBooking;
+    if (!updatedBooking) {
+      return sendBookingRevisionConflict(res, bookingId);
+    }
 
     logActivity(
       req.user?.username,
@@ -2309,6 +2443,13 @@ type AddTransactionRequestBody = {
 type AddTransactionParams = {
   bookingId: string;
 };
+
+class BookingFinancialConflictError extends Error {
+  constructor() {
+    super("BOOKING_FINANCIAL_CONFLICT");
+    this.name = "BookingFinancialConflictError";
+  }
+}
 
 export const addTransaction = async (
   req: Request<AddTransactionParams, {}, AddTransactionRequestBody>,
@@ -2420,7 +2561,7 @@ export const addTransaction = async (
       }
     }
 
-    const baseTransaction: transcation = {
+    let baseTransaction: transcation = {
       type: transaction.type,
       paymentMethod: transaction.paymentMethod,
       amount,
@@ -2438,30 +2579,43 @@ export const addTransaction = async (
       baseTransaction.relatedTransactionId = transaction.relatedTransactionId;
     }
 
+    baseTransaction = enforceAddTransactionPolicy({
+      booking,
+      transaction: baseTransaction,
+      isAdmin: req.user?.admin === true,
+    });
+
     const sameTypeCount = booking.transactions.filter(
       (existingTransaction) => existingTransaction.type === transaction.type,
     ).length;
-    const newTransactions = await attachActiveCashShift(
-      buildTransactionsWithCardSurcharge(baseTransaction, {
-        createdBy: req.user?.username,
-        sourceAction: "ADD_TRANSACTION",
-        note: transaction.note,
-        reference: transaction.reference,
-        sameTypeCount,
-      }),
-    );
+    const newTransactions = buildTransactionsWithCardSurcharge(baseTransaction, {
+      createdBy: req.user?.username,
+      sourceAction: "ADD_TRANSACTION",
+      note: transaction.note,
+      reference: transaction.reference,
+      sameTypeCount,
+    });
+    const bookingVersion = Number(booking.revision || 0);
 
     const updatedBooking = await withMutationIdempotency(req, () =>
-      Booking.findOneAndUpdate(
-        { bookingId },
-        {
-          $push: {
-            transactions: {
-              $each: newTransactions,
+      withCashLedgerTransaction(
+        newTransactions,
+        async (assignedTransactions, session) => {
+          const result = await Booking.findOneAndUpdate(
+            { bookingId, ...bookingRevisionPredicate(bookingVersion) },
+            {
+              $push: {
+                transactions: {
+                  $each: assignedTransactions,
+                },
+              },
+              $inc: { revision: 1 },
             },
-          },
+            { returnDocument: "after", runValidators: true, session },
+          );
+          if (!result) throw new BookingFinancialConflictError();
+          return result;
         },
-        { returnDocument: "after" },
       ),
     );
 
@@ -2487,6 +2641,22 @@ export const addTransaction = async (
       booking: updatedBooking,
     });
   } catch (err) {
+    if (err instanceof FinancialTransactionPolicyError) {
+      return res.status(err.status).json({ error: err.code, message: err.message });
+    }
+    if (err instanceof BookingFinancialConflictError) {
+      const latestBooking = await Booking.findOne({
+        bookingId: req.params.bookingId,
+      });
+      return res.status(409).json({
+        error: "BOOKING_FINANCIAL_CONFLICT",
+        message: "ข้อมูลการเงินถูกเปลี่ยนโดยผู้ใช้อื่น กรุณารีเฟรชแล้วลองใหม่",
+        booking: latestBooking,
+      });
+    }
+    if (err instanceof CashShiftLedgerConflictError) {
+      return res.status(409).json({ error: err.code, message: err.message });
+    }
     if (err instanceof IdempotencyConflictError) {
       return sendDuplicateMutationResponse(res);
     }
@@ -2515,7 +2685,9 @@ export const getPassportData = async (req: Request, res: Response) => {
         $in: ["checkedIn", "checkedOut"],
       },
     })
-      .select("passport")
+      .select(
+        `passport.namePrefix passport.nationality ${PASSPORT_SENSITIVE_SELECT}`,
+      )
       .lean();
 
     if (
@@ -2572,6 +2744,7 @@ export const cancelBooking = async (req: Request, res: Response) => {
   try {
     const { bookingId } = req.params;
     const { cancellationType, reopenRoom } = req.body;
+    const expectedRevision = expectedBookingRevision(req.body.expectedRevision);
     const cancelledByStaffUsername = req.user?.username;
     const paidCancellationTypes = ["refundable", "non_refundable"];
 
@@ -2580,6 +2753,13 @@ export const cancelBooking = async (req: Request, res: Response) => {
         error: "MISSING",
         message: "กรุณากรอก BookingId ใน Params",
       });
+
+    if (expectedRevision === null) {
+      return res.status(400).json({
+        error: "EXPECTED_REVISION_REQUIRED",
+        message: "กรุณารีเฟรชข้อมูลการจองก่อนยกเลิก",
+      });
+    }
 
     if (typeof reopenRoom !== "boolean")
       return res.status(400).json({
@@ -2598,6 +2778,9 @@ export const cancelBooking = async (req: Request, res: Response) => {
 
     if (!existingBooking)
       return res.status(404).json({ message: "ไม่พบ Booking" });
+    if ((existingBooking.revision || 0) !== expectedRevision) {
+      return sendBookingRevisionConflict(res, bookingId);
+    }
     if (existingBooking.status !== "booked")
       return res.status(409).json({
         message: "สามารถยกเลิกได้เฉพาะ Booking ที่ยังไม่ได้ Check-In",
@@ -2635,7 +2818,7 @@ export const cancelBooking = async (req: Request, res: Response) => {
         message: "ยอดคืนเงินสูง ต้องให้ Admin ดำเนินการ",
       });
     }
-    const refundTransactions: transcation[] = await attachActiveCashShift(
+    const refundTransactions: transcation[] =
       refundAmount > 0
         ? Array.from(paidByMethod.entries()).map(([paymentMethod, amount]) =>
             normalizeTransaction(
@@ -2650,45 +2833,55 @@ export const cancelBooking = async (req: Request, res: Response) => {
               },
             ),
           )
-        : [],
-    );
+        : [];
 
     const updatedBooking = await withMutationIdempotency(req, () =>
-      Booking.findOneAndUpdate(
-        { bookingId, status: "booked" },
-        {
-          $set: {
-            status: "cancelled",
-            cancellation: {
-              cancellationType: hasReceivedPayment
-                ? cancellationType
-                : "no_payment_received",
-              roomReleaseStatus: reopenRoom ? "released" : "blocked",
-              refundAmount,
-              keptAmount,
-              cancelledAt: new Date(),
-              cancelledByStaffUsername,
+      withCashLedgerTransaction(
+        refundTransactions,
+        (assignedTransactions, session) =>
+          Booking.findOneAndUpdate(
+            {
+              bookingId,
+              status: "booked",
+              voided: { $ne: true },
+              ...bookingRevisionPredicate(expectedRevision),
             },
-          },
-          ...(refundTransactions.length > 0
-            ? {
-                $push: {
-                  transactions: {
-                    $each: refundTransactions,
-                  },
+            {
+              $set: {
+                status: "cancelled",
+                cancellation: {
+                  cancellationType: hasReceivedPayment
+                    ? cancellationType
+                    : "no_payment_received",
+                  roomReleaseStatus: reopenRoom ? "released" : "blocked",
+                  refundAmount,
+                  keptAmount,
+                  cancelledAt: new Date(),
+                  cancelledByStaffUsername,
                 },
-              }
-            : {}),
-        },
-        { returnDocument: "after" },
+              },
+              ...(assignedTransactions.length > 0
+                ? {
+                    $push: {
+                      transactions: {
+                        $each: assignedTransactions,
+                      },
+                    },
+                  }
+                : {}),
+              $inc: { revision: 1 },
+            },
+            { returnDocument: "after", session, runValidators: true },
+          ),
       ),
     );
 
     if (!updatedBooking) {
-      return res.status(404).json({
-        error: "NOT_FOUND",
-        message: "ไม่พบการจอง",
-      });
+      return sendBookingRevisionConflict(
+        res,
+        bookingId,
+        "สถานะการจองเปลี่ยนไปแล้ว กรุณารีเฟรชก่อนยกเลิก",
+      );
     }
 
     res.status(200).json({
@@ -2719,6 +2912,9 @@ export const cancelBooking = async (req: Request, res: Response) => {
       String(bookingId),
     );
   } catch (err) {
+    if (err instanceof CashShiftLedgerConflictError) {
+      return res.status(409).json({ error: err.code, message: err.message });
+    }
     if (err instanceof IdempotencyConflictError) {
       return sendDuplicateMutationResponse(res);
     }
@@ -2738,6 +2934,7 @@ type ResolveBookingTransactionInput = {
 };
 
 type ResolveBookingBody = {
+  expectedRevision: number;
   outcome: ResolutionOutcome;
   finalStatus: Status;
   roomReleaseStatus: RoomReleaseStatus;
@@ -2756,6 +2953,7 @@ export const resolveBooking = async (
 ) => {
   try {
     const { bookingId } = req.params;
+    const expectedRevision = expectedBookingRevision(req.body.expectedRevision);
     const {
       outcome,
       finalStatus,
@@ -2770,6 +2968,12 @@ export const resolveBooking = async (
       return res.status(400).json({
         error: "MISSING",
         message: "กรุณากรอก BookingId ใน Params",
+      });
+    }
+    if (expectedRevision === null) {
+      return res.status(400).json({
+        error: "EXPECTED_REVISION_REQUIRED",
+        message: "กรุณารีเฟรชข้อมูลการจองก่อน resolve",
       });
     }
 
@@ -2806,6 +3010,17 @@ export const resolveBooking = async (
       return res.status(404).json({
         error: "BOOKING_NOT_FOUND",
         message: "ไม่พบ booking นี้",
+      });
+    }
+
+    if ((booking.revision || 0) !== expectedRevision) {
+      return sendBookingRevisionConflict(res, bookingId);
+    }
+    if (booking.voided) {
+      return res.status(409).json({
+        error: "BOOKING_LIFECYCLE_CONFLICT",
+        message: "ไม่สามารถแก้ไขการจองที่ถูก void",
+        booking,
       });
     }
 
@@ -2880,6 +3095,14 @@ export const resolveBooking = async (
         });
       }
 
+      const canonicalDirection = canonicalTransactionDirection(transaction);
+      if (transaction.direction !== canonicalDirection) {
+        return res.status(400).json({
+          error: "INVALID_TRANSACTION_DIRECTION",
+          message: "ทิศทางรายการไม่ตรงกับประเภทรายการ",
+        });
+      }
+
       if (
         transaction.type === "depositKept" &&
         transaction.direction !== "neutral"
@@ -2924,7 +3147,7 @@ export const resolveBooking = async (
         type: transaction.type,
         paymentMethod: transaction.paymentMethod,
         amount,
-        direction: transaction.direction,
+        direction: canonicalDirection,
         relatedTransactionId: transaction.relatedTransactionId,
         note: transaction.note?.trim() || note.trim(),
         reference: transaction.reference,
@@ -2941,14 +3164,32 @@ export const resolveBooking = async (
       );
     }
 
-    if (!req.user?.admin && sensitiveOutTotal >= LARGE_REFUND_THRESHOLD) {
+    const priorSensitiveOutTotal = booking.transactions.reduce(
+      (total, existingTransaction) =>
+        ["depositRefund", "cancellationRefund", "roomRefund", "compensation"].includes(
+          existingTransaction.type,
+        )
+          ? total + Math.abs(existingTransaction.amount || 0)
+          : total,
+      0,
+    );
+    if (
+      !req.user?.admin &&
+      priorSensitiveOutTotal + sensitiveOutTotal >= LARGE_REFUND_THRESHOLD
+    ) {
       return res.status(403).json({
         error: "ADMIN_APPROVAL_REQUIRED",
         message: "ยอดคืนเงินสูง ต้องให้ Admin ดำเนินการ",
       });
     }
-    normalizedTransactions = await attachActiveCashShift(normalizedTransactions);
-
+    if (
+      depositRefundAmount > bookingRemainingDepositAmount(booking.transactions)
+    ) {
+      return res.status(409).json({
+        error: "REFUND_EXCEEDS_AVAILABLE_BALANCE",
+        message: "ยอดคืนมัดจำเกินยอดคงเหลือ",
+      });
+    }
     const now = new Date();
     const updateSet: Record<string, unknown> = {
       status: finalStatus,
@@ -3001,29 +3242,40 @@ export const resolveBooking = async (
     }
 
     const updatedBooking = await withMutationIdempotency(req, () =>
-      Booking.findOneAndUpdate(
-        { bookingId },
-        {
-          $set: updateSet,
-          ...(normalizedTransactions.length > 0
-            ? {
-                $push: {
-                  transactions: {
-                    $each: normalizedTransactions,
-                  },
-                },
-              }
-            : {}),
-        },
-        { returnDocument: "after" },
+      withCashLedgerTransaction(
+        normalizedTransactions,
+        (assignedTransactions, session) =>
+          Booking.findOneAndUpdate(
+            {
+              bookingId,
+              status: booking.status,
+              voided: { $ne: true },
+              ...bookingRevisionPredicate(expectedRevision),
+            },
+            {
+              $set: updateSet,
+              ...(assignedTransactions.length > 0
+                ? {
+                    $push: {
+                      transactions: {
+                        $each: assignedTransactions,
+                      },
+                    },
+                  }
+                : {}),
+              $inc: { revision: 1 },
+            },
+            { returnDocument: "after", session, runValidators: true },
+          ),
       ),
     );
 
     if (!updatedBooking) {
-      return res.status(404).json({
-        error: "BOOKING_NOT_FOUND",
-        message: "ไม่พบ booking นี้",
-      });
+      return sendBookingRevisionConflict(
+        res,
+        bookingId,
+        "สถานะการจองเปลี่ยนไปแล้ว กรุณารีเฟรชก่อน resolve",
+      );
     }
 
     logActivity(
@@ -3055,6 +3307,9 @@ export const resolveBooking = async (
       booking: updatedBooking,
     });
   } catch (err) {
+    if (err instanceof CashShiftLedgerConflictError) {
+      return res.status(409).json({ error: err.code, message: err.message });
+    }
     if (err instanceof IdempotencyConflictError) {
       return sendDuplicateMutationResponse(res);
     }

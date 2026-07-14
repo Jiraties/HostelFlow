@@ -148,6 +148,7 @@ const CheckOut = ({
       const response = await axios.patch(
         `${API_URL}/bookings/checkOut/${booking.bookingId}`,
         {
+          expectedRevision: booking.revision,
           depositDisposition: depositDisposition || "returned",
           releaseRemainingNights,
           confirmedStillUnpaid,

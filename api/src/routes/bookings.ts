@@ -20,6 +20,7 @@ import {
   updateBookingNote,
   starBooking,
 } from "../controller/booking";
+import { requirePassportAccess } from "../middleware/passportAuthorization";
 
 const bookingsRouter = express.Router();
 
@@ -41,6 +42,10 @@ bookingsRouter.patch("/cancelBooking/:bookingId", cancelBooking);
 bookingsRouter.patch("/resolveBooking/:bookingId", resolveBooking);
 bookingsRouter.get("/getMonthCalendar", getMonthCalendar);
 bookingsRouter.get("/getBookingById/:bookingId", getBookingById);
-bookingsRouter.get("/getPassportData/:bookingId", getPassportData);
+bookingsRouter.get(
+  "/getPassportData/:bookingId",
+  requirePassportAccess,
+  getPassportData,
+);
 
 export default bookingsRouter;

@@ -43,13 +43,34 @@ const namePrefixOptions: OptionType[] = [
   { value: "Dr", label: "Dr" },
 ];
 
+const destinationCountryOptions: OptionType[] = [
+  { value: "THA", label: "ไทย" },
+  { value: "LAO", label: "ลาว" },
+  { value: "VNM", label: "เวียดนาม" },
+  { value: "KHM", label: "กัมพูชา" },
+  { value: "MMR", label: "เมียนมา" },
+  { value: "MYS", label: "มาเลเซีย" },
+  { value: "SGP", label: "สิงคโปร์" },
+  { value: "IDN", label: "อินโดนีเซีย" },
+  { value: "PHL", label: "ฟิลิปปินส์" },
+  { value: "CHN", label: "จีน" },
+  { value: "JPN", label: "ญี่ปุ่น" },
+  { value: "KOR", label: "เกาหลีใต้" },
+  { value: "IND", label: "อินเดีย" },
+  { value: "AUS", label: "ออสเตรเลีย" },
+  { value: "GBR", label: "สหราชอาณาจักร" },
+  { value: "USA", label: "สหรัฐอเมริกา" },
+];
+
 type CheckInPayload = {
+  expectedRevision: number;
   deposit: number;
   passportData: {
     namePrefix: string;
     passportNo: string;
     passportName: string;
     nationality: string;
+    nextDestinationCountry: string;
   };
   unpaidPayment?: {
     paymentMethod: string;
@@ -80,6 +101,8 @@ const CheckIn = ({
   const [confirmedPayment, setConfirmedPayment] = useState<boolean>(false);
   const [namePrefix, setNamePrefix] = useState<string>("");
   const [nationality, setNationality] = useState<string>("");
+  const [nextDestinationCountry, setNextDestinationCountry] =
+    useState<string>("");
   const [passportName, setPassportName] = useState<string>(
     booking.name.trim().toUpperCase(),
   );
@@ -99,6 +122,7 @@ const CheckIn = ({
       Boolean(
         namePrefix ||
         nationality ||
+        nextDestinationCountry ||
         passportName ||
         passportNo ||
         deposit !== 200 ||
@@ -115,6 +139,7 @@ const CheckIn = ({
     deposit,
     namePrefix,
     nationality,
+    nextDestinationCountry,
     onDirtyChange,
     passportName,
     passportNo,
@@ -156,6 +181,7 @@ const CheckIn = ({
     if (
       !namePrefix ||
       !nationality ||
+      !nextDestinationCountry ||
       !passportName ||
       !passportNo ||
       deposit === "" ||
@@ -184,12 +210,14 @@ const CheckIn = ({
     try {
       // Dynamically build payload to preserve the selected payment method!
       const payload: CheckInPayload = {
+        expectedRevision: booking.revision,
         deposit: Number(deposit),
         passportData: {
           namePrefix,
           passportNo,
           passportName,
           nationality,
+          nextDestinationCountry,
         },
       };
 
@@ -303,6 +331,20 @@ const CheckIn = ({
               )}
               onChange={(option) => setNationality(option?.value || "")}
             />{" "}
+          </div>
+          <div>
+            <p className="checkIn__label">ประเทศปลายทางถัดไป</p>
+            <Select<OptionType>
+              styles={customStyles<OptionType>()}
+              options={destinationCountryOptions}
+              value={destinationCountryOptions.find(
+                (option) => option.value === nextDestinationCountry,
+              )}
+              onChange={(option) =>
+                setNextDestinationCountry(option?.value || "")
+              }
+              placeholder="เลือกประเทศที่จะเดินทางต่อ"
+            />
           </div>
         </div>
         <div className="checkIn__right">

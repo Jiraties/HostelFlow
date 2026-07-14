@@ -1,6 +1,7 @@
 import type { booking } from "../types/bookingTypes";
 
 export const dummyBooking: booking = {
+  revision: 0,
   name: "Ananya Prasert",
   bookingId: "BK20260415001",
 

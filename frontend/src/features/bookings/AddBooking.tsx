@@ -481,6 +481,7 @@ const AddBooking = ({
         const response = await axios.patch(
           `${API_URL}/bookings/editBooking/${editModeBooking.bookingId}`,
           {
+            expectedRevision: editModeBooking.revision,
             booking: {
               name: formData.name,
               checkIn: formData.checkIn,

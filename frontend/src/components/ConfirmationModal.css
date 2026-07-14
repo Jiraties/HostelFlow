@@ -13,6 +13,22 @@
   flex-direction: row-reverse;
 }
 
+.confirmationModal__reasonLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-weight: 500;
+}
+
+.confirmationModal__reason {
+  min-height: 6rem;
+  resize: vertical;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  font: inherit;
+}
+
 .confirmationModal__headerText {
   font-weight: 500;
 }

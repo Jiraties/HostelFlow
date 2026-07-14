@@ -8,15 +8,23 @@ import { Request, Response, NextFunction } from "express";
 import { logActivity } from "../services/activityServices";
 import { randomUUID } from "crypto";
 import type { MyJwtPayload } from "../middleware/authMiddleware";
+import {
+  LoginRateLimitError,
+  assertLoginAllowed,
+  clearLoginFailures,
+  loginAttemptKeys,
+  recordLoginFailure,
+} from "../services/loginProtection";
+import { passwordPolicyError } from "../services/passwordPolicy";
 
 dotenv.config();
 
-const authCookieOptions = {
+export const getAuthCookieOptions = () => ({
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
   sameSite: "lax" as const,
   path: "/",
-};
+});
 
 const SESSION_LIFETIME_MS = 24 * 60 * 60 * 1000;
 
@@ -121,6 +129,13 @@ export const adminCreateUser = async (req: Request, res: Response) => {
         message: "กรุณากรอกชื่อผู้ใช้ ชื่อพนักงาน และรหัสผ่านให้ครบ",
       });
     }
+    const passwordError = passwordPolicyError(password);
+    if (passwordError) {
+      return res.status(400).json({
+        error: "WEAK_PASSWORD",
+        message: passwordError,
+      });
+    }
 
     const existingUser = await User.findOne({ username });
     if (existingUser) {
@@ -169,6 +184,13 @@ export const resetUserPassword = async (req: Request, res: Response) => {
     if (!userId || !password) {
       return res.status(400).json({
         message: "กรุณาระบุผู้ใช้และรหัสผ่านใหม่",
+      });
+    }
+    const passwordError = passwordPolicyError(password);
+    if (passwordError) {
+      return res.status(400).json({
+        error: "WEAK_PASSWORD",
+        message: passwordError,
       });
     }
 
@@ -376,25 +398,32 @@ export const login = async (
   try {
     const { username, password } = req.body;
 
-    if (!username || !password)
-      return res.status(400).json({ error: "กรุณากรอกอีเมลและรหัสผ่านให้ครบ" });
-
-    const user = await User.findOne({ username });
-    if (!user)
-      return res.status(401).json({ error: "อีเมลหรือรหัสผ่านไม่ถูกต้อง" });
-
-    if (user.active === false) {
-      logActivity(username, "LOGIN", { success: false });
-      return res.status(403).json({
-        error: "บัญชีผู้ใช้นี้ถูกปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ",
+    if (typeof username !== "string" || typeof password !== "string") {
+      return res.status(400).json({
+        error: "INVALID_LOGIN_REQUEST",
+        message: "กรุณากรอกชื่อผู้ใช้และรหัสผ่านให้ครบ",
       });
     }
 
+    const attemptKeys = loginAttemptKeys(req, username);
+    await assertLoginAllowed(attemptKeys);
+
+    const rejectCredentials = async () => {
+      await recordLoginFailure(attemptKeys);
+      logActivity(username, "LOGIN", { success: false }).catch(() => {});
+      return res.status(401).json({
+        error: "AUTHENTICATION_FAILED",
+        message: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง",
+      });
+    };
+
+    const user = await User.findOne({ username });
+    if (!user || user.active === false) return rejectCredentials();
+
     const valid = await bcrypt.compare(password, user.password);
-    if (!valid) {
-      logActivity(username, "LOGIN", { success: false });
-      throw new Error("อีเมลหรือรหัสผ่านไม่ถูกต้อง");
-    }
+    if (!valid) return rejectCredentials();
+
+    await clearLoginFailures(attemptKeys);
 
     if (!process.env.JWT_SECRET)
       throw new Error("JWT_SECRET not found serverside");
@@ -403,7 +432,7 @@ export const login = async (
     const sessionCutoff = new Date(now.getTime() - SESSION_LIFETIME_MS);
     let requestSessionId: string | undefined;
 
-    if (req.cookies.token) {
+    if (req.cookies?.token) {
       try {
         const existingToken = jwt.verify(
           req.cookies.token,
@@ -460,7 +489,7 @@ export const login = async (
       },
     );
 
-    res.cookie("token", token, authCookieOptions);
+    res.cookie("token", token, getAuthCookieOptions());
 
     res.status(200).json({
       message: "Logged In Successfully.",
@@ -468,8 +497,20 @@ export const login = async (
     });
 
     logActivity(username, "LOGIN", { success: true });
-  } catch (err: any) {
-    return res.status(400).json({ error: err.message });
+  } catch (err) {
+    if (err instanceof LoginRateLimitError) {
+      res.setHeader("Retry-After", String(err.retryAfterSeconds));
+      return res.status(429).json({
+        error: "TOO_MANY_LOGIN_ATTEMPTS",
+        message: "มีการเข้าสู่ระบบผิดพลาดหลายครั้ง กรุณารอสักครู่แล้วลองใหม่",
+      });
+    }
+
+    console.error("Login failed", err);
+    return res.status(500).json({
+      error: "LOGIN_UNAVAILABLE",
+      message: "ไม่สามารถเข้าสู่ระบบได้ในขณะนี้",
+    });
   }
 };
 
@@ -498,7 +539,7 @@ export const logout = async (req: Request, res: Response) => {
     );
   }
 
-  res.clearCookie("token", authCookieOptions);
+  res.clearCookie("token", getAuthCookieOptions());
 
   res.status(200).json({ message: "Successfully logged out" });
 

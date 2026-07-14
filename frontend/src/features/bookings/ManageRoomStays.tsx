@@ -26,6 +26,7 @@ interface roomStay {
 const ManageRoomStays = ({
   initialRoomStays,
   bookingId,
+  revision,
   checkIn,
   checkOut,
   onClose,
@@ -34,6 +35,7 @@ const ManageRoomStays = ({
 }: {
   initialRoomStays: roomStay[];
   bookingId: string;
+  revision: number;
   checkIn: string | Date;
   checkOut: string | Date;
   onClose?: () => void;
@@ -225,7 +227,7 @@ const ManageRoomStays = ({
     try {
       const response = await axios.patch(
         `${API_URL}/bookings/manageRoomStays/${bookingId}`,
-        { roomStays: roomStaysWithBoundaries },
+        { roomStays: roomStaysWithBoundaries, expectedRevision: revision },
         { withCredentials: true },
       );
 

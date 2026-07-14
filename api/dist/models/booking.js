@@ -3,7 +3,17 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.PASSPORT_SENSITIVE_SELECT = void 0;
 const mongoose_1 = __importDefault(require("mongoose"));
+exports.PASSPORT_SENSITIVE_SELECT = [
+    "+passport.passportHash",
+    "+passport.passportNo.cipherText",
+    "+passport.passportNo.iv",
+    "+passport.passportNo.authTag",
+    "+passport.passportName.cipherText",
+    "+passport.passportName.iv",
+    "+passport.passportName.authTag",
+].join(" ");
 const roomStaySchema = new mongoose_1.default.Schema({
     roomIds: { type: [String], default: [] },
     roomId: { type: String },
@@ -176,6 +186,7 @@ const resolutionSchema = new mongoose_1.default.Schema({
     approvedByStaffUsername: { type: String },
 }, { _id: false });
 const bookingSchema = new mongoose_1.default.Schema({
+    revision: { type: Number, default: 0, required: true },
     name: { type: String },
     roomStays: [roomStaySchema],
     checkIn: { type: Date },
@@ -195,26 +206,31 @@ const bookingSchema = new mongoose_1.default.Schema({
     checkedInAt: { type: Date },
     transactions: [transactionSchema],
     passport: {
-        passportHash: String,
+        passportHash: { type: String, select: false },
         namePrefix: {
             type: String,
             enum: ["Mr", "Mrs", "Ms", "Miss", "Dr"],
         },
         nationality: { type: String },
+        nextDestinationCountry: { type: String },
         passportNo: {
-            cipherText: { type: String },
-            iv: { type: String },
-            authTag: { type: String },
+            cipherText: { type: String, select: false },
+            iv: { type: String, select: false },
+            authTag: { type: String, select: false },
         },
         passportName: {
-            cipherText: { type: String },
-            iv: { type: String },
-            authTag: { type: String },
+            cipherText: { type: String, select: false },
+            iv: { type: String, select: false },
+            authTag: { type: String, select: false },
         },
     },
     cancellation: cancellationSchema,
     checkout: checkoutSchema,
     resolution: resolutionSchema,
+    voided: { type: Boolean, default: false, required: true },
+    voidedAt: { type: Date },
+    voidedBy: { type: String },
+    voidReason: { type: String },
 });
 exports.default = mongoose_1.default.model("Booking", bookingSchema);
 //# sourceMappingURL=booking.js.map

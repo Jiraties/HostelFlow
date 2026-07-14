@@ -35,6 +35,7 @@ export interface cashShift extends Document {
   shiftNumber: number;
   staffUsername: string;
   status: CashShiftStatus;
+  ledgerRevision: number;
   openingMode: CashShiftOpeningMode;
   handoffFromShiftId?: string;
   depositOpeningCash: number;
@@ -95,6 +96,7 @@ const cashShiftSchema = new mongoose.Schema({
     default: "open",
     required: true,
   },
+  ledgerRevision: { type: Number, default: 0, required: true },
   openingMode: {
     type: String,
     enum: ["counted", "accepted_handoff"],

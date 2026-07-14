@@ -1,8 +1,19 @@
 .passportView {
+  width: 100%;
+  border: 0;
+  font: inherit;
   min-height: 10rem;
   border-radius: 1rem;
   box-shadow: var(--light-shadow);
   margin-top: 0.5rem;
+}
+
+.passportView__hideButton {
+  align-self: flex-end;
+  border: 0;
+  border-radius: 0.5rem;
+  padding: 0.55rem 0.8rem;
+  cursor: pointer;
 }
 
 .passportView__hidden {

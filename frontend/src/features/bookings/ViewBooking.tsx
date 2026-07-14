@@ -833,6 +833,7 @@ const ViewBooking = ({
         <ManageRoomStays
           initialRoomStays={data.roomStays}
           bookingId={data.bookingId}
+          revision={data.revision}
           checkIn={data.checkIn}
           checkOut={data.checkOut}
           onClose={() => setManageRoomStaysIsOpen(false)}

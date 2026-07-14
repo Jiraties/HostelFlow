@@ -48,6 +48,9 @@ const CreateNewUser = ({
     if (form.password !== confirmPassword) {
       throw new Error("รหัสผ่านไม่ตรงกัน");
     }
+    if (form.password.length < 12) {
+      throw new Error("รหัสผ่านต้องมีอย่างน้อย 12 ตัวอักษร");
+    }
 
     await onSubmit();
     setConfirmPassword("");
@@ -86,6 +89,7 @@ const CreateNewUser = ({
           <p className="addBooking__label">รหัสผ่าน</p>
           <input
             type="password"
+            minLength={12}
             autoComplete="new-password"
             className="boxInput"
             placeholder="รหัสผ่านใหม่"
@@ -97,6 +101,7 @@ const CreateNewUser = ({
           <p className="addBooking__label">ยืนยันรหัสผ่าน</p>
           <input
             type="password"
+            minLength={12}
             autoComplete="new-password"
             className="boxInput"
             placeholder="ยืนยันรหัสผ่านใหม่"

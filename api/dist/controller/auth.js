@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.setProfilePicture = exports.logout = exports.me = exports.login = exports.updateMySettings = exports.updateUser = exports.resetUserPassword = exports.adminCreateUser = exports.listUsers = void 0;
+exports.setProfilePicture = exports.logout = exports.me = exports.login = exports.updateMySettings = exports.updateUser = exports.resetUserPassword = exports.adminCreateUser = exports.listUsers = exports.getAuthCookieOptions = void 0;
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const user_1 = __importDefault(require("../models/user"));
 const user_2 = require("../models/user");
@@ -11,13 +11,16 @@ const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const activityServices_1 = require("../services/activityServices");
 const crypto_1 = require("crypto");
+const loginProtection_1 = require("../services/loginProtection");
+const passwordPolicy_1 = require("../services/passwordPolicy");
 dotenv_1.default.config();
-const authCookieOptions = {
+const getAuthCookieOptions = () => ({
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-};
+});
+exports.getAuthCookieOptions = getAuthCookieOptions;
 const SESSION_LIFETIME_MS = 24 * 60 * 60 * 1000;
 const activeSessionError = {
     error: "บัญชีนี้กำลังใช้งานอยู่บนอุปกรณ์อื่น กรุณาออกจากระบบบนอุปกรณ์เดิมก่อน",
@@ -96,6 +99,13 @@ const adminCreateUser = async (req, res) => {
                 message: "กรุณากรอกชื่อผู้ใช้ ชื่อพนักงาน และรหัสผ่านให้ครบ",
             });
         }
+        const passwordError = (0, passwordPolicy_1.passwordPolicyError)(password);
+        if (passwordError) {
+            return res.status(400).json({
+                error: "WEAK_PASSWORD",
+                message: passwordError,
+            });
+        }
         const existingUser = await user_1.default.findOne({ username });
         if (existingUser) {
             return res.status(409).json({
@@ -139,6 +149,13 @@ const resetUserPassword = async (req, res) => {
         if (!userId || !password) {
             return res.status(400).json({
                 message: "กรุณาระบุผู้ใช้และรหัสผ่านใหม่",
+            });
+        }
+        const passwordError = (0, passwordPolicy_1.passwordPolicyError)(password);
+        if (passwordError) {
+            return res.status(400).json({
+                error: "WEAK_PASSWORD",
+                message: passwordError,
             });
         }
         const hashedPassword = await bcrypt_1.default.hash(password, 10);
@@ -293,28 +310,35 @@ exports.updateMySettings = updateMySettings;
 const login = async (req, res, next) => {
     try {
         const { username, password } = req.body;
-        if (!username || !password)
-            return res.status(400).json({ error: "กรุณากรอกอีเมลและรหัสผ่านให้ครบ" });
-        const user = await user_1.default.findOne({ username });
-        if (!user)
-            return res.status(401).json({ error: "อีเมลหรือรหัสผ่านไม่ถูกต้อง" });
-        if (user.active === false) {
-            (0, activityServices_1.logActivity)(username, "LOGIN", { success: false });
-            return res.status(403).json({
-                error: "บัญชีผู้ใช้นี้ถูกปิดใช้งาน กรุณาติดต่อผู้ดูแลระบบ",
+        if (typeof username !== "string" || typeof password !== "string") {
+            return res.status(400).json({
+                error: "INVALID_LOGIN_REQUEST",
+                message: "กรุณากรอกชื่อผู้ใช้และรหัสผ่านให้ครบ",
             });
         }
+        const attemptKeys = (0, loginProtection_1.loginAttemptKeys)(req, username);
+        await (0, loginProtection_1.assertLoginAllowed)(attemptKeys);
+        const rejectCredentials = async () => {
+            await (0, loginProtection_1.recordLoginFailure)(attemptKeys);
+            (0, activityServices_1.logActivity)(username, "LOGIN", { success: false }).catch(() => { });
+            return res.status(401).json({
+                error: "AUTHENTICATION_FAILED",
+                message: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง",
+            });
+        };
+        const user = await user_1.default.findOne({ username });
+        if (!user || user.active === false)
+            return rejectCredentials();
         const valid = await bcrypt_1.default.compare(password, user.password);
-        if (!valid) {
-            (0, activityServices_1.logActivity)(username, "LOGIN", { success: false });
-            throw new Error("อีเมลหรือรหัสผ่านไม่ถูกต้อง");
-        }
+        if (!valid)
+            return rejectCredentials();
+        await (0, loginProtection_1.clearLoginFailures)(attemptKeys);
         if (!process.env.JWT_SECRET)
             throw new Error("JWT_SECRET not found serverside");
         const now = new Date();
         const sessionCutoff = new Date(now.getTime() - SESSION_LIFETIME_MS);
         let requestSessionId;
-        if (req.cookies.token) {
+        if (req.cookies?.token) {
             try {
                 const existingToken = jsonwebtoken_1.default.verify(req.cookies.token, process.env.JWT_SECRET);
                 if (String(existingToken.userId) === String(user._id) &&
@@ -355,7 +379,7 @@ const login = async (req, res, next) => {
         }, process.env.JWT_SECRET, {
             expiresIn: "1d",
         });
-        res.cookie("token", token, authCookieOptions);
+        res.cookie("token", token, (0, exports.getAuthCookieOptions)());
         res.status(200).json({
             message: "Logged In Successfully.",
             user: sanitizeUser(sessionUser),
@@ -363,7 +387,18 @@ const login = async (req, res, next) => {
         (0, activityServices_1.logActivity)(username, "LOGIN", { success: true });
     }
     catch (err) {
-        return res.status(400).json({ error: err.message });
+        if (err instanceof loginProtection_1.LoginRateLimitError) {
+            res.setHeader("Retry-After", String(err.retryAfterSeconds));
+            return res.status(429).json({
+                error: "TOO_MANY_LOGIN_ATTEMPTS",
+                message: "มีการเข้าสู่ระบบผิดพลาดหลายครั้ง กรุณารอสักครู่แล้วลองใหม่",
+            });
+        }
+        console.error("Login failed", err);
+        return res.status(500).json({
+            error: "LOGIN_UNAVAILABLE",
+            message: "ไม่สามารถเข้าสู่ระบบได้ในขณะนี้",
+        });
     }
 };
 exports.login = login;
@@ -388,7 +423,7 @@ const logout = async (req, res) => {
     if (req.user?.userId && req.user.sessionId) {
         await user_1.default.updateOne({ _id: req.user.userId, currentSessionId: req.user.sessionId }, { $unset: { currentSessionId: "", currentSessionIssuedAt: "" } });
     }
-    res.clearCookie("token", authCookieOptions);
+    res.clearCookie("token", (0, exports.getAuthCookieOptions)());
     res.status(200).json({ message: "Successfully logged out" });
     (0, activityServices_1.logActivity)(req.user?.username, "LOGOUT", { success: true });
 };

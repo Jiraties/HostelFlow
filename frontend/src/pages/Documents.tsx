@@ -22,8 +22,6 @@ type DocumentFilters = {
   bookingMonth: string;
   tm30Date: string;
   hotelDate: string;
-  hotelDestinationMode: string;
-  hotelDestinationCountry: string;
   bookingChannel: string;
   bookingStatus: string;
   paymentMethod: string;
@@ -64,30 +62,6 @@ const bookingStatusOptions = [
   { value: "noShow", label: "No-Show" },
 ];
 
-const hotelDestinationModeOptions = [
-  { value: "random", label: "สุ่มปลายทาง" },
-  { value: "manual", label: "เลือกประเทศเอง" },
-];
-
-const hotelDestinationCountryOptions = [
-  { value: "THA", label: "ไทย" },
-  { value: "LAO", label: "ลาว" },
-  { value: "VNM", label: "เวียดนาม" },
-  { value: "KHM", label: "กัมพูชา" },
-  { value: "MMR", label: "เมียนมา" },
-  { value: "MYS", label: "มาเลเซีย" },
-  { value: "SGP", label: "สิงคโปร์" },
-  { value: "IDN", label: "อินโดนีเซีย" },
-  { value: "PHL", label: "ฟิลิปปินส์" },
-  { value: "CHN", label: "จีน" },
-  { value: "JPN", label: "ญี่ปุ่น" },
-  { value: "KOR", label: "เกาหลีใต้" },
-  { value: "IND", label: "อินเดีย" },
-  { value: "AUS", label: "ออสเตรเลีย" },
-  { value: "GBR", label: "สหราชอาณาจักร" },
-  { value: "USA", label: "สหรัฐอเมริกา" },
-];
-
 const Documents = () => {
   usePageTitle("HostelFlow · เอกสาร");
   const { user } = useAuth();
@@ -100,8 +74,6 @@ const Documents = () => {
     bookingMonth: currentMonth,
     tm30Date: currentDate,
     hotelDate: currentDate,
-    hotelDestinationMode: "manual",
-    hotelDestinationCountry: "THA",
     bookingChannel: "",
     bookingStatus: "all",
     paymentMethod: "all",
@@ -295,11 +267,8 @@ const Documents = () => {
 
   const getHotelAccommodationReport = async () => {
     if (hotelStatus?.missing) {
-      const shouldContinue = window.confirm(
-        `ยังมีข้อมูล Passport ขาด ${hotelStatus.missing} รายการ ต้องการส่งออกต่อหรือไม่?`,
-      );
-
-      if (!shouldContinue) return;
+      toast.error("กรุณากรอกข้อมูลผู้เข้าพักและประเทศปลายทางให้ครบก่อนส่งออก");
+      return;
     }
 
     setHotelExporting(true);
@@ -310,9 +279,6 @@ const Documents = () => {
         {
           params: {
             date: filters.hotelDate,
-            randomizeDestination:
-              filters.hotelDestinationMode === "random" ? "true" : "false",
-            destinationCountry: filters.hotelDestinationCountry,
           },
           responseType: "blob",
           withCredentials: true,
@@ -560,27 +526,9 @@ const Documents = () => {
               />
             </div>
 
-            <div className="documents__fieldGrid">
-              <div>
-                <p className="documents__label">ปลายทางถัดไป</p>
-                {renderSelect(
-                  hotelDestinationModeOptions,
-                  filters.hotelDestinationMode,
-                  (value) => updateFilter("hotelDestinationMode", value),
-                )}
-              </div>
-
-              {filters.hotelDestinationMode === "manual" && (
-                <div>
-                  <p className="documents__label">ประเทศที่จะไป</p>
-                  {renderSelect(
-                    hotelDestinationCountryOptions,
-                    filters.hotelDestinationCountry,
-                    (value) => updateFilter("hotelDestinationCountry", value),
-                  )}
-                </div>
-              )}
-            </div>
+            <p className="documents__hint">
+              ประเทศปลายทางใช้ข้อมูลที่บันทึกแยกสำหรับผู้เข้าพักแต่ละรายตอน Check-In
+            </p>
           </div>
 
           {renderPassportStatus(hotelStatus, hotelStatusLoading)}
@@ -592,7 +540,7 @@ const Documents = () => {
               highlight
               className="documents__action documents__action--orange"
               onClick={getHotelAccommodationReport}
-              disabled={hotelExporting}
+              disabled={hotelExporting || !!hotelStatus?.missing}
             />
           </div>
         </div>

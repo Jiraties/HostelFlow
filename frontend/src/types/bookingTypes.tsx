@@ -40,12 +40,6 @@ export type ResolutionOutcome =
   | "guest_left"
   | "post_close_adjustment";
 
-interface EncryptedField {
-  ciphertText: string;
-  iv: string;
-  authTag: string;
-}
-
 export interface roomStay {
   roomIds: string[];
   roomId?: string;
@@ -54,11 +48,9 @@ export interface roomStay {
 }
 
 interface Passport {
-  passportHash?: string;
   namePrefix?: string;
   nationality?: string;
-  passportNo?: EncryptedField;
-  passportName?: EncryptedField;
+  nextDestinationCountry?: string;
 }
 
 interface Cancellation {
@@ -121,6 +113,11 @@ export interface transcation {
 }
 
 export interface booking {
+  revision: number;
+  voided?: boolean;
+  voidedAt?: Date;
+  voidedBy?: string;
+  voidReason?: string;
   name: string;
   roomStays: roomStay[];
   checkIn: Date;

@@ -145,9 +145,11 @@ const Cancellation = ({
 
     try {
       const payload: {
+        expectedRevision: number;
         reopenRoom: boolean;
         cancellationType: CancellationType;
       } = {
+        expectedRevision: booking.revision,
         reopenRoom,
         cancellationType: effectiveCancellationType,
       };

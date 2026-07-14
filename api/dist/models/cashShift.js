@@ -32,6 +32,7 @@ const cashShiftSchema = new mongoose_1.default.Schema({
         default: "open",
         required: true,
     },
+    ledgerRevision: { type: Number, default: 0, required: true },
     openingMode: {
         type: String,
         enum: ["counted", "accepted_handoff"],

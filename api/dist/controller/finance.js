@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.approveReviewEvent = exports.getReviewEvents = exports.upsertDailyClose = exports.closeCashShift = exports.startCashShift = exports.resolveCashShiftAudit = exports.getCashShiftAudit = exports.getCashPosition = exports.getReconciliation = exports.getTodayRevenueSummary = exports.getTodayRevenueBreakdown = exports.getExpectedStayRevenueBreakdown = void 0;
+const mongoose_1 = __importDefault(require("mongoose"));
 const booking_1 = __importDefault(require("../models/booking"));
 const cashShift_1 = __importDefault(require("../models/cashShift"));
 const dailyClose_1 = __importDefault(require("../models/dailyClose"));
@@ -12,6 +13,7 @@ const activityServices_1 = require("../services/activityServices");
 const financeHelpers_1 = require("../helpers/financeHelpers");
 const mutationIdempotency_1 = require("../services/mutationIdempotency");
 const cashShiftMutationLock_1 = require("../services/cashShiftMutationLock");
+const cashLedgerTransaction_1 = require("../services/cashLedgerTransaction");
 const depositPreparationHelpers_1 = require("../helpers/depositPreparationHelpers");
 const sendDuplicateMutationResponse = (res) => res.status(409).json({
     error: "DUPLICATE_REQUEST",
@@ -143,7 +145,7 @@ const getBusinessDayBoundsFromKey = (dateKey) => {
         end,
     };
 };
-const getDepositRequirementForDate = async (businessDate) => {
+const getDepositRequirementForDate = async (businessDate, session) => {
     const bounds = getBusinessDayBoundsFromKey(businessDate);
     if (!bounds)
         return null;
@@ -153,6 +155,7 @@ const getDepositRequirementForDate = async (businessDate) => {
     })
         .select("bookingId name checkOut transactions")
         .sort({ checkOut: 1, name: 1 })
+        .session(session || null)
         .lean();
     return (0, depositPreparationHelpers_1.buildDepositRequirement)(bounds.businessDate, bookings);
 };
@@ -222,29 +225,13 @@ const attachDailyCloseStaffProfiles = async (dailyCloses) => {
         };
     });
 };
-const getShiftTransactions = async (shift, fallbackEnd = new Date()) => {
+const getShiftTransactions = async (shift, session) => {
     const shiftId = String(shift._id);
-    const end = shift.endedAt || fallbackEnd;
-    const bookings = await booking_1.default.find({
-        $or: [
-            { "transactions.cashShiftId": shiftId },
-            {
-                "transactions.createdAt": {
-                    $gte: shift.startedAt,
-                    $lt: end,
-                },
-            },
-        ],
-    }).lean();
+    const bookings = await booking_1.default.find({ "transactions.cashShiftId": shiftId })
+        .session(session || null)
+        .lean();
     return bookings.flatMap((booking) => (booking.transactions || [])
-        .filter((transaction) => {
-        if (transaction.cashShiftId === shiftId)
-            return true;
-        if (transaction.cashShiftId)
-            return false;
-        const createdAt = new Date(transaction.createdAt || booking.checkIn);
-        return createdAt >= shift.startedAt && createdAt < end;
-    })
+        .filter((transaction) => transaction.cashShiftId === shiftId)
         .map((transaction) => ({
         ...transaction,
         bookingId: booking.bookingId,
@@ -1050,143 +1037,182 @@ const startCashShift = async (req, res) => {
     }
 };
 exports.startCashShift = startCashShift;
+class CashShiftCloseValidationError extends Error {
+    constructor(status, message) {
+        super(message);
+        this.status = status;
+        this.name = "CashShiftCloseValidationError";
+    }
+}
 const closeCashShift = async (req, res) => {
     try {
         if (!req.user?.username) {
             return res.status(401).json({ message: "กรุณาเข้าสู่ระบบใหม่" });
         }
-        const closingUsername = req.user.username;
-        const cashShift = await cashShift_1.default.findById(req.params.shiftId);
-        if (!cashShift) {
+        const requestedShift = await cashShift_1.default.findById(req.params.shiftId);
+        if (!requestedShift) {
             return res.status(404).json({ message: "ไม่พบกะเงินสดนี้" });
         }
-        if (cashShift.status !== "open") {
+        if (requestedShift.status !== "open") {
             return res.status(409).json({ message: "กะเงินสดนี้ปิดไปแล้ว" });
         }
         if (!req.user.admin &&
-            cashShift.staffUsername !== req.user.username) {
+            requestedShift.staffUsername !== req.user.username) {
             return res.status(403).json({
                 message: "เฉพาะผู้รับผิดชอบกะหรือผู้ดูแลระบบเท่านั้นที่ปิดกะได้",
             });
         }
-        return await (0, cashShiftMutationLock_1.withCashShiftMutationLock)(cashShift.businessDate, async () => {
-            const closeDay = req.body.closeDay === true;
-            if (closeDay) {
-                const existingFinalClose = await cashShift_1.default.findOne({
-                    businessDate: cashShift.businessDate,
-                    isFinalDayClose: true,
-                    _id: { $ne: cashShift._id },
-                }).select("_id");
-                if (existingFinalClose) {
-                    return res.status(409).json({ message: "วันนี้ปิดยอดสุดท้ายแล้ว" });
-                }
-            }
-            const depositActualCash = Number(req.body.depositActualCash);
-            const operatingActualCash = Number(req.body.operatingActualCash);
-            if (!(0, financeHelpers_1.isValidCashCount)(depositActualCash) ||
-                !(0, financeHelpers_1.isValidCashCount)(operatingActualCash)) {
-                return res.status(400).json({ message: "ยอดเงินสดไม่ถูกต้อง" });
-            }
-            const movements = (0, financeHelpers_1.summarizeCashStashes)(await getShiftTransactions(cashShift));
-            const depositExpectedBeforePreparation = cashShift.depositOpeningCash +
-                movements.depositCashIn -
-                movements.depositCashOut;
-            const nextBusinessDate = (0, depositPreparationHelpers_1.nextBusinessDateKey)(cashShift.businessDate);
-            const tomorrowDepositRequirement = closeDay
-                ? await getDepositRequirementForDate(nextBusinessDate)
-                : null;
-            if (closeDay && !tomorrowDepositRequirement) {
-                return res.status(400).json({ message: "ไม่สามารถคำนวณมัดจำวันพรุ่งนี้ได้" });
-            }
-            const preparationAdjustment = tomorrowDepositRequirement
-                ? (0, depositPreparationHelpers_1.depositPreparationAdjustment)(depositExpectedBeforePreparation, tomorrowDepositRequirement.total)
-                : 0;
-            const depositExpectedCash = tomorrowDepositRequirement
-                ? tomorrowDepositRequirement.total
-                : depositExpectedBeforePreparation;
-            const operatingExpectedCash = cashShift.operatingOpeningCash +
-                movements.operatingCashIn -
-                movements.operatingCashOut;
-            const depositVariance = depositActualCash - depositExpectedCash;
-            const operatingVariance = operatingActualCash - operatingExpectedCash;
-            if ((Math.abs(depositVariance) > financeHelpers_1.CASH_VARIANCE_THRESHOLD ||
-                Math.abs(operatingVariance) > financeHelpers_1.CASH_VARIANCE_THRESHOLD) &&
-                !String(req.body.note || "").trim()) {
-                return res.status(400).json({
-                    message: "กรุณาระบุหมายเหตุเมื่อยอดเงินสดไม่ตรงกัน",
-                });
-            }
-            const closedAt = new Date();
-            const depositPreparation = tomorrowDepositRequirement
-                ? {
-                    targetBusinessDate: tomorrowDepositRequirement.businessDate,
-                    requiredAmount: tomorrowDepositRequirement.total,
-                    preparedAmount: depositActualCash,
-                    adjustment: preparationAdjustment,
-                    checkoutCount: tomorrowDepositRequirement.checkoutCount,
-                    refundBookingCount: tomorrowDepositRequirement.refundBookingCount,
-                    bookings: tomorrowDepositRequirement.bookings,
-                    calculatedAt: tomorrowDepositRequirement.calculatedAt,
-                    preparedAt: closedAt,
-                    preparedBy: closingUsername,
-                }
-                : undefined;
-            const closedShift = await (0, mutationIdempotency_1.withMutationIdempotency)(req, () => cashShift_1.default.findOneAndUpdate({ _id: cashShift._id, status: "open" }, {
-                $set: {
-                    status: "closed",
-                    depositCashIn: movements.depositCashIn,
-                    depositCashOut: movements.depositCashOut,
-                    operatingCashIn: movements.operatingCashIn,
-                    operatingCashOut: movements.operatingCashOut,
-                    depositExpectedCash,
-                    operatingExpectedCash,
-                    depositActualCash,
-                    operatingActualCash,
-                    depositVariance,
-                    operatingVariance,
-                    isFinalDayClose: closeDay,
-                    depositPreparation,
-                    note: String(req.body.note || cashShift.note || "").trim(),
-                    endedAt: closedAt,
-                    closedBy: req.user?.username,
-                },
-            }, { returnDocument: "after" }));
-            if (!closedShift) {
-                return res.status(409).json({ message: "กะเงินสดนี้ปิดไปแล้ว" });
-            }
-            await (0, activityServices_1.logActivity)(req.user.username, "DAILY_CLOSE", {
-                summary: {
-                    action: "CLOSE_CASH_SHIFT",
-                    businessDate: cashShift.businessDate,
-                    shiftNumber: cashShift.shiftNumber,
-                    depositExpectedCash,
-                    depositActualCash,
-                    depositVariance,
-                    closeDay,
-                    depositPreparation: depositPreparation
-                        ? {
-                            targetBusinessDate: depositPreparation.targetBusinessDate,
-                            requiredAmount: depositPreparation.requiredAmount,
-                            preparedAmount: depositPreparation.preparedAmount,
-                            adjustment: depositPreparation.adjustment,
-                            checkoutCount: depositPreparation.checkoutCount,
-                            refundBookingCount: depositPreparation.refundBookingCount,
+        const depositActualCash = Number(req.body.depositActualCash);
+        const operatingActualCash = Number(req.body.operatingActualCash);
+        if (!(0, financeHelpers_1.isValidCashCount)(depositActualCash) ||
+            !(0, financeHelpers_1.isValidCashCount)(operatingActualCash)) {
+            return res.status(400).json({ message: "ยอดเงินสดไม่ถูกต้อง" });
+        }
+        const closeDay = req.body.closeDay === true;
+        const closingUsername = req.user.username;
+        const result = await (0, cashShiftMutationLock_1.withCashShiftMutationLock)(requestedShift.businessDate, () => (0, mutationIdempotency_1.withMutationIdempotency)(req, async () => {
+            const session = await mongoose_1.default.startSession();
+            try {
+                const transactionResult = await session.withTransaction(async () => {
+                    const cashShift = await cashShift_1.default.findOne({
+                        _id: requestedShift._id,
+                        status: "open",
+                    }).session(session);
+                    if (!cashShift)
+                        throw new cashLedgerTransaction_1.CashShiftLedgerConflictError();
+                    const currentLedgerRevision = cashShift.ledgerRevision || 0;
+                    const guardUpdate = await cashShift_1.default.updateOne({
+                        _id: cashShift._id,
+                        status: "open",
+                        $or: [
+                            { ledgerRevision: currentLedgerRevision },
+                            { ledgerRevision: { $exists: false } },
+                        ],
+                    }, { $inc: { ledgerRevision: 1 } }, { session });
+                    if (guardUpdate.modifiedCount !== 1) {
+                        throw new cashLedgerTransaction_1.CashShiftLedgerConflictError();
+                    }
+                    const guardedLedgerRevision = currentLedgerRevision + 1;
+                    if (closeDay) {
+                        const existingFinalClose = await cashShift_1.default.findOne({
+                            businessDate: cashShift.businessDate,
+                            isFinalDayClose: true,
+                            _id: { $ne: cashShift._id },
+                        })
+                            .select("_id")
+                            .session(session);
+                        if (existingFinalClose) {
+                            throw new CashShiftCloseValidationError(409, "วันนี้ปิดยอดสุดท้ายแล้ว");
                         }
-                        : undefined,
-                    operatingExpectedCash,
-                    operatingActualCash,
-                    operatingVariance,
-                },
-            }).catch((err) => {
-                console.error("Failed to log cash shift close", err);
-            });
-            return res.status(200).json({ cashShift: closedShift });
+                    }
+                    const movements = (0, financeHelpers_1.summarizeCashStashes)(await getShiftTransactions(cashShift, session));
+                    const depositExpectedBeforePreparation = cashShift.depositOpeningCash +
+                        movements.depositCashIn -
+                        movements.depositCashOut;
+                    const tomorrowDepositRequirement = closeDay
+                        ? await getDepositRequirementForDate((0, depositPreparationHelpers_1.nextBusinessDateKey)(cashShift.businessDate), session)
+                        : null;
+                    if (closeDay && !tomorrowDepositRequirement) {
+                        throw new CashShiftCloseValidationError(400, "ไม่สามารถคำนวณมัดจำวันพรุ่งนี้ได้");
+                    }
+                    const preparationAdjustment = tomorrowDepositRequirement
+                        ? (0, depositPreparationHelpers_1.depositPreparationAdjustment)(depositExpectedBeforePreparation, tomorrowDepositRequirement.total)
+                        : 0;
+                    const depositExpectedCash = tomorrowDepositRequirement
+                        ? tomorrowDepositRequirement.total
+                        : depositExpectedBeforePreparation;
+                    const operatingExpectedCash = cashShift.operatingOpeningCash +
+                        movements.operatingCashIn -
+                        movements.operatingCashOut;
+                    const depositVariance = depositActualCash - depositExpectedCash;
+                    const operatingVariance = operatingActualCash - operatingExpectedCash;
+                    if ((Math.abs(depositVariance) > financeHelpers_1.CASH_VARIANCE_THRESHOLD ||
+                        Math.abs(operatingVariance) > financeHelpers_1.CASH_VARIANCE_THRESHOLD) &&
+                        !String(req.body.note || "").trim()) {
+                        throw new CashShiftCloseValidationError(400, "กรุณาระบุหมายเหตุเมื่อยอดเงินสดไม่ตรงกัน");
+                    }
+                    const closedAt = new Date();
+                    const depositPreparation = tomorrowDepositRequirement
+                        ? {
+                            targetBusinessDate: tomorrowDepositRequirement.businessDate,
+                            requiredAmount: tomorrowDepositRequirement.total,
+                            preparedAmount: depositActualCash,
+                            adjustment: preparationAdjustment,
+                            checkoutCount: tomorrowDepositRequirement.checkoutCount,
+                            refundBookingCount: tomorrowDepositRequirement.refundBookingCount,
+                            bookings: tomorrowDepositRequirement.bookings,
+                            calculatedAt: tomorrowDepositRequirement.calculatedAt,
+                            preparedAt: closedAt,
+                            preparedBy: closingUsername,
+                        }
+                        : undefined;
+                    const closedShift = await cashShift_1.default.findOneAndUpdate({
+                        _id: cashShift._id,
+                        status: "open",
+                        ledgerRevision: guardedLedgerRevision,
+                    }, {
+                        $set: {
+                            status: "closed",
+                            depositCashIn: movements.depositCashIn,
+                            depositCashOut: movements.depositCashOut,
+                            operatingCashIn: movements.operatingCashIn,
+                            operatingCashOut: movements.operatingCashOut,
+                            depositExpectedCash,
+                            operatingExpectedCash,
+                            depositActualCash,
+                            operatingActualCash,
+                            depositVariance,
+                            operatingVariance,
+                            isFinalDayClose: closeDay,
+                            depositPreparation,
+                            note: String(req.body.note || cashShift.note || "").trim(),
+                            endedAt: closedAt,
+                            closedBy: closingUsername,
+                        },
+                    }, { returnDocument: "after", session, runValidators: true });
+                    if (!closedShift)
+                        throw new cashLedgerTransaction_1.CashShiftLedgerConflictError();
+                    return {
+                        closedShift,
+                        auditSummary: {
+                            action: "CLOSE_CASH_SHIFT",
+                            businessDate: cashShift.businessDate,
+                            shiftNumber: cashShift.shiftNumber,
+                            depositExpectedCash,
+                            depositActualCash,
+                            depositVariance,
+                            closeDay,
+                            depositPreparation,
+                            operatingExpectedCash,
+                            operatingActualCash,
+                            operatingVariance,
+                        },
+                    };
+                });
+                if (!transactionResult)
+                    throw new cashLedgerTransaction_1.CashShiftLedgerConflictError();
+                return transactionResult;
+            }
+            finally {
+                await session.endSession();
+            }
+        }));
+        await (0, activityServices_1.logActivity)(closingUsername, "DAILY_CLOSE", {
+            summary: result.auditSummary,
+        }).catch((err) => {
+            console.error("Failed to log cash shift close", err);
         });
+        return res.status(200).json({ cashShift: result.closedShift });
     }
     catch (err) {
-        if (err instanceof cashShiftMutationLock_1.CashShiftMutationConflictError) {
+        if (err instanceof CashShiftCloseValidationError) {
+            return res.status(err.status).json({ message: err.message });
+        }
+        if (err instanceof cashShiftMutationLock_1.CashShiftMutationConflictError ||
+            err instanceof cashLedgerTransaction_1.CashShiftLedgerConflictError) {
             return res.status(409).json({
-                message: "กำลังมีการเริ่มหรือปิดกะเงินสด กรุณาลองอีกครั้ง",
+                error: "CASH_SHIFT_LEDGER_CONFLICT",
+                message: "กะเงินสดกำลังเปลี่ยนแปลง กรุณารีเฟรชแล้วลองอีกครั้ง",
             });
         }
         if (err instanceof mutationIdempotency_1.IdempotencyConflictError) {
@@ -1196,6 +1222,12 @@ const closeCashShift = async (req, res) => {
     }
 };
 exports.closeCashShift = closeCashShift;
+class DailyCloseRevisionConflictError extends Error {
+    constructor() {
+        super("DAILY_CLOSE_REVISION_CONFLICT");
+        this.name = "DailyCloseRevisionConflictError";
+    }
+}
 const upsertDailyClose = async (req, res) => {
     try {
         const staffUsername = req.user?.admin && typeof req.body.staffUsername === "string"
@@ -1207,7 +1239,11 @@ const upsertDailyClose = async (req, res) => {
         const requestUsername = req.user.username;
         const actualCash = Number(req.body.actualCash);
         const openingCash = Number(req.body.openingCash || 0);
-        if (!(0, financeHelpers_1.isValidCashCount)(actualCash) || !(0, financeHelpers_1.isValidCashCount)(openingCash)) {
+        const expectedRevision = Number(req.body.expectedRevision);
+        if (!(0, financeHelpers_1.isValidCashCount)(actualCash) ||
+            !(0, financeHelpers_1.isValidCashCount)(openingCash) ||
+            !Number.isInteger(expectedRevision) ||
+            expectedRevision < 0) {
             return res.status(400).json({ message: "ยอดเงินสดไม่ถูกต้อง" });
         }
         const reconciliation = await getTransactionsForBusinessDate(req.body.businessDate, staffUsername);
@@ -1226,6 +1262,13 @@ const upsertDailyClose = async (req, res) => {
             businessDate: reconciliation.businessDate,
             staffUsername,
         }).lean();
+        if ((existingDailyClose?.revision || 0) !== expectedRevision) {
+            return res.status(409).json({
+                error: "DAILY_CLOSE_REVISION_CONFLICT",
+                message: "ยอดปิดวันถูกแก้ไขโดยผู้ใช้อื่น กรุณารีเฟรชแล้วลองใหม่",
+                dailyClose: existingDailyClose,
+            });
+        }
         const now = new Date();
         const previousRevision = existingDailyClose
             ? {
@@ -1243,30 +1286,48 @@ const upsertDailyClose = async (req, res) => {
                 supersededBy: requestUsername,
             }
             : null;
-        const dailyClose = await (0, mutationIdempotency_1.withMutationIdempotency)(req, () => dailyClose_1.default.findOneAndUpdate({
-            businessDate: reconciliation.businessDate,
-            staffUsername,
-        }, {
-            $set: {
-                revision: (existingDailyClose?.revision || 0) + 1,
-                openingCash,
-                expectedCash,
-                actualCash,
-                variance,
-                cashIn: reconciliation.summary.cashIn,
-                cashOut: reconciliation.summary.cashOut,
-                note: req.body.note || "",
-                createdBy: requestUsername,
-                createdAt: now,
-            },
-            ...(previousRevision
-                ? {
-                    $push: {
-                        revisions: previousRevision,
-                    },
-                }
-                : {}),
-        }, { returnDocument: "after", upsert: true }));
+        const dailyClose = await (0, mutationIdempotency_1.withMutationIdempotency)(req, async () => {
+            if (!existingDailyClose) {
+                const created = await dailyClose_1.default.create({
+                    businessDate: reconciliation.businessDate,
+                    staffUsername,
+                    revision: 1,
+                    openingCash,
+                    expectedCash,
+                    actualCash,
+                    variance,
+                    cashIn: reconciliation.summary.cashIn,
+                    cashOut: reconciliation.summary.cashOut,
+                    note: req.body.note || "",
+                    createdBy: requestUsername,
+                    createdAt: now,
+                    revisions: [],
+                });
+                return created;
+            }
+            const updated = await dailyClose_1.default.findOneAndUpdate({
+                businessDate: reconciliation.businessDate,
+                staffUsername,
+                revision: expectedRevision,
+            }, {
+                $set: {
+                    openingCash,
+                    expectedCash,
+                    actualCash,
+                    variance,
+                    cashIn: reconciliation.summary.cashIn,
+                    cashOut: reconciliation.summary.cashOut,
+                    note: req.body.note || "",
+                    createdBy: requestUsername,
+                    createdAt: now,
+                },
+                $inc: { revision: 1 },
+                $push: { revisions: previousRevision },
+            }, { returnDocument: "after", runValidators: true });
+            if (!updated)
+                throw new DailyCloseRevisionConflictError();
+            return updated;
+        });
         await (0, activityServices_1.logActivity)(requestUsername, "DAILY_CLOSE", {
             summary: {
                 businessDate: reconciliation.businessDate,
@@ -1280,6 +1341,22 @@ const upsertDailyClose = async (req, res) => {
         res.status(200).json({ dailyClose });
     }
     catch (err) {
+        if (err instanceof DailyCloseRevisionConflictError || err?.code === 11000) {
+            const staffUsername = req.user?.admin && typeof req.body.staffUsername === "string"
+                ? req.body.staffUsername
+                : req.user?.username;
+            const latest = staffUsername
+                ? await dailyClose_1.default.findOne({
+                    businessDate: req.body.businessDate,
+                    staffUsername,
+                })
+                : null;
+            return res.status(409).json({
+                error: "DAILY_CLOSE_REVISION_CONFLICT",
+                message: "ยอดปิดวันถูกแก้ไขโดยผู้ใช้อื่น กรุณารีเฟรชแล้วลองใหม่",
+                dailyClose: latest,
+            });
+        }
         if (err instanceof mutationIdempotency_1.IdempotencyConflictError) {
             return sendDuplicateMutationResponse(res);
         }

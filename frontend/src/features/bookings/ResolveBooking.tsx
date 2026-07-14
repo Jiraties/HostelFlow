@@ -544,6 +544,7 @@ const ResolveBooking = ({
       const response = await axios.patch(
         `${API_URL}/bookings/resolveBooking/${booking.bookingId}`,
         {
+          expectedRevision: booking.revision,
           outcome,
           finalStatus,
           roomReleaseStatus,

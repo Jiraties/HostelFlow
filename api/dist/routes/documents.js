@@ -5,11 +5,12 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const documents_1 = require("../controller/documents");
+const passportAuthorization_1 = require("../middleware/passportAuthorization");
 const documentsRouter = express_1.default.Router();
 documentsRouter.get("/getBookingsReport", documents_1.getBookingsReport);
-documentsRouter.get("/getImmigrationReport", documents_1.getImmigrationReport);
-documentsRouter.get("/getImmigrationReportStatus", documents_1.getImmigrationReportStatus);
-documentsRouter.get("/getHotelAccommodationReport", documents_1.getHotelAccomodationReport);
-documentsRouter.get("/getHotelAccommodationReportStatus", documents_1.getHotelAccomodationReportStatus);
+documentsRouter.get("/getImmigrationReport", passportAuthorization_1.requirePassportAccess, documents_1.getImmigrationReport);
+documentsRouter.get("/getImmigrationReportStatus", passportAuthorization_1.requirePassportAccess, documents_1.getImmigrationReportStatus);
+documentsRouter.get("/getHotelAccommodationReport", passportAuthorization_1.requirePassportAccess, documents_1.getHotelAccomodationReport);
+documentsRouter.get("/getHotelAccommodationReportStatus", passportAuthorization_1.requirePassportAccess, documents_1.getHotelAccomodationReportStatus);
 exports.default = documentsRouter;
 //# sourceMappingURL=documents.js.map

@@ -713,7 +713,7 @@ exports.reportDestinationCountries = [
 const formatDestinationCountryForReport = (countryValue) => {
     const normalizedCountryValue = countryValue.trim().toUpperCase();
     const alpha3Code = alpha2ToIcaoNationality[normalizedCountryValue] || normalizedCountryValue;
-    return (exports.reportDestinationCountries.find((country) => country.value === alpha3Code) || exports.reportDestinationCountries[0]);
+    return exports.reportDestinationCountries.find((country) => country.value === alpha3Code);
 };
 exports.formatDestinationCountryForReport = formatDestinationCountryForReport;
 const splitPassportName = (passportName) => {

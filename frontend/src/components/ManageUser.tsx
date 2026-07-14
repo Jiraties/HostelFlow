@@ -224,6 +224,8 @@ const ResetPasswordModal = ({
 
   const resetPasswordHandler = async () => {
     if (!password) throw new Error("กรุณากรอกรหัสผ่านใหม่");
+    if (password.length < 12)
+      throw new Error("รหัสผ่านต้องมีอย่างน้อย 12 ตัวอักษร");
     if (password !== confirmPassword) throw new Error("รหัสผ่านไม่ตรงกัน");
 
     await onResetPassword(password);
@@ -244,6 +246,7 @@ const ResetPasswordModal = ({
           <p className="addBooking__label">รหัสผ่านใหม่</p>
           <input
             type="password"
+            minLength={12}
             autoComplete="new-password"
             className="boxInput"
             value={password}
@@ -254,6 +257,7 @@ const ResetPasswordModal = ({
           <p className="addBooking__label">ยืนยันรหัสผ่าน</p>
           <input
             type="password"
+            minLength={12}
             autoComplete="new-password"
             className="boxInput"
             value={confirmPassword}

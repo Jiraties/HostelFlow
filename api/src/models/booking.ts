@@ -65,6 +65,16 @@ export interface EncryptedField {
   authTag: string;
 }
 
+export const PASSPORT_SENSITIVE_SELECT = [
+  "+passport.passportHash",
+  "+passport.passportNo.cipherText",
+  "+passport.passportNo.iv",
+  "+passport.passportNo.authTag",
+  "+passport.passportName.cipherText",
+  "+passport.passportName.iv",
+  "+passport.passportName.authTag",
+].join(" ");
+
 export interface roomStay {
   roomIds: string[];
   roomId?: string;
@@ -76,6 +86,7 @@ interface Passport {
   passportHash?: string;
   namePrefix?: NamePrefix;
   nationality?: string;
+  nextDestinationCountry?: string;
   passportNo?: EncryptedField;
   passportName?: EncryptedField;
 }
@@ -153,6 +164,7 @@ interface Resolution {
 // }
 
 export interface booking extends Document {
+  revision: number;
   name: string;
   roomStays: roomStay[];
   checkIn: Date;
@@ -174,6 +186,10 @@ export interface booking extends Document {
   resolution?: Resolution;
   note?: string;
   starred?: boolean;
+  voided: boolean;
+  voidedAt?: Date;
+  voidedBy?: string;
+  voidReason?: string;
 }
 
 const roomStaySchema = new mongoose.Schema({
@@ -362,6 +378,7 @@ const resolutionSchema = new mongoose.Schema(
 );
 
 const bookingSchema = new mongoose.Schema({
+  revision: { type: Number, default: 0, required: true },
   name: { type: String },
 
   roomStays: [roomStaySchema],
@@ -388,21 +405,22 @@ const bookingSchema = new mongoose.Schema({
   transactions: [transactionSchema],
 
   passport: {
-    passportHash: String,
+    passportHash: { type: String, select: false },
     namePrefix: {
       type: String,
       enum: ["Mr", "Mrs", "Ms", "Miss", "Dr"],
     },
     nationality: { type: String },
+    nextDestinationCountry: { type: String },
     passportNo: {
-      cipherText: { type: String },
-      iv: { type: String },
-      authTag: { type: String },
+      cipherText: { type: String, select: false },
+      iv: { type: String, select: false },
+      authTag: { type: String, select: false },
     },
     passportName: {
-      cipherText: { type: String },
-      iv: { type: String },
-      authTag: { type: String },
+      cipherText: { type: String, select: false },
+      iv: { type: String, select: false },
+      authTag: { type: String, select: false },
     },
   },
 
@@ -411,6 +429,11 @@ const bookingSchema = new mongoose.Schema({
   checkout: checkoutSchema,
 
   resolution: resolutionSchema,
+
+  voided: { type: Boolean, default: false, required: true },
+  voidedAt: { type: Date },
+  voidedBy: { type: String },
+  voidReason: { type: String },
 });
 
 export default mongoose.model<booking>("Booking", bookingSchema);

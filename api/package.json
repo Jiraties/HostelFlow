@@ -9,7 +9,9 @@
     "dev": "nodemon src/app.ts",
     "build": "tsc",
     "test": "node --test -r ts-node/register tests/**/*.test.ts",
+    "migrate:preproduction-integrity": "ts-node src/scripts/migratePreProductionIntegrity.ts",
     "migrate:roomIds": "ts-node src/scripts/migrateRoomStayRoomIds.ts",
+    "verify:restore": "ts-node src/scripts/verifyRestoredData.ts",
     "seed:demo": "ts-node src/scripts/seedDemoData.ts",
     "start": "node dist/app.js"
   },
@@ -38,6 +40,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.1.0",
     "@types/node": "^25.3.2",
+    "mongodb-memory-server": "^11.2.0",
     "nodemon": "^3.1.14",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"

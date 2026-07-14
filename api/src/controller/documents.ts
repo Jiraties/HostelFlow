@@ -1,5 +1,5 @@
 import ExcelJs from "exceljs";
-import Booking from "../models/booking";
+import Booking, { PASSPORT_SENSITIVE_SELECT } from "../models/booking";
 import crypto from "crypto";
 import path from "path";
 import {
@@ -9,7 +9,6 @@ import {
   formatNationalityToReportNumber,
   formatRoomIdToReportNumber,
   nationalitySheetName,
-  reportDestinationCountries,
   splitPassportName,
 } from "../helpers/passportHelpers";
 
@@ -199,6 +198,7 @@ const hotelPassportInfoIssue = (
     | {
         namePrefix?: string;
         nationality?: string;
+        nextDestinationCountry?: string;
         passportNo?: EncryptedField;
         passportName?: EncryptedField;
       }
@@ -206,30 +206,20 @@ const hotelPassportInfoIssue = (
 ) => {
   if (!passport?.namePrefix) return "ขาดคำนำหน้าชื่อ";
   if (!passport.nationality) return "ขาดสัญชาติ";
+  if (!passport.nextDestinationCountry) return "ขาดประเทศปลายทางถัดไป";
   if (!passport.passportName) return "ขาดชื่อบน Passport";
   if (!passport.passportNo) return "ขาดเลข Passport";
 
-  const formattedPassport = formatPassport(passport, undefined, {
-    nationalityFormat: "number",
-  });
+  if (!formatDestinationCountryForReport(passport.nextDestinationCountry)) {
+    return `ไม่มีรหัสประเทศปลายทางสำหรับ ${passport.nextDestinationCountry}`;
+  }
 
-  if (!formattedPassport.nationality) {
+  if (formatNationalityToReportNumber(passport.nationality) === "") {
     return `ไม่มีรหัสสัญชาติสำหรับ ${passport.nationality}`;
   }
 
   return null;
 };
-
-const hotelPassportInfoIsComplete = (
-  passport:
-    | {
-        namePrefix?: string;
-        nationality?: string;
-        passportNo?: EncryptedField;
-        passportName?: EncryptedField;
-      }
-    | undefined,
-) => !hotelPassportInfoIssue(passport);
 
 const formatPassport = (
   rawPassport:
@@ -292,23 +282,6 @@ const formatPassport = (
     passportName: decrypt(rawPassport.passportName),
   };
 };
-
-const pickRandomDestinationCountry = (seed: string) => {
-  const hash = seed.split("").reduce((sum, char) => {
-    return (sum * 31 + char.charCodeAt(0)) >>> 0;
-  }, 0);
-
-  return reportDestinationCountries[hash % reportDestinationCountries.length];
-};
-
-const getHotelDestinationCountry = (
-  randomizeDestination: boolean,
-  destinationCountry: string | undefined,
-  seed: string,
-) =>
-  randomizeDestination
-    ? pickRandomDestinationCountry(seed)
-    : formatDestinationCountryForReport(destinationCountry || "THA");
 
 const createHotelAccommodationSheet = (
   workbook: ExcelJs.Workbook,
@@ -597,7 +570,9 @@ export const getImmigrationReportStatus = async (
     }
 
     const bookings = await Booking.find(query)
-      .select("bookingId name passport checkOut")
+      .select(
+        `bookingId name checkOut passport.namePrefix passport.nationality ${PASSPORT_SENSITIVE_SELECT}`,
+      )
       .sort({
         checkIn: 1,
         name: 1,
@@ -634,7 +609,9 @@ export const getImmigrationReport = async (req: Request, res: Response) => {
     }
 
     const bookings = await Booking.find(query)
-      .select("bookingId name passport checkOut")
+      .select(
+        `bookingId name checkOut passport.namePrefix passport.nationality ${PASSPORT_SENSITIVE_SELECT}`,
+      )
       .sort({
         checkIn: 1,
         name: 1,
@@ -739,23 +716,47 @@ export const getHotelAccomodationReport = async (
 ) => {
   try {
     const date = req.query.date as string;
-    const randomizeDestination =
-      String(req.query.randomizeDestination || "false") === "true";
-    const destinationCountry = req.query.destinationCountry as
-      | string
-      | undefined;
     const query = hotelAccommodationDateQuery(date);
 
     if (!query) {
       return res.status(400).json({ message: "Invalid date format" });
     }
 
+    if (
+      req.query.randomizeDestination !== undefined ||
+      req.query.destinationCountry !== undefined
+    ) {
+      return res.status(400).json({
+        code: "DESTINATION_OVERRIDE_NOT_ALLOWED",
+        message:
+          "รายงาน รร. ต้องใช้ประเทศปลายทางที่บันทึกไว้สำหรับผู้เข้าพักแต่ละราย",
+      });
+    }
+
     const bookings = await Booking.find(query)
-      .select("bookingId checkIn checkOut checkedInAt roomStays passport name")
+      .select(
+        `bookingId checkIn checkOut checkedInAt roomStays name passport.namePrefix passport.nationality passport.nextDestinationCountry ${PASSPORT_SENSITIVE_SELECT}`,
+      )
       .sort({ checkIn: 1, name: 1 });
 
     if (bookings.length === 0)
       return res.status(400).json({ message: "ไม่พบรายการจองในวันที่กำหนด" });
+
+    const missingBookings = bookings
+      .map((booking) => ({
+        bookingId: booking.bookingId,
+        name: booking.name,
+        reason: hotelPassportInfoIssue(booking.passport),
+      }))
+      .filter(({ reason }) => reason);
+
+    if (missingBookings.length > 0) {
+      return res.status(422).json({
+        code: "HOTEL_REPORT_DATA_INCOMPLETE",
+        message: "ข้อมูลผู้เข้าพักไม่ครบ จึงยังไม่สามารถส่งออกรายงาน รร. ได้",
+        missingBookings,
+      });
+    }
 
     const templatePath = path.resolve(
       process.cwd(),
@@ -784,51 +785,40 @@ export const getHotelAccomodationReport = async (
         formattedPassport.passportName,
       );
 
-      const missingPassportInfo = !hotelPassportInfoIsComplete(
-        booking.passport,
+      const destination = formatDestinationCountryForReport(
+        booking.passport!.nextDestinationCountry!,
+      )!;
+      const indexCell = row.getCell(1);
+      indexCell.value = index + 1;
+      row.getCell(2).value = formatDateAD(booking.checkIn);
+      row.getCell(3).value = formatReportTime(
+        booking.checkedInAt || booking.checkIn,
       );
-
-      if (missingPassportInfo) {
-        const missingCell = row.getCell(1);
-        missingCell.value = `MISSING ${booking.name} ${booking.bookingId}`;
-      } else {
-        const destination = getHotelDestinationCountry(
-          randomizeDestination,
-          destinationCountry,
-          booking.bookingId,
-        );
-        const indexCell = row.getCell(1);
-        indexCell.value = index + 1;
-        row.getCell(2).value = formatDateAD(booking.checkIn);
-        row.getCell(3).value = formatReportTime(
-          booking.checkedInAt || booking.checkIn,
-        );
-        row.getCell(4).value = formatRoomIdToReportNumber(
-          getPrimaryRoomId(booking.roomStays[0] || {}),
-        );
-        row.getCell(9).value = formattedPassport.namePrefix;
-        row.getCell(10).value = splittedPassportName.firstName;
-        row.getCell(11).value = splittedPassportName.middleName;
-        row.getCell(12).value = splittedPassportName.lastName;
-        row.getCell(13).value = formattedPassport.nationality;
-        // row.getCell(14).value = formattedPassport.passportNo;
-        row.getCell(15).value = formattedPassport.passportNo;
-        row.getCell(16).value = formattedPassport.nationality;
-        row.getCell(17).value = formatNationalityToReportThaiName(
-          booking.passport?.nationality || "",
-        );
-        row.getCell(18).value = formattedPassport.nationality;
-        row.getCell(19).value = 146;
-        row.getCell(20).value = formatNationalityToReportThaiName(
-          booking.passport?.nationality || "",
-        );
-        row.getCell(21).value = formattedPassport.nationality;
-        row.getCell(22).value = destination.label;
-        row.getCell(23).value = destination.code;
-        row.getCell(24).value = formatDateAD(booking.checkOut);
-        row.getCell(25).value = "12.00";
-        row.getCell(26).value = 1;
-      }
+      row.getCell(4).value = formatRoomIdToReportNumber(
+        getPrimaryRoomId(booking.roomStays[0] || {}),
+      );
+      row.getCell(9).value = formattedPassport.namePrefix;
+      row.getCell(10).value = splittedPassportName.firstName;
+      row.getCell(11).value = splittedPassportName.middleName;
+      row.getCell(12).value = splittedPassportName.lastName;
+      row.getCell(13).value = formattedPassport.nationality;
+      // row.getCell(14).value = formattedPassport.passportNo;
+      row.getCell(15).value = formattedPassport.passportNo;
+      row.getCell(16).value = formattedPassport.nationality;
+      row.getCell(17).value = formatNationalityToReportThaiName(
+        booking.passport?.nationality || "",
+      );
+      row.getCell(18).value = formattedPassport.nationality;
+      row.getCell(19).value = 146;
+      row.getCell(20).value = formatNationalityToReportThaiName(
+        booking.passport?.nationality || "",
+      );
+      row.getCell(21).value = formattedPassport.nationality;
+      row.getCell(22).value = destination.label;
+      row.getCell(23).value = destination.code;
+      row.getCell(24).value = formatDateAD(booking.checkOut);
+      row.getCell(25).value = "12.00";
+      row.getCell(26).value = 1;
 
       row.commit();
     });
@@ -875,7 +865,9 @@ export const getHotelAccomodationReportStatus = async (
     }
 
     const bookings = await Booking.find(query)
-      .select("bookingId name passport checkOut")
+      .select(
+        `bookingId name checkOut passport.namePrefix passport.nationality passport.nextDestinationCountry ${PASSPORT_SENSITIVE_SELECT}`,
+      )
       .sort({
         checkIn: 1,
         name: 1,

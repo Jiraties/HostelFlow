@@ -749,10 +749,8 @@ export const formatDestinationCountryForReport = (countryValue: string) => {
   const alpha3Code =
     alpha2ToIcaoNationality[normalizedCountryValue] || normalizedCountryValue;
 
-  return (
-    reportDestinationCountries.find(
-      (country) => country.value === alpha3Code,
-    ) || reportDestinationCountries[0]
+  return reportDestinationCountries.find(
+    (country) => country.value === alpha3Code,
   );
 };
 

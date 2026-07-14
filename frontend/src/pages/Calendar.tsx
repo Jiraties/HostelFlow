@@ -169,49 +169,7 @@ const Calendar = () => {
       day.getDate() === today.getDate(),
   );
 
-  const [rooms, setRooms] = useState<Room[]>([
-    {
-      roomId: "Balcony",
-      bookings: [],
-    },
-    {
-      roomId: "Window",
-      bookings: [],
-    },
-    {
-      roomId: "Pottery 1",
-      bookings: [],
-    },
-    {
-      roomId: "Pottery 2",
-      bookings: [],
-    },
-
-    ...Array.from({ length: 14 }, (_, i) => ({
-      roomId: `Siesta ${i + 1}`,
-      bookings: i % 3 === 0 ? [] : [],
-    })),
-
-    ...Array.from({ length: 8 }, (_, i) => ({
-      roomId: `Marquisette ${i + 1}`,
-      bookings: i % 2 === 0 ? [] : [],
-    })),
-
-    ...Array.from({ length: 8 }, (_, i) => ({
-      roomId: `Homespan ${i + 1}`,
-      bookings: i % 2 !== 0 ? [] : [],
-    })),
-
-    ...Array.from({ length: 6 }, (_, i) => ({
-      roomId: `Veranda ${i + 1}`,
-      bookings: i < 3 ? [] : [],
-    })),
-
-    ...Array.from({ length: 6 }, (_, i) => ({
-      roomId: `Wicker ${i + 1}`,
-      bookings: i % 2 === 0 ? [] : [],
-    })),
-  ]);
+  const [rooms, setRooms] = useState<Room[]>([]);
 
   const roomRows: ReactNode[] = [];
   const mergedBookingBlocks: ReactNode[] = [];

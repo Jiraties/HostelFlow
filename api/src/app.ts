@@ -10,6 +10,10 @@ import activitiesRouter from "./routes/activities";
 import documentsRouter from "./routes/documents";
 import financeRouter from "./routes/finance";
 import path from "path";
+import {
+  trustProxyHops,
+  validateProductionWebSecurity,
+} from "./config/runtimeSecurity";
 
 dotenv.config();
 
@@ -28,6 +32,8 @@ const validateEnvironment = () => {
   if (!/^[a-fA-F0-9]{64}$/.test(process.env.CRYPTO_SECRET!)) {
     throw new Error("CRYPTO_SECRET must be a 64-character hexadecimal key");
   }
+
+  validateProductionWebSecurity();
 };
 
 const defaultAllowedOrigins = [
@@ -42,8 +48,14 @@ const allowedOrigins = new Set(
 );
 const vercelPreviewPattern = new RegExp(
   process.env.ALLOWED_VERCEL_PREVIEW_PATTERN ||
-    "^https://bookings-[a-z0-9-]+\\.vercel\\.app$",
+    (process.env.NODE_ENV === "production"
+      ? "a^"
+      : "^https://bookings-[a-z0-9-]+\\.vercel\\.app$"),
 );
+
+if (process.env.NODE_ENV === "production") {
+  app.set("trust proxy", trustProxyHops());
+}
 
 app.use(
   cors({

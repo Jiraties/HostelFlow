@@ -1,6 +1,6 @@
 import axios from "axios";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { API_URL } from "../../config/api.ts";
 
 import "./PassportView.css";
@@ -21,6 +21,17 @@ const PassportView = ({ bookingId }: PassportViewProps) => {
   const [passportData, setPassportData] = useState<PassportData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+
+  const hidePassportData = () => {
+    setPassportData(null);
+    setIsHidden(true);
+  };
+
+  useEffect(() => {
+    if (!passportData) return;
+    const timeout = window.setTimeout(hidePassportData, 60_000);
+    return () => window.clearTimeout(timeout);
+  }, [passportData]);
 
   const fetchPassportData = async () => {
     if (isLoading || passportData) return;
@@ -50,15 +61,13 @@ const PassportView = ({ bookingId }: PassportViewProps) => {
   return (
     <div className="viewBooking__item">
       <span className="viewBooking__label">ข้อมูล Passport</span>
-      <div
-        className={
-          isHidden
-            ? "passportView passportView__hidden"
-            : "passportView passportView__nonHidden"
-        }
-        onClick={fetchPassportData}
-      >
-        {isHidden ? (
+      {isHidden ? (
+        <button
+          type="button"
+          className="passportView passportView__hidden"
+          onClick={fetchPassportData}
+          disabled={isLoading}
+        >
           <>
             <i
               className={`bx ${isLoading ? "bx-loader-lines bx-spin" : "bx-lock"}`}
@@ -72,8 +81,10 @@ const PassportView = ({ bookingId }: PassportViewProps) => {
               <p className="passportView__error">{errorMessage}</p>
             )}
           </>
-        ) : (
-          passportData && (
+        </button>
+      ) : (
+        passportData && (
+          <div className="passportView passportView__nonHidden">
             <div className="passportView__content">
               <div className="passportView__row">
                 <span>เลข Passport</span>
@@ -89,10 +100,17 @@ const PassportView = ({ bookingId }: PassportViewProps) => {
                 <span>สัญชาติ</span>
                 <p>{passportData.nationality}</p>
               </div>
+              <button
+                type="button"
+                className="passportView__hideButton"
+                onClick={hidePassportData}
+              >
+                ซ่อนข้อมูล Passport
+              </button>
             </div>
-          )
-        )}
-      </div>
+          </div>
+        )
+      )}
     </div>
   );
 };

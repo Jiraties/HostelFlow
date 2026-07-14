@@ -15,6 +15,7 @@ const activities_1 = __importDefault(require("./routes/activities"));
 const documents_1 = __importDefault(require("./routes/documents"));
 const finance_1 = __importDefault(require("./routes/finance"));
 const path_1 = __importDefault(require("path"));
+const runtimeSecurity_1 = require("./config/runtimeSecurity");
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 const port = Number(process.env.PORT) || 3000;
@@ -26,6 +27,7 @@ const validateEnvironment = () => {
     if (!/^[a-fA-F0-9]{64}$/.test(process.env.CRYPTO_SECRET)) {
         throw new Error("CRYPTO_SECRET must be a 64-character hexadecimal key");
     }
+    (0, runtimeSecurity_1.validateProductionWebSecurity)();
 };
 const defaultAllowedOrigins = [
     "http://localhost:5173",
@@ -36,7 +38,12 @@ const envAllowedOrigins = process.env.ALLOWED_ORIGINS?.split(",")
     .filter(Boolean);
 const allowedOrigins = new Set(envAllowedOrigins?.length ? envAllowedOrigins : defaultAllowedOrigins);
 const vercelPreviewPattern = new RegExp(process.env.ALLOWED_VERCEL_PREVIEW_PATTERN ||
-    "^https://bookings-[a-z0-9-]+\\.vercel\\.app$");
+    (process.env.NODE_ENV === "production"
+        ? "a^"
+        : "^https://bookings-[a-z0-9-]+\\.vercel\\.app$"));
+if (process.env.NODE_ENV === "production") {
+    app.set("trust proxy", (0, runtimeSecurity_1.trustProxyHops)());
+}
 app.use((0, cors_1.default)({
     origin(origin, callback) {
         if (!origin ||
