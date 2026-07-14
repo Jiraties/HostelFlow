@@ -224,28 +224,32 @@ const CheckIn = ({
       <div>
         <div className="checkIn__header">
           <h1 className="checkIn__title">เช็คอิน {booking.name}</h1>
-          {isLateCheckIn && (
-            <div className="checkIn__reminder checkOut__earlyReminder">
-              <i className="bx bx-message-bubble-exclamation" />
-              <p>
-                ลูกค้าดังกล่าวเช็คอินล่าช้า{" "}
-                <strong>{nightsLate || 0} คืน</strong>
-              </p>
+          {(isLateCheckIn || roomCharge.paymentMethod === "Unpaid" || hasCashMovement) && (
+            <div className="bookingNoticeStack">
+              {isLateCheckIn && (
+                <div className="checkIn__reminder checkOut__earlyReminder">
+                  <i className="bx bx-message-bubble-exclamation" />
+                  <p>
+                    ลูกค้าดังกล่าวเช็คอินล่าช้า{" "}
+                    <strong>{nightsLate || 0} คืน</strong>
+                  </p>
+                </div>
+              )}
+              {roomCharge.paymentMethod === "Unpaid" && (
+                <div className="checkIn__reminder">
+                  <i className="bx bx-message-bubble-exclamation" />
+                  <p>
+                    ลูกค้าดังกล่าว
+                    <strong>
+                      ยังไม่ชำระเงินค่าห้อง
+                      {" " + formatCurrency(roomCharge.amount)}
+                    </strong>
+                  </p>
+                </div>
+              )}
+              {hasCashMovement && <CashShiftNudge />}
             </div>
           )}
-          {roomCharge.paymentMethod === "Unpaid" && (
-            <div className="checkIn__reminder">
-              <i className="bx bx-message-bubble-exclamation" />
-              <p>
-                ลูกค้าดังกล่าว
-                <strong>
-                  ยังไม่ชำระเงินค่าห้อง
-                  {" " + formatCurrency(roomCharge.amount)}
-                </strong>
-              </p>
-            </div>
-          )}
-          {hasCashMovement && <CashShiftNudge />}
         </div>
       </div>
       <div className="checkIn__grid">

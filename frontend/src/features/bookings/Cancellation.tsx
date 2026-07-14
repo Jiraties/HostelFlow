@@ -214,7 +214,7 @@ const Cancellation = ({
                 }
                 onClick={() => setReopenRoom(false)}
               >
-                <i className="bx bx-lock-alt" />
+                <i className="bx bx-lock-keyhole" />
                 ไม่เปิดให้จอง
               </button>
             </div>

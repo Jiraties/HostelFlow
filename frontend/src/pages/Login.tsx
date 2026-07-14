@@ -75,7 +75,7 @@ const Login = () => {
             <h1>เข้าสู่ระบบ</h1>
             {error.code !== 0 && (
               <div className={shake ? "login__error shake" : "login__error"}>
-                <i className="bx bx-error"></i>
+                <i className="bx bx-alert-triangle"></i>
                 <p>{error.message}</p>
               </div>
             )}

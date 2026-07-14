@@ -73,7 +73,7 @@ const PageHeader = ({
                 aria-label="อัปเดตข้อมูล"
                 onClick={handleRefresh}
               >
-                <i className="bx bx-refresh pageHeader__refreshIcon" />
+                <i className="bx bx-refresh-cw pageHeader__refreshIcon" />
               </button>
             )}
           </div>

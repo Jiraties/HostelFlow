@@ -124,7 +124,7 @@ const paymentMethodIconMap: Record<PaymentMethod, string> = {
   Cash: "bx-currency-notes",
   Card: "bx-credit-card-alt",
   Transfer: "bx-arrow-right-left",
-  Unpaid: "bx-error",
+  Unpaid: "bx-alert-triangle",
 };
 
 const paymentMethodColorMap: Record<PaymentMethod, string> = {
@@ -398,14 +398,14 @@ const FinancialBreakdown = ({
 
       {loading && (
         <div className="financialBreakdown__state">
-          <i className="bx bx-loader-alt bx-spin" />
+          <i className="bx bx-loader-lines bx-spin" />
           <p>กำลังโหลดข้อมูลรายได้</p>
         </div>
       )}
 
       {!loading && error && (
         <div className="financialBreakdown__state financialBreakdown__state--error">
-          <i className="bx bx-error-circle" />
+          <i className="bx bx-alert-circle" />
           <p>{error}</p>
         </div>
       )}

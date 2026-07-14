@@ -18,7 +18,9 @@ export type actionType =
   | "DEACTIVATE_USER"
   | "REACTIVATE_USER"
   | "DAILY_CLOSE"
-  | "REVIEW_TRANSACTION";
+  | "REVIEW_TRANSACTION"
+  | "VIEW_PASSPORT"
+  | "EXPORT_PASSPORT_REPORT";
 
 export type TransactionType =
   | "roomCharge"

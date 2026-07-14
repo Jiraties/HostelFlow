@@ -120,3 +120,12 @@ body {
     padding: 0.85rem;
   }
 }
+@keyframes boxicon-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.bx-spin {
+  animation: boxicon-spin 1s linear infinite;
+}

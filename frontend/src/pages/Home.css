@@ -126,6 +126,10 @@
   flex: 1 1 auto;
 }
 
+.home__statsAndActions + .home__gridArea {
+  margin-top: -0.75rem;
+}
+
 .home__gridFab {
   display: none;
 }

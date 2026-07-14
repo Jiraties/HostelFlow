@@ -83,7 +83,7 @@ const ConfirmationModal = ({
   const resolvedConfirmText =
     confirmText || (isDiscardChanges ? "ออกโดยไม่บันทึก" : "ลบ");
   const resolvedConfirmIcon =
-    confirmIcon || (isDiscardChanges ? "bx-log-out" : "bx-trash");
+    confirmIcon || (isDiscardChanges ? "bx-arrow-out-right-square-half" : "bx-trash");
   const confirmHandler = isDiscardChanges
     ? async () => {
         onConfirm?.();

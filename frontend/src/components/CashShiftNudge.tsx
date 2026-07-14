@@ -9,7 +9,9 @@ import "./CashShiftNudge.css";
 const CashShiftNudge = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [cashPosition, setCashPosition] = useState<CashPositionData | null>(null);
+  const [cashPosition, setCashPosition] = useState<CashPositionData | null>(
+    null,
+  );
 
   useEffect(() => {
     const controller = new AbortController();

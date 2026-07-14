@@ -782,6 +782,23 @@ const addPaymentMethodBreakdownTransaction = (
   paymentMethods.set(transaction.paymentMethod, existingPaymentMethod);
 };
 
+const todayArrivalPaymentMethod = (
+  booking: booking,
+  roomCharge: transcation,
+): PaymentMethod => {
+  if (roomCharge.paymentMethod !== "Unpaid") return roomCharge.paymentMethod;
+
+  const settlement = (booking.transactions || []).find(
+    (transaction) =>
+      transaction.type === "settlementCharge" &&
+      transaction.paymentMethod !== "Unpaid" &&
+      transaction.relatedTransactionType === "roomCharge" &&
+      transaction.relatedTransactionId === String(roomCharge._id),
+  );
+
+  return settlement?.paymentMethod || roomCharge.paymentMethod;
+};
+
 const finalizeBreakdownCategories = (
   categories: Map<TransactionType, ExpectedStayRevenueBreakdownCategory>,
   expectedStayRevenue: number,
@@ -1022,6 +1039,7 @@ export const getTodayRevenueBreakdown = async (req: Request, res: Response) => {
             ...roomCharge,
             amount: arrivalAmount,
             createdAt: booking.checkIn,
+            paymentMethod: todayArrivalPaymentMethod(booking, roomCharge),
           };
           const direction = transactionDirection(arrivalTransaction);
           addBreakdownTransaction(

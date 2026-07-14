@@ -161,7 +161,7 @@ const Documents = () => {
               : "documents__statusRow--success"
           }`}
         >
-          <i className={`bx ${hasMissing ? "bx-error" : "bx-check"}`} />
+          <i className={`bx ${hasMissing ? "bx-alert-triangle" : "bx-check"}`} />
           <p>
             {loading
               ? "กำลังตรวจสอบข้อมูลหนังสือเดินทาง"
@@ -424,7 +424,7 @@ const Documents = () => {
           <strong>2</strong>
         </div>
         <div>
-          <i className="bx bx-id-card" />
+          <i className="bx bx-user-id-card" />
           <p>ตม. Passport ครบ</p>
           <strong>
             {immigrationStatus
@@ -497,7 +497,7 @@ const Documents = () => {
           <div className="documents__actions">
             <ActionButton
               text={bookingExporting ? "กำลังส่งออก..." : "ส่งออก Excel"}
-              icon={bookingExporting ? "bx-loader-alt" : "bx-cloud-download"}
+              icon={bookingExporting ? "bx-loader-lines" : "bx-cloud"}
               highlight
               className="documents__action documents__action--primary"
               onClick={getBookingReport}
@@ -508,7 +508,7 @@ const Documents = () => {
 
         <div className="documents__export documents__export--tm30">
           <div className="documents__exportHeader">
-            <i className="bx bx-id-card documents__exportIcon documents__exportIcon--tm30" />
+            <i className="bx bx-user-id-card documents__exportIcon documents__exportIcon--tm30" />
             <div>
               <h3>ตม.30</h3>
               <p>Immigration Report</p>
@@ -532,7 +532,7 @@ const Documents = () => {
           <div className="documents__actions">
             <ActionButton
               text={immigrationExporting ? "กำลังส่งออก..." : "ส่งออกไฟล์ ตม."}
-              icon={immigrationExporting ? "bx-loader-alt" : "bx-download"}
+              icon={immigrationExporting ? "bx-loader-lines" : "bx-arrow-down"}
               highlight
               className="documents__action documents__action--blue"
               onClick={getImmigrationReport}
@@ -588,7 +588,7 @@ const Documents = () => {
           <div className="documents__actions">
             <ActionButton
               text={hotelExporting ? "กำลังส่งออก..." : "ส่งออกรายงาน รร."}
-              icon={hotelExporting ? "bx-loader-alt" : "bx-download"}
+              icon={hotelExporting ? "bx-loader-lines" : "bx-arrow-down"}
               highlight
               className="documents__action documents__action--orange"
               onClick={getHotelAccommodationReport}

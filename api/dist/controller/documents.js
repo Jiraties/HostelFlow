@@ -138,6 +138,7 @@ const immigrationDateQuery = (date) => {
     if (!bounds)
         return null;
     return {
+        status: { $ne: "cancelled" },
         checkIn: { $gte: bounds.start, $lt: bounds.end },
     };
 };
@@ -146,6 +147,7 @@ const hotelAccommodationDateQuery = (date) => {
     if (!bounds)
         return null;
     return {
+        status: { $ne: "cancelled" },
         $or: [
             { checkedInAt: { $gte: bounds.start, $lt: bounds.end } },
             {

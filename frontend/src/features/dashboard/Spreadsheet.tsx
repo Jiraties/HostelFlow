@@ -112,7 +112,7 @@ const bookingStatusMap = {
   },
   checkedOut: {
     label: "Check-Out แล้ว",
-    icon: "bx-log-out",
+    icon: "bx-arrow-out-right-square-half",
     className: "bookingStatusCell--checkedOut",
   },
   cancelled: {
@@ -150,7 +150,7 @@ const nameCell = (params: ICellRendererParams<SpreadsheetRow, string>) => {
   return (
     <div className="spreadsheet__nameCell">
       {params.data?.starred && (
-        <i className="bx bxs-star spreadsheet__starIcon" aria-hidden="true" />
+        <i className="bxf bx-star spreadsheet__starIcon" aria-hidden="true" />
       )}
       <span>{params.value}</span>
     </div>

@@ -1388,7 +1388,7 @@ const getMonthCalendar = async (req, res) => {
         const startingDate = new Date(parsedYear, parsedMonth, 1); // 1st day of the month
         const endingDate = new Date(parsedYear, parsedMonth + 1, 1); // 1st day of next month
         const monthOfBookings = await booking_1.default.find({
-            ...ROOM_BLOCKING_BOOKING_FILTER,
+            $or: [...ROOM_BLOCKING_BOOKING_FILTER.$or, { status: "checkedOut" }],
             checkIn: { $lt: endingDate },
             checkOut: { $gt: startingDate },
         });
@@ -1441,6 +1441,9 @@ const getMonthCalendar = async (req, res) => {
             const isUnpaid = !roomCharge ||
                 (roomCharge.paymentMethod === "Unpaid" && !hasRoomChargeSettlement);
             booking.roomStays.forEach((roomStay) => {
+                const effectiveStayEnd = effectiveRoomStayEnd(booking, roomStay);
+                if (effectiveStayEnd <= new Date(roomStay.from))
+                    return;
                 (0, roomStayHelpers_1.getRoomStayRoomIds)(roomStay).forEach((roomId) => {
                     const roomWithMatchingId = rooms.find((room) => room.roomId === roomId);
                     roomWithMatchingId?.bookings.push({
@@ -1448,7 +1451,7 @@ const getMonthCalendar = async (req, res) => {
                         platformId: booking.platformId,
                         bookingId: booking.bookingId,
                         from: roomStay.from,
-                        to: roomStay.to,
+                        to: effectiveStayEnd,
                         status: booking.status,
                         isUnpaid,
                     });

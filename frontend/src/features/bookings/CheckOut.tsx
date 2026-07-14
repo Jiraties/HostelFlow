@@ -164,16 +164,20 @@ const CheckOut = ({
       {onClose && <ModalCloseButton onClick={onClose} />}
       <div className="checkIn__header">
         <h1 className="checkIn__title">เช็คเอาท์ {booking.name}</h1>
-        {isEarlyCheckOut && (
-          <div className="checkIn__reminder checkOut__earlyReminder">
-            <i className="bx bx-message-bubble-exclamation" />
-            <p>
-              ลูกค้าดังกล่าวเช็คเอาท์ก่อนกำหนด{" "}
-              <strong>{nightsEarly} คืน</strong>
-            </p>
+        {(isEarlyCheckOut || hasCashMovement) && (
+          <div className="bookingNoticeStack">
+            {isEarlyCheckOut && (
+              <div className="checkIn__reminder checkOut__earlyReminder">
+                <i className="bx bx-message-bubble-exclamation" />
+                <p>
+                  ลูกค้าดังกล่าวเช็คเอาท์ก่อนกำหนด{" "}
+                  <strong>{nightsEarly} คืน</strong>
+                </p>
+              </div>
+            )}
+            {hasCashMovement && <CashShiftNudge />}
           </div>
         )}
-        {hasCashMovement && <CashShiftNudge />}
       </div>
 
       <div className="checkOut__grid">
@@ -220,7 +224,7 @@ const CheckOut = ({
           {hasUnpaidBalance && (
             <section className="checkOut__unpaidWarning">
               <div className="checkOut__unpaidHeader">
-                <i className="bx bx-error-circle" />
+                <i className="bx bx-alert-circle" />
                 <div>
                   <p>ยอดค้างชำระ</p>
                   <strong>{formatCurrency(unpaidRoomChargeAmount)}</strong>
@@ -329,7 +333,7 @@ const CheckOut = ({
                   }
                   onClick={() => setReleaseRemainingNights(false)}
                 >
-                  <i className="bx bx-lock-alt" />
+                  <i className="bx bx-lock-keyhole" />
                   ไม่เปิดให้จอง
                 </button>
               </div>

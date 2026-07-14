@@ -54,22 +54,51 @@
 
 .addBooking__grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 2rem;
 }
 
+.addBooking__grid > div {
+  min-width: 0;
+}
+
+/* Shared by the room-stay editor, which retains its native boundary dates. */
 .addBooking__dateInputs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 2fr 2fr;
+  width: 100%;
+  min-width: 0;
   font-family: "IBM Plex Sans Thai", sans-serif;
   border-radius: 0.5rem;
   overflow: hidden;
   box-shadow: var(--main-shadow);
 }
 
+.addBooking__dateInputsWithNights {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  width: min(100%, 23rem);
+}
+
+.addBooking__dateGroup {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 .addBooking__dateInput {
+  min-width: 0;
   border-radius: 0;
   box-shadow: none;
+}
+
+.addBooking__nightsField {
+  flex: 0 0 4rem;
+}
+
+.addBooking__nightsInput {
+  box-sizing: border-box;
+  width: 100%;
 }
 
 .addBooking__labels {

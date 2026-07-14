@@ -44,6 +44,20 @@ type Room = {
   bookings: CalendarBooking[];
 };
 
+type CalendarDensity = "compact" | "comfortable" | "spacious";
+
+const calendarDensityCycle: CalendarDensity[] = [
+  "comfortable",
+  "compact",
+  "spacious",
+];
+
+const calendarDensityIcons: Record<CalendarDensity, string> = {
+  compact: "bx-grid-9",
+  comfortable: "bx-grid",
+  spacious: "bx-square",
+};
+
 const statusLabelMap: Record<booking["status"], string> = {
   booked: "รอเช็คอิน",
   checkedIn: "เข้าพัก",
@@ -74,10 +88,12 @@ const calendarLegendItems: CalendarLegendItem[] = [
   { label: "ค้างชำระ", color: "#ff5269", type: "accent" },
 ];
 
-const sourceLegendItems: CalendarLegendItem[] = platformOptions.map((platform) => ({
-  label: platform.label,
-  color: platform.color,
-}));
+const sourceLegendItems: CalendarLegendItem[] = platformOptions.map(
+  (platform) => ({
+    label: platform.label,
+    color: platform.color,
+  }),
+);
 
 const getDateInMonth = (year: number, month: number) =>
   new Date(year, month + 1, 0).getDate();
@@ -94,7 +110,7 @@ const monthNames = Array.from({ length: 12 }, (_, month) =>
 
 const Calendar = () => {
   usePageTitle("HostelFlow · ตารางการจอง");
-  const { user } = useAuth();
+  const { user, login } = useAuth();
   const today = new Date();
   const calendarColorMode = user?.settings.calendarColorMode || "status";
   const calendarDensity = user?.settings.calendarDensity || "comfortable";
@@ -102,14 +118,11 @@ const Calendar = () => {
     calendarColorMode === "source" ? sourceLegendItems : calendarLegendItems;
   const dayColumnWidth =
     calendarDensity === "compact"
-      ? "3.25rem"
+      ? "2.75rem"
       : calendarDensity === "spacious"
         ? "4.8rem"
         : "4rem";
-  const roomRowHeight =
-    calendarDensity === "compact"
-      ? "2.4rem"
-      : "3rem";
+  const roomRowHeight = calendarDensity === "compact" ? "2.75rem" : "3rem";
 
   const timelineRef = useRef<HTMLDivElement>(null);
   const monthPickerRef = useRef<HTMLSpanElement>(null);
@@ -129,6 +142,7 @@ const Calendar = () => {
   const [month, setMonth] = useState(today.getMonth()); // JS MONTH 0=Jan 1=Feb 4=May
   const [year, setYear] = useState(today.getFullYear());
   const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
+  const [isCalendarDensitySaving, setIsCalendarDensitySaving] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [viewBookingBooking, setViewBookingBooking] = useState<booking | null>(
     null,
@@ -219,18 +233,18 @@ const Calendar = () => {
         data-day={i}
         style={{ gridRow: 1 }}
       >
-        <p style={i === todayIndex ? { color: "red" } : {}}>
-          {dateLabel}
-        </p>
-        <p
-          style={
-            i === todayIndex
-              ? { color: "red", fontWeight: 600 }
-              : { fontWeight: 600 }
-          }
-        >
-          {weekday}
-        </p>
+        <p style={i === todayIndex ? { color: "red" } : {}}>{dateLabel}</p>
+        {calendarDensity !== "compact" && (
+          <p
+            style={
+              i === todayIndex
+                ? { color: "red", fontWeight: 600 }
+                : { fontWeight: 600 }
+            }
+          >
+            {weekday}
+          </p>
+        )}
       </div>
     );
   });
@@ -425,7 +439,8 @@ const Calendar = () => {
               bookingId: formattedBooking.bookingId,
               platformId: formattedBooking.platformId,
               status: formattedBooking.status,
-              isUnpaid: roomChargeDisplayPaymentMethod(formattedBooking) === "Unpaid",
+              isUnpaid:
+                roomChargeDisplayPaymentMethod(formattedBooking) === "Unpaid",
             },
           ],
         };
@@ -449,6 +464,45 @@ const Calendar = () => {
 
     setYear(year - 1);
     setMonth(11);
+  };
+
+  const updateCalendarDensity = async (nextDensity: CalendarDensity) => {
+    if (!user || nextDensity === calendarDensity) return;
+
+    const previousUser = user;
+    login({
+      ...user,
+      settings: {
+        ...user.settings,
+        calendarDensity: nextDensity,
+      },
+    });
+    setIsCalendarDensitySaving(true);
+
+    try {
+      const response = await axios.patch(
+        `${API_URL}/auth/me/settings`,
+        { calendarDensity: nextDensity },
+        { withCredentials: true },
+      );
+      login(response.data.user);
+      toast.success("บันทึกความหนาแน่นปฏิทินแล้ว");
+    } catch (error) {
+      login(previousUser);
+      const message = axios.isAxiosError<{ message?: string }>(error)
+        ? error.response?.data.message
+        : null;
+      toast.error(message || "ไม่สามารถบันทึกความหนาแน่นปฏิทินได้");
+    } finally {
+      setIsCalendarDensitySaving(false);
+    }
+  };
+
+  const cycleCalendarDensity = () => {
+    const currentIndex = calendarDensityCycle.indexOf(calendarDensity);
+    const nextDensity =
+      calendarDensityCycle[(currentIndex + 1) % calendarDensityCycle.length];
+    updateCalendarDensity(nextDensity);
   };
 
   const selectMonth = (selectedMonth: number) => {
@@ -489,7 +543,9 @@ const Calendar = () => {
   }, [month, setLastUpdated, setRooms, year]);
 
   const showCalendarLoadError = useCallback((err: unknown) => {
-    const message = axios.isAxiosError<{ message?: string; error?: string }>(err)
+    const message = axios.isAxiosError<{ message?: string; error?: string }>(
+      err,
+    )
       ? err.response?.data.message || err.response?.data.error
       : null;
 
@@ -667,6 +723,19 @@ const Calendar = () => {
               onClick={nextMonth}
             >
               <i className="bx bx-caret-right" aria-hidden="true" />
+            </button>
+            <button
+              className="calendar__densitySelector home__action home__actionIconOnly"
+              type="button"
+              aria-label="เปลี่ยนความหนาแน่นปฏิทิน"
+              title="เปลี่ยนความหนาแน่นปฏิทิน"
+              disabled={isCalendarDensitySaving}
+              onClick={cycleCalendarDensity}
+            >
+              <i
+                className={`bx ${calendarDensityIcons[calendarDensity]}`}
+                aria-hidden="true"
+              />
             </button>
           </span>
         }

@@ -41,7 +41,7 @@ const paymentMethodIconMap = {
   Cash: "bx-currency-notes",
   Card: "bx-credit-card-alt",
   Transfer: "bx-arrow-right-left",
-  Unpaid: "bx-error",
+  Unpaid: "bx-alert-triangle",
 };
 
 const transactionMap = {
@@ -61,9 +61,9 @@ const transactionMap = {
     color: "#22c55e",
   },
   compensation: { icon: "bx-gift", name: "ชดเชยลูกค้า", color: "#38bdf8" },
-  depositKept: { icon: "bx-lock-alt", name: "เก็บมัดจำ", color: "#facc15" },
+  depositKept: { icon: "bx-lock-keyhole", name: "เก็บมัดจำ", color: "#facc15" },
   paymentCorrection: {
-    icon: "bx-transfer",
+    icon: "bx-arrow-right-left",
     name: "แก้ไขการชำระเงิน",
     color: "#a78bfa",
   },
@@ -75,7 +75,7 @@ const transactionMap = {
   pickACraft: { icon: "bx-palette", name: "Pick A Craft", color: "#f59e0b" },
   setMenu: { icon: "bx-food-menu", name: "Set Menu", color: "#84cc16" },
   sleeperBus: { icon: "bx-bus", name: "Sleeper Bus", color: "#6366f1" },
-  onlyWalk: { icon: "bx-walk", name: "Only Walk", color: "#14b8a6" },
+  onlyWalk: { icon: "bx-walking", name: "Only Walk", color: "#14b8a6" },
   laundry: { icon: "bx-washer", name: "Laundry", color: "#60a5fa" },
   bicycle: { icon: "bx-cycling", name: "Bicycle", color: "#fb923c" },
   car: { icon: "bx-car", name: "Car", color: "#64748b" },
@@ -239,12 +239,12 @@ const ViewBooking = ({
     return (
       <div className="viewBooking__wrapper viewBooking__loadError">
         {onClose && <ModalCloseButton onClick={onClose} />}
-        <i className="bx bx-error-circle" />
+        <i className="bx bx-alert-circle" />
         <h1>โหลดข้อมูลการจองไม่สำเร็จ</h1>
         <p>{loadError}</p>
         <ActionButton
           text="ลองโหลดอีกครั้ง"
-          icon="bx-refresh"
+          icon="bx-refresh-cw"
           highlight
           onClick={() => setLoadRetryKey((key) => key + 1)}
         />
@@ -403,7 +403,7 @@ const ViewBooking = ({
         if (usedFor === "icon") return "bx-door-open";
         return usedFor === "classname" ? "released" : "เปิดให้จอง";
       case "blocked":
-        if (usedFor === "icon") return "bx-lock-alt";
+        if (usedFor === "icon") return "bx-lock-keyhole";
         return usedFor === "classname" ? "blocked" : "ไม่เปิดให้จอง";
       default:
         return usedFor === "classname" ? "unknown" : "";
@@ -547,7 +547,7 @@ const ViewBooking = ({
           {paymentMethod}
         </p>
         {paymentMethod === "Unpaid" ? (
-          <i className="bx bx-error viewBooking__unpaid" />
+          <i className="bx bx-alert-triangle viewBooking__unpaid" />
         ) : (
           <i className={"bx " + paymentMethodIconMap[paymentMethod]} />
         )}
@@ -1245,7 +1245,7 @@ const ViewBooking = ({
 
             <ActionButton
               text=""
-              icon={data.starred ? "bxs-star" : "bx-star"}
+              icon={data.starred ? "bxf bx-star" : "bx-star"}
               className={data.starred ? "viewBooking__starAction" : ""}
               disabled={starSaving}
               onClick={() =>

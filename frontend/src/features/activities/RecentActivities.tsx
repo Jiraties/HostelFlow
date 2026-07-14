@@ -48,7 +48,7 @@ const actionMap = {
     text: "เปลี่ยนรหัสผ่าน",
   },
   UPDATE_USER: {
-    icon: "bx-user-cog",
+    icon: "bx-cog",
     text: "แก้ไขผู้ใช้",
   },
   UPDATE_USER_SETTINGS: {
@@ -72,14 +72,24 @@ const actionMap = {
     text: "เข้าสู่ระบบ",
   },
   DAILY_CLOSE: {
-    icon: "bx-cash",
+    icon: "bx-currency-notes",
     text: "ปิดยอดเงินสดประจำวัน",
   },
   REVIEW_TRANSACTION: {
     icon: "bx-check-shield",
     text: "อนุมัติรายการ",
   },
+  VIEW_PASSPORT: {
+    icon: "bx-lock-keyhole",
+    text: "ดูข้อมูล Passport",
+  },
+  EXPORT_PASSPORT_REPORT: {
+    icon: "bx-file",
+    text: "ส่งออกรายงาน Passport",
+  },
 } satisfies Record<activity["action"], { icon: string; text: string }>;
+
+const unknownAction = { icon: "bx-history", text: "กิจกรรม" };
 
 const transactionLabelMap = {
   roomCharge: "ค่าห้อง",
@@ -172,7 +182,7 @@ const ActivityHeader = ({
   item: activity;
   dateFormat: "dd/MM/yyyy" | "d MMM yyyy";
 }) => {
-  const action = actionMap[item.action];
+  const action = actionMap[item.action] || unknownAction;
   const date = new Date(item.timestamp);
 
   return (

@@ -8,6 +8,21 @@
   padding: 0.8rem 1rem;
 }
 
+.bookingNoticeStack {
+  border-radius: 0.8rem;
+  display: flex;
+  flex-direction: column;
+  margin: 1rem 0;
+  overflow: hidden;
+}
+
+.bookingNoticeStack > .cashShiftNudge,
+.bookingNoticeStack > .checkIn__reminder,
+.bookingNoticeStack > .editBooking__reminder {
+  border-radius: 0;
+  margin: 0;
+}
+
 .cashShiftNudge > i {
   color: #f4a900;
   flex: 0 0 auto;

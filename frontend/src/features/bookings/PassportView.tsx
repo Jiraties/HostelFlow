@@ -61,7 +61,7 @@ const PassportView = ({ bookingId }: PassportViewProps) => {
         {isHidden ? (
           <>
             <i
-              className={`bx ${isLoading ? "bx-loader-alt bx-spin" : "bx-lock"}`}
+              className={`bx ${isLoading ? "bx-loader-lines bx-spin" : "bx-lock"}`}
             />
             <p>
               {isLoading

@@ -1,0 +1,146 @@
+.bookingDateRangePicker {
+  position: relative;
+  width: 100%;
+  font-size: 13.3333px;
+}
+
+.bookingDateRangePicker__trigger {
+  align-items: stretch;
+  background: var(--background);
+  border-radius: 0.5rem;
+  box-shadow: var(--main-shadow);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  overflow: hidden;
+  width: 100%;
+}
+
+.bookingDateRangePicker__trigger input {
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  font-family: "IBM Plex Sans Thai", sans-serif;
+  font-size: inherit;
+  font-weight: 400;
+  min-width: 0;
+  outline: none;
+  padding: 0.95rem 0.75rem;
+}
+
+.bookingDateRangePicker__trigger input + input {
+  border-left: 0.1rem solid #e8e8e8;
+}
+
+.bookingDateRangePicker__trigger:focus-within {
+  box-shadow: var(--light-shadow);
+}
+
+.bookingDateRangePicker__trigger input:focus,
+.bookingDateRangePicker__trigger input:hover {
+  background: #00000008;
+  outline: none;
+}
+
+.bookingDateRangePicker__trigger--error {
+  outline: 1px solid #dc2626;
+}
+
+.bookingDateRangePicker__popover {
+  background: var(--background);
+  border-radius: 1rem;
+  box-shadow: var(--main-shadow);
+  left: 0;
+  padding: 0.85rem;
+  position: absolute;
+  top: calc(100% + 0.65rem);
+  width: min(20rem, calc(100vw - 4rem));
+  z-index: 20;
+}
+
+.bookingDateRangePicker__header {
+  align-items: center;
+  display: grid;
+  grid-template-columns: 2rem 1fr 2rem;
+  margin-bottom: 0.65rem;
+  text-align: center;
+}
+
+.bookingDateRangePicker__header strong {
+  font-weight: 500;
+}
+
+.bookingDateRangePicker__header button {
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  color: var(--primary-color);
+  cursor: pointer;
+  font-size: 1.25rem;
+  height: 2rem;
+  padding: 0;
+  width: 2rem;
+}
+
+.bookingDateRangePicker__header button:hover,
+.bookingDateRangePicker__header button:focus-visible {
+  background: #00000008;
+  outline: none;
+}
+
+.bookingDateRangePicker__weekdays,
+.bookingDateRangePicker__days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.bookingDateRangePicker__weekdays {
+  color: #a1a1aa;
+  font-size: 0.7rem;
+  margin-bottom: 0.3rem;
+  text-align: center;
+}
+
+.bookingDateRangePicker__day {
+  background: transparent;
+  border: 0;
+  border-radius: 0.55rem;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  height: 2.25rem;
+  margin: 0.05rem;
+  padding: 0;
+  position: relative;
+}
+
+.bookingDateRangePicker__day:hover:not(:disabled),
+.bookingDateRangePicker__day:focus-visible {
+  background: #00000008;
+  outline: none;
+}
+
+.bookingDateRangePicker__day--adjacent {
+  color: #c4c4c7;
+  cursor: default;
+}
+
+.bookingDateRangePicker__day--inRange {
+  background: #51d1dc2b;
+  border-radius: 0;
+  color: var(--text);
+}
+
+.bookingDateRangePicker__day--start,
+.bookingDateRangePicker__day--end {
+  background: var(--primary-color);
+  border-radius: 0.55rem;
+  color: #fff;
+  font-weight: 600;
+}
+
+@media (max-width: 480px) {
+  .bookingDateRangePicker__popover {
+    left: 50%;
+    transform: translateX(-50%);
+  }
+}

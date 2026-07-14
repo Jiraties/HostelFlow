@@ -1320,7 +1320,7 @@ const Main = () => {
             <div className="main__cashCloseOverview">
               <div className="main__cashCloseTile main__cashCloseTile--deposit">
                 <div className="main__cashCloseTileHeader">
-                  <i className="bx bx-lock-alt" />
+                  <i className="bx bx-lock-keyhole" />
                   <span>เงินมัดจำ</span>
                 </div>
                 <strong>
@@ -1493,7 +1493,7 @@ const Main = () => {
         {bookingsThatNeedReview.length > 0 ? (
           <TodayList
             title="ต้องตรวจสอบ"
-            icon="bx-error-circle"
+            icon="bx-alert-circle"
             bookings={bookingsThatNeedReview}
             emptyText="ไม่มีรายการจองที่ต้องตรวจสอบ"
             isBookingsThatNeedReview={true}

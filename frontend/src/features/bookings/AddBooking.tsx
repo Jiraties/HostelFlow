@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import ActionButton from "../../components/ActionButton";
 import ModalCloseButton from "../../components/ModalCloseButton";
 import CashShiftNudge from "../../components/CashShiftNudge";
+import { BookingDateRangePicker } from "./BookingDateRangePicker";
 import "./AddBooking.css";
 import Select, { type MultiValue, type SingleValue } from "react-select";
 import { useAuth } from "../../context/AuthContext";
@@ -38,6 +39,26 @@ interface BookingFormData {
 type BookingFormErrors = Partial<Record<keyof BookingFormData, string>>;
 type RoomOptionWithReason = OptionType & { disabledReason?: string };
 type AvailabilityStatus = "idle" | "loading" | "ready" | "error";
+
+const nightsBetween = (checkIn: string, checkOut: string) => {
+  if (!checkIn || !checkOut) return "";
+
+  const from = new Date(`${checkIn}T00:00:00`);
+  const to = new Date(`${checkOut}T00:00:00`);
+  const nights = Math.round((to.getTime() - from.getTime()) / 86400000);
+
+  return nights > 0 ? String(nights) : "";
+};
+
+const checkOutAfterNights = (checkIn: string, nights: number) => {
+  const date = new Date(`${checkIn}T00:00:00`);
+  if (Number.isNaN(date.getTime()) || !Number.isInteger(nights) || nights < 1) {
+    return "";
+  }
+
+  date.setDate(date.getDate() + nights);
+  return formatLocalDate(date);
+};
 
 const AddBooking = ({
   mode = "add",
@@ -115,6 +136,9 @@ const AddBooking = ({
     user?.username,
   ]);
   const [formData, setFormData] = useState<BookingFormData>(initialFormData);
+  const [nights, setNights] = useState(() =>
+    nightsBetween(initialFormData.checkIn, initialFormData.checkOut),
+  );
   const hasCashMovement =
     !isEditMode &&
     formData.paymentMethod === "Cash" &&
@@ -295,6 +319,7 @@ const AddBooking = ({
       staffUsername: user?.username || "",
       note: "",
     });
+    setNights(String(nights));
   };
 
   const formatOptionLabel = ({ label, color }: OptionType) => (
@@ -333,6 +358,47 @@ const AddBooking = ({
       return updated;
     });
     setFormErrors((prev) => ({ ...prev, [field]: undefined }));
+  };
+
+  const dateRangeChangeHandler = (checkIn: string, checkOut: string) => {
+    if (submitting) return;
+
+    setFormData((prev) => ({ ...prev, checkIn, checkOut }));
+    setNights(nightsBetween(checkIn, checkOut));
+    setFormErrors((prev) => ({
+      ...prev,
+      checkIn: undefined,
+      checkOut: undefined,
+    }));
+  };
+
+  const checkInInputChangeHandler = (checkIn: string) => {
+    const nextNights = Number(nights);
+    const checkOut =
+      checkIn && Number.isInteger(nextNights) && nextNights > 0
+        ? checkOutAfterNights(checkIn, nextNights)
+        : formData.checkOut;
+
+    dateRangeChangeHandler(checkIn, checkOut);
+  };
+
+  const checkOutInputChangeHandler = (checkOut: string) => {
+    dateRangeChangeHandler(formData.checkIn, checkOut);
+  };
+
+  const nightsChangeHandler = (value: string) => {
+    if (submitting) return;
+
+    setNights(value);
+    const nextNights = Number(value);
+    if (!formData.checkIn || !Number.isInteger(nextNights) || nextNights < 1) {
+      return;
+    }
+
+    formDataChangeHandler(
+      "checkOut",
+      checkOutAfterNights(formData.checkIn, nextNights),
+    );
   };
 
   const validateForm = () => {
@@ -444,7 +510,8 @@ const AddBooking = ({
             setFormErrors((prev) => ({
               ...prev,
               roomIds:
-                err.response?.data?.message || "ห้อง/เตียงนี้ไม่ว่างในวันที่เลือก",
+                err.response?.data?.message ||
+                "ห้อง/เตียงนี้ไม่ว่างในวันที่เลือก",
             }));
           }
           throw err;
@@ -463,6 +530,7 @@ const AddBooking = ({
         staffUsername: user?.username || "",
         note: "",
       });
+      setNights("");
     } finally {
       setSubmitting(false);
     }
@@ -474,24 +542,29 @@ const AddBooking = ({
       <h1 className="addBooking__title">
         {mode === "add" ? "เพิ่มการจองใหม่" : "แก้ไขการจอง"}
       </h1>
-      {reminderIsOpen && (
-        <div className="editBooking__reminder">
-          <div className="editBooking__textAndIcon">
-            <i className="bx bx-message-dots" />
-            <p>
-              เมื่อยืดวันที่ Check-In ระบบจะเพิ่มวันช่วงพักห้องแรกโดยอัตโนมัติ
-              <br />
-              เมื่อยืดวันที่ Check-Out
-              ระบบจะเพิ่มวันช่วงพักห้องท้ายสุดโดยอัตโนมัติเช่นกัน
-            </p>
-          </div>
-          <i
-            className="bx bx-x editBooking__closeReminder"
-            onClick={() => setReminderIsOpen(false)}
-          />
+      {(reminderIsOpen || hasCashMovement) && (
+        <div className="bookingNoticeStack">
+          {reminderIsOpen && (
+            <div className="editBooking__reminder">
+              <div className="editBooking__textAndIcon">
+                <i className="bx bx-message-dots" />
+                <p>
+                  เมื่อยืดวันที่ Check-In
+                  ระบบจะเพิ่มวันช่วงพักห้องแรกโดยอัตโนมัติ
+                  <br />
+                  เมื่อยืดวันที่ Check-Out
+                  ระบบจะเพิ่มวันช่วงพักห้องท้ายสุดโดยอัตโนมัติเช่นกัน
+                </p>
+              </div>
+              <i
+                className="bx bx-x editBooking__closeReminder"
+                onClick={() => setReminderIsOpen(false)}
+              />
+            </div>
+          )}
+          {hasCashMovement && <CashShiftNudge />}
         </div>
       )}
-      {hasCashMovement && <CashShiftNudge />}
 
       <div className="addBooking__grid">
         <div>
@@ -509,34 +582,34 @@ const AddBooking = ({
           )}
         </div>
         <div>
-          <div className="addBooking__labels">
-            <p className="addBooking__label">Check-In</p>
-            <p className="addBooking__label">Check-Out</p>
-          </div>
-          <div className="addBooking__dateInputs">
-            <input
-              type="date"
-              value={formData.checkIn}
-              onChange={(e) => formDataChangeHandler("checkIn", e.target.value)}
-              style={{
-                borderRight: "0.1rem solid #e8e8e8",
-                borderRadius: "0.5rem 0 0 0.5rem",
-              }}
-              className={`boxInput addBooking__dateInput ${
-                formErrors.checkIn ? "boxInput--error" : ""
-              }`}
-            />
-            <input
-              type="date"
-              value={formData.checkOut}
-              onChange={(e) =>
-                formDataChangeHandler("checkOut", e.target.value)
-              }
-              style={{ borderRadius: "0 0.5rem 0.5rem 0" }}
-              className={`boxInput addBooking__dateInput ${
-                formErrors.checkOut ? "boxInput--error" : ""
-              }`}
-            />
+          <div className="addBooking__dateInputsWithNights">
+            <div className="addBooking__dateGroup">
+              <div className="addBooking__labels">
+                <p className="addBooking__label">Check-In</p>
+                <p className="addBooking__label">Check-Out</p>
+              </div>
+              <BookingDateRangePicker
+                checkIn={formData.checkIn}
+                checkOut={formData.checkOut}
+                hasError={Boolean(formErrors.checkIn || formErrors.checkOut)}
+                onChange={dateRangeChangeHandler}
+                onCheckInChange={checkInInputChangeHandler}
+                onCheckOutChange={checkOutInputChangeHandler}
+              />
+            </div>
+            <div className="addBooking__nightsField">
+              <p className="addBooking__label">คืน</p>
+              <input
+                type="number"
+                inputMode="numeric"
+                min="1"
+                step="1"
+                value={nights}
+                onChange={(e) => nightsChangeHandler(e.target.value)}
+                className="boxInput addBooking__nightsInput"
+                aria-label="Number of nights"
+              />
+            </div>
           </div>
           {(formErrors.checkIn || formErrors.checkOut) && (
             <p className="addBooking__fieldError">
@@ -597,8 +670,8 @@ const AddBooking = ({
                   ? availabilityStatus === "loading"
                     ? "กำลังตรวจสอบห้อง/เตียงที่ว่าง..."
                     : occupiedRoomIds.length > 0
-                    ? "ห้อง/เตียงที่ถูกจองแล้วจะแสดงเป็นตัวเลือกสีเทา"
-                    : "เลือกได้เฉพาะห้อง/เตียงที่ว่างในช่วงวันที่นี้"
+                      ? "ห้อง/เตียงที่ถูกจองแล้วจะแสดงเป็นตัวเลือกสีเทา"
+                      : "เลือกได้เฉพาะห้อง/เตียงที่ว่างในช่วงวันที่นี้"
                   : "เลือกวันเช็คอินและเช็คเอาท์ก่อน ระบบจะแสดงห้อง/เตียงที่ว่าง")}
             </p>
           </div>
@@ -705,7 +778,7 @@ const AddBooking = ({
       {!isEditMode && import.meta.env.DEV && (
         <ActionButton
           text="DEBUG | Dummy Data"
-          icon="bx-test"
+          icon="bx-test-tube"
           onClick={fillDummyData}
           className="addBooking__submit"
         />

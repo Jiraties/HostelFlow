@@ -125,7 +125,7 @@ const scenarioOptionsByMode: Record<ResolveMode, ScenarioConfig[]> = {
       id: "guest_left",
       label: "ลูกค้าไม่เข้าพัก / เคลียร์เอง",
       description: "ใช้เมื่อเคสไม่เข้า flow ยกเลิกปกติแต่ต้องปิดรายการ",
-      icon: "bx-exit",
+      icon: "bx-door-open",
       outcome: "guest_left",
       finalStatus: "checkedOut",
       reasonCode: "other",
@@ -136,7 +136,7 @@ const scenarioOptionsByMode: Record<ResolveMode, ScenarioConfig[]> = {
       id: "guest_left",
       label: "ลูกค้าออกก่อน / เคสพิเศษ",
       description: "ลูกค้าออกจากที่พักก่อนกำหนดหรือมีเหตุให้ปิดรายการ",
-      icon: "bx-run",
+      icon: "bx-running",
       outcome: "guest_left",
       finalStatus: "checkedOut",
       reasonCode: "early_checkout",
@@ -155,7 +155,7 @@ const scenarioOptionsByMode: Record<ResolveMode, ScenarioConfig[]> = {
       id: "cancel_after_checkin",
       label: "ยกเลิกหลัง Check-In",
       description: "เปลี่ยนเป็นยกเลิกหลังลูกค้าเข้าพักแล้ว",
-      icon: "bx-calendar-exclamation",
+      icon: "bx-calendar-detail",
       outcome: "cancelled_after_checkin",
       finalStatus: "cancelled",
       reasonCode: "other",
@@ -203,7 +203,7 @@ const quickActionOptions: QuickActionConfig[] = [
     id: "keep_deposit",
     label: "เก็บมัดจำ",
     helper: "บันทึกการเก็บมัดจำโดยไม่มีเงินเข้าออกใหม่",
-    icon: "bx-lock-alt",
+    icon: "bx-lock-keyhole",
     row: {
       type: "depositKept",
       paymentMethod: "Cash",
@@ -656,7 +656,7 @@ const ResolveBooking = ({
                 }
                 onClick={() => setRoomReleaseStatus("blocked")}
               >
-                <i className="bx bx-lock-alt" />
+                <i className="bx bx-lock-keyhole" />
                 ไม่เปิด
               </button>
             </div>

@@ -135,14 +135,19 @@ const actionMap = {
   ADD_TRANSACTION: { icon: "bx-dollar", text: "เพิ่มรายการใช้จ่าย" },
   CREATE_USER: { icon: "bx-user-plus", text: "สร้างผู้ใช้" },
   RESET_USER_PASSWORD: { icon: "bx-key", text: "เปลี่ยนรหัสผ่าน" },
-  UPDATE_USER: { icon: "bx-user-cog", text: "แก้ไขผู้ใช้" },
+  UPDATE_USER: { icon: "bx-cog", text: "แก้ไขผู้ใช้" },
   UPDATE_USER_SETTINGS: { icon: "bx-cog", text: "แก้ไขการตั้งค่า" },
   DEACTIVATE_USER: { icon: "bx-user-x", text: "ปิดใช้งานผู้ใช้" },
   REACTIVATE_USER: { icon: "bx-user-check", text: "เปิดใช้งานผู้ใช้" },
   LOGIN: { icon: "bx-arrow-in-right-square-half", text: "เข้าสู่ระบบ" },
   LOGOUT: { icon: "bx-arrow-out-right-square-half", text: "ออกจากระบบ" },
-  DAILY_CLOSE: { icon: "bx-cash", text: "ปิดยอดเงินสดประจำวัน" },
+  DAILY_CLOSE: { icon: "bx-currency-notes", text: "ปิดยอดเงินสดประจำวัน" },
   REVIEW_TRANSACTION: { icon: "bx-check-shield", text: "อนุมัติรายการ" },
+  VIEW_PASSPORT: { icon: "bx-lock-keyhole", text: "ดูข้อมูล Passport" },
+  EXPORT_PASSPORT_REPORT: {
+    icon: "bx-file",
+    text: "ส่งออกรายงาน Passport",
+  },
 } satisfies Record<actionType, { icon: string; text: string }>;
 
 const transactionTypeLabels: Record<string, string> = {
@@ -393,7 +398,7 @@ const CashCloseAudit = ({
       <div className="manage__cashChain" aria-label="Cash custody chain">
         {loading ? (
           <div className="manage__emptyState">
-            <i className="bx bx-loader-alt" />
+            <i className="bx bx-loader-lines" />
             <p>กำลังโหลดสายรับผิดชอบเงินสด</p>
           </div>
         ) : shifts.length === 0 ? (
@@ -445,7 +450,7 @@ const CashCloseAudit = ({
                         className="manage__cashMismatchIcon"
                         title="ยอดเงินสดไม่ตรง"
                       >
-                        <i className="bx bx-error-alt" />
+                        <i className="bx bx-alert-triangle" />
                       </span>
                     )}
                     <span
@@ -461,7 +466,7 @@ const CashCloseAudit = ({
                 <div className="manage__cashMath">
                   <div className="manage__cashMathTile manage__cashMathTile--deposit">
                     <div className="manage__cashMathTileHeader">
-                      <i className="bx bx-lock-alt" />
+                      <i className="bx bx-lock-keyhole" />
                       <span>เงินสดมัดจำ</span>
                     </div>
                     <strong>
@@ -623,7 +628,7 @@ const CashCloseAudit = ({
         <div className="manage__cashGaps">
           {audit.gaps.map((gap, index) => (
             <p key={`${gap.from}-${index}`}>
-              <i className="bx bx-error-circle" /> {gap.warning.message} ·
+              <i className="bx bx-alert-circle" /> {gap.warning.message} ·
               ระหว่าง {formatTime(gap.from)} – {formatTime(gap.to)}
             </p>
           ))}
@@ -638,7 +643,7 @@ const CashCloseAudit = ({
         <div className="manage__reviewList">
           {loading ? (
             <div className="manage__emptyState">
-              <i className="bx bx-loader-alt" />
+            <i className="bx bx-loader-lines" />
               <p>กำลังโหลดรายการตรวจสอบ</p>
             </div>
           ) : reviewEvents.length === 0 ? (
@@ -710,7 +715,7 @@ const CashCloseAudit = ({
                     onClick={() => onApproveTransaction(transaction)}
                   >
                     <i
-                      className={`bx ${approvingTransactionId === transaction._id ? "bx-loader-alt" : "bx-check"}`}
+                      className={`bx ${approvingTransactionId === transaction._id ? "bx-loader-lines" : "bx-check"}`}
                     />
                   </button>
                 </div>
@@ -845,7 +850,9 @@ const Manage = () => {
       },
       {
         label: "Action ที่พบบ่อยสุด",
-        value: mostCommonAction ? actionMap[mostCommonAction.action].text : "-",
+        value: mostCommonAction
+          ? actionMap[mostCommonAction.action]?.text || "กิจกรรม"
+          : "-",
       },
     ],
     [mostActiveStaff, mostCommonAction, stats?.totalActions, users.length],

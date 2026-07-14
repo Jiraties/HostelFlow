@@ -649,7 +649,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
           <div className="home__masterActions">
             <ActionButton
               text="ตัวกรอง"
-              icon="bx-filter-alt"
+              icon="bx-filter"
               className="home__mobileFilterAction"
               onClick={() => setFiltersModalIsOpen(true)}
             />

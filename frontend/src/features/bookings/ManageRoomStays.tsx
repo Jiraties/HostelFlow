@@ -279,7 +279,7 @@ const ManageRoomStays = ({
                   จากวันที่{" "}
                   {isFirstStay(index) && (
                     <span className="manageRoomStays__lockedHint">
-                      <i className="bx bx-lock-alt" />
+                      <i className="bx bx-lock-keyhole" />
                       วัน Check-In
                     </span>
                   )}
@@ -288,7 +288,7 @@ const ManageRoomStays = ({
                   ถึงวันที่{" "}
                   {isLastStay(index) && (
                     <span className="manageRoomStays__lockedHint">
-                      <i className="bx bx-lock-alt" />
+                      <i className="bx bx-lock-keyhole" />
                       วัน Check-Out
                     </span>
                   )}
