@@ -17,14 +17,15 @@ import type { EncryptedField } from "../models/booking";
 import { formatDateAD } from "../helpers/dateHelpers";
 import {
   bookingsReportDepositCollectedTotal,
-  bookingsReportRoomChargeTotal,
   bookingsReportTransactionAmount,
 } from "../helpers/bookingsReportHelpers";
-import {
-  formatRoomStayRooms,
-  getPrimaryRoomId,
-} from "../helpers/roomStayHelpers";
+import { getPrimaryRoomId } from "../helpers/roomStayHelpers";
 import { logActivityStrict } from "../services/activityServices";
+import {
+  commercialRoomSlices,
+  effectiveCommercialSegments,
+  transactionPlatformId,
+} from "../helpers/commercialSegmentHelpers";
 
 const setSensitiveDownloadHeaders = (res: Response) => {
   res.setHeader("Cache-Control", "no-store");
@@ -395,7 +396,10 @@ export const getBookingsReport = async (req: Request, res: Response) => {
     };
 
     if (bookingChannel) {
-      query.platformId = bookingChannel;
+      query.$or = [
+        { platformId: bookingChannel },
+        { "commercialSegments.platformId": bookingChannel },
+      ];
     }
 
     if (bookingStatus && bookingStatus !== "all") {
@@ -446,41 +450,68 @@ export const getBookingsReport = async (req: Request, res: Response) => {
 
     bookings.forEach((booking) => {
       const transactions = booking.transactions || [];
-      const platform = platformMap[booking.platformId] || {
-        label: booking.platformId,
-        color: "94A3B8",
-      };
-      const paymentMethods = [
-        ...new Set(
-          transactions.map((transaction) => transaction.paymentMethod),
-        ),
-      ].join(", ");
+      const roomSlices = commercialRoomSlices(booking);
+      effectiveCommercialSegments(booking)
+        .filter(
+          (segment) =>
+            !bookingChannel || segment.platformId === bookingChannel,
+        )
+        .forEach((segment) => {
+          const platform = platformMap[segment.platformId] || {
+            label: segment.platformId,
+            color: "94A3B8",
+          };
+          const linkedTransaction = transactions.find(
+            (transaction) => String(transaction._id) === segment.transactionId,
+          );
+          const rooms = Array.from(
+            new Set(
+              roomSlices
+                .filter(
+                  (slice) =>
+                    new Date(slice.from) < new Date(segment.to) &&
+                    new Date(slice.to) > new Date(segment.from),
+                )
+                .flatMap((slice) => slice.roomIds),
+            ),
+          ).join(", ");
+          const nights = Math.round(
+            (new Date(segment.to).getTime() -
+              new Date(segment.from).getTime()) /
+              86400000,
+          );
+          const row = sheet.addRow({
+            bookingId: booking.bookingId,
+            checkIn: formatInputDate(new Date(segment.from)),
+            checkOut: formatInputDate(new Date(segment.to)),
+            nights,
+            name: booking.name,
+            platformId: platform.label,
+            status: booking.status,
+            rooms,
+            amount: segment.amount,
+            depositCollected:
+              segment.kind === "original"
+                ? bookingsReportDepositCollectedTotal(transactions)
+                : "",
+            paymentMethods: linkedTransaction?.paymentMethod || "",
+            staffUsername: segment.createdBy || booking.staffUsername,
+            note: segment.note || booking.note || "",
+          });
 
-      const row = sheet.addRow({
-        bookingId: booking.bookingId,
-        checkIn: formatInputDate(booking.checkIn),
-        checkOut: formatInputDate(booking.checkOut),
-        nights: booking.nights,
-        name: booking.name,
-        platformId: platform.label,
-        status: booking.status,
-        rooms: booking.roomStays.map(formatRoomStayRooms).join(", "),
-        amount: bookingsReportRoomChargeTotal(transactions),
-        depositCollected: bookingsReportDepositCollectedTotal(transactions),
-        paymentMethods,
-        staffUsername: booking.staffUsername,
-        note: booking.note || "",
-      });
-
-      const platformCell = row.getCell("platformId");
-      applyRowSpacing(row);
-      applyImportantCellStyle(row);
-      applyStatusCellStyle(row, booking.status);
-      platformCell.font = {
-        color: { argb: `FF${platform.color}` },
-        bold: true,
-      };
-      platformCell.alignment = { vertical: "middle", horizontal: "center" };
+          const platformCell = row.getCell("platformId");
+          applyRowSpacing(row);
+          applyImportantCellStyle(row);
+          applyStatusCellStyle(row, booking.status);
+          platformCell.font = {
+            color: { argb: `FF${platform.color}` },
+            bold: true,
+          };
+          platformCell.alignment = {
+            vertical: "middle",
+            horizontal: "center",
+          };
+        });
 
       transactions
         .map((transaction) => ({
@@ -500,7 +531,9 @@ export const getBookingsReport = async (req: Request, res: Response) => {
             checkOut: formatInputDate(booking.checkOut),
             nights: booking.nights,
             name: booking.name,
-            platformId: "Misc",
+            platformId:
+              platformMap[transactionPlatformId(booking, transaction)]?.label ||
+              transactionPlatformId(booking, transaction),
             status: booking.status,
             rooms: transactionLabel,
             amount,

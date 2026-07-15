@@ -191,8 +191,10 @@ const transactionDashboardGrossRevenueAmount = (transaction) => {
 };
 exports.transactionDashboardGrossRevenueAmount = transactionDashboardGrossRevenueAmount;
 const transactionTodayExtrasRevenueAmount = (transaction) => {
-    if (transaction.type === "roomCharge")
+    if (transaction.type === "roomCharge" &&
+        transaction.sourceAction !== "EXTEND_BOOKING") {
         return 0;
+    }
     const amount = (0, exports.transactionDashboardGrossRevenueAmount)(transaction);
     return amount > 0 ? amount : 0;
 };
@@ -204,14 +206,16 @@ const transactionTodayReductionAmount = (transaction) => {
 exports.transactionTodayReductionAmount = transactionTodayReductionAmount;
 const bookingTodayArrivalRevenueAmount = (booking) => {
     if (booking.status === "cancelled") {
-        const roomChargeTotal = booking.transactions.reduce((total, transaction) => transaction.type === "roomCharge"
+        const roomChargeTotal = booking.transactions.reduce((total, transaction) => transaction.type === "roomCharge" &&
+            transaction.sourceAction !== "EXTEND_BOOKING"
             ? total + Math.abs(transaction.amount || 0)
             : total, 0);
         return Math.min(Math.max(booking.cancellation?.keptAmount || 0, 0), roomChargeTotal);
     }
     if (booking.status === "noShow") {
         return Math.max(booking.transactions.reduce((total, transaction) => {
-            if (transaction.type === "roomCharge") {
+            if (transaction.type === "roomCharge" &&
+                transaction.sourceAction !== "EXTEND_BOOKING") {
                 return transaction.paymentMethod === "Unpaid"
                     ? total
                     : total + Math.abs(transaction.amount || 0);
@@ -227,7 +231,8 @@ const bookingTodayArrivalRevenueAmount = (booking) => {
             return total;
         }, 0), 0);
     }
-    return booking.transactions.reduce((total, transaction) => transaction.type === "roomCharge"
+    return booking.transactions.reduce((total, transaction) => transaction.type === "roomCharge" &&
+        transaction.sourceAction !== "EXTEND_BOOKING"
         ? total + Math.abs(transaction.amount || 0)
         : total, 0);
 };
@@ -272,8 +277,14 @@ const calculateTodayRevenueSummary = (bookings, start, end) => {
             : sum + (0, exports.transactionTodayReductionAmount)(transaction);
     }, 0);
     const todayCollectedRevenue = arrivals.reduce((sum, booking) => sum +
-        (booking.transactions || []).reduce((bookingSum, transaction) => bookingSum +
-            (0, exports.transactionDashboardCollectedRevenueAmount)(transaction, booking.transactions || []), 0), 0);
+        (booking.transactions || []).reduce((bookingSum, transaction) => transaction.sourceAction === "EXTEND_BOOKING"
+            ? bookingSum
+            : bookingSum +
+                (0, exports.transactionDashboardCollectedRevenueAmount)(transaction, booking.transactions || []), 0), 0) +
+        todayTransactions.reduce((sum, { booking, transaction }) => transaction.sourceAction === "EXTEND_BOOKING"
+            ? sum +
+                (0, exports.transactionDashboardCollectedRevenueAmount)(transaction, booking.transactions || [])
+            : sum, 0);
     return {
         todayRevenue: todayArrivalRevenue + todayExtrasRevenue - todayReductions,
         todayArrivalRevenue,

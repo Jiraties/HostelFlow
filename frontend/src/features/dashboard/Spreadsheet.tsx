@@ -338,7 +338,7 @@ const Spreadsheet = ({
     const columns: ColDef<SpreadsheetRow>[] = [
       {
         field: "name",
-        headerName: "ชื่อ",
+        headerName: "Name",
         flex: 1.3,
         minWidth: 180,
         filter: true,
@@ -356,7 +356,7 @@ const Spreadsheet = ({
         minWidth: 128,
         valueFormatter: dateValueFormater,
       },
-      { field: "nights", headerName: "คืน", width: 76, minWidth: 76 },
+      { field: "nights", headerName: "Nights", width: 76, minWidth: 76 },
       {
         valueGetter: (params: ValueGetterParams<SpreadsheetRow>) => {
           if (isSeparatorRow(params.data)) return "";
@@ -364,7 +364,7 @@ const Spreadsheet = ({
             params.data?.roomStays?.map(formatRoomStayRooms).join(", ") || ""
           );
         },
-        headerName: "ห้อง",
+        headerName: "Room",
         filter: true,
         flex: 1,
         minWidth: 160,
@@ -372,14 +372,14 @@ const Spreadsheet = ({
       },
       {
         field: "platformId",
-        headerName: "ช่องทางการจอง",
+        headerName: "Channel",
         filter: true,
         width: 170,
         minWidth: 160,
         cellRenderer: platformCell,
       },
       {
-        headerName: "ค่าห้อง",
+        headerName: "Room Charge",
         width: 140,
         minWidth: 135,
         valueGetter: (params: ValueGetterParams<SpreadsheetRow>) => {
@@ -405,7 +405,7 @@ const Spreadsheet = ({
           if (isSeparatorRow(params.data)) return "";
           return params.data ? roomChargeDisplayPaymentMethod(params.data) : "";
         },
-        headerName: "ช่องทางการจ่าย",
+        headerName: "Payment Method",
         filter: true,
         width: 145,
         minWidth: 140,
@@ -424,7 +424,7 @@ const Spreadsheet = ({
       },
       {
         field: "checkInByStaffUsername",
-        headerName: "เช็คอินโดย",
+        headerName: "Checked-In By",
         width: 130,
         minWidth: 120,
       },

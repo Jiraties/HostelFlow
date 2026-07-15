@@ -64,7 +64,9 @@ Login protection is stored in MongoDB rather than process memory, so multiple ba
 
 New/reset passwords require at least 12 characters and no more than 72 UTF-8 bytes for bcrypt safety. Existing hashes are not migrated and continue through the same bcrypt comparison path.
 
-Production startup now requires exact HTTPS `ALLOWED_ORIGINS`, a valid 64-hex-character `CRYPTO_SECRET`, and a positive integer `TRUST_PROXY_HOPS`. Production cookies are secure/HTTP-only/same-site lax and the implicit Vercel preview wildcard is disabled in production.
+Production startup now requires exact HTTPS `ALLOWED_ORIGINS`, a valid 64-hex-character `CRYPTO_SECRET`, and `TRUST_PROXY_HOPS` as a canonical positive integer no greater than 10. The current public Render web-service path has one Render edge proxy immediately in front of Express, so its value is `1`. Express trusts only that nearest hop; it does not use `trust proxy = true`. Production cookies are secure/HTTP-only/same-site lax and the implicit Vercel preview wildcard is disabled in production.
+
+This repository has no Render Blueprint (`render.yaml`), so the setting is dashboard-managed. In the Render dashboard, open the backend web service, select **Environment**, add `TRUST_PROXY_HOPS` with value `1`, then choose **Save and deploy** (or **Save, rebuild, and deploy**). A redeploy is required before the running process receives the value. If another CDN or reverse proxy is later inserted between Render's public edge and the application, verify the actual path and update this count and the proxy-behavior tests together.
 
 ## Phase 4 — Reports and operational recovery
 
@@ -80,7 +82,7 @@ Do not run these steps against production until a current backup exists and the 
 
 1. Confirm the production MongoDB deployment supports multi-document transactions (replica set or sharded cluster). A standalone MongoDB server is not sufficient for the new financial invariant.
 2. Configure and evidence the backup/key controls in the runbook, then take a fresh recovery point.
-3. In a maintenance window, set the required backend environment values: `MONGO_URI`, `JWT_SECRET`, 64-hex `CRYPTO_SECRET`, exact HTTPS `ALLOWED_ORIGINS`, and the verified `TRUST_PROXY_HOPS` count. Do not store values in Git.
+3. In a maintenance window, set the required backend environment values: `MONGO_URI`, `JWT_SECRET`, 64-hex `CRYPTO_SECRET`, exact HTTPS `ALLOWED_ORIGINS`, and `TRUST_PROXY_HOPS=1` for the current direct Render web-service path. Do not store secret values in Git. If the network path changes, re-verify the hop count rather than increasing it speculatively.
 4. Set `RUN_PREPRODUCTION_INTEGRITY_MIGRATION=true` only for the migration process and run `cd api && npm run migrate:preproduction-integrity`. The idempotent migration backfills missing booking/shift/daily-close revisions and void flags, creates required indexes without dropping unrelated indexes, and reports counts requiring manual review. It does not invent room assignments or destinations.
 5. Resolve every reported invalid inventory reference and every relevant checked-in guest missing a destination through an approved operational correction. Never mass-default destination data.
 6. Deploy the backend and frontend as one coordinated release. Disable official hotel-report use during any rolling interval because the old backend could still accept the old destination behavior.

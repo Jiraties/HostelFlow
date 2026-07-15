@@ -14,6 +14,7 @@ export type CashStashSummary = {
 };
 export type SourceAction =
   | "NEW_BOOKING"
+  | "EXTEND_BOOKING"
   | "CHECK_IN"
   | "CHECK_OUT"
   | "ADD_TRANSACTION"
@@ -265,7 +266,12 @@ export const transactionDashboardGrossRevenueAmount = (transaction: transcation)
 };
 
 export const transactionTodayExtrasRevenueAmount = (transaction: transcation) => {
-  if (transaction.type === "roomCharge") return 0;
+  if (
+    transaction.type === "roomCharge" &&
+    transaction.sourceAction !== "EXTEND_BOOKING"
+  ) {
+    return 0;
+  }
 
   const amount = transactionDashboardGrossRevenueAmount(transaction);
   return amount > 0 ? amount : 0;
@@ -290,7 +296,8 @@ export const bookingTodayArrivalRevenueAmount = (
   if (booking.status === "cancelled") {
     const roomChargeTotal = booking.transactions.reduce(
       (total, transaction) =>
-        transaction.type === "roomCharge"
+        transaction.type === "roomCharge" &&
+        transaction.sourceAction !== "EXTEND_BOOKING"
           ? total + Math.abs(transaction.amount || 0)
           : total,
       0,
@@ -305,7 +312,10 @@ export const bookingTodayArrivalRevenueAmount = (
   if (booking.status === "noShow") {
     return Math.max(
       booking.transactions.reduce((total, transaction) => {
-        if (transaction.type === "roomCharge") {
+        if (
+          transaction.type === "roomCharge" &&
+          transaction.sourceAction !== "EXTEND_BOOKING"
+        ) {
           return transaction.paymentMethod === "Unpaid"
             ? total
             : total + Math.abs(transaction.amount || 0);
@@ -331,7 +341,8 @@ export const bookingTodayArrivalRevenueAmount = (
 
   return booking.transactions.reduce(
     (total, transaction) =>
-      transaction.type === "roomCharge"
+      transaction.type === "roomCharge" &&
+      transaction.sourceAction !== "EXTEND_BOOKING"
         ? total + Math.abs(transaction.amount || 0)
         : total,
     0,
@@ -404,15 +415,28 @@ export const calculateTodayRevenueSummary = (
       sum +
       (booking.transactions || []).reduce(
         (bookingSum, transaction) =>
-          bookingSum +
-          transactionDashboardCollectedRevenueAmount(
-            transaction,
-            booking.transactions || [],
-          ),
+          transaction.sourceAction === "EXTEND_BOOKING"
+            ? bookingSum
+            : bookingSum +
+              transactionDashboardCollectedRevenueAmount(
+                transaction,
+                booking.transactions || [],
+              ),
         0,
       ),
     0,
-  );
+  ) +
+    todayTransactions.reduce(
+      (sum, { booking, transaction }) =>
+        transaction.sourceAction === "EXTEND_BOOKING"
+          ? sum +
+            transactionDashboardCollectedRevenueAmount(
+              transaction,
+              booking.transactions || [],
+            )
+          : sum,
+      0,
+    );
 
   return {
     todayRevenue:

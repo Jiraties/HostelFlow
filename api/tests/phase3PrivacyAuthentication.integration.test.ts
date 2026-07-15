@@ -3,6 +3,7 @@ import { after, before, beforeEach, test } from "node:test";
 import os from "node:os";
 import crypto from "node:crypto";
 import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import { MongoMemoryReplSet } from "mongodb-memory-server";
 
@@ -21,6 +22,7 @@ import {
   trustProxyHops,
   validateProductionWebSecurity,
 } from "../src/config/runtimeSecurity";
+import authMiddleware from "../src/middleware/authMiddleware";
 
 type AuthController = typeof import("../src/controller/auth");
 type BookingController = typeof import("../src/controller/booking");
@@ -128,10 +130,10 @@ beforeEach(async () => {
   );
 });
 
-test("passport authorization matrix denies unauthenticated and staff access", () => {
+test("passport authorization allows authenticated staff and administrators", () => {
   for (const [user, expectedStatus, expectedNext] of [
     [undefined, 401, false],
-    [{ username: "staff", admin: false }, 403, false],
+    [{ username: "staff", admin: false }, 200, true],
     [{ username: "admin", admin: true }, 200, true],
   ] as const) {
     const res = response();
@@ -203,7 +205,7 @@ test("authorized passport reveal decrypts, audits and disables caching", async (
   await bookingController.getPassportData(
     {
       params: { bookingId: "PASSPORT-2" },
-      user: { userId: "admin-id", username: "admin", admin: true },
+      user: { userId: "staff-id", username: "staff", admin: false },
     } as any,
     res as any,
   );
@@ -304,6 +306,71 @@ test("successful login clears failures and production cookies remain secure", as
     await LoginAttempt.countDocuments({ key: { $in: loginAttemptKeys(req, "admin") } }),
     0,
   );
+});
+
+test("a verified login replaces an abandoned session and invalidates its token", async () => {
+  const password = "synthetic-password-123";
+  const abandonedSessionId = "abandoned-session";
+  const user = await User.create({
+    username: "reconnect-staff",
+    password: await bcrypt.hash(password, 10),
+    name: "Reconnect Staff",
+    admin: false,
+    active: true,
+    currentSessionId: abandonedSessionId,
+    currentSessionIssuedAt: new Date(),
+  });
+  const abandonedToken = jwt.sign(
+    {
+      userId: user._id,
+      admin: false,
+      username: user.username,
+      sessionId: abandonedSessionId,
+    },
+    process.env.JWT_SECRET!,
+    { expiresIn: "1d" },
+  );
+
+  const loginResponse = response();
+  await authController.login(
+    loginRequest("reconnect-staff", password),
+    loginResponse as any,
+    (() => undefined) as any,
+  );
+  assert.equal(loginResponse.statusCode, 200);
+
+  const updatedUser = await User.findById(user._id).lean();
+  assert.ok(updatedUser?.currentSessionId);
+  assert.notEqual(updatedUser?.currentSessionId, abandonedSessionId);
+
+  const oldSessionResponse = response();
+  let oldSessionAccepted = false;
+  await authMiddleware(
+    {
+      method: "GET",
+      cookies: { token: abandonedToken },
+    } as any,
+    oldSessionResponse as any,
+    (() => {
+      oldSessionAccepted = true;
+    }) as any,
+  );
+  assert.equal(oldSessionResponse.statusCode, 401);
+  assert.equal(oldSessionAccepted, false);
+
+  const replacementSessionResponse = response();
+  let replacementSessionAccepted = false;
+  await authMiddleware(
+    {
+      method: "GET",
+      cookies: { token: loginResponse.cookieValue },
+    } as any,
+    replacementSessionResponse as any,
+    (() => {
+      replacementSessionAccepted = true;
+    }) as any,
+  );
+  assert.equal(replacementSessionAccepted, true);
 });
 
 test("inactive users get generic failure and weak passwords are rejected", async () => {

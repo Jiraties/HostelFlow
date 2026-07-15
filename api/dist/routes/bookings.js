@@ -8,6 +8,7 @@ const booking_1 = require("../controller/booking");
 const passportAuthorization_1 = require("../middleware/passportAuthorization");
 const bookingsRouter = express_1.default.Router();
 bookingsRouter.post("/newBooking", booking_1.newBooking);
+bookingsRouter.post("/:bookingId/extensions", booking_1.extendBooking);
 bookingsRouter.patch("/editBooking/:bookingId", booking_1.editBooking);
 bookingsRouter.patch("/updateBookingNote/:bookingId", booking_1.updateBookingNote);
 bookingsRouter.patch("/starBooking/:bookingId", booking_1.starBooking);

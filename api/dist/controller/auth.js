@@ -21,11 +21,6 @@ const getAuthCookieOptions = () => ({
     path: "/",
 });
 exports.getAuthCookieOptions = getAuthCookieOptions;
-const SESSION_LIFETIME_MS = 24 * 60 * 60 * 1000;
-const activeSessionError = {
-    error: "บัญชีนี้กำลังใช้งานอยู่บนอุปกรณ์อื่น กรุณาออกจากระบบบนอุปกรณ์เดิมก่อน",
-    code: "ACTIVE_SESSION_EXISTS",
-};
 const normalizeUserSettings = (settings) => ({
     calendarColorMode: settings?.calendarColorMode || user_2.defaultUserSettings.calendarColorMode,
     calendarDensity: settings?.calendarDensity || user_2.defaultUserSettings.calendarDensity,
@@ -336,7 +331,6 @@ const login = async (req, res, next) => {
         if (!process.env.JWT_SECRET)
             throw new Error("JWT_SECRET not found serverside");
         const now = new Date();
-        const sessionCutoff = new Date(now.getTime() - SESSION_LIFETIME_MS);
         let requestSessionId;
         if (req.cookies?.token) {
             try {
@@ -351,25 +345,18 @@ const login = async (req, res, next) => {
             }
         }
         const sessionId = requestSessionId || (0, crypto_1.randomUUID)();
-        const sessionUser = await user_1.default.findOneAndUpdate(requestSessionId
-            ? { _id: user._id, currentSessionId: requestSessionId }
-            : {
-                _id: user._id,
-                $or: [
-                    { currentSessionId: { $exists: false } },
-                    { currentSessionId: null },
-                    { currentSessionIssuedAt: { $exists: false } },
-                    { currentSessionIssuedAt: { $lte: sessionCutoff } },
-                ],
-            }, {
+        const replacedExistingSession = Boolean(user.currentSessionId && user.currentSessionId !== requestSessionId);
+        const sessionUser = await user_1.default.findByIdAndUpdate(user._id, {
             $set: {
                 currentSessionId: sessionId,
                 currentSessionIssuedAt: now,
             },
         }, { returnDocument: "after" });
         if (!sessionUser) {
-            (0, activityServices_1.logActivity)(username, "LOGIN", { success: false }).catch(() => { });
-            return res.status(409).json(activeSessionError);
+            return res.status(401).json({
+                error: "AUTHENTICATION_FAILED",
+                message: "บัญชีผู้ใช้นี้ไม่พร้อมใช้งาน กรุณาลองเข้าสู่ระบบอีกครั้ง",
+            });
         }
         const token = jsonwebtoken_1.default.sign({
             userId: user._id,
@@ -384,7 +371,10 @@ const login = async (req, res, next) => {
             message: "Logged In Successfully.",
             user: sanitizeUser(sessionUser),
         });
-        (0, activityServices_1.logActivity)(username, "LOGIN", { success: true });
+        (0, activityServices_1.logActivity)(username, "LOGIN", {
+            success: true,
+            summary: { replacedExistingSession },
+        });
     }
     catch (err) {
         if (err instanceof loginProtection_1.LoginRateLimitError) {

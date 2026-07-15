@@ -20,6 +20,23 @@ const roomStaySchema = new mongoose_1.default.Schema({
     from: { type: Date },
     to: { type: Date },
 });
+const commercialSegmentSchema = new mongoose_1.default.Schema({
+    kind: {
+        type: String,
+        enum: ["original", "extension"],
+        required: true,
+    },
+    from: { type: Date, required: true },
+    to: { type: Date, required: true },
+    platformId: { type: String, required: true },
+    amount: { type: Number, required: true },
+    transactionId: { type: String, required: true },
+    createdBy: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now, required: true },
+    note: { type: String },
+    operationKeyHash: { type: String, select: false },
+    requestHash: { type: String, select: false },
+});
 const transactionSchema = new mongoose_1.default.Schema({
     type: {
         type: String,
@@ -101,6 +118,7 @@ const transactionSchema = new mongoose_1.default.Schema({
         type: String,
         enum: [
             "NEW_BOOKING",
+            "EXTEND_BOOKING",
             "CHECK_IN",
             "CHECK_OUT",
             "ADD_TRANSACTION",
@@ -120,6 +138,8 @@ const transactionSchema = new mongoose_1.default.Schema({
     reviewedBy: { type: String },
     reviewedAt: { type: Date },
     cashShiftId: { type: String },
+    platformId: { type: String },
+    commercialSegmentId: { type: String },
 });
 const cancellationSchema = new mongoose_1.default.Schema({
     cancellationType: {
@@ -189,6 +209,7 @@ const bookingSchema = new mongoose_1.default.Schema({
     revision: { type: Number, default: 0, required: true },
     name: { type: String },
     roomStays: [roomStaySchema],
+    commercialSegments: { type: [commercialSegmentSchema], default: [] },
     checkIn: { type: Date },
     checkOut: { type: Date },
     nights: { type: Number },
@@ -231,6 +252,13 @@ const bookingSchema = new mongoose_1.default.Schema({
     voidedAt: { type: Date },
     voidedBy: { type: String },
     voidReason: { type: String },
+});
+bookingSchema.index({ bookingId: 1, "commercialSegments.operationKeyHash": 1 }, {
+    name: "booking_extension_idempotency_unique",
+    unique: true,
+    partialFilterExpression: {
+        "commercialSegments.operationKeyHash": { $type: "string" },
+    },
 });
 exports.default = mongoose_1.default.model("Booking", bookingSchema);
 //# sourceMappingURL=booking.js.map

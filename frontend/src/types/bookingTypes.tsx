@@ -47,6 +47,19 @@ export interface roomStay {
   to: string;
 }
 
+export interface commercialSegment {
+  _id?: string;
+  kind: "original" | "extension";
+  from: string | Date;
+  to: string | Date;
+  platformId: PlatformId;
+  amount: number;
+  transactionId: string;
+  createdBy: string;
+  createdAt: string | Date;
+  note?: string;
+}
+
 interface Passport {
   namePrefix?: string;
   nationality?: string;
@@ -97,6 +110,7 @@ export interface transcation {
   createdAt?: string | Date;
   sourceAction?:
     | "NEW_BOOKING"
+    | "EXTEND_BOOKING"
     | "CHECK_IN"
     | "CHECK_OUT"
     | "ADD_TRANSACTION"
@@ -110,6 +124,8 @@ export interface transcation {
   reviewedBy?: string;
   reviewedAt?: string | Date;
   cashShiftId?: string;
+  platformId?: PlatformId;
+  commercialSegmentId?: string;
 }
 
 export interface booking {
@@ -120,6 +136,7 @@ export interface booking {
   voidReason?: string;
   name: string;
   roomStays: roomStay[];
+  commercialSegments?: commercialSegment[];
   checkIn: Date;
   checkOut: Date;
   nights: number;

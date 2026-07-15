@@ -46,6 +46,7 @@ const dateHelpers_1 = require("../helpers/dateHelpers");
 const bookingsReportHelpers_1 = require("../helpers/bookingsReportHelpers");
 const roomStayHelpers_1 = require("../helpers/roomStayHelpers");
 const activityServices_1 = require("../services/activityServices");
+const commercialSegmentHelpers_1 = require("../helpers/commercialSegmentHelpers");
 const setSensitiveDownloadHeaders = (res) => {
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("Pragma", "no-cache");
@@ -321,7 +322,10 @@ const getBookingsReport = async (req, res) => {
             checkOut: { $gt: firstDayOfMonth },
         };
         if (bookingChannel) {
-            query.platformId = bookingChannel;
+            query.$or = [
+                { platformId: bookingChannel },
+                { "commercialSegments.platformId": bookingChannel },
+            ];
         }
         if (bookingStatus && bookingStatus !== "all") {
             query.status = bookingStatus;
@@ -365,37 +369,52 @@ const getBookingsReport = async (req, res) => {
         });
         bookings.forEach((booking) => {
             const transactions = booking.transactions || [];
-            const platform = platformMap[booking.platformId] || {
-                label: booking.platformId,
-                color: "94A3B8",
-            };
-            const paymentMethods = [
-                ...new Set(transactions.map((transaction) => transaction.paymentMethod)),
-            ].join(", ");
-            const row = sheet.addRow({
-                bookingId: booking.bookingId,
-                checkIn: formatInputDate(booking.checkIn),
-                checkOut: formatInputDate(booking.checkOut),
-                nights: booking.nights,
-                name: booking.name,
-                platformId: platform.label,
-                status: booking.status,
-                rooms: booking.roomStays.map(roomStayHelpers_1.formatRoomStayRooms).join(", "),
-                amount: (0, bookingsReportHelpers_1.bookingsReportRoomChargeTotal)(transactions),
-                depositCollected: (0, bookingsReportHelpers_1.bookingsReportDepositCollectedTotal)(transactions),
-                paymentMethods,
-                staffUsername: booking.staffUsername,
-                note: booking.note || "",
+            const roomSlices = (0, commercialSegmentHelpers_1.commercialRoomSlices)(booking);
+            (0, commercialSegmentHelpers_1.effectiveCommercialSegments)(booking)
+                .filter((segment) => !bookingChannel || segment.platformId === bookingChannel)
+                .forEach((segment) => {
+                const platform = platformMap[segment.platformId] || {
+                    label: segment.platformId,
+                    color: "94A3B8",
+                };
+                const linkedTransaction = transactions.find((transaction) => String(transaction._id) === segment.transactionId);
+                const rooms = Array.from(new Set(roomSlices
+                    .filter((slice) => new Date(slice.from) < new Date(segment.to) &&
+                    new Date(slice.to) > new Date(segment.from))
+                    .flatMap((slice) => slice.roomIds))).join(", ");
+                const nights = Math.round((new Date(segment.to).getTime() -
+                    new Date(segment.from).getTime()) /
+                    86400000);
+                const row = sheet.addRow({
+                    bookingId: booking.bookingId,
+                    checkIn: formatInputDate(new Date(segment.from)),
+                    checkOut: formatInputDate(new Date(segment.to)),
+                    nights,
+                    name: booking.name,
+                    platformId: platform.label,
+                    status: booking.status,
+                    rooms,
+                    amount: segment.amount,
+                    depositCollected: segment.kind === "original"
+                        ? (0, bookingsReportHelpers_1.bookingsReportDepositCollectedTotal)(transactions)
+                        : "",
+                    paymentMethods: linkedTransaction?.paymentMethod || "",
+                    staffUsername: segment.createdBy || booking.staffUsername,
+                    note: segment.note || booking.note || "",
+                });
+                const platformCell = row.getCell("platformId");
+                applyRowSpacing(row);
+                applyImportantCellStyle(row);
+                applyStatusCellStyle(row, booking.status);
+                platformCell.font = {
+                    color: { argb: `FF${platform.color}` },
+                    bold: true,
+                };
+                platformCell.alignment = {
+                    vertical: "middle",
+                    horizontal: "center",
+                };
             });
-            const platformCell = row.getCell("platformId");
-            applyRowSpacing(row);
-            applyImportantCellStyle(row);
-            applyStatusCellStyle(row, booking.status);
-            platformCell.font = {
-                color: { argb: `FF${platform.color}` },
-                bold: true,
-            };
-            platformCell.alignment = { vertical: "middle", horizontal: "center" };
             transactions
                 .map((transaction) => ({
                 transaction,
@@ -410,7 +429,8 @@ const getBookingsReport = async (req, res) => {
                     checkOut: formatInputDate(booking.checkOut),
                     nights: booking.nights,
                     name: booking.name,
-                    platformId: "Misc",
+                    platformId: platformMap[(0, commercialSegmentHelpers_1.transactionPlatformId)(booking, transaction)]?.label ||
+                        (0, commercialSegmentHelpers_1.transactionPlatformId)(booking, transaction),
                     status: booking.status,
                     rooms: transactionLabel,
                     amount,

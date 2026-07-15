@@ -25,6 +25,7 @@ import {
   transactionDirection,
   transactionFallsOnBusinessDate,
 } from "../helpers/financeHelpers";
+import { transactionPlatformId } from "../helpers/commercialSegmentHelpers";
 import {
   IdempotencyConflictError,
   withMutationIdempotency,
@@ -757,7 +758,7 @@ const addBreakdownTransaction = (
     transactionId: transaction._id ? String(transaction._id) : undefined,
     bookingId: booking.bookingId,
     guestName: booking.name,
-    platformId: booking.platformId,
+    platformId: transactionPlatformId(booking, transaction),
     type: transaction.type,
     label: meta.label,
     color: meta.color,
@@ -805,7 +806,7 @@ const addPaymentMethodBreakdownTransaction = (
     transactionId: transaction._id ? String(transaction._id) : undefined,
     bookingId: booking.bookingId,
     guestName: booking.name,
-    platformId: booking.platformId,
+    platformId: transactionPlatformId(booking, transaction),
     type: transaction.type,
     label: transactionMeta.label,
     color: transactionMeta.color,
@@ -1472,6 +1473,9 @@ export const startCashShift = async (req: Request, res: Response) => {
         openingMode,
         depositOpeningCash,
         operatingOpeningCash,
+        expectedDepositOpening,
+        expectedOperatingOpening,
+        note: String(req.body.note || "").trim(),
       },
     }).catch((err) => {
       console.error("Failed to log cash shift start", err);
@@ -1685,11 +1689,16 @@ export const closeCashShift = async (req: Request, res: Response) => {
                   depositExpectedCash,
                   depositActualCash,
                   depositVariance,
+                  depositCashIn: movements.depositCashIn,
+                  depositCashOut: movements.depositCashOut,
                   closeDay,
                   depositPreparation,
                   operatingExpectedCash,
                   operatingActualCash,
                   operatingVariance,
+                  operatingCashIn: movements.operatingCashIn,
+                  operatingCashOut: movements.operatingCashOut,
+                  note: String(req.body.note || cashShift.note || "").trim(),
                 },
               };
             });
@@ -1861,12 +1870,17 @@ export const upsertDailyClose = async (req: Request, res: Response) => {
 
     await logActivity(requestUsername, "DAILY_CLOSE", {
       summary: {
+        action: "SAVE_DAILY_RECONCILIATION",
         businessDate: reconciliation.businessDate,
         staffUsername,
+        revision: dailyClose.revision,
         openingCash,
         expectedCash,
         actualCash,
         variance,
+        cashIn: reconciliation.summary.cashIn,
+        cashOut: reconciliation.summary.cashOut,
+        note: req.body.note || "",
       },
     });
 

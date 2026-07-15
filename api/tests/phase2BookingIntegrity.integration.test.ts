@@ -442,3 +442,83 @@ test("unknown room IDs are rejected and accepted bookings map to calendar invent
     acceptedRoom.bookings.some((item: any) => item.bookingId === "VALID-ROOM"),
   );
 });
+
+test("new booking ignores cancelled released stays but blocks cancelled held stays", async () => {
+  const releasedBooking = await bookingFixture("CANCELLED-RELEASED", "Window");
+  releasedBooking.status = "cancelled";
+  releasedBooking.cancellation = {
+    cancellationType: "no_payment_received",
+    roomReleaseStatus: "released",
+    refundAmount: 0,
+    keptAmount: 0,
+    cancelledAt: new Date(),
+    cancelledByStaffUsername: "admin",
+  };
+  await releasedBooking.save();
+
+  const releasedResponse = response();
+  await controller.newBooking(
+    request({
+      body: {
+        booking: {
+          name: "Replacement Guest",
+          bookingId: "REPLACEMENT-RELEASED",
+          checkIn: localDate(),
+          checkOut: localDate(1),
+          platformId: "WALK",
+          roomIds: ["Window"],
+          paymentMethod: "Transfer",
+          price: 500,
+        },
+      },
+      method: "POST",
+      url: "/bookings/newBooking",
+    }),
+    releasedResponse as any,
+    (() => undefined) as any,
+  );
+  assert.equal(
+    releasedResponse.statusCode,
+    201,
+    JSON.stringify(releasedResponse.body),
+  );
+
+  const blockedBooking = await bookingFixture("CANCELLED-BLOCKED", "Balcony");
+  blockedBooking.status = "cancelled";
+  blockedBooking.cancellation = {
+    cancellationType: "no_payment_received",
+    roomReleaseStatus: "blocked",
+    refundAmount: 0,
+    keptAmount: 0,
+    cancelledAt: new Date(),
+    cancelledByStaffUsername: "admin",
+  };
+  await blockedBooking.save();
+
+  const blockedResponse = response();
+  await controller.newBooking(
+    request({
+      body: {
+        booking: {
+          name: "Blocked Replacement Guest",
+          bookingId: "REPLACEMENT-BLOCKED",
+          checkIn: localDate(),
+          checkOut: localDate(1),
+          platformId: "WALK",
+          roomIds: ["Balcony"],
+          paymentMethod: "Transfer",
+          price: 500,
+        },
+      },
+      method: "POST",
+      url: "/bookings/newBooking",
+    }),
+    blockedResponse as any,
+    (() => undefined) as any,
+  );
+  assert.equal(blockedResponse.statusCode, 409);
+  assert.equal(
+    await Booking.countDocuments({ bookingId: "REPLACEMENT-BLOCKED" }),
+    0,
+  );
+});

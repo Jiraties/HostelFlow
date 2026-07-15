@@ -124,6 +124,7 @@ type NewUserForm = {
 
 const actionMap = {
   NEW_BOOKING: { icon: "bx-plus", text: "เพิ่ม Booking" },
+  EXTEND_BOOKING: { icon: "bx-calendar-plus", text: "ต่ออายุ Booking" },
   REMOVE_BOOKING: { icon: "bx-trash", text: "ลบ Booking" },
   EDIT_BOOKING: { icon: "bx-edit", text: "แก้ไข Booking" },
   CHECK_IN: { icon: "bx-check-circle", text: "Check-In" },

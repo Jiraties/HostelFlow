@@ -19,12 +19,14 @@ import {
   resolveBooking,
   updateBookingNote,
   starBooking,
+  extendBooking,
 } from "../controller/booking";
 import { requirePassportAccess } from "../middleware/passportAuthorization";
 
 const bookingsRouter = express.Router();
 
 bookingsRouter.post("/newBooking", newBooking);
+bookingsRouter.post("/:bookingId/extensions", extendBooking);
 bookingsRouter.patch("/editBooking/:bookingId", editBooking);
 bookingsRouter.patch("/updateBookingNote/:bookingId", updateBookingNote);
 bookingsRouter.patch("/starBooking/:bookingId", starBooking);

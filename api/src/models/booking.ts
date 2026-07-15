@@ -13,6 +13,7 @@ export type TransactionDirection = "in" | "out" | "neutral";
 export type TransactionReviewStatus = "none" | "needs_review" | "reviewed";
 export type SourceAction =
   | "NEW_BOOKING"
+  | "EXTEND_BOOKING"
   | "CHECK_IN"
   | "CHECK_OUT"
   | "ADD_TRANSACTION"
@@ -82,6 +83,21 @@ export interface roomStay {
   to: Date;
 }
 
+export interface commercialSegment {
+  _id?: string;
+  kind: "original" | "extension";
+  from: Date;
+  to: Date;
+  platformId: PlatformId;
+  amount: number;
+  transactionId: string;
+  createdBy: string;
+  createdAt: Date;
+  note?: string;
+  operationKeyHash?: string;
+  requestHash?: string;
+}
+
 interface Passport {
   passportHash?: string;
   namePrefix?: NamePrefix;
@@ -110,6 +126,8 @@ export interface transcation {
   reviewedBy?: string;
   reviewedAt?: Date;
   cashShiftId?: string;
+  platformId?: PlatformId;
+  commercialSegmentId?: string;
 }
 
 interface Cancellation {
@@ -167,6 +185,7 @@ export interface booking extends Document {
   revision: number;
   name: string;
   roomStays: roomStay[];
+  commercialSegments: commercialSegment[];
   checkIn: Date;
   checkOut: Date;
   nights: number;
@@ -197,6 +216,24 @@ const roomStaySchema = new mongoose.Schema({
   roomId: { type: String },
   from: { type: Date },
   to: { type: Date },
+});
+
+const commercialSegmentSchema = new mongoose.Schema({
+  kind: {
+    type: String,
+    enum: ["original", "extension"],
+    required: true,
+  },
+  from: { type: Date, required: true },
+  to: { type: Date, required: true },
+  platformId: { type: String, required: true },
+  amount: { type: Number, required: true },
+  transactionId: { type: String, required: true },
+  createdBy: { type: String, required: true },
+  createdAt: { type: Date, default: Date.now, required: true },
+  note: { type: String },
+  operationKeyHash: { type: String, select: false },
+  requestHash: { type: String, select: false },
 });
 
 const transactionSchema = new mongoose.Schema({
@@ -280,6 +317,7 @@ const transactionSchema = new mongoose.Schema({
     type: String,
     enum: [
       "NEW_BOOKING",
+      "EXTEND_BOOKING",
       "CHECK_IN",
       "CHECK_OUT",
       "ADD_TRANSACTION",
@@ -299,6 +337,8 @@ const transactionSchema = new mongoose.Schema({
   reviewedBy: { type: String },
   reviewedAt: { type: Date },
   cashShiftId: { type: String },
+  platformId: { type: String },
+  commercialSegmentId: { type: String },
 });
 
 const cancellationSchema = new mongoose.Schema(
@@ -382,6 +422,7 @@ const bookingSchema = new mongoose.Schema({
   name: { type: String },
 
   roomStays: [roomStaySchema],
+  commercialSegments: { type: [commercialSegmentSchema], default: [] },
 
   checkIn: { type: Date },
   checkOut: { type: Date },
@@ -435,5 +476,16 @@ const bookingSchema = new mongoose.Schema({
   voidedBy: { type: String },
   voidReason: { type: String },
 });
+
+bookingSchema.index(
+  { bookingId: 1, "commercialSegments.operationKeyHash": 1 },
+  {
+    name: "booking_extension_idempotency_unique",
+    unique: true,
+    partialFilterExpression: {
+      "commercialSegments.operationKeyHash": { $type: "string" },
+    },
+  },
+);
 
 export default mongoose.model<booking>("Booking", bookingSchema);

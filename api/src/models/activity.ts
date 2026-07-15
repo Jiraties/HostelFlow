@@ -4,6 +4,7 @@ export type actionType =
   | "LOGIN"
   | "LOGOUT"
   | "NEW_BOOKING"
+  | "EXTEND_BOOKING"
   | "REMOVE_BOOKING"
   | "EDIT_BOOKING"
   | "CHECK_IN"
@@ -37,6 +38,7 @@ export type activity =
       staffUsername: string;
       action:
         | "NEW_BOOKING"
+        | "EXTEND_BOOKING"
         | "REMOVE_BOOKING"
         | "EDIT_BOOKING"
         | "CHECK_IN"
@@ -85,6 +87,7 @@ const activitySchema = new mongoose.Schema({
       "LOGIN",
       "LOGOUT",
       "NEW_BOOKING",
+      "EXTEND_BOOKING",
       "REMOVE_BOOKING",
       "EDIT_BOOKING",
       "CHECK_IN",

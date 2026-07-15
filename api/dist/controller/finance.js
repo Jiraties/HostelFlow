@@ -11,6 +11,7 @@ const dailyClose_1 = __importDefault(require("../models/dailyClose"));
 const user_1 = __importDefault(require("../models/user"));
 const activityServices_1 = require("../services/activityServices");
 const financeHelpers_1 = require("../helpers/financeHelpers");
+const commercialSegmentHelpers_1 = require("../helpers/commercialSegmentHelpers");
 const mutationIdempotency_1 = require("../services/mutationIdempotency");
 const cashShiftMutationLock_1 = require("../services/cashShiftMutationLock");
 const cashLedgerTransaction_1 = require("../services/cashLedgerTransaction");
@@ -535,7 +536,7 @@ const addBreakdownTransaction = (categories, transaction, booking, amount, direc
         transactionId: transaction._id ? String(transaction._id) : undefined,
         bookingId: booking.bookingId,
         guestName: booking.name,
-        platformId: booking.platformId,
+        platformId: (0, commercialSegmentHelpers_1.transactionPlatformId)(booking, transaction),
         type: transaction.type,
         label: meta.label,
         color: meta.color,
@@ -573,7 +574,7 @@ const addPaymentMethodBreakdownTransaction = (paymentMethods, transaction, booki
         transactionId: transaction._id ? String(transaction._id) : undefined,
         bookingId: booking.bookingId,
         guestName: booking.name,
-        platformId: booking.platformId,
+        platformId: (0, commercialSegmentHelpers_1.transactionPlatformId)(booking, transaction),
         type: transaction.type,
         label: transactionMeta.label,
         color: transactionMeta.color,
@@ -1017,6 +1018,9 @@ const startCashShift = async (req, res) => {
                     openingMode,
                     depositOpeningCash,
                     operatingOpeningCash,
+                    expectedDepositOpening,
+                    expectedOperatingOpening,
+                    note: String(req.body.note || "").trim(),
                 },
             }).catch((err) => {
                 console.error("Failed to log cash shift start", err);
@@ -1181,11 +1185,16 @@ const closeCashShift = async (req, res) => {
                             depositExpectedCash,
                             depositActualCash,
                             depositVariance,
+                            depositCashIn: movements.depositCashIn,
+                            depositCashOut: movements.depositCashOut,
                             closeDay,
                             depositPreparation,
                             operatingExpectedCash,
                             operatingActualCash,
                             operatingVariance,
+                            operatingCashIn: movements.operatingCashIn,
+                            operatingCashOut: movements.operatingCashOut,
+                            note: String(req.body.note || cashShift.note || "").trim(),
                         },
                     };
                 });
@@ -1330,12 +1339,17 @@ const upsertDailyClose = async (req, res) => {
         });
         await (0, activityServices_1.logActivity)(requestUsername, "DAILY_CLOSE", {
             summary: {
+                action: "SAVE_DAILY_RECONCILIATION",
                 businessDate: reconciliation.businessDate,
                 staffUsername,
+                revision: dailyClose.revision,
                 openingCash,
                 expectedCash,
                 actualCash,
                 variance,
+                cashIn: reconciliation.summary.cashIn,
+                cashOut: reconciliation.summary.cashOut,
+                note: req.body.note || "",
             },
         });
         res.status(200).json({ dailyClose });

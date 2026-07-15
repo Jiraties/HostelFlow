@@ -27,7 +27,9 @@ const moneyEquals = (left: number, right: number) =>
  */
 export const verifyRestoredData = async (): Promise<RestoreVerificationResult> => {
   const [bookings, users, cashShifts, dailyCloses] = await Promise.all([
-    Booking.find({}).select("bookingId revision roomStays transactions voided").lean(),
+    Booking.find({})
+      .select("bookingId revision roomStays commercialSegments transactions voided")
+      .lean(),
     User.find({}).select("username active").lean(),
     CashShift.find({}).lean(),
     DailyClose.find({}).select("businessDate staffUsername revision").lean(),
@@ -73,6 +75,21 @@ export const verifyRestoredData = async (): Promise<RestoreVerificationResult> =
           ...(transactionsByShift.get(key) || []),
           transaction,
         ]);
+      }
+    }
+
+    for (const segment of booking.commercialSegments || []) {
+      const linkedTransaction = (booking.transactions || []).find(
+        (transaction) => String(transaction._id) === segment.transactionId,
+      );
+      if (
+        !linkedTransaction ||
+        linkedTransaction.type !== "roomCharge" ||
+        new Date(segment.from) >= new Date(segment.to) ||
+        !Number.isFinite(segment.amount) ||
+        segment.amount <= 0
+      ) {
+        errors.push(`booking ${booking.bookingId} has an invalid commercial segment`);
       }
     }
   }

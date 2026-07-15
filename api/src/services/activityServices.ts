@@ -1,5 +1,6 @@
 import Activity from "../models/activity";
 import type { actionType } from "../models/activity";
+import type { ClientSession } from "mongoose";
 
 export const logActivityStrict = async (
   staffUsername: string | undefined,
@@ -11,21 +12,22 @@ export const logActivityStrict = async (
     success?: boolean;
   },
   bookingId?: string,
+  session?: ClientSession,
 ) => {
   if (action === "LOGIN" || action === "LOGOUT") {
-    return await Activity.create({
+    return await new Activity({
       staffUsername: staffUsername || "system",
       action,
       details,
-    });
+    }).save({ session });
   }
 
-  await Activity.create({
+  return await new Activity({
     staffUsername: staffUsername || "system",
     action,
     details,
     bookingId,
-  });
+  }).save({ session });
 };
 
 export const logActivity = async (

@@ -4,6 +4,7 @@ import Booking, {
 } from "../models/booking";
 import dotenv from "dotenv";
 import crypto from "crypto";
+import mongoose from "mongoose";
 
 import { NextFunction, Request, Response } from "express";
 import {
@@ -67,10 +68,19 @@ import {
 } from "../config/roomInventory";
 import { formatDestinationCountryForReport } from "../helpers/passportHelpers";
 import {
+  commercialRoomSlices,
+  effectiveCommercialSegments,
+} from "../helpers/commercialSegmentHelpers";
+import {
   bookingRevisionPredicate,
   expectedBookingRevision,
   sendBookingRevisionConflict,
 } from "../services/bookingConcurrency";
+import {
+  BookingExtensionError,
+  extendBooking as performBookingExtension,
+  type BookingExtensionInput,
+} from "../services/bookingExtension";
 
 dotenv.config();
 
@@ -363,6 +373,15 @@ const getRequestedRoomIds = (booking: { roomIds?: string[]; roomId?: string }) =
     roomId: booking.roomId,
   });
 
+const buildActivityBookingSnapshot = (booking: booking) => ({
+  name: booking.name,
+  checkIn: booking.checkIn,
+  checkOut: booking.checkOut,
+  platformId: booking.platformId,
+  roomIds: getUniqueRoomIdsFromRoomStays(booking.roomStays || []),
+  bookingId: booking.bookingId,
+});
+
 const getRawRoomIds = (value: { roomIds?: string[]; roomId?: string }) =>
   (Array.isArray(value.roomIds) ? value.roomIds : value.roomId ? [value.roomId] : [])
     .map((roomId) => roomId.trim())
@@ -414,6 +433,17 @@ const buildRoomConflictQuery = (roomIds: string[], from: Date, to: Date) => ({
         },
       },
     },
+  ],
+});
+
+const buildBlockingRoomConflictQuery = (
+  roomIds: string[],
+  from: Date,
+  to: Date,
+) => ({
+  $and: [
+    ROOM_BLOCKING_BOOKING_FILTER,
+    buildRoomConflictQuery(roomIds, from, to),
   ],
 });
 
@@ -488,7 +518,12 @@ const buildTransactionsWithCardSurcharge = (
           type: "cardSurcharge",
           paymentMethod: "Card",
           relatedTransactionType: transaction.type,
+          relatedTransactionId: transaction._id
+            ? String(transaction._id)
+            : undefined,
           amount: calculateCardSurcharge(transaction.amount),
+          platformId: transaction.platformId,
+          commercialSegmentId: transaction.commercialSegmentId,
         },
         options,
       ),
@@ -630,19 +665,29 @@ export const newBooking = async (
       ],
       async () => {
         // find bookings that have same room && checkout greater than new checkin && checkin less than new checkout
-        const overlappingBooking = await Booking.findOne({
-          ...ROOM_BLOCKING_BOOKING_FILTER,
-          ...buildRoomConflictQuery(requestedRoomIds, newCheckIn, newCheckOut),
-        });
+        const overlappingBooking = await Booking.findOne(
+          buildBlockingRoomConflictQuery(
+            requestedRoomIds,
+            newCheckIn,
+            newCheckOut,
+          ),
+        );
 
         if (overlappingBooking) {
           return { overlappingBooking };
         }
 
+        const commercialSegmentId = new mongoose.Types.ObjectId();
+        const roomChargeTransactionId = new mongoose.Types.ObjectId();
+        const createdAt = new Date();
         const roomChargeTransaction: transcation = {
+          _id: String(roomChargeTransactionId),
           type: "roomCharge",
           amount: roomChargeAmount,
           paymentMethod: booking.paymentMethod,
+          platformId: booking.platformId,
+          commercialSegmentId: String(commercialSegmentId),
+          createdAt,
         };
 
         const transactions = buildTransactionsWithCardSurcharge(
@@ -667,6 +712,19 @@ export const newBooking = async (
                   roomIds: requestedRoomIds,
                   from: newCheckIn,
                   to: newCheckOut,
+                },
+              ],
+              commercialSegments: [
+                {
+                  _id: commercialSegmentId,
+                  kind: "original",
+                  from: newCheckIn,
+                  to: newCheckOut,
+                  platformId: booking.platformId,
+                  amount: roomChargeAmount,
+                  transactionId: String(roomChargeTransactionId),
+                  createdBy: staffUsername,
+                  createdAt,
                 },
               ],
               note: booking.note || "",
@@ -860,6 +918,20 @@ export const editBooking = async (
         booking: existingBooking,
       });
     }
+    const hasExtensionSegments = (existingBooking.commercialSegments || []).some(
+      (segment) => segment.kind === "extension",
+    );
+    if (
+      hasExtensionSegments &&
+      (toInputDate(existingBooking.checkOut) !== booking.checkOut ||
+        existingBooking.platformId !== booking.platformId)
+    ) {
+      return res.status(400).json({
+        error: "EXTENDED_BOOKING_COMMERCIAL_FIELDS_LOCKED",
+        message:
+          "Booking ที่ต่ออายุแล้วต้องเปลี่ยนวันเช็คเอาท์ผ่าน Extend Booking และไม่สามารถเปลี่ยนช่องทางเดิมได้",
+      });
+    }
 
     const originalRoomStays = [...existingBooking.roomStays].sort(
       (a, b) => new Date(a.from).getTime() - new Date(b.from).getTime(),
@@ -908,8 +980,11 @@ export const editBooking = async (
       async () => {
         const conflictingBookings = await Booking.find({
           bookingId: { $ne: bookingId },
-          ...ROOM_BLOCKING_BOOKING_FILTER,
-          ...buildRoomConflictQuery(roomIds, newCheckIn, newCheckOut),
+          ...buildBlockingRoomConflictQuery(
+            roomIds,
+            newCheckIn,
+            newCheckOut,
+          ),
         });
 
         const hasConflict = conflictingBookings.some((conflictingBooking) =>
@@ -924,6 +999,27 @@ export const editBooking = async (
           return { hasConflict };
         }
 
+        const updatedCommercialSegments = (
+          existingBooking.commercialSegments || []
+        ).map((segment) =>
+          segment.kind === "original"
+            ? {
+                ...segment,
+                from: newCheckIn,
+                to: hasExtensionSegments ? segment.to : newCheckOut,
+                platformId: hasExtensionSegments
+                  ? segment.platformId
+                  : booking.platformId,
+              }
+            : segment,
+        );
+        const updatedTransactions = existingBooking.transactions.map(
+          (transaction) =>
+            transaction.type === "roomCharge" &&
+            transaction.sourceAction !== "EXTEND_BOOKING"
+              ? { ...transaction, platformId: booking.platformId }
+              : transaction,
+        );
         const updatedBooking = await Booking.findOneAndUpdate(
           {
             bookingId,
@@ -940,6 +1036,8 @@ export const editBooking = async (
               platformId: booking.platformId,
               note: booking.note || "",
               roomStays: correctedRoomStays,
+              commercialSegments: updatedCommercialSegments,
+              transactions: updatedTransactions,
             },
             $inc: { revision: 1 },
           },
@@ -1175,6 +1273,7 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
       chartFinancialBookings,
       occupancyBookings,
       monthBookings,
+      channelMixBookings,
       unpaidBookings,
       occupancy,
     ] = await Promise.all([
@@ -1194,6 +1293,10 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
         }),
         Booking.find({
           checkIn: { $gte: startOfMonth, $lt: startOfNextMonth },
+        }),
+        Booking.find({
+          checkIn: { $lt: startOfNextMonth },
+          checkOut: { $gt: startOfMonth },
         }),
         Booking.find({
           status: { $ne: "checkedOut" },
@@ -1266,7 +1369,7 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
       0,
     );
 
-    const channelCounts = new Map<PlatformId, number>();
+    const channelCounts = new Map<PlatformId, { count: number; revenue: number }>();
     const revenueByDate = new Map<
       string,
       {
@@ -1306,11 +1409,19 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
       });
     }
 
-    monthBookings.forEach((booking) => {
-      channelCounts.set(
-        booking.platformId,
-        (channelCounts.get(booking.platformId) || 0) + 1,
-      );
+    channelMixBookings.forEach((booking) => {
+      effectiveCommercialSegments(booking).forEach((segment) => {
+        const segmentStart = new Date(segment.from);
+        const segmentEnd = new Date(segment.to);
+        if (segmentStart >= startOfNextMonth || segmentEnd <= startOfMonth) return;
+        const current = channelCounts.get(segment.platformId) || {
+          count: 0,
+          revenue: 0,
+        };
+        current.count += 1;
+        current.revenue += Math.abs(segment.amount || 0);
+        channelCounts.set(segment.platformId, current);
+      });
     });
 
     chartFinancialTransactions.forEach(({ transaction, bookingTransactions }) => {
@@ -1360,9 +1471,10 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
     });
 
     const channelMix = Array.from(channelCounts.entries()).map(
-      ([platformId, count]) => ({
+      ([platformId, summary]) => ({
         platformId,
-        count,
+        count: summary.count,
+        revenue: summary.revenue,
       }),
     );
     const revenueSeries = Array.from(revenueByDate.entries()).map(
@@ -1427,6 +1539,7 @@ export const getMasterBookings = async (req: Request, res: Response) => {
       checkIn: { $lt: endOfToDate },
       checkOut: { $gt: fromDate },
     };
+    const andFilters: Record<string, unknown>[] = [];
 
     if (typeof name === "string" && name.trim()) {
       query.name = { $regex: escapeRegex(name.trim()), $options: "i" };
@@ -1440,14 +1553,21 @@ export const getMasterBookings = async (req: Request, res: Response) => {
     }
 
     if (typeof room === "string" && room.trim()) {
-      query.$or = [
-        { "roomStays.roomIds": room.trim() },
-        { "roomStays.roomId": room.trim() },
-      ];
+      andFilters.push({
+        $or: [
+          { "roomStays.roomIds": room.trim() },
+          { "roomStays.roomId": room.trim() },
+        ],
+      });
     }
 
     if (typeof channel === "string" && channel.trim()) {
-      query.platformId = channel.trim();
+      andFilters.push({
+        $or: [
+          { platformId: channel.trim() },
+          { "commercialSegments.platformId": channel.trim() },
+        ],
+      });
     }
 
     if (
@@ -1457,6 +1577,7 @@ export const getMasterBookings = async (req: Request, res: Response) => {
     ) {
       query.status = status.trim();
     }
+    if (andFilters.length > 0) query.$and = andFilters;
 
     const bookings = await Booking.find(query).sort({
       checkIn: 1,
@@ -1908,6 +2029,7 @@ export const checkIn = async (req: Request, res: Response) => {
       req.user?.username,
       "CHECK_IN",
       {
+        snapshot: buildActivityBookingSnapshot(existingBooking),
         changes: {
           status: { before: "booked", after: "checkedIn" },
           checkInByStaffUsername: {
@@ -2120,6 +2242,7 @@ export const checkOut = async (req: Request, res: Response) => {
       req.user?.username,
       "CHECK_OUT",
       {
+        snapshot: buildActivityBookingSnapshot(existingBooking),
         changes: {
           status: { before: "checkedIn", after: "checkedOut" },
           transactions: {
@@ -2206,18 +2329,22 @@ export const getMonthCalendar = async (req: Request, res: Response) => {
         !roomCharge ||
         (roomCharge.paymentMethod === "Unpaid" && !hasRoomChargeSettlement);
 
-      booking.roomStays.forEach((roomStay) => {
-        const effectiveStayEnd = effectiveRoomStayEnd(booking, roomStay);
+      commercialRoomSlices(booking).forEach((slice) => {
+        const effectiveStayEnd = effectiveRoomStayEnd(booking, {
+          roomIds: slice.roomIds,
+          from: slice.from,
+          to: slice.to,
+        });
 
-        if (effectiveStayEnd <= new Date(roomStay.from)) return;
+        if (effectiveStayEnd <= new Date(slice.from)) return;
 
-        getRoomStayRoomIds(roomStay).forEach((roomId) => {
+        slice.roomIds.forEach((roomId) => {
           const roomWithMatchingId = rooms.find((room) => room.roomId === roomId);
           roomWithMatchingId?.bookings.push({
             name: booking.name,
-            platformId: booking.platformId,
+            platformId: slice.platformId,
             bookingId: booking.bookingId,
-            from: roomStay.from,
+            from: slice.from,
             to: effectiveStayEnd,
             status: booking.status,
             isUnpaid,
@@ -2361,9 +2488,7 @@ export const manageRoomStays = async (req: Request, res: Response) => {
     const manageResult = await withRoomMutationLocks(sorted, async () => {
       const conflictingBookings = await Booking.find({
         bookingId: { $ne: bookingId },
-        ...ROOM_BLOCKING_BOOKING_FILTER,
-
-        ...buildRoomConflictQuery(roomIds, minFrom, maxTo),
+        ...buildBlockingRoomConflictQuery(roomIds, minFrom, maxTo),
       });
 
       const hasConflict = conflictingBookings.some((booking) =>
@@ -2434,6 +2559,56 @@ export const manageRoomStays = async (req: Request, res: Response) => {
     }
 
     res.status(500).json({ error: (err as Error).message });
+  }
+};
+
+export const extendBooking = async (
+  req: Request<{ bookingId: string }, {}, BookingExtensionInput>,
+  res: Response,
+) => {
+  try {
+    const staffUsername = req.user?.username;
+    if (!staffUsername) {
+      return res.status(403).json({
+        error: "EXTENSION_NOT_AUTHORIZED",
+        message: "ไม่มีสิทธิ์ต่ออายุ booking",
+      });
+    }
+
+    const result = await performBookingExtension({
+      bookingId: req.params.bookingId,
+      input: req.body,
+      idempotencyKey: req.get("Idempotency-Key")?.trim() || "",
+      staffUsername,
+    });
+
+    return res.status(200).json({
+      message: "ต่ออายุ booking สำเร็จ",
+      ...result,
+    });
+  } catch (err) {
+    if (err instanceof BookingExtensionError) {
+      const latestBooking = err.booking
+        ? await Booking.findOne({ bookingId: req.params.bookingId })
+        : null;
+      return res.status(err.status).json({
+        error: err.code,
+        message: err.message,
+        ...(latestBooking ? { booking: latestBooking } : {}),
+      });
+    }
+    if (err instanceof CashShiftLedgerConflictError) {
+      return res.status(409).json({ error: err.code, message: err.message });
+    }
+
+    console.error("Booking extension failed", {
+      bookingId: req.params.bookingId,
+      error: err instanceof Error ? err.message : "Unknown error",
+    });
+    return res.status(500).json({
+      error: "BOOKING_EXTENSION_FAILED",
+      message: "ไม่สามารถต่ออายุ booking ได้ กรุณาลองใหม่",
+    });
   }
 };
 
@@ -2893,6 +3068,7 @@ export const cancelBooking = async (req: Request, res: Response) => {
       req.user?.username,
       "CANCEL_BOOKING",
       {
+        snapshot: buildActivityBookingSnapshot(existingBooking),
         changes: {
           status: { before: "booked", after: "cancelled" },
           transactions: {

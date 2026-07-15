@@ -315,6 +315,13 @@
   gap: 0.7rem;
 }
 
+.viewBooking__platformList {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+
 .viewBooking__logo {
   width: 2rem;
   height: 2rem;

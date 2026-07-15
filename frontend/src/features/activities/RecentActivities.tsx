@@ -1,5 +1,6 @@
 import axios from "axios";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { useLocation } from "react-router";
 import { API_URL } from "../../config/api";
 import type {
@@ -21,6 +22,7 @@ const ACTIVITY_PAGE_SIZE = 10;
 
 const actionMap = {
   NEW_BOOKING: { icon: "bx-plus", text: "เพิ่ม Booking" },
+  EXTEND_BOOKING: { icon: "bx-calendar-plus", text: "ต่ออายุ Booking" },
   REMOVE_BOOKING: { icon: "bx-trash", text: "ลบ Booking" },
   EDIT_BOOKING: { icon: "bx-edit", text: "แก้ไข Booking" },
   CHECK_IN: { icon: "bx-check-circle", text: "Check-In" },
@@ -144,8 +146,6 @@ const formatRoomStay = (
   )} - ${formatDate(stay.to, dateFormat)}`;
 
 const getAddedTransactions = (item: activity) => {
-  if (item.action !== "ADD_TRANSACTION") return [];
-
   const summaryTransactions = item.details.summary?.addedTransactions;
   if (summaryTransactions?.length) return summaryTransactions;
 
@@ -175,6 +175,349 @@ const getRoomStayChange = (item: activity) => {
   };
 };
 
+const detailLabels: Record<string, string> = {
+  name: "ชื่อผู้เข้าพัก",
+  checkIn: "Check In",
+  checkOut: "Check Out",
+  platformId: "ช่องทางการจอง",
+  note: "หมายเหตุ",
+  starred: "ปักดาว",
+  status: "สถานะ",
+  checkInByStaffUsername: "พนักงาน Check-In",
+  checkedInAt: "เวลา Check-In",
+  targetName: "ชื่อผู้ใช้",
+  targetUsername: "Username",
+  createdName: "ชื่อผู้ใช้",
+  createdUsername: "Username",
+  resetName: "ชื่อผู้ใช้",
+  resetUsername: "Username",
+  admin: "สิทธิ์ Admin",
+  active: "สถานะใช้งาน",
+  bookingId: "Booking ID",
+  outcome: "ผลการดำเนินการ",
+  finalStatus: "สถานะสุดท้าย",
+  reasonCode: "เหตุผล",
+  roomReleaseStatus: "สถานะห้อง",
+  sensitiveOutTotal: "ยอดจ่ายออกที่ต้องตรวจสอบ",
+  amendedAfterClose: "แก้ไขหลังปิดยอด",
+  transactionId: "Transaction ID",
+  guestName: "ชื่อผู้เข้าพัก",
+  type: "ประเภทรายการ",
+  paymentMethod: "ช่องทางการชำระ",
+  amount: "จำนวนเงิน",
+  flags: "เหตุผลที่ต้องตรวจสอบ",
+  reviewedBy: "ตรวจสอบโดย",
+  reviewedAt: "เวลาตรวจสอบ",
+  updatedSettings: "การตั้งค่าที่แก้ไข",
+  reportType: "ประเภทรายงาน",
+  businessDate: "วันที่ข้อมูล",
+  bookingCount: "จำนวน Booking",
+  voidReason: "เหตุผลที่ลบ",
+  voidedBy: "ลบโดย",
+  transactionCount: "จำนวนรายการการเงิน",
+};
+
+const cashActionTitles: Record<string, string> = {
+  START_CASH_SHIFT: "เปิดกะเงินสด",
+  CLOSE_CASH_SHIFT: "ปิดกะเงินสด",
+  SAVE_DAILY_RECONCILIATION: "บันทึกยอดเงินสดประจำวัน",
+  REVIEW_CASH_SHIFT_AUDIT: "ตรวจสอบข้อยกเว้นเงินสด",
+};
+
+const getActivityAction = (item: activity) => {
+  const action = actionMap[item.action] || unknownAction;
+  if (item.action !== "DAILY_CLOSE") return action;
+
+  const cashAction = item.details.summary?.action;
+  return typeof cashAction === "string" && cashActionTitles[cashAction]
+    ? { ...action, text: cashActionTitles[cashAction] }
+    : action;
+};
+
+const hasValue = (value: unknown) =>
+  value !== undefined && value !== null && value !== "";
+
+const DetailRow = ({ label, value }: { label: string; value: ReactNode }) => {
+  if (!hasValue(value)) return null;
+  return (
+    <p>
+      <strong>{label}:</strong> {value}
+    </p>
+  );
+};
+
+const formatGenericValue = (
+  key: string,
+  value: unknown,
+  dateFormat: "dd/MM/yyyy" | "d MMM yyyy",
+): ReactNode => {
+  if (!hasValue(value)) return null;
+  if (typeof value === "boolean") return value ? "ใช่" : "ไม่ใช่";
+  if (typeof value === "number") {
+    return /(amount|cash|variance|total)$/i.test(key)
+      ? `${formatCurrency(value)} บาท`
+      : value.toLocaleString("th-TH");
+  }
+  if (Array.isArray(value)) return value.map(String).join(", ");
+  if (value instanceof Date) return formatActivityDate(value, dateFormat);
+  if (typeof value === "object") return null;
+
+  if (
+    typeof value === "string" &&
+    /(At|Date|checkIn|checkOut|from|to)$/i.test(key) &&
+    !Number.isNaN(new Date(value).getTime())
+  ) {
+    return /At$/i.test(key)
+      ? formatActivityDate(new Date(value), dateFormat)
+      : formatDate(value, dateFormat);
+  }
+
+  const translatedValues: Record<string, Record<string, string>> = {
+    status: {
+      booked: "จองแล้ว",
+      checkedIn: "Check-In แล้ว",
+      checkedOut: "Check-Out แล้ว",
+      cancelled: "ยกเลิกแล้ว",
+      noShow: "No-show",
+    },
+    finalStatus: {
+      checkedOut: "Check-Out แล้ว",
+      cancelled: "ยกเลิกแล้ว",
+      noShow: "No-show",
+    },
+    roomReleaseStatus: { released: "เปิดขายแล้ว", blocked: "ยังบล็อกห้อง" },
+    openingMode: { counted: "นับเงินใหม่", accepted_handoff: "รับยอดส่งต่อ" },
+    outcome: {
+      normal_checkout: "Check-Out ปกติ",
+      early_checkout: "Check-Out ก่อนกำหนด",
+      cancelled_before_arrival: "ยกเลิกก่อนเข้าพัก",
+      cancelled_after_checkin: "ยกเลิกหลัง Check-In",
+      no_show: "No-show",
+      guest_left: "แขกออกจากที่พัก",
+      post_close_adjustment: "แก้ไขหลังปิดยอด",
+    },
+    reportType: {
+      immigration: "รายงานตรวจคนเข้าเมือง",
+      hotel_accommodation: "รายงานผู้เข้าพัก",
+    },
+  };
+  return translatedValues[key]?.[String(value)] || String(value);
+};
+
+const BookingSnapshotDetails = ({
+  item,
+  dateFormat,
+}: {
+  item: activity;
+  dateFormat: "dd/MM/yyyy" | "d MMM yyyy";
+}) => {
+  const snapshot = item.details.snapshot;
+  const roomIds =
+    snapshot?.roomIds || (snapshot?.roomId ? [snapshot.roomId] : []);
+  const bookingId = item.bookingId || snapshot?.bookingId;
+  const standardSnapshotKeys = new Set([
+    "name", "checkIn", "checkOut", "platformId", "roomId", "roomIds",
+    "price", "paymentMethod", "bookingId",
+  ]);
+
+  return (
+    <>
+      <DetailRow label="Booking ID" value={bookingId} />
+      <DetailRow label="ชื่อผู้เข้าพัก" value={snapshot?.name} />
+      <DetailRow
+        label="Check In"
+        value={snapshot?.checkIn ? formatDate(snapshot.checkIn, dateFormat) : null}
+      />
+      <DetailRow
+        label="Check Out"
+        value={snapshot?.checkOut ? formatDate(snapshot.checkOut, dateFormat) : null}
+      />
+      <DetailRow
+        label="ห้อง"
+        value={roomIds.length ? formatCompactRoomNames(roomIds) : null}
+      />
+      <DetailRow label="ช่องทางการจอง" value={snapshot?.platformId} />
+      <DetailRow
+        label="ราคา"
+        value={
+          typeof snapshot?.price === "number"
+            ? `${formatCurrency(snapshot.price)} บาท`
+            : null
+        }
+      />
+      <DetailRow label="ช่องทางการจ่าย" value={snapshot?.paymentMethod} />
+      {Object.entries(snapshot || {})
+        .filter(([key]) => !standardSnapshotKeys.has(key))
+        .map(([key, value]) => (
+          <DetailRow
+            key={key}
+            label={detailLabels[key] || key}
+            value={formatGenericValue(key, value, dateFormat)}
+          />
+        ))}
+    </>
+  );
+};
+
+const TransactionDetails = ({ item }: { item: activity }) => {
+  const transactions = getAddedTransactions(item);
+  return (
+    <>
+      {transactions.map((transaction, index) => (
+        <p key={transaction._id || `${transaction.type}-${transaction.amount}-${index}`}>
+          <strong>{transactionLabelMap[transaction.type]}:</strong>{" "}
+          {formatCurrency(transaction.amount)} บาท ({transaction.paymentMethod})
+          {transaction.note ? ` · ${transaction.note}` : ""}
+        </p>
+      ))}
+    </>
+  );
+};
+
+const GenericChanges = ({
+  item,
+  dateFormat,
+}: {
+  item: activity;
+  dateFormat: "dd/MM/yyyy" | "d MMM yyyy";
+}) => (
+  <>
+    {Object.entries(item.details.changes || {})
+      .filter(([key]) => key !== "transactions" && key !== "roomStays")
+      .map(([key, change]) => {
+        if (!change || typeof change !== "object") return null;
+        const before = formatGenericValue(key, change.before, dateFormat);
+        const after = formatGenericValue(key, change.after, dateFormat);
+        if (!hasValue(before) && !hasValue(after)) return null;
+        return (
+          <DetailRow
+            key={key}
+            label={detailLabels[key] || key}
+            value={
+              <>
+                {before ?? "-"} → {after ?? "-"}
+              </>
+            }
+          />
+        );
+      })}
+  </>
+);
+
+const ActivityDetails = ({
+  item,
+  dateFormat,
+}: {
+  item: activity;
+  dateFormat: "dd/MM/yyyy" | "d MMM yyyy";
+}) => {
+  const summary = item.details.summary || {};
+
+  if (item.action === "MANAGE_ROOM_STAYS") {
+    const roomStayChange = getRoomStayChange(item);
+    return (
+      <div className="settings__activityDetails">
+        <DetailRow label="Booking ID" value={item.bookingId} />
+        <DetailRow
+          label="ก่อนแก้"
+          value={roomStayChange?.before.map((stay) => formatRoomStay(stay, dateFormat)).join(", ") || "-"}
+        />
+        <DetailRow
+          label="หลังแก้"
+          value={roomStayChange?.after.map((stay) => formatRoomStay(stay, dateFormat)).join(", ") || "-"}
+        />
+      </div>
+    );
+  }
+
+  if (item.action === "EXTEND_BOOKING") {
+    return (
+      <div className="settings__activityDetails">
+        <DetailRow label="Booking ID" value={item.bookingId} />
+        <DetailRow label="วันที่เดิม" value={summary.originalCheckOut ? formatDate(summary.originalCheckOut as string | Date, dateFormat) : null} />
+        <DetailRow label="วันที่ใหม่" value={summary.newCheckOut ? `${formatDate(summary.newCheckOut as string | Date, dateFormat)} (${Number(summary.addedNights || 0)} คืน)` : null} />
+        <DetailRow label="ช่องทาง" value={hasValue(summary.originalPlatform) || hasValue(summary.extensionPlatform) ? `${String(summary.originalPlatform || "-")} → ${String(summary.extensionPlatform || "-")}` : null} />
+        <DetailRow label="ห้องช่วงต่ออายุ" value={Array.isArray(summary.extensionRooms) ? formatCompactRoomNames(summary.extensionRooms) : null} />
+        <DetailRow label="ยอดรับชำระ" value={typeof summary.amount === "number" ? `${formatCurrency(summary.amount)} บาท (${String(summary.paymentMethod || "-")})` : null} />
+        <DetailRow label="Transaction ID" value={summary.transactionId as string} />
+        <DetailRow label="หมายเหตุ" value={summary.note as string} />
+      </div>
+    );
+  }
+
+  if (item.action === "CHECK_OUT") {
+    const disposition = summary.depositDisposition === "returned" ? "คืนมัดจำ" : summary.depositDisposition === "kept" ? "เก็บมัดจำเป็นรายได้" : null;
+    return (
+      <div className="settings__activityDetails">
+        <BookingSnapshotDetails item={item} dateFormat={dateFormat} />
+        <DetailRow label="การจัดการมัดจำ" value={disposition} />
+        <DetailRow label="ยอดคืนมัดจำ" value={typeof summary.depositRefundAmount === "number" ? `${formatCurrency(summary.depositRefundAmount)} บาท` : null} />
+        <DetailRow label="ยอดมัดจำที่เก็บไว้" value={typeof summary.depositKeptAmount === "number" ? `${formatCurrency(summary.depositKeptAmount)} บาท` : null} />
+        <DetailRow label="Check Out ก่อนกำหนด" value={typeof summary.earlyCheckOut === "boolean" ? (summary.earlyCheckOut ? "ใช่" : "ไม่ใช่") : null} />
+        <DetailRow label="จำนวนคืนก่อนกำหนด" value={typeof summary.nightsEarly === "number" ? `${summary.nightsEarly} คืน` : null} />
+        <DetailRow label="สถานะห้อง" value={summary.roomReleaseStatus === "released" ? "เปิดขายแล้ว" : summary.roomReleaseStatus === "blocked" ? "ยังบล็อกห้อง" : null} />
+        <TransactionDetails item={item} />
+      </div>
+    );
+  }
+
+  if (item.action === "CANCEL_BOOKING") {
+    const cancellationLabels: Record<string, string> = { refundable: "คืนเงิน", non_refundable: "ไม่คืนเงิน", no_payment_received: "ยังไม่ได้รับชำระ" };
+    return (
+      <div className="settings__activityDetails">
+        <BookingSnapshotDetails item={item} dateFormat={dateFormat} />
+        <DetailRow label="ประเภทการยกเลิก" value={typeof summary.cancellationType === "string" ? cancellationLabels[summary.cancellationType] || summary.cancellationType : null} />
+        <DetailRow label="ยอดคืน" value={typeof summary.refundAmount === "number" ? `${formatCurrency(summary.refundAmount)} บาท` : null} />
+        <DetailRow label="ยอดที่เก็บไว้" value={typeof summary.keptAmount === "number" ? `${formatCurrency(summary.keptAmount)} บาท` : null} />
+        <DetailRow label="สถานะห้อง" value={summary.roomReleaseStatus === "released" ? "เปิดขายแล้ว" : summary.roomReleaseStatus === "blocked" ? "ยังบล็อกห้อง" : null} />
+        <TransactionDetails item={item} />
+      </div>
+    );
+  }
+
+  if (item.action === "DAILY_CLOSE") {
+    const cashFields: Array<[string, string, boolean?]> = [
+      ["businessDate", "วันที่ปิดยอด"], ["shiftNumber", "กะที่"], ["openingMode", "วิธีเปิดกะ"],
+      ["depositOpeningCash", "เงินมัดจำเริ่มต้น", true], ["operatingOpeningCash", "เงินดำเนินงานเริ่มต้น", true],
+      ["expectedDepositOpening", "เงินมัดจำที่ควรรับมา", true], ["expectedOperatingOpening", "เงินดำเนินงานที่ควรรับมา", true],
+      ["depositCashIn", "เงินมัดจำเข้า", true], ["depositCashOut", "เงินมัดจำออก", true],
+      ["depositExpectedCash", "เงินมัดจำที่ควรมี", true], ["depositActualCash", "เงินมัดจำที่นับได้", true], ["depositVariance", "ส่วนต่างเงินมัดจำ", true],
+      ["operatingCashIn", "เงินดำเนินงานเข้า", true], ["operatingCashOut", "เงินดำเนินงานออก", true],
+      ["operatingExpectedCash", "เงินดำเนินงานที่ควรมี", true], ["operatingActualCash", "เงินดำเนินงานที่นับได้", true], ["operatingVariance", "ส่วนต่างเงินดำเนินงาน", true],
+      ["openingCash", "เงินสดเริ่มต้น", true], ["cashIn", "เงินสดเข้า", true], ["cashOut", "เงินสดออก", true],
+      ["expectedCash", "เงินสดที่ควรมี", true], ["actualCash", "เงินสดที่นับได้", true], ["variance", "ส่วนต่าง", true],
+      ["revision", "Revision"], ["staffUsername", "ยอดของพนักงาน"], ["note", "หมายเหตุ"],
+    ];
+    return (
+      <div className="settings__activityDetails">
+        {cashFields.map(([key, label, currency]) => (
+          <DetailRow key={key} label={label} value={typeof summary[key] === "number" && currency ? `${formatCurrency(summary[key] as number)} บาท` : formatGenericValue(key, summary[key], dateFormat)} />
+        ))}
+        <DetailRow label="ปิดยอดสุดท้ายของวัน" value={typeof summary.closeDay === "boolean" ? (summary.closeDay ? "ใช่" : "ไม่ใช่") : null} />
+        <DetailRow label="รหัสคำเตือน" value={Array.isArray(summary.warningCodes) ? summary.warningCodes.join(", ") : null} />
+      </div>
+    );
+  }
+
+  const showTransactions = ["ADD_TRANSACTION", "RESOLVE_STAY", "POST_CLOSE_ADJUSTMENT"].includes(item.action);
+  const ignoredSummaryKeys = new Set(["addedTransactions", "beforeRoomStays", "afterRoomStays"]);
+  return (
+    <div className="settings__activityDetails">
+      <BookingSnapshotDetails item={item} dateFormat={dateFormat} />
+      {item.action === "LOGIN" || item.action === "LOGOUT" ? (
+        <DetailRow label="ผลลัพธ์" value={item.details.success === false ? "ไม่สำเร็จ" : "สำเร็จ"} />
+      ) : null}
+      <GenericChanges item={item} dateFormat={dateFormat} />
+      {Object.entries(summary)
+        .filter(([key, value]) => !ignoredSummaryKeys.has(key) && hasValue(formatGenericValue(key, value, dateFormat)))
+        .map(([key, value]) => (
+          <DetailRow key={key} label={detailLabels[key] || key} value={formatGenericValue(key, value, dateFormat)} />
+        ))}
+      {showTransactions ? <TransactionDetails item={item} /> : null}
+    </div>
+  );
+};
+
 const ActivityHeader = ({
   item,
   dateFormat,
@@ -182,7 +525,7 @@ const ActivityHeader = ({
   item: activity;
   dateFormat: "dd/MM/yyyy" | "d MMM yyyy";
 }) => {
-  const action = actionMap[item.action] || unknownAction;
+  const action = getActivityAction(item);
   const date = new Date(item.timestamp);
 
   return (
@@ -309,116 +652,15 @@ const RecentActivities = ({ userId }: { userId?: string }) => {
         <div className="settings__activityStatus">กำลังโหลดประวัติ...</div>
       )}
 
-      {activities.map((item) => {
-        if (item.action === "NEW_BOOKING" || item.action === "REMOVE_BOOKING") {
-          return (
-            <div className="settings__activity" key={item.timestamp.toString()}>
-              <ActivityHeader item={item} dateFormat={dateFormat} />
-
-              <div className="settings__activityDetails">
-                <p>
-                  <strong>ชื่อผู้เข้าพัก:</strong> {item.details.snapshot?.name}
-                </p>
-                <p>
-                  <strong>Check In:</strong>{" "}
-                  {formatDate(
-                    item.details.snapshot?.checkIn || "",
-                    dateFormat,
-                  )}
-                </p>
-                <p>
-                  <strong>Check Out:</strong>{" "}
-                  {formatDate(
-                    item.details.snapshot?.checkOut || "",
-                    dateFormat,
-                  )}
-                </p>
-                <p>
-                  <strong>ห้อง:</strong>{" "}
-                  {formatCompactRoomNames(
-                    item.details.snapshot?.roomIds ||
-                      (item.details.snapshot?.roomId
-                        ? [item.details.snapshot.roomId]
-                        : []),
-                  )}
-                </p>
-                <p>
-                  <strong>ช่องทางการจอง:</strong>{" "}
-                  {item.details.snapshot?.platformId}
-                </p>
-                <p>
-                  <strong>ราคา:</strong> {item.details.snapshot?.price}
-                </p>
-                <p>
-                  <strong>ช่องทางการจ่าย:</strong>{" "}
-                  {item.details.snapshot?.paymentMethod}
-                </p>
-                <p>
-                  <strong>Booking ID:</strong>{" "}
-                  {item.details.snapshot?.bookingId}
-                </p>
-              </div>
-            </div>
-          );
-        }
-
-        if (item.action === "ADD_TRANSACTION") {
-          const addedTransactions = getAddedTransactions(item);
-
-          return (
-            <div className="settings__activity" key={item.timestamp.toString()}>
-              <ActivityHeader item={item} dateFormat={dateFormat} />
-
-              <div className="settings__activityDetails">
-                <p>
-                  <strong>Booking ID:</strong> {item.bookingId}
-                </p>
-                {addedTransactions.map((transaction, index) => (
-                  <p key={`${transaction.type}-${transaction.amount}-${index}`}>
-                    <strong>{transactionLabelMap[transaction.type]}:</strong>{" "}
-                    {formatCurrency(transaction.amount)} บาท (
-                    {transaction.paymentMethod})
-                  </p>
-                ))}
-              </div>
-            </div>
-          );
-        }
-
-        if (item.action === "MANAGE_ROOM_STAYS") {
-          const roomStayChange = getRoomStayChange(item);
-
-          return (
-            <div className="settings__activity" key={item.timestamp.toString()}>
-              <ActivityHeader item={item} dateFormat={dateFormat} />
-
-              <div className="settings__activityDetails">
-                <p>
-                  <strong>Booking ID:</strong> {item.bookingId}
-                </p>
-                <p>
-                  <strong>ก่อนแก้:</strong>{" "}
-                  {roomStayChange?.before
-                    .map((stay) => formatRoomStay(stay, dateFormat))
-                    .join(", ") || "-"}
-                </p>
-                <p>
-                  <strong>หลังแก้:</strong>{" "}
-                  {roomStayChange?.after
-                    .map((stay) => formatRoomStay(stay, dateFormat))
-                    .join(", ") || "-"}
-                </p>
-              </div>
-            </div>
-          );
-        }
-
-        return (
-          <div className="settings__activity" key={item.timestamp.toString()}>
-            <ActivityHeader item={item} dateFormat={dateFormat} />
-          </div>
-        );
-      })}
+      {activities.map((item) => (
+        <div
+          className="settings__activity"
+          key={item._id || item.timestamp.toString()}
+        >
+          <ActivityHeader item={item} dateFormat={dateFormat} />
+          <ActivityDetails item={item} dateFormat={dateFormat} />
+        </div>
+      ))}
 
       {error && <div className="settings__activityStatus">{error}</div>}
       {loadingMore && (

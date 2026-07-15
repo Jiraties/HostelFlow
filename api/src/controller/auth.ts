@@ -26,13 +26,6 @@ export const getAuthCookieOptions = () => ({
   path: "/",
 });
 
-const SESSION_LIFETIME_MS = 24 * 60 * 60 * 1000;
-
-const activeSessionError = {
-  error: "บัญชีนี้กำลังใช้งานอยู่บนอุปกรณ์อื่น กรุณาออกจากระบบบนอุปกรณ์เดิมก่อน",
-  code: "ACTIVE_SESSION_EXISTS",
-};
-
 const normalizeUserSettings = (settings?: Partial<UserSettings>) => ({
   calendarColorMode:
     settings?.calendarColorMode || defaultUserSettings.calendarColorMode,
@@ -429,7 +422,6 @@ export const login = async (
       throw new Error("JWT_SECRET not found serverside");
 
     const now = new Date();
-    const sessionCutoff = new Date(now.getTime() - SESSION_LIFETIME_MS);
     let requestSessionId: string | undefined;
 
     if (req.cookies?.token) {
@@ -450,18 +442,11 @@ export const login = async (
     }
 
     const sessionId = requestSessionId || randomUUID();
-    const sessionUser = await User.findOneAndUpdate(
-      requestSessionId
-        ? { _id: user._id, currentSessionId: requestSessionId }
-        : {
-            _id: user._id,
-            $or: [
-              { currentSessionId: { $exists: false } },
-              { currentSessionId: null },
-              { currentSessionIssuedAt: { $exists: false } },
-              { currentSessionIssuedAt: { $lte: sessionCutoff } },
-            ],
-          },
+    const replacedExistingSession = Boolean(
+      user.currentSessionId && user.currentSessionId !== requestSessionId,
+    );
+    const sessionUser = await User.findByIdAndUpdate(
+      user._id,
       {
         $set: {
           currentSessionId: sessionId,
@@ -472,8 +457,10 @@ export const login = async (
     );
 
     if (!sessionUser) {
-      logActivity(username, "LOGIN", { success: false }).catch(() => {});
-      return res.status(409).json(activeSessionError);
+      return res.status(401).json({
+        error: "AUTHENTICATION_FAILED",
+        message: "บัญชีผู้ใช้นี้ไม่พร้อมใช้งาน กรุณาลองเข้าสู่ระบบอีกครั้ง",
+      });
     }
 
     const token = jwt.sign(
@@ -496,7 +483,10 @@ export const login = async (
       user: sanitizeUser(sessionUser),
     });
 
-    logActivity(username, "LOGIN", { success: true });
+    logActivity(username, "LOGIN", {
+      success: true,
+      summary: { replacedExistingSession },
+    });
   } catch (err) {
     if (err instanceof LoginRateLimitError) {
       res.setHeader("Retry-After", String(err.retryAfterSeconds));

@@ -32,6 +32,40 @@ type CashLedgerOperation<T> = (
   session?: ClientSession,
 ) => Promise<T>;
 
+export const assignCashTransactionsInSession = async (
+  transactions: transcation[],
+  session: ClientSession,
+) => {
+  if (!transactions.some((transaction) => transaction.paymentMethod === "Cash")) {
+    return transactions;
+  }
+
+  const cashShift = await CashShift.findOne({
+    businessDate: businessDateKey(),
+    status: "open",
+  })
+    .sort({ startedAt: -1 })
+    .session(session);
+
+  if (!cashShift) throw new CashShiftLedgerConflictError();
+
+  const shiftUpdate = await CashShift.updateOne(
+    { _id: cashShift._id, status: "open" },
+    { $inc: { ledgerRevision: 1 } },
+    { session },
+  );
+  if (shiftUpdate.modifiedCount !== 1) {
+    throw new CashShiftLedgerConflictError();
+  }
+
+  const cashShiftId = String(cashShift._id);
+  return transactions.map((transaction) =>
+    transaction.paymentMethod === "Cash"
+      ? { ...transaction, cashShiftId }
+      : transaction,
+  );
+};
+
 /**
  * Cash-bearing booking writes and cash-shift close contend on the same
  * CashShift document. MongoDB therefore commits the booking write only if the
@@ -48,31 +82,10 @@ export const withCashLedgerTransaction = async <T>(
   const session = await mongoose.startSession();
   try {
     const result = await session.withTransaction(async () => {
-      const cashShift = await CashShift.findOne({
-        businessDate: businessDateKey(),
-        status: "open",
-      })
-        .sort({ startedAt: -1 })
-        .session(session);
-
-      if (!cashShift) throw new CashShiftLedgerConflictError();
-
-      const shiftUpdate = await CashShift.updateOne(
-        { _id: cashShift._id, status: "open" },
-        { $inc: { ledgerRevision: 1 } },
-        { session },
+      const assignedTransactions = await assignCashTransactionsInSession(
+        transactions,
+        session,
       );
-      if (shiftUpdate.modifiedCount !== 1) {
-        throw new CashShiftLedgerConflictError();
-      }
-
-      const cashShiftId = String(cashShift._id);
-      const assignedTransactions = transactions.map((transaction) =>
-        transaction.paymentMethod === "Cash"
-          ? { ...transaction, cashShiftId }
-          : transaction,
-      );
-
       return operation(assignedTransactions, session);
     });
 

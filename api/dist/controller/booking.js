@@ -36,10 +36,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getNeedsReviewBookings = exports.resolveBooking = exports.cancelBooking = exports.getPassportData = exports.addTransaction = exports.manageRoomStays = exports.getBookingById = exports.getMonthCalendar = exports.checkOut = exports.checkIn = exports.removeBooking = exports.getMasterBookings = exports.getAdminDashboardStats = exports.getTodayBookings = exports.starBooking = exports.updateBookingNote = exports.editBooking = exports.getRoomAvailability = exports.newBooking = void 0;
+exports.getNeedsReviewBookings = exports.resolveBooking = exports.cancelBooking = exports.getPassportData = exports.addTransaction = exports.extendBooking = exports.manageRoomStays = exports.getBookingById = exports.getMonthCalendar = exports.checkOut = exports.checkIn = exports.removeBooking = exports.getMasterBookings = exports.getAdminDashboardStats = exports.getTodayBookings = exports.starBooking = exports.updateBookingNote = exports.editBooking = exports.getRoomAvailability = exports.newBooking = void 0;
 const booking_1 = __importStar(require("../models/booking"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const crypto_1 = __importDefault(require("crypto"));
+const mongoose_1 = __importDefault(require("mongoose"));
 const activityServices_1 = require("../services/activityServices");
 const financeHelpers_1 = require("../helpers/financeHelpers");
 const dateHelpers_1 = require("../helpers/dateHelpers");
@@ -50,7 +51,9 @@ const cashLedgerTransaction_1 = require("../services/cashLedgerTransaction");
 const financialTransactionPolicy_1 = require("../services/financialTransactionPolicy");
 const roomInventory_1 = require("../config/roomInventory");
 const passportHelpers_1 = require("../helpers/passportHelpers");
+const commercialSegmentHelpers_1 = require("../helpers/commercialSegmentHelpers");
 const bookingConcurrency_1 = require("../services/bookingConcurrency");
+const bookingExtension_1 = require("../services/bookingExtension");
 dotenv_1.default.config();
 const TOTAL_GUEST_CAPACITY = (0, roomInventory_1.activeRoomInventory)().reduce((total, room) => total + room.capacity, 0);
 const CARD_SURCHARGE_RATE = 0.03;
@@ -268,6 +271,14 @@ const getRequestedRoomIds = (booking) => (0, roomStayHelpers_1.getRoomStayRoomId
     roomIds: booking.roomIds,
     roomId: booking.roomId,
 });
+const buildActivityBookingSnapshot = (booking) => ({
+    name: booking.name,
+    checkIn: booking.checkIn,
+    checkOut: booking.checkOut,
+    platformId: booking.platformId,
+    roomIds: (0, roomStayHelpers_1.getUniqueRoomIdsFromRoomStays)(booking.roomStays || []),
+    bookingId: booking.bookingId,
+});
 const getRawRoomIds = (value) => (Array.isArray(value.roomIds) ? value.roomIds : value.roomId ? [value.roomId] : [])
     .map((roomId) => roomId.trim())
     .filter(Boolean);
@@ -299,6 +310,12 @@ const buildRoomConflictQuery = (roomIds, from, to) => ({
                 },
             },
         },
+    ],
+});
+const buildBlockingRoomConflictQuery = (roomIds, from, to) => ({
+    $and: [
+        ROOM_BLOCKING_BOOKING_FILTER,
+        buildRoomConflictQuery(roomIds, from, to),
     ],
 });
 const buildAnyRoomConflictQuery = (from, to) => ({
@@ -345,7 +362,12 @@ const buildTransactionsWithCardSurcharge = (transaction, options) => {
             type: "cardSurcharge",
             paymentMethod: "Card",
             relatedTransactionType: transaction.type,
+            relatedTransactionId: transaction._id
+                ? String(transaction._id)
+                : undefined,
             amount: calculateCardSurcharge(transaction.amount),
+            platformId: transaction.platformId,
+            commercialSegmentId: transaction.commercialSegmentId,
         }, options));
     }
     return transactions;
@@ -444,17 +466,21 @@ const newBooking = async (req, res, next) => {
             },
         ], async () => {
             // find bookings that have same room && checkout greater than new checkin && checkin less than new checkout
-            const overlappingBooking = await booking_1.default.findOne({
-                ...ROOM_BLOCKING_BOOKING_FILTER,
-                ...buildRoomConflictQuery(requestedRoomIds, newCheckIn, newCheckOut),
-            });
+            const overlappingBooking = await booking_1.default.findOne(buildBlockingRoomConflictQuery(requestedRoomIds, newCheckIn, newCheckOut));
             if (overlappingBooking) {
                 return { overlappingBooking };
             }
+            const commercialSegmentId = new mongoose_1.default.Types.ObjectId();
+            const roomChargeTransactionId = new mongoose_1.default.Types.ObjectId();
+            const createdAt = new Date();
             const roomChargeTransaction = {
+                _id: String(roomChargeTransactionId),
                 type: "roomCharge",
                 amount: roomChargeAmount,
                 paymentMethod: booking.paymentMethod,
+                platformId: booking.platformId,
+                commercialSegmentId: String(commercialSegmentId),
+                createdAt,
             };
             const transactions = buildTransactionsWithCardSurcharge(roomChargeTransaction, {
                 createdBy: req.user?.username,
@@ -472,6 +498,19 @@ const newBooking = async (req, res, next) => {
                             roomIds: requestedRoomIds,
                             from: newCheckIn,
                             to: newCheckOut,
+                        },
+                    ],
+                    commercialSegments: [
+                        {
+                            _id: commercialSegmentId,
+                            kind: "original",
+                            from: newCheckIn,
+                            to: newCheckOut,
+                            platformId: booking.platformId,
+                            amount: roomChargeAmount,
+                            transactionId: String(roomChargeTransactionId),
+                            createdBy: staffUsername,
+                            createdAt,
                         },
                     ],
                     note: booking.note || "",
@@ -608,6 +647,15 @@ const editBooking = async (req, res) => {
                 booking: existingBooking,
             });
         }
+        const hasExtensionSegments = (existingBooking.commercialSegments || []).some((segment) => segment.kind === "extension");
+        if (hasExtensionSegments &&
+            ((0, dateHelpers_1.toInputDate)(existingBooking.checkOut) !== booking.checkOut ||
+                existingBooking.platformId !== booking.platformId)) {
+            return res.status(400).json({
+                error: "EXTENDED_BOOKING_COMMERCIAL_FIELDS_LOCKED",
+                message: "Booking ที่ต่ออายุแล้วต้องเปลี่ยนวันเช็คเอาท์ผ่าน Extend Booking และไม่สามารถเปลี่ยนช่องทางเดิมได้",
+            });
+        }
         const originalRoomStays = [...existingBooking.roomStays].sort((a, b) => new Date(a.from).getTime() - new Date(b.from).getTime());
         const correctedRoomStays = originalRoomStays.map((roomStay) => ({
             roomIds: (0, roomStayHelpers_1.getRoomStayRoomIds)(roomStay),
@@ -640,13 +688,26 @@ const editBooking = async (req, res) => {
         const editResult = await (0, roomMutationLocks_1.withRoomMutationLocks)(correctedRoomStays, async () => {
             const conflictingBookings = await booking_1.default.find({
                 bookingId: { $ne: bookingId },
-                ...ROOM_BLOCKING_BOOKING_FILTER,
-                ...buildRoomConflictQuery(roomIds, newCheckIn, newCheckOut),
+                ...buildBlockingRoomConflictQuery(roomIds, newCheckIn, newCheckOut),
             });
             const hasConflict = conflictingBookings.some((conflictingBooking) => conflictingBooking.roomStays.some((existing) => correctedRoomStays.some((incoming) => roomStaysConflict(existing, incoming))));
             if (hasConflict) {
                 return { hasConflict };
             }
+            const updatedCommercialSegments = (existingBooking.commercialSegments || []).map((segment) => segment.kind === "original"
+                ? {
+                    ...segment,
+                    from: newCheckIn,
+                    to: hasExtensionSegments ? segment.to : newCheckOut,
+                    platformId: hasExtensionSegments
+                        ? segment.platformId
+                        : booking.platformId,
+                }
+                : segment);
+            const updatedTransactions = existingBooking.transactions.map((transaction) => transaction.type === "roomCharge" &&
+                transaction.sourceAction !== "EXTEND_BOOKING"
+                ? { ...transaction, platformId: booking.platformId }
+                : transaction);
             const updatedBooking = await booking_1.default.findOneAndUpdate({
                 bookingId,
                 status: "booked",
@@ -661,6 +722,8 @@ const editBooking = async (req, res) => {
                     platformId: booking.platformId,
                     note: booking.note || "",
                     roomStays: correctedRoomStays,
+                    commercialSegments: updatedCommercialSegments,
+                    transactions: updatedTransactions,
                 },
                 $inc: { revision: 1 },
             }, { returnDocument: "after", runValidators: true });
@@ -832,7 +895,7 @@ const getAdminDashboardStats = async (req, res) => {
     const revenueRange = normalizeRevenueChartRange(req.query.revenueRange);
     const { start: chartStart, end: chartEnd } = getRevenueChartBounds(today, revenueRange, startOfMonth, startOfTomorrow);
     try {
-        const [monthFinancialBookings, chartFinancialBookings, occupancyBookings, monthBookings, unpaidBookings, occupancy,] = await Promise.all([
+        const [monthFinancialBookings, chartFinancialBookings, occupancyBookings, monthBookings, channelMixBookings, unpaidBookings, occupancy,] = await Promise.all([
             booking_1.default.find({
                 "transactions.createdAt": { $gte: startOfMonth, $lt: startOfNextMonth },
             }),
@@ -849,6 +912,10 @@ const getAdminDashboardStats = async (req, res) => {
             }),
             booking_1.default.find({
                 checkIn: { $gte: startOfMonth, $lt: startOfNextMonth },
+            }),
+            booking_1.default.find({
+                checkIn: { $lt: startOfNextMonth },
+                checkOut: { $gt: startOfMonth },
             }),
             booking_1.default.find({
                 status: { $ne: "checkedOut" },
@@ -901,8 +968,20 @@ const getAdminDashboardStats = async (req, res) => {
                 occupiedCapacity: 0,
             });
         }
-        monthBookings.forEach((booking) => {
-            channelCounts.set(booking.platformId, (channelCounts.get(booking.platformId) || 0) + 1);
+        channelMixBookings.forEach((booking) => {
+            (0, commercialSegmentHelpers_1.effectiveCommercialSegments)(booking).forEach((segment) => {
+                const segmentStart = new Date(segment.from);
+                const segmentEnd = new Date(segment.to);
+                if (segmentStart >= startOfNextMonth || segmentEnd <= startOfMonth)
+                    return;
+                const current = channelCounts.get(segment.platformId) || {
+                    count: 0,
+                    revenue: 0,
+                };
+                current.count += 1;
+                current.revenue += Math.abs(segment.amount || 0);
+                channelCounts.set(segment.platformId, current);
+            });
         });
         chartFinancialTransactions.forEach(({ transaction, bookingTransactions }) => {
             const bucketKey = formatLocalDateKey(getRevenueBucketStart(new Date(transaction.createdAt || 0), revenueBucketSize));
@@ -930,9 +1009,10 @@ const getAdminDashboardStats = async (req, res) => {
             bucketRevenue.occupiedCapacity = averageOccupiedCapacity;
             bucketRevenue.occupancyRate = averageOccupiedCapacity / TOTAL_GUEST_CAPACITY;
         });
-        const channelMix = Array.from(channelCounts.entries()).map(([platformId, count]) => ({
+        const channelMix = Array.from(channelCounts.entries()).map(([platformId, summary]) => ({
             platformId,
-            count,
+            count: summary.count,
+            revenue: summary.revenue,
         }));
         const revenueSeries = Array.from(revenueByDate.entries()).map(([date, revenue]) => ({
             date,
@@ -986,6 +1066,7 @@ const getMasterBookings = async (req, res) => {
             checkIn: { $lt: endOfToDate },
             checkOut: { $gt: fromDate },
         };
+        const andFilters = [];
         if (typeof name === "string" && name.trim()) {
             query.name = { $regex: escapeRegex(name.trim()), $options: "i" };
         }
@@ -996,19 +1077,28 @@ const getMasterBookings = async (req, res) => {
             };
         }
         if (typeof room === "string" && room.trim()) {
-            query.$or = [
-                { "roomStays.roomIds": room.trim() },
-                { "roomStays.roomId": room.trim() },
-            ];
+            andFilters.push({
+                $or: [
+                    { "roomStays.roomIds": room.trim() },
+                    { "roomStays.roomId": room.trim() },
+                ],
+            });
         }
         if (typeof channel === "string" && channel.trim()) {
-            query.platformId = channel.trim();
+            andFilters.push({
+                $or: [
+                    { platformId: channel.trim() },
+                    { "commercialSegments.platformId": channel.trim() },
+                ],
+            });
         }
         if (typeof status === "string" &&
             status.trim() &&
             BOOKING_STATUSES.includes(status.trim())) {
             query.status = status.trim();
         }
+        if (andFilters.length > 0)
+            query.$and = andFilters;
         const bookings = await booking_1.default.find(query).sort({
             checkIn: 1,
             checkOut: 1,
@@ -1335,6 +1425,7 @@ const checkIn = async (req, res) => {
         }
         res.status(200).json(sanitizedBooking);
         (0, activityServices_1.logActivity)(req.user?.username, "CHECK_IN", {
+            snapshot: buildActivityBookingSnapshot(existingBooking),
             changes: {
                 status: { before: "booked", after: "checkedIn" },
                 checkInByStaffUsername: {
@@ -1485,6 +1576,7 @@ const checkOut = async (req, res) => {
             booking: updatedBooking,
         });
         (0, activityServices_1.logActivity)(req.user?.username, "CHECK_OUT", {
+            snapshot: buildActivityBookingSnapshot(existingBooking),
             changes: {
                 status: { before: "checkedIn", after: "checkedOut" },
                 transactions: {
@@ -1540,17 +1632,21 @@ const getMonthCalendar = async (req, res) => {
                 : false;
             const isUnpaid = !roomCharge ||
                 (roomCharge.paymentMethod === "Unpaid" && !hasRoomChargeSettlement);
-            booking.roomStays.forEach((roomStay) => {
-                const effectiveStayEnd = effectiveRoomStayEnd(booking, roomStay);
-                if (effectiveStayEnd <= new Date(roomStay.from))
+            (0, commercialSegmentHelpers_1.commercialRoomSlices)(booking).forEach((slice) => {
+                const effectiveStayEnd = effectiveRoomStayEnd(booking, {
+                    roomIds: slice.roomIds,
+                    from: slice.from,
+                    to: slice.to,
+                });
+                if (effectiveStayEnd <= new Date(slice.from))
                     return;
-                (0, roomStayHelpers_1.getRoomStayRoomIds)(roomStay).forEach((roomId) => {
+                slice.roomIds.forEach((roomId) => {
                     const roomWithMatchingId = rooms.find((room) => room.roomId === roomId);
                     roomWithMatchingId?.bookings.push({
                         name: booking.name,
-                        platformId: booking.platformId,
+                        platformId: slice.platformId,
                         bookingId: booking.bookingId,
-                        from: roomStay.from,
+                        from: slice.from,
                         to: effectiveStayEnd,
                         status: booking.status,
                         isUnpaid,
@@ -1670,8 +1766,7 @@ const manageRoomStays = async (req, res) => {
         const manageResult = await (0, roomMutationLocks_1.withRoomMutationLocks)(sorted, async () => {
             const conflictingBookings = await booking_1.default.find({
                 bookingId: { $ne: bookingId },
-                ...ROOM_BLOCKING_BOOKING_FILTER,
-                ...buildRoomConflictQuery(roomIds, minFrom, maxTo),
+                ...buildBlockingRoomConflictQuery(roomIds, minFrom, maxTo),
             });
             const hasConflict = conflictingBookings.some((booking) => booking.roomStays.some((existing) => sorted.some((incoming) => roomStaysConflict(existing, incoming))));
             if (hasConflict) {
@@ -1722,6 +1817,51 @@ const manageRoomStays = async (req, res) => {
     }
 };
 exports.manageRoomStays = manageRoomStays;
+const extendBooking = async (req, res) => {
+    try {
+        const staffUsername = req.user?.username;
+        if (!staffUsername) {
+            return res.status(403).json({
+                error: "EXTENSION_NOT_AUTHORIZED",
+                message: "ไม่มีสิทธิ์ต่ออายุ booking",
+            });
+        }
+        const result = await (0, bookingExtension_1.extendBooking)({
+            bookingId: req.params.bookingId,
+            input: req.body,
+            idempotencyKey: req.get("Idempotency-Key")?.trim() || "",
+            staffUsername,
+        });
+        return res.status(200).json({
+            message: "ต่ออายุ booking สำเร็จ",
+            ...result,
+        });
+    }
+    catch (err) {
+        if (err instanceof bookingExtension_1.BookingExtensionError) {
+            const latestBooking = err.booking
+                ? await booking_1.default.findOne({ bookingId: req.params.bookingId })
+                : null;
+            return res.status(err.status).json({
+                error: err.code,
+                message: err.message,
+                ...(latestBooking ? { booking: latestBooking } : {}),
+            });
+        }
+        if (err instanceof cashLedgerTransaction_1.CashShiftLedgerConflictError) {
+            return res.status(409).json({ error: err.code, message: err.message });
+        }
+        console.error("Booking extension failed", {
+            bookingId: req.params.bookingId,
+            error: err instanceof Error ? err.message : "Unknown error",
+        });
+        return res.status(500).json({
+            error: "BOOKING_EXTENSION_FAILED",
+            message: "ไม่สามารถต่ออายุ booking ได้ กรุณาลองใหม่",
+        });
+    }
+};
+exports.extendBooking = extendBooking;
 class BookingFinancialConflictError extends Error {
     constructor() {
         super("BOOKING_FINANCIAL_CONFLICT");
@@ -2048,6 +2188,7 @@ const cancelBooking = async (req, res) => {
             booking: updatedBooking,
         });
         (0, activityServices_1.logActivity)(req.user?.username, "CANCEL_BOOKING", {
+            snapshot: buildActivityBookingSnapshot(existingBooking),
             changes: {
                 status: { before: "booked", after: "cancelled" },
                 transactions: {

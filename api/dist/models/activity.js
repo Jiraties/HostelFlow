@@ -14,6 +14,7 @@ const activitySchema = new mongoose_1.default.Schema({
             "LOGIN",
             "LOGOUT",
             "NEW_BOOKING",
+            "EXTEND_BOOKING",
             "REMOVE_BOOKING",
             "EDIT_BOOKING",
             "CHECK_IN",

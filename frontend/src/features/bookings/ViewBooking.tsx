@@ -10,8 +10,9 @@ import PassportView from "./PassportView.tsx";
 import CheckIn from "./CheckIn.tsx";
 import CheckOut from "./CheckOut.tsx";
 import ResolveBooking from "./ResolveBooking.tsx";
+import ExtendBooking from "./ExtendBooking.tsx";
 
-import { useState, useEffect, useRef } from "react";
+import { useCallback, useState, useEffect, useRef } from "react";
 import { API_URL } from "../../config/api.ts";
 import { platformMap } from "../../helpers/maps.ts";
 import {
@@ -118,6 +119,7 @@ const ViewBooking = ({
   const [checkInIsOpen, setCheckInIsOpen] = useState(false);
   const [checkOutIsOpen, setCheckOutIsOpen] = useState(false);
   const [resolveBookingIsOpen, setResolveBookingIsOpen] = useState(false);
+  const [extendBookingIsOpen, setExtendBookingIsOpen] = useState(false);
   const [initialResolveOutcome, setInitialResolveOutcome] = useState<
     ResolutionOutcome | undefined
   >(undefined);
@@ -128,6 +130,7 @@ const ViewBooking = ({
   const [checkInIsDirty, setCheckInIsDirty] = useState(false);
   const [checkOutIsDirty, setCheckOutIsDirty] = useState(false);
   const [resolveBookingIsDirty, setResolveBookingIsDirty] = useState(false);
+  const [extendBookingIsDirty, setExtendBookingIsDirty] = useState(false);
   const [noteIsEditing, setNoteIsEditing] = useState(false);
   const [noteDraft, setNoteDraft] = useState(booking?.note || "");
   const [noteSaving, setNoteSaving] = useState(false);
@@ -147,7 +150,7 @@ const ViewBooking = ({
   const { user } = useAuth();
   const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
 
-  const updateTransactionOverflowAlert = () => {
+  const updateTransactionOverflowAlert = useCallback(() => {
     const priceList = priceListRef.current;
     if (!priceList) return;
 
@@ -158,7 +161,7 @@ const ViewBooking = ({
     setShowTransactionOverflowAlert(
       hasHiddenTransactions && isAtTop && !transactionOverflowAlertDismissed,
     );
-  };
+  }, [transactionOverflowAlertDismissed]);
 
   const scrollToHiddenTransactions = () => {
     const priceList = priceListRef.current;
@@ -237,7 +240,7 @@ const ViewBooking = ({
     );
 
     return () => cancelAnimationFrame(animationFrame);
-  }, [data?.transactions.length, transactionOverflowAlertDismissed]);
+  }, [data?.transactions.length, updateTransactionOverflowAlert]);
 
   if (!loading && loadError && !data) {
     return (
@@ -418,6 +421,14 @@ const ViewBooking = ({
   const fullRoomsName = formatCompactRoomNames(
     data.roomStays.flatMap(getRoomStayRoomIds),
   );
+  const bookingPlatforms = Array.from(
+    new Set([
+      data.platformId,
+      ...(data.commercialSegments || [])
+        .filter((segment) => segment.kind === "extension")
+        .map((segment) => segment.platformId),
+    ]),
+  );
 
   const formatTransactionAmount = (
     transaction: booking["transactions"][number],
@@ -429,6 +440,11 @@ const ViewBooking = ({
       ? `-${amountText} บาท`
       : `${amountText} บาท`;
   };
+  const transactionName = (transaction: booking["transactions"][number]) =>
+    transaction.type === "roomCharge" &&
+    transaction.sourceAction === "EXTEND_BOOKING"
+      ? "ค่าห้องช่วงต่ออายุ"
+      : transactionMap[transaction.type].name;
 
   const isChildTransaction = (transaction: booking["transactions"][number]) =>
     transaction.type === "cardSurcharge" ||
@@ -536,7 +552,8 @@ const ViewBooking = ({
     compact = false,
   ) => {
     const paymentMethod =
-      transaction.type === "roomCharge"
+      transaction.type === "roomCharge" &&
+      transaction.sourceAction !== "EXTEND_BOOKING"
         ? effectiveRoomChargePaymentMethod
         : transaction.paymentMethod;
 
@@ -626,7 +643,7 @@ const ViewBooking = ({
             <span className="viewBooking__priceChildAmount">
               {formatTransactionAmount(transaction)}
             </span>
-            <span>{transactionMap[transaction.type].name}</span>
+            <span>{transactionName(transaction)}</span>
           </p>
           {renderReviewMeta(transaction)}
         </div>
@@ -691,6 +708,28 @@ const ViewBooking = ({
 
   return (
     <>
+      <Modal
+        open={extendBookingIsOpen}
+        className="home__modalCenter"
+        onClose={() =>
+          requestUnsavedModalClose(
+            extendBookingIsDirty,
+            () => setExtendBookingIsOpen(false),
+            () =>
+              setPendingUnsavedClose(() => () => setExtendBookingIsOpen(false)),
+          )
+        }
+      >
+        <ExtendBooking
+          booking={data}
+          onClose={() => setExtendBookingIsOpen(false)}
+          onDirtyChange={setExtendBookingIsDirty}
+          onUpdated={(updatedBooking) => {
+            updateBooking(updatedBooking);
+            setExtendBookingIsOpen(false);
+          }}
+        />
+      </Modal>
       <Modal
         open={cancellationIsOpen}
         className="home__modalCenter"
@@ -993,18 +1032,22 @@ const ViewBooking = ({
             )}
             <div className="viewBooking__item">
               <span className="viewBooking__label">ช่องทางการจอง: </span>
-              <div className="viewBooking__platform">
-                <p
-                  className="viewBooking__infoText"
-                  style={{ color: platformMap[data.platformId]?.color }}
-                >
-                  {platformMap[data.platformId]?.label || "ไม่ทราบ"}
-                </p>
-                <img
-                  className="viewBooking__logo"
-                  src={platformMap[data.platformId]?.logo}
-                  alt={platformMap[data.platformId]?.label}
-                />
+              <div className="viewBooking__platformList">
+                {bookingPlatforms.map((platformId) => (
+                  <div className="viewBooking__platform" key={platformId}>
+                    <p
+                      className="viewBooking__infoText"
+                      style={{ color: platformMap[platformId]?.color }}
+                    >
+                      {platformMap[platformId]?.label || "ไม่ทราบ"}
+                    </p>
+                    <img
+                      className="viewBooking__logo"
+                      src={platformMap[platformId]?.logo}
+                      alt={platformMap[platformId]?.label}
+                    />
+                  </div>
+                ))}
               </div>
             </div>
             <div className="viewBooking__item">
@@ -1091,7 +1134,7 @@ const ViewBooking = ({
                                 <p className="viewBooking__infoText viewBooking__priceAmount">
                                   {formatTransactionAmount(transaction)}
                                 </p>
-                                <p>{transactionMap[transaction.type].name}</p>
+                                <p>{transactionName(transaction)}</p>
                                 {renderReviewMeta(transaction)}
                               </div>
                             </div>
@@ -1269,6 +1312,14 @@ const ViewBooking = ({
             />
           </div>
           <div className="viewBooking__actionsRow">
+            {!data.voided &&
+              (data.status === "booked" || data.status === "checkedIn") && (
+                <ActionButton
+                  text="Extend"
+                  onClick={() => setExtendBookingIsOpen(true)}
+                  icon="bx-calendar-plus"
+                />
+              )}
             {data.status === "booked" && !isNoShow && (
               <ActionButton
                 text={isLateCheckIn ? "Late Check In" : "Check In"}

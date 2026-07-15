@@ -11,6 +11,7 @@
     "test": "node --test -r ts-node/register tests/**/*.test.ts",
     "migrate:preproduction-integrity": "ts-node src/scripts/migratePreProductionIntegrity.ts",
     "migrate:roomIds": "ts-node src/scripts/migrateRoomStayRoomIds.ts",
+    "migrate:booking-extension-indexes": "ts-node src/scripts/migrateBookingExtensionIndexes.ts",
     "verify:restore": "ts-node src/scripts/verifyRestoredData.ts",
     "seed:demo": "ts-node src/scripts/seedDemoData.ts",
     "start": "node dist/app.js"

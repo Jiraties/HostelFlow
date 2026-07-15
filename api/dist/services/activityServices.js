@@ -5,20 +5,20 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.logActivity = exports.logActivityStrict = void 0;
 const activity_1 = __importDefault(require("../models/activity"));
-const logActivityStrict = async (staffUsername, action, details, bookingId) => {
+const logActivityStrict = async (staffUsername, action, details, bookingId, session) => {
     if (action === "LOGIN" || action === "LOGOUT") {
-        return await activity_1.default.create({
+        return await new activity_1.default({
             staffUsername: staffUsername || "system",
             action,
             details,
-        });
+        }).save({ session });
     }
-    await activity_1.default.create({
+    return await new activity_1.default({
         staffUsername: staffUsername || "system",
         action,
         details,
         bookingId,
-    });
+    }).save({ session });
 };
 exports.logActivityStrict = logActivityStrict;
 const logActivity = async (...args) => {

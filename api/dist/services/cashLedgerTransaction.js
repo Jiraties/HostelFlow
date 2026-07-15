@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.withCashLedgerTransaction = exports.CashShiftLedgerConflictError = void 0;
+exports.withCashLedgerTransaction = exports.assignCashTransactionsInSession = exports.CashShiftLedgerConflictError = void 0;
 const mongoose_1 = __importDefault(require("mongoose"));
 const cashShift_1 = __importDefault(require("../models/cashShift"));
 const BUSINESS_TIME_ZONE = "Asia/Bangkok";
@@ -25,6 +25,28 @@ class CashShiftLedgerConflictError extends Error {
     }
 }
 exports.CashShiftLedgerConflictError = CashShiftLedgerConflictError;
+const assignCashTransactionsInSession = async (transactions, session) => {
+    if (!transactions.some((transaction) => transaction.paymentMethod === "Cash")) {
+        return transactions;
+    }
+    const cashShift = await cashShift_1.default.findOne({
+        businessDate: businessDateKey(),
+        status: "open",
+    })
+        .sort({ startedAt: -1 })
+        .session(session);
+    if (!cashShift)
+        throw new CashShiftLedgerConflictError();
+    const shiftUpdate = await cashShift_1.default.updateOne({ _id: cashShift._id, status: "open" }, { $inc: { ledgerRevision: 1 } }, { session });
+    if (shiftUpdate.modifiedCount !== 1) {
+        throw new CashShiftLedgerConflictError();
+    }
+    const cashShiftId = String(cashShift._id);
+    return transactions.map((transaction) => transaction.paymentMethod === "Cash"
+        ? { ...transaction, cashShiftId }
+        : transaction);
+};
+exports.assignCashTransactionsInSession = assignCashTransactionsInSession;
 /**
  * Cash-bearing booking writes and cash-shift close contend on the same
  * CashShift document. MongoDB therefore commits the booking write only if the
@@ -37,22 +59,7 @@ const withCashLedgerTransaction = async (transactions, operation) => {
     const session = await mongoose_1.default.startSession();
     try {
         const result = await session.withTransaction(async () => {
-            const cashShift = await cashShift_1.default.findOne({
-                businessDate: businessDateKey(),
-                status: "open",
-            })
-                .sort({ startedAt: -1 })
-                .session(session);
-            if (!cashShift)
-                throw new CashShiftLedgerConflictError();
-            const shiftUpdate = await cashShift_1.default.updateOne({ _id: cashShift._id, status: "open" }, { $inc: { ledgerRevision: 1 } }, { session });
-            if (shiftUpdate.modifiedCount !== 1) {
-                throw new CashShiftLedgerConflictError();
-            }
-            const cashShiftId = String(cashShift._id);
-            const assignedTransactions = transactions.map((transaction) => transaction.paymentMethod === "Cash"
-                ? { ...transaction, cashShiftId }
-                : transaction);
+            const assignedTransactions = await (0, exports.assignCashTransactionsInSession)(transactions, session);
             return operation(assignedTransactions, session);
         });
         if (result === undefined)

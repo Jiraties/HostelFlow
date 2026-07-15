@@ -18,7 +18,9 @@ const moneyEquals = (left, right) => Math.abs(left - right) < 0.005;
  */
 const verifyRestoredData = async () => {
     const [bookings, users, cashShifts, dailyCloses] = await Promise.all([
-        booking_1.default.find({}).select("bookingId revision roomStays transactions voided").lean(),
+        booking_1.default.find({})
+            .select("bookingId revision roomStays commercialSegments transactions voided")
+            .lean(),
         user_1.default.find({}).select("username active").lean(),
         cashShift_1.default.find({}).lean(),
         dailyClose_1.default.find({}).select("businessDate staffUsername revision").lean(),
@@ -55,6 +57,16 @@ const verifyRestoredData = async () => {
                     ...(transactionsByShift.get(key) || []),
                     transaction,
                 ]);
+            }
+        }
+        for (const segment of booking.commercialSegments || []) {
+            const linkedTransaction = (booking.transactions || []).find((transaction) => String(transaction._id) === segment.transactionId);
+            if (!linkedTransaction ||
+                linkedTransaction.type !== "roomCharge" ||
+                new Date(segment.from) >= new Date(segment.to) ||
+                !Number.isFinite(segment.amount) ||
+                segment.amount <= 0) {
+                errors.push(`booking ${booking.bookingId} has an invalid commercial segment`);
             }
         }
     }

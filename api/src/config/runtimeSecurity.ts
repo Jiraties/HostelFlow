@@ -1,3 +1,20 @@
+export const MAX_TRUST_PROXY_HOPS = 10;
+
+const parseTrustProxyHops = (value: string) => {
+  if (!/^[1-9]\d*$/.test(value)) {
+    throw new Error("TRUST_PROXY_HOPS must be a positive integer");
+  }
+
+  const hops = Number(value);
+  if (!Number.isSafeInteger(hops) || hops > MAX_TRUST_PROXY_HOPS) {
+    throw new Error(
+      `TRUST_PROXY_HOPS must not exceed ${MAX_TRUST_PROXY_HOPS}`,
+    );
+  }
+
+  return hops;
+};
+
 export const validateProductionWebSecurity = (
   environment: NodeJS.ProcessEnv = process.env,
 ) => {
@@ -22,12 +39,14 @@ export const validateProductionWebSecurity = (
   if (!environment.TRUST_PROXY_HOPS) {
     throw new Error("TRUST_PROXY_HOPS is required in production");
   }
-  const trustProxyHops = Number(environment.TRUST_PROXY_HOPS);
-  if (!Number.isInteger(trustProxyHops) || trustProxyHops < 1) {
-    throw new Error("TRUST_PROXY_HOPS must be a positive integer");
-  }
+  parseTrustProxyHops(environment.TRUST_PROXY_HOPS);
 };
 
 export const trustProxyHops = (
   environment: NodeJS.ProcessEnv = process.env,
-) => Number(environment.TRUST_PROXY_HOPS || 1);
+) => {
+  const value = environment.TRUST_PROXY_HOPS;
+  return value === undefined || value === ""
+    ? undefined
+    : parseTrustProxyHops(value);
+};

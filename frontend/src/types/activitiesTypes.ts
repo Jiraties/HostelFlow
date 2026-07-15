@@ -2,6 +2,7 @@ export type actionType =
   | "LOGIN"
   | "LOGOUT"
   | "NEW_BOOKING"
+  | "EXTEND_BOOKING"
   | "REMOVE_BOOKING"
   | "EDIT_BOOKING"
   | "CHECK_IN"
@@ -78,6 +79,7 @@ export interface roomStay {
 }
 
 export interface activity {
+  _id?: string;
   staffUsername: string;
   action: actionType;
   details: {
@@ -100,18 +102,31 @@ export interface activity {
       createdName?: string;
       resetUsername?: string;
       resetName?: string;
+      originalCheckOut?: string | Date;
+      newCheckOut?: string | Date;
+      addedNights?: number;
+      originalPlatform?: string;
+      extensionPlatform?: string;
+      previousRooms?: string[];
+      extensionRooms?: string[];
+      roomChanged?: boolean;
+      amount?: number;
+      paymentMethod?: PaymentMethod;
+      transactionId?: string;
+      note?: string;
       [key: string]: unknown;
     };
     snapshot?: {
       name: string;
       checkIn: Date;
       checkOut: Date;
-      platformId: "BOOK" | "HSTL" | "TRVL" | "AGDA";
+      platformId: string;
       roomId?: string;
       roomIds?: string[];
-      price: number;
-      paymentMethod: PaymentMethod;
+      price?: number;
+      paymentMethod?: PaymentMethod;
       bookingId: string;
+      [key: string]: unknown;
     };
   };
   timestamp: Date;
