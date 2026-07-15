@@ -15,11 +15,12 @@ const imageOnlyFilter = (req, file, cb) => {
     cb(null, true);
 };
 const upload = (0, multer_1.default)({
-    dest: "uploads/profile-pictures",
+    storage: multer_1.default.memoryStorage(),
     limits: { fileSize: 5 * 1024 * 1024 },
     fileFilter: imageOnlyFilter,
 });
 authRouter.get("/users", authMiddleware_1.default, auth_1.listUsers);
+authRouter.get("/users/:userId/profile-picture", auth_1.getProfilePicture);
 authRouter.post("/admin/createUser", authMiddleware_1.default, auth_1.adminCreateUser);
 authRouter.patch("/users/:userId", authMiddleware_1.default, auth_1.updateUser);
 authRouter.patch("/users/:userId/password", authMiddleware_1.default, auth_1.resetUserPassword);

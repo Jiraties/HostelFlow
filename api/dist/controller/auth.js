@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.setProfilePicture = exports.logout = exports.me = exports.login = exports.updateMySettings = exports.updateUser = exports.resetUserPassword = exports.adminCreateUser = exports.listUsers = exports.getAuthCookieOptions = void 0;
+exports.getProfilePicture = exports.setProfilePicture = exports.logout = exports.me = exports.login = exports.updateMySettings = exports.updateUser = exports.resetUserPassword = exports.adminCreateUser = exports.listUsers = exports.getAuthCookieOptions = void 0;
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const user_1 = __importDefault(require("../models/user"));
 const user_2 = require("../models/user");
@@ -424,10 +424,14 @@ const setProfilePicture = async (req, res) => {
             return res.status(401).json({ message: "Unauthorized" });
         if (!req.file)
             return res.status(400).json({ message: "กรุณาอัปโหลดภาพ" });
-        const profilePictureUrl = `/uploads/profile-pictures/${req.file.filename}`;
+        const profilePictureUrl = `/auth/users/${req.user.userId}/profile-picture?v=${Date.now()}`;
         const updatedUser = await user_1.default.findByIdAndUpdate(req.user.userId, {
             $set: {
                 profilePictureUrl,
+                profilePicture: {
+                    data: req.file.buffer,
+                    contentType: req.file.mimetype,
+                },
             },
         }, { returnDocument: "after" });
         if (!updatedUser)
@@ -442,4 +446,20 @@ const setProfilePicture = async (req, res) => {
     }
 };
 exports.setProfilePicture = setProfilePicture;
+const getProfilePicture = async (req, res) => {
+    try {
+        const user = await user_1.default.findById(req.params.userId)
+            .select("+profilePicture.data +profilePicture.contentType");
+        if (!user?.profilePicture?.data || !user.profilePicture.contentType) {
+            return res.status(404).json({ message: "ไม่พบรูปโปรไฟล์" });
+        }
+        res.setHeader("Content-Type", user.profilePicture.contentType);
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        return res.status(200).send(Buffer.from(user.profilePicture.data));
+    }
+    catch (err) {
+        return res.status(404).json({ message: "ไม่พบรูปโปรไฟล์" });
+    }
+};
+exports.getProfilePicture = getProfilePicture;
 //# sourceMappingURL=auth.js.map

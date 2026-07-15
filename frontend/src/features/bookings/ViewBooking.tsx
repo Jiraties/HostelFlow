@@ -845,6 +845,7 @@ const ViewBooking = ({
       >
         <AddTransaction
           bookingId={data.bookingId}
+          bookingStatus={data.status}
           guestName={data.name}
           transactions={data.transactions}
           onClose={() => setAddTransactionIsOpen(false)}

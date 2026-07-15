@@ -696,9 +696,15 @@ export const formatNationalityToReportThaiName = (nationality: string) => {
   return nationalityNameByNumber[nationalityNumber] || "";
 };
 
+export const isThaiNationality = (nationality: string) =>
+  formatNationalityToReportNumber(nationality) === 99;
+
 export const roomNumberByRoomPrefix: Record<string, number> = {
+  H: 1,
   Homespan: 1,
   Homespun: 1,
+  S: 2,
+  Siesta: 2,
   Family: 2,
   "Pottery 2": 3,
   "Pot 2": 3,
@@ -706,8 +712,11 @@ export const roomNumberByRoomPrefix: Record<string, number> = {
   "Pottery 1": 5,
   "Pot 1": 5,
   Balcony: 6,
+  V: 7,
   Veranda: 7,
+  W: 8,
   Wicker: 8,
+  M: 9,
   Marquisette: 9,
 };
 
@@ -723,35 +732,42 @@ export const formatRoomIdToReportNumber = (roomId: string) => {
 };
 
 export const reportDestinationCountries = [
-  { value: "THA", label: "ไทย", code: 70 },
-  { value: "LAO", label: "ลาว", code: 74 },
-  { value: "VNM", label: "เวียดนาม", code: 230 },
-  { value: "KHM", label: "กัมพูชา", code: 58 },
-  { value: "MMR", label: "เมียนมา", code: 245 },
-  { value: "MYS", label: "มาเลเซีย", code: 75 },
-  { value: "SGP", label: "สิงคโปร์", code: 177 },
-  { value: "IDN", label: "อินโดนีเซีย", code: 145 },
-  { value: "PHL", label: "ฟิลิปปินส์", code: 185 },
-  { value: "CHN", label: "จีน", code: 99 },
-  { value: "JPN", label: "ญี่ปุ่น", code: 54 },
-  { value: "KOR", label: "เกาหลีใต้", code: 151 },
-  { value: "IND", label: "อินเดีย", code: 144 },
-  { value: "AUS", label: "ออสเตรเลีย", code: 17 },
-  { value: "GBR", label: "สหราชอาณาจักร", code: 247 },
-  { value: "USA", label: "สหรัฐอเมริกา", code: 267 },
+  { value: "THA", label: "ไทย" },
+  { value: "LAO", label: "ลาว" },
+  { value: "VNM", label: "เวียดนาม" },
+  { value: "KHM", label: "กัมพูชา" },
+  { value: "MMR", label: "เมียนมา" },
+  { value: "MYS", label: "มาเลเซีย" },
+  { value: "SGP", label: "สิงคโปร์" },
+  { value: "IDN", label: "อินโดนีเซีย" },
+  { value: "PHL", label: "ฟิลิปปินส์" },
+  { value: "CHN", label: "จีน" },
+  { value: "JPN", label: "ญี่ปุ่น" },
+  { value: "KOR", label: "เกาหลีใต้" },
+  { value: "IND", label: "อินเดีย" },
+  { value: "AUS", label: "ออสเตรเลีย" },
+  { value: "GBR", label: "สหราชอาณาจักร" },
+  { value: "USA", label: "สหรัฐอเมริกา" },
 ] as const;
 
 export type ReportDestinationCountry =
-  (typeof reportDestinationCountries)[number];
+  (typeof reportDestinationCountries)[number] & { code: number };
 
 export const formatDestinationCountryForReport = (countryValue: string) => {
   const normalizedCountryValue = countryValue.trim().toUpperCase();
   const alpha3Code =
     alpha2ToIcaoNationality[normalizedCountryValue] || normalizedCountryValue;
 
-  return reportDestinationCountries.find(
+  const country = reportDestinationCountries.find(
     (country) => country.value === alpha3Code,
   );
+
+  if (!country) return undefined;
+
+  const code = formatNationalityToReportNumber(country.value);
+  if (code === "") return undefined;
+
+  return { ...country, code } satisfies ReportDestinationCountry;
 };
 
 export const splitPassportName = (passportName: string) => {

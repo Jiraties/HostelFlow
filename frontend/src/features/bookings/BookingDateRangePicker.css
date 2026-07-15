@@ -124,6 +124,10 @@
   cursor: default;
 }
 
+.bookingDateRangePicker__day--today {
+  background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+}
+
 .bookingDateRangePicker__day--inRange {
   background: #51d1dc2b;
   border-radius: 0;

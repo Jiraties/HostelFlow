@@ -3,6 +3,7 @@ import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router";
 import { API_URL } from "../config/api";
+import { profilePictureUrl } from "../helpers/profilePictureUrl";
 import RecentActivities from "../features/activities/RecentActivities";
 import PageHeader from "../components/PageHeader";
 import usePageTitle from "../hooks/useTitle";
@@ -190,7 +191,7 @@ const Settings = () => {
               />
               <img
                 className="settings__profilePicture"
-                src={API_URL + user?.profilePictureUrl}
+                src={profilePictureUrl(user?.profilePictureUrl)}
                 alt=""
               />
               <span className="settings__profilePictureOverlay">

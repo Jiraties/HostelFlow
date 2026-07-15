@@ -34,6 +34,7 @@ type CapturedResponse = {
   cookieOptions?: Record<string, unknown>;
   status: (code: number) => CapturedResponse;
   json: (body: any) => CapturedResponse;
+  send: (body: any) => CapturedResponse;
   setHeader: (name: string, value: string) => CapturedResponse;
   cookie: (
     name: string,
@@ -51,6 +52,10 @@ const response = (): CapturedResponse => ({
     return this;
   },
   json(body) {
+    this.body = body;
+    return this;
+  },
+  send(body) {
     this.body = body;
     return this;
   },
@@ -371,6 +376,58 @@ test("a verified login replaces an abandoned session and invalidates its token",
     }) as any,
   );
   assert.equal(replacementSessionAccepted, true);
+});
+
+test("profile picture upload persists in MongoDB and serves with image headers", async () => {
+  const user = await User.create({
+    username: "picture-staff",
+    password: await bcrypt.hash("synthetic-password-123", 10),
+    name: "Picture Staff",
+    admin: false,
+    active: true,
+  });
+  const imageData = Buffer.from("synthetic-image-data");
+  const uploadResponse = response();
+
+  await authController.setProfilePicture(
+    {
+      user: {
+        userId: String(user._id),
+        username: user.username,
+        admin: false,
+      },
+      file: {
+        buffer: imageData,
+        mimetype: "image/png",
+      },
+    } as any,
+    uploadResponse as any,
+  );
+
+  assert.equal(uploadResponse.statusCode, 200);
+  assert.match(
+    uploadResponse.body.user.profilePictureUrl,
+    new RegExp(`/auth/users/${user._id}/profile-picture\\?v=\\d+`),
+  );
+
+  const storedUser = await User.findById(user._id)
+    .select("+profilePicture.data +profilePicture.contentType");
+  assert.equal(storedUser?.profilePicture?.contentType, "image/png");
+  assert.deepEqual(Buffer.from(storedUser!.profilePicture!.data), imageData);
+
+  const imageResponse = response();
+  await authController.getProfilePicture(
+    { params: { userId: String(user._id) } } as any,
+    imageResponse as any,
+  );
+
+  assert.equal(imageResponse.statusCode, 200);
+  assert.equal(imageResponse.headers["content-type"], "image/png");
+  assert.equal(
+    imageResponse.headers["cache-control"],
+    "public, max-age=31536000, immutable",
+  );
+  assert.deepEqual(imageResponse.body, imageData);
 });
 
 test("inactive users get generic failure and weak passwords are rejected", async () => {

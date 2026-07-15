@@ -26,6 +26,7 @@ import {
 } from "../helpers/bookingHelpers";
 import { platformMap } from "../helpers/maps";
 import { API_URL } from "../config/api";
+import { profilePictureUrl } from "../helpers/profilePictureUrl";
 import { requestUnsavedModalClose } from "../helpers/modalGuards";
 import { formatRoomStayRooms } from "../helpers/roomStayHelpers";
 import usePageTitle from "../hooks/useTitle";
@@ -1367,11 +1368,9 @@ const Main = () => {
             {activeCashShift && activeShiftStaffName ? (
               <div className="main__cashCloseStaffChip">
                 <img
-                  src={
-                    API_URL +
-                    (activeCashShift.staff?.profilePictureUrl ||
-                      "/uploads/default.jpg")
-                  }
+                  src={profilePictureUrl(
+                    activeCashShift.staff?.profilePictureUrl,
+                  )}
                   alt=""
                 />
                 <span>{activeShiftStaffName}</span>

@@ -66,7 +66,11 @@ import {
   invalidRoomIds,
   roomGuestCapacity,
 } from "../config/roomInventory";
-import { formatDestinationCountryForReport } from "../helpers/passportHelpers";
+import {
+  formatDestinationCountryForReport,
+  isThaiNationality,
+  splitPassportName,
+} from "../helpers/passportHelpers";
 import {
   commercialRoomSlices,
   effectiveCommercialSegments,
@@ -132,7 +136,14 @@ const NEW_BOOKING_PAYMENT_METHODS: PaymentMethod[] = [
   "Unpaid",
 ];
 const CHECK_IN_PAYMENT_METHODS: PaymentMethod[] = ["Cash", "Card", "Transfer"];
-const NAME_PREFIXES: NamePrefix[] = ["Mr", "Mrs", "Ms", "Miss", "Dr"];
+const FOREIGN_NAME_PREFIXES: NamePrefix[] = ["Mr", "Mrs", "Ms", "Miss", "Dr"];
+const THAI_NAME_PREFIXES: NamePrefix[] = [
+  "นาย",
+  "นาง",
+  "นางสาว",
+  "เด็กชาย",
+  "เด็กหญิง",
+];
 const PLATFORM_IDS: PlatformId[] = ["BOOK", "HOST", "TRAV", "AGOD", "WALK"];
 const RESOLUTION_OUTCOMES: ResolutionOutcome[] = [
   "normal_checkout",
@@ -1756,10 +1767,37 @@ export const checkIn = async (req: Request, res: Response) => {
       });
     }
 
-    if (!NAME_PREFIXES.includes(checkInData.passportData.namePrefix)) {
+    const thaiGuest = isThaiNationality(
+      checkInData.passportData.nationality,
+    );
+    const allowedNamePrefixes = thaiGuest
+      ? THAI_NAME_PREFIXES
+      : FOREIGN_NAME_PREFIXES;
+
+    if (!allowedNamePrefixes.includes(checkInData.passportData.namePrefix)) {
       return res.status(400).json({
-        message: "คำนำหน้าชื่อไม่ถูกต้อง",
+        message: thaiGuest
+          ? "กรุณาเลือกคำนำหน้าชื่อภาษาไทย"
+          : "กรุณาเลือกคำนำหน้าชื่อภาษาอังกฤษ",
       });
+    }
+
+    if (thaiGuest) {
+      const thaiName = splitPassportName(
+        checkInData.passportData.passportName,
+      );
+
+      if (!thaiName.firstName || !thaiName.lastName) {
+        return res.status(400).json({
+          message: "กรุณากรอกชื่อและนามสกุลภาษาไทย",
+        });
+      }
+
+      if (!/^\d{13}$/.test(checkInData.passportData.passportNo)) {
+        return res.status(400).json({
+          message: "เลขประจำตัวประชาชนต้องเป็นตัวเลข 13 หลัก",
+        });
+      }
     }
 
     const nextDestinationCountry = formatDestinationCountryForReport(
@@ -1826,15 +1864,9 @@ export const checkIn = async (req: Request, res: Response) => {
       });
     }
 
-    const hasDeposit = existingBooking.transactions.some(
-      (transaction) => transaction.type === "deposit",
+    const existingDepositAmount = bookingRemainingDepositAmount(
+      existingBooking.transactions,
     );
-
-    if (hasDeposit) {
-      return res.status(409).json({
-        message: "booking นี้มีรายการมัดจำแล้ว",
-      });
-    }
 
     const unpaidRoomCharge = existingBooking.transactions.find(
       (transaction) =>
@@ -1898,19 +1930,26 @@ export const checkIn = async (req: Request, res: Response) => {
       passportName: encrypt(checkInData.passportData.passportName),
     };
 
-    let newTransactions: transcation[] = [
-      normalizeTransaction(
-        {
-          type: "deposit",
-          paymentMethod: "Cash",
-          amount: depositAmount,
-        },
-        {
-          createdBy: req.user?.username,
-          sourceAction: "CHECK_IN",
-        },
-      ),
-    ];
+    const newTransactions: transcation[] = [];
+
+    // A few legacy bookings received their deposit through Add Transaction
+    // before check-in. Reuse that outstanding liability instead of blocking the
+    // stay or collecting the same deposit twice.
+    if (existingDepositAmount <= 0) {
+      newTransactions.push(
+        normalizeTransaction(
+          {
+            type: "deposit",
+            paymentMethod: "Cash",
+            amount: depositAmount,
+          },
+          {
+            createdBy: req.user?.username,
+            sourceAction: "CHECK_IN",
+          },
+        ),
+      );
+    }
 
     const roundingAdjustment = Number(
       checkInData.unpaidPayment?.roundingAdjustment || 0,
@@ -2698,6 +2737,13 @@ export const addTransaction = async (
       return res.status(404).json({
         error: "BOOKING_NOT_FOUND",
         message: "ไม่พบ booking นี้",
+      });
+    }
+
+    if (transaction.type === "deposit" && booking.status !== "checkedIn") {
+      return res.status(409).json({
+        error: "DEPOSIT_REQUIRES_CHECK_IN",
+        message: "รับมัดจำได้หลังจาก check-in แล้วเท่านั้น",
       });
     }
 

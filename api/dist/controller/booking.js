@@ -100,7 +100,14 @@ const NEW_BOOKING_PAYMENT_METHODS = [
     "Unpaid",
 ];
 const CHECK_IN_PAYMENT_METHODS = ["Cash", "Card", "Transfer"];
-const NAME_PREFIXES = ["Mr", "Mrs", "Ms", "Miss", "Dr"];
+const FOREIGN_NAME_PREFIXES = ["Mr", "Mrs", "Ms", "Miss", "Dr"];
+const THAI_NAME_PREFIXES = [
+    "นาย",
+    "นาง",
+    "นางสาว",
+    "เด็กชาย",
+    "เด็กหญิง",
+];
 const PLATFORM_IDS = ["BOOK", "HOST", "TRAV", "AGOD", "WALK"];
 const RESOLUTION_OUTCOMES = [
     "normal_checkout",
@@ -1235,10 +1242,29 @@ const checkIn = async (req, res) => {
                 message: "กรุณากรอกข้อมูลให้ครบทุกช่อง",
             });
         }
-        if (!NAME_PREFIXES.includes(checkInData.passportData.namePrefix)) {
+        const thaiGuest = (0, passportHelpers_1.isThaiNationality)(checkInData.passportData.nationality);
+        const allowedNamePrefixes = thaiGuest
+            ? THAI_NAME_PREFIXES
+            : FOREIGN_NAME_PREFIXES;
+        if (!allowedNamePrefixes.includes(checkInData.passportData.namePrefix)) {
             return res.status(400).json({
-                message: "คำนำหน้าชื่อไม่ถูกต้อง",
+                message: thaiGuest
+                    ? "กรุณาเลือกคำนำหน้าชื่อภาษาไทย"
+                    : "กรุณาเลือกคำนำหน้าชื่อภาษาอังกฤษ",
             });
+        }
+        if (thaiGuest) {
+            const thaiName = (0, passportHelpers_1.splitPassportName)(checkInData.passportData.passportName);
+            if (!thaiName.firstName || !thaiName.lastName) {
+                return res.status(400).json({
+                    message: "กรุณากรอกชื่อและนามสกุลภาษาไทย",
+                });
+            }
+            if (!/^\d{13}$/.test(checkInData.passportData.passportNo)) {
+                return res.status(400).json({
+                    message: "เลขประจำตัวประชาชนต้องเป็นตัวเลข 13 หลัก",
+                });
+            }
         }
         const nextDestinationCountry = (0, passportHelpers_1.formatDestinationCountryForReport)(checkInData.passportData.nextDestinationCountry);
         if (!nextDestinationCountry) {
@@ -1286,12 +1312,7 @@ const checkIn = async (req, res) => {
                 message: "booking นี้เลยวันเช็คเอาท์แล้ว กรุณาแก้ไขวันที่หรือยกเลิกก่อน check-in",
             });
         }
-        const hasDeposit = existingBooking.transactions.some((transaction) => transaction.type === "deposit");
-        if (hasDeposit) {
-            return res.status(409).json({
-                message: "booking นี้มีรายการมัดจำแล้ว",
-            });
-        }
+        const existingDepositAmount = (0, financeHelpers_1.bookingRemainingDepositAmount)(existingBooking.transactions);
         const unpaidRoomCharge = existingBooking.transactions.find((transaction) => transaction.type === "roomCharge" &&
             transaction.paymentMethod === "Unpaid");
         if (unpaidRoomCharge && !checkInData.unpaidPayment) {
@@ -1336,16 +1357,20 @@ const checkIn = async (req, res) => {
             passportNo: encrypt(checkInData.passportData.passportNo),
             passportName: encrypt(checkInData.passportData.passportName),
         };
-        let newTransactions = [
-            (0, financeHelpers_1.normalizeTransaction)({
+        const newTransactions = [];
+        // A few legacy bookings received their deposit through Add Transaction
+        // before check-in. Reuse that outstanding liability instead of blocking the
+        // stay or collecting the same deposit twice.
+        if (existingDepositAmount <= 0) {
+            newTransactions.push((0, financeHelpers_1.normalizeTransaction)({
                 type: "deposit",
                 paymentMethod: "Cash",
                 amount: depositAmount,
             }, {
                 createdBy: req.user?.username,
                 sourceAction: "CHECK_IN",
-            }),
-        ];
+            }));
+        }
         const roundingAdjustment = Number(checkInData.unpaidPayment?.roundingAdjustment || 0);
         if (!Number.isFinite(roundingAdjustment) || roundingAdjustment < 0) {
             return res.status(400).json({
@@ -1923,6 +1948,12 @@ const addTransaction = async (req, res) => {
             return res.status(404).json({
                 error: "BOOKING_NOT_FOUND",
                 message: "ไม่พบ booking นี้",
+            });
+        }
+        if (transaction.type === "deposit" && booking.status !== "checkedIn") {
+            return res.status(409).json({
+                error: "DEPOSIT_REQUIRES_CHECK_IN",
+                message: "รับมัดจำได้หลังจาก check-in แล้วเท่านั้น",
             });
         }
         if (!req.user?.admin &&

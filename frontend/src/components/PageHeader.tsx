@@ -5,7 +5,7 @@ import { Link } from "react-router";
 import { useAuth } from "../context/AuthContext";
 
 import "./PageHeader.css";
-import { API_URL } from "../config/api";
+import { profilePictureUrl } from "../helpers/profilePictureUrl";
 
 type RefreshMessages = {
   loading: string;
@@ -47,8 +47,6 @@ const PageHeader = ({
 }: PageHeaderProps) => {
   const { user } = useAuth();
 
-  console.log(user?.profilePictureUrl);
-
   const handleRefresh = () => {
     if (!onRefresh) return;
 
@@ -87,10 +85,7 @@ const PageHeader = ({
         <Link to={"/settings"}>
           <img
             className="pageHeader__profileImg"
-            src={
-              API_URL + user?.profilePictureUrl ||
-              "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR3m972e8FEvBi7ETC03avlJcZDg8nT9dWLSw&s"
-            }
+            src={profilePictureUrl(user?.profilePictureUrl)}
             alt="profilePicture"
           />
         </Link>

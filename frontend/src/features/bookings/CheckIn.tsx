@@ -35,13 +35,31 @@ const paymentMethodOptions = [
   { value: "Transfer", label: "Transfer" },
 ];
 
-const namePrefixOptions: OptionType[] = [
+const foreignNamePrefixOptions: OptionType[] = [
   { value: "Mr", label: "Mr" },
   { value: "Mrs", label: "Mrs" },
   { value: "Ms", label: "Ms" },
   { value: "Miss", label: "Miss" },
   { value: "Dr", label: "Dr" },
 ];
+
+const thaiNamePrefixOptions: OptionType[] = [
+  { value: "นาย", label: "นาย" },
+  { value: "นาง", label: "นาง" },
+  { value: "นางสาว", label: "นางสาว" },
+  { value: "เด็กชาย", label: "เด็กชาย" },
+  { value: "เด็กหญิง", label: "เด็กหญิง" },
+];
+
+const splitGuestName = (name: string) => {
+  const parts = name.trim().replace(/\s+/g, " ").split(" ").filter(Boolean);
+
+  return {
+    firstName: parts[0] || "",
+    middleName: parts.slice(1, -1).join(" "),
+    lastName: parts.length > 1 ? parts[parts.length - 1] : "",
+  };
+};
 
 const destinationCountryOptions: OptionType[] = [
   { value: "THA", label: "ไทย" },
@@ -94,8 +112,26 @@ const CheckIn = ({
   onDirtyChange?: (isDirty: boolean) => void;
 }) => {
   const roomCharge = roomChargeTransaction(booking);
+  const existingDepositTransactions = booking.transactions.filter(
+    (transaction) => transaction.type === "deposit",
+  );
+  const existingDepositAmount = Math.max(
+    booking.transactions.reduce((total, transaction) => {
+      if (transaction.type === "deposit") return total + transaction.amount;
+      if (
+        transaction.type === "depositRefund" ||
+        transaction.type === "depositKept"
+      ) {
+        return total - transaction.amount;
+      }
+      return total;
+    }, 0),
+    0,
+  );
+  const hasExistingDeposit = existingDepositAmount > 0;
+  const initialDepositAmount = hasExistingDeposit ? existingDepositAmount : 200;
 
-  const [deposit, setDeposit] = useState<number | "">(200);
+  const [deposit, setDeposit] = useState<number | "">(initialDepositAmount);
   const [unpaidPaymentPaymentMethod, setUnpaidPaymentPaymentMethod] =
     useState<string>("Cash");
   const [confirmedPayment, setConfirmedPayment] = useState<boolean>(false);
@@ -112,6 +148,11 @@ const CheckIn = ({
   const [receivedCash, setReceivedCash] = useState<string>(
     String(roomCharge.amount),
   );
+  const isThaiGuest = nationality === "TH";
+  const activeNamePrefixOptions = isThaiGuest
+    ? thaiNamePrefixOptions
+    : foreignNamePrefixOptions;
+  const thaiNameParts = splitGuestName(passportName);
 
   useEffect(() => {
     setReceivedCash(String(roomCharge.amount));
@@ -125,7 +166,7 @@ const CheckIn = ({
         nextDestinationCountry ||
         passportName ||
         passportNo ||
-        deposit !== 200 ||
+        deposit !== initialDepositAmount ||
         unpaidPaymentPaymentMethod !== "Cash" ||
         confirmedPayment ||
         roundingAdjustment ||
@@ -137,6 +178,7 @@ const CheckIn = ({
   }, [
     confirmedPayment,
     deposit,
+    initialDepositAmount,
     namePrefix,
     nationality,
     nextDestinationCountry,
@@ -164,7 +206,7 @@ const CheckIn = ({
       : 0;
 
   // --- CLEAN MATH FOR THE UI TOTALS ---
-  let cashTotal = Number(deposit) || 0;
+  let cashTotal = hasExistingDeposit ? 0 : Number(deposit) || 0;
   if (roomCharge.paymentMethod === "Unpaid") {
     if (unpaidPaymentPaymentMethod === "Cash") {
       cashTotal += roundingAdjustment
@@ -176,6 +218,8 @@ const CheckIn = ({
     }
   }
   const hasCashMovement = cashTotal > 0;
+  const hasPaymentToConfirm =
+    !hasExistingDeposit || roomCharge.paymentMethod === "Unpaid";
 
   const checkInHandler = async () => {
     if (
@@ -183,6 +227,7 @@ const CheckIn = ({
       !nationality ||
       !nextDestinationCountry ||
       !passportName ||
+      (isThaiGuest && (!thaiNameParts.firstName || !thaiNameParts.lastName)) ||
       !passportNo ||
       deposit === "" ||
       Number.isNaN(deposit)
@@ -190,7 +235,11 @@ const CheckIn = ({
       throw new Error("กรุณากรอกข้อมูลให้ครบทุกช่อง");
     }
 
-    if (!confirmedPayment) {
+    if (isThaiGuest && !/^\d{13}$/.test(passportNo)) {
+      throw new Error("เลขประจำตัวประชาชนต้องเป็นตัวเลข 13 หลัก");
+    }
+
+    if (hasPaymentToConfirm && !confirmedPayment) {
       throw new Error("กรุณายืนยันการรับเงินสดจากลูกค้า");
     }
 
@@ -285,14 +334,23 @@ const CheckIn = ({
           <div>
             {" "}
             <p className="checkIn__label">
-              เลข Passport <i className="bx bx-check-shield" />
+              {isThaiGuest ? "เลขประจำตัวประชาชน" : "เลข Passport"}{" "}
+              <i className="bx bx-check-shield" />
             </p>
             <input
               type="text"
               value={passportNo}
-              onChange={(e) => setPassportNo(e.target.value)}
+              onChange={(e) =>
+                setPassportNo(
+                  isThaiGuest
+                    ? e.target.value.replace(/\D/g, "").slice(0, 13)
+                    : e.target.value,
+                )
+              }
+              inputMode={isThaiGuest ? "numeric" : undefined}
+              maxLength={isThaiGuest ? 13 : undefined}
               className="boxInput"
-              placeholder="เช่น A12345678"
+              placeholder={isThaiGuest ? "เลข 13 หลัก" : "เช่น A12345678"}
             />
           </div>
           <div className="checkIn__nameRow">
@@ -300,8 +358,8 @@ const CheckIn = ({
               <p className="checkIn__label">คำนำหน้าชื่อ</p>
               <Select<OptionType>
                 styles={customStyles<OptionType>()}
-                options={namePrefixOptions}
-                value={namePrefixOptions.find(
+                options={activeNamePrefixOptions}
+                value={activeNamePrefixOptions.find(
                   (option) => option.value === namePrefix,
                 )}
                 onChange={(option) => setNamePrefix(option?.value || "")}
@@ -310,14 +368,21 @@ const CheckIn = ({
             </div>
             <div className="checkIn__passportNameField">
               <p className="checkIn__label">
-                ชื่อ-นามสกุล Passport <i className="bx bx-check-shield" />
+                {isThaiGuest ? "ชื่อ-นามสกุลภาษาไทย" : "ชื่อ-นามสกุล Passport"}{" "}
+                <i className="bx bx-check-shield" />
               </p>
               <input
                 type="text"
                 value={passportName}
-                onChange={(e) => setPassportName(e.target.value.toUpperCase())}
+                onChange={(e) =>
+                  setPassportName(
+                    isThaiGuest ? e.target.value : e.target.value.toUpperCase(),
+                  )
+                }
                 className="boxInput"
-                placeholder="เช่น ROBERT BROWN"
+                placeholder={
+                  isThaiGuest ? "เช่น สมชาย กลาง ใจดี" : "เช่น ROBERT BROWN"
+                }
               />
             </div>
           </div>
@@ -329,7 +394,16 @@ const CheckIn = ({
               value={nationalityOptions.find(
                 (option) => option.value === nationality,
               )}
-              onChange={(option) => setNationality(option?.value || "")}
+              onChange={(option) => {
+                const nextNationality = option?.value || "";
+                const nextIsThai = nextNationality === "TH";
+
+                if (nextIsThai !== isThaiGuest) {
+                  setNamePrefix("");
+                  setPassportNo("");
+                }
+                setNationality(nextNationality);
+              }}
             />{" "}
           </div>
           <div>
@@ -356,12 +430,18 @@ const CheckIn = ({
               max={1000}
               min={0}
               value={deposit}
+              disabled={hasExistingDeposit}
               placeholder="200"
               onChange={(e) => {
                 setDeposit(e.target.value === "" ? "" : Number(e.target.value));
                 setConfirmedPayment(false);
               }}
             />
+            {hasExistingDeposit && (
+              <p className="checkIn__label">
+                รับมัดจำรายการนี้ไว้แล้ว ระบบจะนำมาใช้กับการ check-in
+              </p>
+            )}
           </div>
 
           {roomCharge.paymentMethod === "Unpaid" && (
@@ -410,7 +490,14 @@ const CheckIn = ({
                 <div className="checkIn__paymentRow">
                   <p>
                     ค่ามัดจำ{" "}
-                    <span className="checkIn__paymentTag cash">Cash</span>
+                    <span
+                      className={`checkIn__paymentTag ${(
+                        existingDepositTransactions[0]?.paymentMethod || "Cash"
+                      ).toLowerCase()}`}
+                    >
+                      {existingDepositTransactions[0]?.paymentMethod || "Cash"}
+                    </span>
+                    {hasExistingDeposit && " · รับแล้ว"}
                   </p>
                   <p>{formatCurrency(Number(deposit))}</p>
                 </div>
@@ -469,15 +556,17 @@ const CheckIn = ({
                     )}
                 </div>
 
-                <label className="checkbox">
-                  ยืนยันรับเงิน
-                  <input
-                    type="checkbox"
-                    checked={confirmedPayment}
-                    onChange={(e) => setConfirmedPayment(e.target.checked)}
-                  />
-                  <span className="box"></span>
-                </label>
+                {hasPaymentToConfirm && (
+                  <label className="checkbox">
+                    ยืนยันรับเงิน
+                    <input
+                      type="checkbox"
+                      checked={confirmedPayment}
+                      onChange={(e) => setConfirmedPayment(e.target.checked)}
+                    />
+                    <span className="box"></span>
+                  </label>
+                )}
               </div>{" "}
             </div>
           </div>

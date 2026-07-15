@@ -8,6 +8,7 @@ import ViewActivities from "../features/activities/ViewActivities";
 
 import { useEffect, useMemo, useState } from "react";
 import { API_URL } from "../config/api";
+import { profilePictureUrl } from "../helpers/profilePictureUrl";
 import { Modal } from "@mui/material";
 import type { actionType, activity } from "../types/activitiesTypes";
 import CreateNewUser from "../components/CreateNewUser";
@@ -1141,7 +1142,7 @@ const Manage = () => {
               }
               key={staffUser.userId}
             >
-              <img src={API_URL + staffUser.profilePictureUrl} alt="" />
+              <img src={profilePictureUrl(staffUser.profilePictureUrl)} alt="" />
               <div className="manage__userInfo">
                 <div>
                   <h3>

@@ -266,11 +266,6 @@ const Documents = () => {
   };
 
   const getHotelAccommodationReport = async () => {
-    if (hotelStatus?.missing) {
-      toast.error("กรุณากรอกข้อมูลผู้เข้าพักและประเทศปลายทางให้ครบก่อนส่งออก");
-      return;
-    }
-
     setHotelExporting(true);
 
     try {
@@ -294,7 +289,11 @@ const Documents = () => {
       link.click();
       link.remove();
       URL.revokeObjectURL(downloadUrl);
-      toast.success("ส่งออกรายงาน รร. สำเร็จ");
+      toast.success(
+        hotelStatus?.missing
+          ? `ส่งออกรายงานแล้ว โดยมีข้อมูลไม่ครบ ${hotelStatus.missing} รายการ`
+          : "ส่งออกรายงาน รร. สำเร็จ",
+      );
     } catch (err) {
       console.error(err);
       toast.error("ไม่สามารถส่งออกรายงาน รร. ได้");
@@ -540,7 +539,7 @@ const Documents = () => {
               highlight
               className="documents__action documents__action--orange"
               onClick={getHotelAccommodationReport}
-              disabled={hotelExporting || !!hotelStatus?.missing}
+              disabled={hotelExporting}
             />
           </div>
         </div>

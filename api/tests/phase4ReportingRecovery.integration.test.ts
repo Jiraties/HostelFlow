@@ -32,6 +32,7 @@ const reportBooking = (
   bookingId: string,
   name: string,
   nextDestinationCountry?: string,
+  nationality = "US",
 ) => ({
   revision: 1,
   name,
@@ -54,7 +55,7 @@ const reportBooking = (
   passport: {
     passportHash: crypto.createHash("sha256").update(bookingId).digest("hex"),
     namePrefix: "Ms",
-    nationality: "TH",
+    nationality,
     nextDestinationCountry,
     passportNo: encrypt(`SYNTH-${bookingId}`),
     passportName: encrypt(name.toUpperCase()),
@@ -159,23 +160,106 @@ test("hotel export uses each guest's stored destination exactly", async () => {
   const workbook = new ExcelJs.Workbook();
   await workbook.xlsx.load(Buffer.concat(chunks) as any);
   const sheet = workbook.getWorksheet("Sheet1") || workbook.worksheets[0];
+  assert.equal(sheet.getRow(5).getCell(5).value, "");
+  assert.equal(sheet.getRow(5).getCell(9).value, "Ms");
+  assert.equal(sheet.getRow(5).getCell(15).value, "SYNTH-DEST-LAO");
   assert.equal(sheet.getRow(5).getCell(22).value, "ลาว");
-  assert.equal(sheet.getRow(5).getCell(23).value, 74);
+  assert.equal(sheet.getRow(5).getCell(23).value, 56);
   assert.equal(sheet.getRow(6).getCell(22).value, "เวียดนาม");
-  assert.equal(sheet.getRow(6).getCell(23).value, 230);
+  assert.equal(sheet.getRow(6).getCell(23).value, 46);
 });
 
-test("hotel export blocks missing destination and rejects report-time overrides", async () => {
+test("hotel export puts Thai names and national ID in the Thai identity columns", async () => {
+  const thaiBooking = reportBooking(
+    "THAI-IDENTITY",
+    "สมชาย ใจดี",
+    "THA",
+    "TH",
+  );
+  thaiBooking.passport.namePrefix = "นาย";
+  thaiBooking.passport.passportNo = encrypt("1234567890123");
+  thaiBooking.passport.passportName = encrypt("สมชาย ใจดี");
+  await Booking.create(thaiBooking);
+
+  const res = binaryResponse();
+  const chunks: Buffer[] = [];
+  res.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+  await documents.getHotelAccomodationReport(
+    {
+      query: { date: "2026-07-14" },
+      user: { username: "admin", admin: true },
+    } as any,
+    res as any,
+  );
+
+  assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+  const workbook = new ExcelJs.Workbook();
+  await workbook.xlsx.load(Buffer.concat(chunks) as any);
+  const sheet = workbook.getWorksheet("Sheet1") || workbook.worksheets[0];
+  const row = sheet.getRow(5);
+  assert.equal(row.getCell(5).value, "นาย");
+  assert.equal(row.getCell(6).value, "สมชาย");
+  assert.equal(row.getCell(7).value, "");
+  assert.equal(row.getCell(8).value, "ใจดี");
+  assert.equal(row.getCell(9).value, "");
+  assert.equal(row.getCell(14).value, "1234567890123");
+  assert.equal(row.getCell(15).value, "");
+  assert.equal(row.getCell(22).value, "ไทย");
+  assert.equal(row.getCell(23).value, 99);
+});
+
+test("TM30 status and export exclude Thai nationals", async () => {
+  const thaiBooking = reportBooking("TM30-THAI", "สมชาย ใจดี", "THA", "TH");
+  thaiBooking.passport.namePrefix = "นาย";
+  thaiBooking.passport.passportNo = encrypt("1234567890123");
+  thaiBooking.passport.passportName = encrypt("สมชาย ใจดี");
+  await Booking.create([
+    thaiBooking,
+    reportBooking("TM30-FOREIGN", "Alice Example", "LAO", "US"),
+  ]);
+
+  const status = jsonResponse();
+  await documents.getImmigrationReportStatus(
+    { query: { date: "2026-07-14" }, user: { username: "admin" } } as any,
+    status,
+  );
+  assert.equal(status.statusCode, 200);
+  assert.equal(status.body.total, 1);
+  assert.equal(status.body.complete, 1);
+
+  const report = binaryResponse();
+  const chunks: Buffer[] = [];
+  report.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+  await documents.getImmigrationReport(
+    { query: { date: "2026-07-14" }, user: { username: "admin" } } as any,
+    report as any,
+  );
+
+  assert.equal(report.statusCode, 200, JSON.stringify(report.body));
+  const workbook = new ExcelJs.Workbook();
+  await workbook.xlsx.load(Buffer.concat(chunks) as any);
+  const sheet = workbook.getWorksheet("แบบแจ้งที่พัก Inform Accom");
+  assert.ok(sheet);
+  assert.equal(sheet.getRow(2).getCell(1).value, "ALICE");
+  assert.equal(sheet.getRow(3).getCell(1).value, null);
+});
+
+test("hotel export leaves missing destination blank and rejects report-time overrides", async () => {
   await Booking.create(reportBooking("DEST-MISSING", "Missing Example"));
 
-  const missing = jsonResponse();
+  const missing = binaryResponse();
+  const chunks: Buffer[] = [];
+  missing.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
   await documents.getHotelAccomodationReport(
     { query: { date: "2026-07-14" }, user: { username: "admin" } } as any,
-    missing,
+    missing as any,
   );
-  assert.equal(missing.statusCode, 422);
-  assert.equal(missing.body.code, "HOTEL_REPORT_DATA_INCOMPLETE");
-  assert.match(missing.body.missingBookings[0].reason, /ปลายทาง/);
+  assert.equal(missing.statusCode, 200, JSON.stringify(missing.body));
+  const workbook = new ExcelJs.Workbook();
+  await workbook.xlsx.load(Buffer.concat(chunks) as any);
+  const sheet = workbook.getWorksheet("Sheet1") || workbook.worksheets[0];
+  assert.equal(sheet.getRow(5).getCell(22).value, "");
+  assert.equal(sheet.getRow(5).getCell(23).value, "");
 
   const override = jsonResponse();
   await documents.getHotelAccomodationReport(

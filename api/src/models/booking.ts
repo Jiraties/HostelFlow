@@ -2,7 +2,17 @@ import mongoose from "mongoose";
 
 export type PlatformId = "BOOK" | "HOST" | "TRAV" | "AGOD" | "WALK";
 export type PaymentMethod = "OTA" | "Cash" | "Card" | "Transfer" | "Unpaid";
-export type NamePrefix = "Mr" | "Mrs" | "Ms" | "Miss" | "Dr";
+export type NamePrefix =
+  | "Mr"
+  | "Mrs"
+  | "Ms"
+  | "Miss"
+  | "Dr"
+  | "นาย"
+  | "นาง"
+  | "นางสาว"
+  | "เด็กชาย"
+  | "เด็กหญิง";
 export type Status =
   | "booked"
   | "checkedIn"
@@ -449,7 +459,18 @@ const bookingSchema = new mongoose.Schema({
     passportHash: { type: String, select: false },
     namePrefix: {
       type: String,
-      enum: ["Mr", "Mrs", "Ms", "Miss", "Dr"],
+      enum: [
+        "Mr",
+        "Mrs",
+        "Ms",
+        "Miss",
+        "Dr",
+        "นาย",
+        "นาง",
+        "นางสาว",
+        "เด็กชาย",
+        "เด็กหญิง",
+      ],
     },
     nationality: { type: String },
     nextDestinationCountry: { type: String },

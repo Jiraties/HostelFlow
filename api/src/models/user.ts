@@ -23,6 +23,10 @@ export interface userType extends Document {
   active: boolean;
   name: string;
   profilePictureUrl: string;
+  profilePicture?: {
+    data: Buffer;
+    contentType: string;
+  };
   currentSessionId?: string;
   currentSessionIssuedAt?: Date;
   settings: UserSettings;
@@ -80,6 +84,10 @@ const userSchema = new mongoose.Schema({
   admin: { type: Boolean },
   active: { type: Boolean, default: true },
   profilePictureUrl: { type: String, default: "/uploads/default.jpg" },
+  profilePicture: {
+    data: { type: Buffer, select: false },
+    contentType: { type: String, select: false },
+  },
   currentSessionId: { type: String },
   currentSessionIssuedAt: { type: Date },
   settings: { type: userSettingsSchema, default: () => defaultUserSettings },

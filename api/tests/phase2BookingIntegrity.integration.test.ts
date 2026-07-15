@@ -199,7 +199,7 @@ test("stale edit cannot overwrite check-in or cancellation", async () => {
           namePrefix: "Ms",
           passportNo: "SYNTHETIC-ONLY",
           passportName: "Synthetic Guest",
-          nationality: "TH",
+          nationality: "US",
         },
       },
       params: { bookingId: "CHECKIN-EDIT" },
@@ -227,7 +227,7 @@ test("stale edit cannot overwrite check-in or cancellation", async () => {
           namePrefix: "Ms",
           passportNo: "SYNTHETIC-ONLY",
           passportName: "Synthetic Guest",
-          nationality: "TH",
+          nationality: "US",
           nextDestinationCountry: "LAO",
         },
       },
@@ -281,6 +281,155 @@ test("stale edit cannot overwrite check-in or cancellation", async () => {
   const cancelled = await Booking.findOne({ bookingId: "CANCEL-EDIT" }).lean();
   assert.equal(cancelled?.status, "cancelled");
   assert.equal(cancelled?.name, "Synthetic Guest");
+});
+
+test("check-in reuses a deposit recorded on a legacy booked stay", async () => {
+  const booking = await bookingFixture("LEGACY-DEPOSIT");
+  booking.transactions.push({
+    type: "deposit",
+    paymentMethod: "Cash",
+    amount: 300,
+  } as any);
+  booking.revision = 1;
+  await booking.save();
+
+  const checkInResponse = response();
+  await controller.checkIn(
+    request({
+      body: {
+        expectedRevision: 1,
+        deposit: 200,
+        unpaidPayment: {
+          paymentMethod: "Transfer",
+          roundingAdjustment: 0,
+        },
+        passportData: {
+          namePrefix: "Ms",
+          passportNo: "LEGACY-DEPOSIT-PASSPORT",
+          passportName: "Synthetic Guest",
+          nationality: "US",
+          nextDestinationCountry: "LAO",
+        },
+      },
+      params: { bookingId: "LEGACY-DEPOSIT" },
+      method: "PUT",
+      url: "/bookings/checkIn/LEGACY-DEPOSIT",
+      key: "legacy-deposit-checkin",
+    }),
+    checkInResponse as any,
+  );
+
+  assert.equal(checkInResponse.statusCode, 200, JSON.stringify(checkInResponse.body));
+  const stored = await Booking.findOne({ bookingId: "LEGACY-DEPOSIT" }).lean();
+  assert.equal(stored?.status, "checkedIn");
+  assert.equal(
+    stored?.transactions.filter((transaction) => transaction.type === "deposit")
+      .length,
+    1,
+  );
+  assert.equal(
+    stored?.transactions.find((transaction) => transaction.type === "deposit")
+      ?.amount,
+    300,
+  );
+});
+
+test("add transaction cannot record a deposit before check-in", async () => {
+  await bookingFixture("EARLY-DEPOSIT");
+  const addDepositResponse = response();
+
+  await controller.addTransaction(
+    request({
+      body: {
+        transaction: {
+          type: "deposit",
+          paymentMethod: "Cash",
+          amount: 200,
+        },
+      },
+      params: { bookingId: "EARLY-DEPOSIT" },
+      method: "POST",
+      url: "/bookings/addTransaction/EARLY-DEPOSIT",
+    }),
+    addDepositResponse as any,
+  );
+
+  assert.equal(addDepositResponse.statusCode, 409);
+  assert.equal(addDepositResponse.body.error, "DEPOSIT_REQUIRES_CHECK_IN");
+  const stored = await Booking.findOne({ bookingId: "EARLY-DEPOSIT" }).lean();
+  assert.equal(
+    stored?.transactions.some((transaction) => transaction.type === "deposit"),
+    false,
+  );
+});
+
+test("Thai check-in requires a Thai title, Thai name and 13-digit national ID", async () => {
+  await bookingFixture("THAI-CHECKIN");
+  await CashShift.create({
+    businessDate: businessDateKey(),
+    shiftNumber: 1,
+    staffUsername: "admin",
+    status: "open",
+    openingMode: "counted",
+    depositOpeningCash: 0,
+    operatingOpeningCash: 0,
+    depositExpectedCash: 0,
+    operatingExpectedCash: 0,
+    createdBy: "admin",
+  });
+
+  const invalidIdentity = response();
+  await controller.checkIn(
+    request({
+      body: {
+        expectedRevision: 0,
+        deposit: 200,
+        passportData: {
+          namePrefix: "Mr",
+          passportNo: "1234",
+          passportName: "สมชาย ใจดี",
+          nationality: "TH",
+          nextDestinationCountry: "THA",
+        },
+      },
+      params: { bookingId: "THAI-CHECKIN" },
+      method: "PUT",
+      url: "/bookings/checkIn/THAI-CHECKIN",
+    }),
+    invalidIdentity as any,
+  );
+  assert.equal(invalidIdentity.statusCode, 400);
+
+  const validIdentity = response();
+  await controller.checkIn(
+    request({
+      body: {
+        expectedRevision: 0,
+        deposit: 200,
+        unpaidPayment: {
+          paymentMethod: "Transfer",
+          roundingAdjustment: 0,
+        },
+        passportData: {
+          namePrefix: "นาย",
+          passportNo: "1234567890123",
+          passportName: "สมชาย ใจดี",
+          nationality: "TH",
+          nextDestinationCountry: "THA",
+        },
+      },
+      params: { bookingId: "THAI-CHECKIN" },
+      method: "PUT",
+      url: "/bookings/checkIn/THAI-CHECKIN",
+      key: "thai-checkin",
+    }),
+    validIdentity as any,
+  );
+
+  assert.equal(validIdentity.statusCode, 200, JSON.stringify(validIdentity.body));
+  const stored = await Booking.findOne({ bookingId: "THAI-CHECKIN" }).lean();
+  assert.equal(stored?.passport?.namePrefix, "นาย");
+  assert.equal(stored?.passport?.nationality, "TH");
 });
 
 test("room move increments revision and blocks a stale general edit", async () => {

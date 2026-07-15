@@ -95,7 +95,7 @@
 
 .extendBooking__wrapper .boxInput {
   border: 0;
-  box-shadow: var(--light-shadow);
+  box-shadow: var(--main-shadow);
 }
 
 .extendBooking__error {

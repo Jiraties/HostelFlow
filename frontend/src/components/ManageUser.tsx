@@ -4,7 +4,7 @@ import toast from "react-hot-toast";
 import ActionButton from "./ActionButton";
 import ModalCloseButton from "./ModalCloseButton";
 import UnsavedChangesModal from "./UnsavedChangesModal";
-import { API_URL } from "../config/api";
+import { profilePictureUrl } from "../helpers/profilePictureUrl";
 import { requestUnsavedModalClose } from "../helpers/modalGuards";
 import "../features/bookings/AddBooking.css";
 import "../features/bookings/Cancellation.css";
@@ -341,7 +341,7 @@ const ManageUser = ({
           <div className="manageUser__statusArea">
             <img
               className="manageUser__avatar"
-              src={API_URL + user.profilePictureUrl}
+              src={profilePictureUrl(user.profilePictureUrl)}
               alt=""
             />
           </div>

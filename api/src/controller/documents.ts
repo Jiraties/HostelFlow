@@ -8,6 +8,7 @@ import {
   formatNationalityToReportThaiName,
   formatNationalityToReportNumber,
   formatRoomIdToReportNumber,
+  isThaiNationality,
   nationalitySheetName,
   splitPassportName,
 } from "../helpers/passportHelpers";
@@ -153,6 +154,8 @@ const dateQuery = (date: string) => {
   return { start, end };
 };
 
+const thaiNationalityValues = ["TH", "THA", "th", "tha", "ไทย"];
+
 const immigrationDateQuery = (date: string) => {
   const bounds = dateQuery(date);
   if (!bounds) return null;
@@ -160,6 +163,7 @@ const immigrationDateQuery = (date: string) => {
   return {
     status: { $ne: "cancelled" },
     checkIn: { $gte: bounds.start, $lt: bounds.end },
+    "passport.nationality": { $nin: thaiNationalityValues },
   };
 };
 
@@ -208,8 +212,14 @@ const hotelPassportInfoIssue = (
   if (!passport?.namePrefix) return "ขาดคำนำหน้าชื่อ";
   if (!passport.nationality) return "ขาดสัญชาติ";
   if (!passport.nextDestinationCountry) return "ขาดประเทศปลายทางถัดไป";
-  if (!passport.passportName) return "ขาดชื่อบน Passport";
-  if (!passport.passportNo) return "ขาดเลข Passport";
+  if (!passport.passportName)
+    return isThaiNationality(passport.nationality)
+      ? "ขาดชื่อ-นามสกุลภาษาไทย"
+      : "ขาดชื่อบน Passport";
+  if (!passport.passportNo)
+    return isThaiNationality(passport.nationality)
+      ? "ขาดเลขประจำตัวประชาชน"
+      : "ขาดเลข Passport";
 
   if (!formatDestinationCountryForReport(passport.nextDestinationCountry)) {
     return `ไม่มีรหัสประเทศปลายทางสำหรับ ${passport.nextDestinationCountry}`;
@@ -246,13 +256,7 @@ const formatPassport = (
     passportName: "",
   };
 
-  if (
-    !rawPassport?.nationality ||
-    !rawPassport.passportName ||
-    !rawPassport.passportNo
-  ) {
-    return emptyPassport;
-  }
+  if (!rawPassport) return emptyPassport;
 
   const decrypt = ({ cipherText, iv, authTag }: EncryptedField) => {
     const key = Buffer.from(process.env.CRYPTO_SECRET!, "hex");
@@ -273,14 +277,17 @@ const formatPassport = (
 
   return {
     namePrefix: rawPassport.namePrefix || "",
-    nationality:
-      options.nationalityFormat === "number"
+    nationality: rawPassport.nationality
+      ? options.nationalityFormat === "number"
         ? formatNationalityToReportNumber(rawPassport.nationality)
         : nationalitySheet
           ? formatNationalityToIcao(rawPassport.nationality, nationalitySheet)
-          : "",
-    passportNo: decrypt(rawPassport.passportNo),
-    passportName: decrypt(rawPassport.passportName),
+          : ""
+      : "",
+    passportNo: rawPassport.passportNo ? decrypt(rawPassport.passportNo) : "",
+    passportName: rawPassport.passportName
+      ? decrypt(rawPassport.passportName)
+      : "",
   };
 };
 
@@ -783,14 +790,6 @@ export const getHotelAccomodationReport = async (
       }))
       .filter(({ reason }) => reason);
 
-    if (missingBookings.length > 0) {
-      return res.status(422).json({
-        code: "HOTEL_REPORT_DATA_INCOMPLETE",
-        message: "ข้อมูลผู้เข้าพักไม่ครบ จึงยังไม่สามารถส่งออกรายงาน รร. ได้",
-        missingBookings,
-      });
-    }
-
     const templatePath = path.resolve(
       process.cwd(),
       "uploads",
@@ -817,10 +816,13 @@ export const getHotelAccomodationReport = async (
       const splittedPassportName = splitPassportName(
         formattedPassport.passportName,
       );
+      const thaiGuest = isThaiNationality(
+        booking.passport?.nationality || "",
+      );
 
       const destination = formatDestinationCountryForReport(
-        booking.passport!.nextDestinationCountry!,
-      )!;
+        booking.passport?.nextDestinationCountry || "",
+      );
       const indexCell = row.getCell(1);
       indexCell.value = index + 1;
       row.getCell(2).value = formatDateAD(booking.checkIn);
@@ -830,13 +832,29 @@ export const getHotelAccomodationReport = async (
       row.getCell(4).value = formatRoomIdToReportNumber(
         getPrimaryRoomId(booking.roomStays[0] || {}),
       );
-      row.getCell(9).value = formattedPassport.namePrefix;
-      row.getCell(10).value = splittedPassportName.firstName;
-      row.getCell(11).value = splittedPassportName.middleName;
-      row.getCell(12).value = splittedPassportName.lastName;
+      row.getCell(5).value = thaiGuest ? formattedPassport.namePrefix : "";
+      row.getCell(6).value = thaiGuest
+        ? splittedPassportName.firstName
+        : "";
+      row.getCell(7).value = thaiGuest
+        ? splittedPassportName.middleName
+        : "";
+      row.getCell(8).value = thaiGuest
+        ? splittedPassportName.lastName
+        : "";
+      row.getCell(9).value = thaiGuest ? "" : formattedPassport.namePrefix;
+      row.getCell(10).value = thaiGuest
+        ? ""
+        : splittedPassportName.firstName;
+      row.getCell(11).value = thaiGuest
+        ? ""
+        : splittedPassportName.middleName;
+      row.getCell(12).value = thaiGuest
+        ? ""
+        : splittedPassportName.lastName;
       row.getCell(13).value = formattedPassport.nationality;
-      // row.getCell(14).value = formattedPassport.passportNo;
-      row.getCell(15).value = formattedPassport.passportNo;
+      row.getCell(14).value = thaiGuest ? formattedPassport.passportNo : "";
+      row.getCell(15).value = thaiGuest ? "" : formattedPassport.passportNo;
       row.getCell(16).value = formattedPassport.nationality;
       row.getCell(17).value = formatNationalityToReportThaiName(
         booking.passport?.nationality || "",
@@ -847,8 +865,8 @@ export const getHotelAccomodationReport = async (
         booking.passport?.nationality || "",
       );
       row.getCell(21).value = formattedPassport.nationality;
-      row.getCell(22).value = destination.label;
-      row.getCell(23).value = destination.code;
+      row.getCell(22).value = destination?.label || "";
+      row.getCell(23).value = destination?.code || "";
       row.getCell(24).value = formatDateAD(booking.checkOut);
       row.getCell(25).value = "12.00";
       row.getCell(26).value = 1;
@@ -871,6 +889,7 @@ export const getHotelAccomodationReport = async (
         reportType: "hotel_accommodation",
         businessDate: date,
         bookingCount: bookings.length,
+        incompleteBookingCount: missingBookings.length,
       },
     });
     setSensitiveDownloadHeaders(res);

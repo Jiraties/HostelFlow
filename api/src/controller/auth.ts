@@ -542,13 +542,17 @@ export const setProfilePicture = async (req: Request, res: Response) => {
 
     if (!req.file) return res.status(400).json({ message: "กรุณาอัปโหลดภาพ" });
 
-    const profilePictureUrl = `/uploads/profile-pictures/${req.file.filename}`;
+    const profilePictureUrl = `/auth/users/${req.user.userId}/profile-picture?v=${Date.now()}`;
 
     const updatedUser = await User.findByIdAndUpdate(
       req.user.userId,
       {
         $set: {
           profilePictureUrl,
+          profilePicture: {
+            data: req.file.buffer,
+            contentType: req.file.mimetype,
+          },
         },
       },
       { returnDocument: "after" },
@@ -562,5 +566,22 @@ export const setProfilePicture = async (req: Request, res: Response) => {
     });
   } catch (err) {
     return res.status(500).json({ message: (err as Error).message });
+  }
+};
+
+export const getProfilePicture = async (req: Request, res: Response) => {
+  try {
+    const user = await User.findById(req.params.userId)
+      .select("+profilePicture.data +profilePicture.contentType");
+
+    if (!user?.profilePicture?.data || !user.profilePicture.contentType) {
+      return res.status(404).json({ message: "ไม่พบรูปโปรไฟล์" });
+    }
+
+    res.setHeader("Content-Type", user.profilePicture.contentType);
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    return res.status(200).send(Buffer.from(user.profilePicture.data));
+  } catch (err) {
+    return res.status(404).json({ message: "ไม่พบรูปโปรไฟล์" });
   }
 };

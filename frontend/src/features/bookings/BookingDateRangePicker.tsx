@@ -205,6 +205,7 @@ export function BookingDateRangePicker({
             {calendarDays.map((date) => {
               const dateKey = toDateKey(date);
               const isCurrentMonth = date.month() === displayMonth.month();
+              const isToday = date.isSame(dayjs(), "day");
               const isRangeStart = dateKey === rangeStart;
               const isRangeEnd = dateKey === rangeEnd;
               const isInRange =
@@ -216,7 +217,9 @@ export function BookingDateRangePicker({
                 <button
                   className={`bookingDateRangePicker__day${
                     !isCurrentMonth ? " bookingDateRangePicker__day--adjacent" : ""
-                  }${isRangeStart ? " bookingDateRangePicker__day--start" : ""}${
+                  }${isToday ? " bookingDateRangePicker__day--today" : ""}${
+                    isRangeStart ? " bookingDateRangePicker__day--start" : ""
+                  }${
                     isRangeEnd ? " bookingDateRangePicker__day--end" : ""
                   }${isInRange ? " bookingDateRangePicker__day--inRange" : ""}`}
                   type="button"

@@ -52,12 +52,14 @@ const addTransactionPaymentMethodOptions = paymentMethodOptions.filter(
 
 const AddTransaction = ({
   bookingId,
+  bookingStatus,
   transactions,
   onClose,
   onUpdated,
   onDirtyChange,
 }: {
   bookingId: string;
+  bookingStatus: booking["status"];
   guestName: string;
   transactions: Transaction[];
   onClose: () => void;
@@ -152,6 +154,9 @@ const AddTransaction = ({
         transactionTypeOptions.find((option) => option.value === transaction.type)
           ?.color || "#94a3b8",
     }));
+  const availableTransactionTypeOptions = transactionTypeOptions.filter(
+    (option) => option.value !== "deposit" || bookingStatus === "checkedIn",
+  );
 
   const submitHandler = async () => {
     if (submitting) return;
@@ -219,13 +224,13 @@ const AddTransaction = ({
           <Select<OptionType>
             styles={customStyles<OptionType>()}
             classNamePrefix="rs"
-            options={transactionTypeOptions}
+            options={availableTransactionTypeOptions}
             placeholder="เลือกประเภทรายการ"
             formatOptionLabel={formatTransactionTypeLabel}
             menuPortalTarget={document.body}
             menuPosition="fixed"
             value={
-              transactionTypeOptions.find(
+              availableTransactionTypeOptions.find(
                 (option) => option.value === formData.type,
               ) || null
             }

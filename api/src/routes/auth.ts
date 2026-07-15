@@ -1,6 +1,7 @@
 import express from "express";
 import {
   adminCreateUser,
+  getProfilePicture,
   listUsers,
   login,
   logout,
@@ -24,13 +25,13 @@ const imageOnlyFilter: multer.Options["fileFilter"] = (req, file, cb) => {
 };
 
 const upload = multer({
-  dest: "uploads/profile-pictures",
-
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: imageOnlyFilter,
 });
 
 authRouter.get("/users", authMiddleware, listUsers);
+authRouter.get("/users/:userId/profile-picture", getProfilePicture);
 authRouter.post("/admin/createUser", authMiddleware, adminCreateUser);
 authRouter.patch("/users/:userId", authMiddleware, updateUser);
 authRouter.patch("/users/:userId/password", authMiddleware, resetUserPassword);

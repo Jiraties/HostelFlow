@@ -52,6 +52,10 @@ const userSchema = new mongoose_1.default.Schema({
     admin: { type: Boolean },
     active: { type: Boolean, default: true },
     profilePictureUrl: { type: String, default: "/uploads/default.jpg" },
+    profilePicture: {
+        data: { type: Buffer, select: false },
+        contentType: { type: String, select: false },
+    },
     currentSessionId: { type: String },
     currentSessionIssuedAt: { type: Date },
     settings: { type: userSettingsSchema, default: () => exports.defaultUserSettings },
