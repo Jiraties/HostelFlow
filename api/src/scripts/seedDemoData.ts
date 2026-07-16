@@ -109,7 +109,7 @@ const run = async () => {
         name: pick(names), bookingId, roomStays: [{ roomIds: [room], from: checkIn, to: checkOut }],
         checkIn, checkOut, nights, platformId: pick(platforms), status, transactions,
         staffUsername: createdBy, note: random() < 0.13 ? pick(["Late arrival", "Upper bunk preferred", "Airport transfer enquiry", "Celebrating a birthday"]) : "",
-        starred: isInHouse && random() < 0.12,
+        pinned: isInHouse && random() < 0.12,
       };
       if (status === "checkedIn" || status === "checkedOut") {
         booking.checkInByStaffUsername = createdBy;

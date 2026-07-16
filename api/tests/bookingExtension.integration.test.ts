@@ -150,6 +150,7 @@ const bookingFixture = async ({
             from: checkIn,
             to: checkOut,
             platformId,
+            channelBookingId: bookingId,
             amount: 500,
             transactionId: String(transactionId),
             createdBy: "staff",
@@ -178,6 +179,7 @@ const extensionBody = ({
   endOffset = 3,
   roomIds = ["Balcony"],
   platformId = "WALK",
+  channelBookingId = "EXT-CHANNEL-001",
   paymentMethod = "Transfer",
   amount = 300,
 }: {
@@ -186,6 +188,7 @@ const extensionBody = ({
   endOffset?: number;
   roomIds?: string[];
   platformId?: string;
+  channelBookingId?: string;
   paymentMethod?: string;
   amount?: number;
 } = {}) => ({
@@ -194,6 +197,7 @@ const extensionBody = ({
   newCheckOut: localDate(endOffset),
   roomIds,
   platformId,
+  channelBookingId,
   paymentMethod,
   amount,
   note: "Synthetic extension",
@@ -258,6 +262,7 @@ test("future booking extends in the same room with mixed platform and one paymen
   assert.equal(extensionCharges?.length, 1);
   assert.equal(extensionCharges?.[0].paymentMethod, "Transfer");
   assert.equal(extensionCharges?.[0].platformId, "WALK");
+  assert.equal(stored?.commercialSegments[1].channelBookingId, "EXT-CHANNEL-001");
   assert.equal(
     extensionCharges?.[0].commercialSegmentId,
     String(stored?.commercialSegments[1]._id),
@@ -377,6 +382,7 @@ test("validation rejects unpaid, invalid amount/date/status/revision/room", asyn
   await bookingFixture({ bookingId: "EXT-VALID" });
   const cases = [
     { body: extensionBody({ paymentMethod: "Unpaid" }), code: "INVALID_PAYMENT_METHOD" },
+    { body: extensionBody({ channelBookingId: "" }), code: "CHANNEL_BOOKING_ID_REQUIRED" },
     { body: extensionBody({ amount: 0 }), code: "INVALID_AMOUNT" },
     { body: extensionBody({ endOffset: 1 }), code: "INVALID_EXTENSION_DATES" },
     { body: extensionBody({ startOffset: 2 }), code: "NON_CONTIGUOUS_EXTENSION" },
@@ -535,7 +541,6 @@ test("Cash extension racing shift close is fully reconciled or fully rejected", 
         bookingId: String(shift._id),
         url: `/finance/cash-shifts/${shift._id}/close`,
         body: {
-          depositActualCash: 0,
           operatingActualCash: 300,
           closeDay: false,
         },

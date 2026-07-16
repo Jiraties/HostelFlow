@@ -32,7 +32,6 @@ type ScenarioId =
 type QuickActionId =
   | "refund_guest"
   | "collect_extra"
-  | "keep_deposit"
   | "correct_payment";
 
 type SettlementRow = {
@@ -70,8 +69,6 @@ const reasonOptions: OptionType[] = [
   { value: "no_show", label: "No-show" },
   { value: "ota_cancellation", label: "ยกเลิกผ่าน OTA" },
   { value: "payment_error", label: "บันทึกการชำระเงินผิด" },
-  { value: "deposit_kept_damage", label: "เก็บมัดจำ - ค่าเสียหาย" },
-  { value: "deposit_kept_key", label: "เก็บมัดจำ - กุญแจ" },
   { value: "manager_approved_refund", label: "ผู้จัดการอนุมัติคืนเงิน" },
   { value: "staff_entry_error", label: "พนักงานบันทึกข้อมูลผิด" },
   { value: "other", label: "อื่น ๆ" },
@@ -79,11 +76,9 @@ const reasonOptions: OptionType[] = [
 
 const transactionTypeOptions: OptionType[] = [
   { value: "roomRefund", label: "คืนค่าห้อง", color: "#fb7185" },
-  { value: "depositRefund", label: "คืนมัดจำ", color: "#f87171" },
   { value: "cancellationRefund", label: "คืนเงินยกเลิก", color: "#fb7185" },
   { value: "compensation", label: "ชดเชยลูกค้า", color: "#38bdf8" },
   { value: "settlementCharge", label: "เก็บเงินเพิ่ม", color: "#22c55e" },
-  { value: "depositKept", label: "เก็บมัดจำ", color: "#facc15" },
   { value: "paymentCorrection", label: "แก้ไขการชำระเงิน", color: "#a78bfa" },
   { value: "adjustment", label: "ปรับยอด", color: "#94a3b8" },
 ];
@@ -180,7 +175,7 @@ const quickActionOptions: QuickActionConfig[] = [
   {
     id: "refund_guest",
     label: "คืนเงินลูกค้า",
-    helper: "ใช้กับค่าห้อง มัดจำ หรือเงินยกเลิกที่ต้องจ่ายออก",
+    helper: "ใช้กับค่าห้องหรือเงินยกเลิกที่ต้องจ่ายออก",
     icon: "bx-undo",
     row: {
       type: "roomRefund",
@@ -197,17 +192,6 @@ const quickActionOptions: QuickActionConfig[] = [
       type: "settlementCharge",
       paymentMethod: "Cash",
       direction: "in",
-    },
-  },
-  {
-    id: "keep_deposit",
-    label: "เก็บมัดจำ",
-    helper: "บันทึกการเก็บมัดจำโดยไม่มีเงินเข้าออกใหม่",
-    icon: "bx-lock-keyhole",
-    row: {
-      type: "depositKept",
-      paymentMethod: "Cash",
-      direction: "neutral",
     },
   },
   {
@@ -333,6 +317,22 @@ const ResolveBooking = ({
       : [createRow(Date.now())],
   );
   const [submitting, setSubmitting] = useState(false);
+  const [confirmedDepositReturn, setConfirmedDepositReturn] = useState(false);
+
+  const remainingDepositAmount = Math.max(
+    booking.transactions.reduce((total, transaction) => {
+      if (transaction.type === "deposit") return total + transaction.amount;
+      if (
+        transaction.type === "depositRefund" ||
+        transaction.type === "depositKept"
+      ) {
+        return total - transaction.amount;
+      }
+      return total;
+    }, 0),
+    0,
+  );
+  const depositReturnRequired = mode === "checkedIn" && remainingDepositAmount > 0;
 
   const availableScenarios = scenarioOptionsByMode[mode].map((scenario) => {
     if (bookingIsClosed) {
@@ -400,9 +400,6 @@ const ResolveBooking = ({
         return;
       }
 
-      if (row.type === "depositKept" && row.direction !== "neutral") {
-        errors.set(row.id, "รายการเก็บมัดจำต้องเลือกไม่มีเงินเข้า/ออก");
-      }
     });
 
     return errors;
@@ -415,6 +412,7 @@ const ResolveBooking = ({
   const canSubmit =
     Boolean(reasonCode && note.trim()) &&
     rowErrors.size === 0 &&
+    (!depositReturnRequired || confirmedDepositReturn) &&
     !(bookingIsClosed && !user?.admin) &&
     !submitting;
 
@@ -426,6 +424,7 @@ const ResolveBooking = ({
         note ||
         roomReleaseStatus !== "released" ||
         moneyAdjustmentEnabled !== bookingIsClosed ||
+        confirmedDepositReturn ||
         rows.some(
           (row) =>
             row.amount ||
@@ -441,6 +440,8 @@ const ResolveBooking = ({
     return () => onDirtyChange?.(false);
   }, [
     bookingIsClosed,
+    confirmedDepositReturn,
+    depositReturnRequired,
     initialScenario.id,
     initialScenario.reasonCode,
     moneyAdjustmentEnabled,
@@ -477,10 +478,6 @@ const ResolveBooking = ({
       prevRows.map((row) => {
         if (row.id !== id) return row;
         const updatedRow = { ...row, [field]: value };
-
-        if (field === "type" && value === "depositKept") {
-          updatedRow.direction = "neutral";
-        }
 
         return updatedRow;
       }),
@@ -526,6 +523,9 @@ const ResolveBooking = ({
     if (rowErrors.size > 0) {
       throw new Error(Array.from(rowErrors.values())[0]);
     }
+    if (depositReturnRequired && !confirmedDepositReturn) {
+      throw new Error("กรุณายืนยันการคืนมัดจำก่อนปิดการเข้าพัก");
+    }
 
     const settlementTransactions = activeRows
       .filter((row) => row.amount || row.note || row.relatedTransactionId)
@@ -550,6 +550,7 @@ const ResolveBooking = ({
           roomReleaseStatus,
           reasonCode,
           note: note.trim(),
+          depositReturned: confirmedDepositReturn,
           transactions: settlementTransactions,
         },
         { withCredentials: true },
@@ -772,7 +773,6 @@ const ResolveBooking = ({
                             (option) => option.value === row.direction,
                           ) || null
                         }
-                        isDisabled={row.type === "depositKept"}
                         menuPortalTarget={document.body}
                         menuPosition="fixed"
                         onChange={(option: SingleValue<OptionType>) =>
@@ -906,6 +906,19 @@ const ResolveBooking = ({
 
       <section className="cancellation__section">
         <p className="addBooking__label">สรุปก่อนบันทึก</p>
+        {depositReturnRequired && (
+          <label className="checkbox resolveBooking__depositReturn">
+            ยืนยันว่าคืนมัดจำ {formatCurrency(remainingDepositAmount)} ให้แขกแล้ว
+            <input
+              type="checkbox"
+              checked={confirmedDepositReturn}
+              onChange={(event) =>
+                setConfirmedDepositReturn(event.target.checked)
+              }
+            />
+            <span className="box" />
+          </label>
+        )}
         <div className="cancellation__paymentConfirmation">
           <div className="cancellation__paymentConfirmationList">
             <div className="cancellation__paymentRow">

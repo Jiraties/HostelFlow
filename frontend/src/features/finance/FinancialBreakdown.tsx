@@ -4,6 +4,7 @@ import axios from "axios";
 import { useEffect, useMemo, useState } from "react";
 
 import { API_URL } from "../../config/api";
+import Tooltip from "../../components/Tooltip";
 import { useAuth } from "../../context/AuthContext";
 import {
   formatDisplayDate,
@@ -110,6 +111,11 @@ const formatExclusiveEndDate = (
   exclusiveEnd.setDate(exclusiveEnd.getDate() - 1);
   return formatDisplayDate(exclusiveEnd, dateFormat);
 };
+
+const localDateKey = (date = new Date()) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate(),
+  ).padStart(2, "0")}`;
 
 const paymentMethodLabel: Record<PaymentMethod, string> = {
   OTA: "OTA",
@@ -285,6 +291,7 @@ const FinancialBreakdown = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [breakdownMode, setBreakdownMode] = useState<BreakdownMode>("type");
+  const [selectedBusinessDate, setSelectedBusinessDate] = useState(localDateKey);
   const [selectedType, setSelectedType] = useState<TransactionType | null>(
     initialType,
   );
@@ -354,7 +361,13 @@ const FinancialBreakdown = ({
           mode === "today"
             ? `${API_URL}/finance/today-revenue-breakdown`
             : `${API_URL}/finance/expected-stay-revenue-breakdown`,
-          { withCredentials: true },
+          {
+            params:
+              mode === "today"
+                ? { businessDate: selectedBusinessDate }
+                : undefined,
+            withCredentials: true,
+          },
         );
 
         if (!ignore) setBreakdown(response.data);
@@ -373,7 +386,7 @@ const FinancialBreakdown = ({
     return () => {
       ignore = true;
     };
-  }, [mode]);
+  }, [mode, selectedBusinessDate]);
 
   return (
     <div className="viewBooking__wrapper">
@@ -388,12 +401,26 @@ const FinancialBreakdown = ({
               : "รายได้จากการเข้าพักหลังหักรายการลดรายได้ ไม่รวมมัดจำและรายการรับเงินจริง"}
           </p>
         </div>
-        {breakdown && (
+        {mode === "today" ? (
+          <label className="financialBreakdown__datePicker">
+            <span>วันที่รายได้</span>
+            <input
+              aria-label="เลือกวันที่สำหรับรายได้"
+              type="date"
+              value={selectedBusinessDate}
+              onChange={(event) => {
+                if (event.target.value) {
+                  setSelectedBusinessDate(event.target.value);
+                }
+              }}
+            />
+          </label>
+        ) : breakdown ? (
           <span>
             {formatDate(breakdown.period.startDate, dateFormat)} -{" "}
             {formatExclusiveEndDate(breakdown.period.endDate, dateFormat)}
           </span>
-        )}
+        ) : null}
       </div>
 
       {loading && (
@@ -494,25 +521,26 @@ const FinancialBreakdown = ({
             aria-label={`${mode === "today" ? "Today’s Revenue" : "Expected Stay Revenue"} distribution across ${activeGroups.length} ${breakdownMode} categories`}
           >
             {activeGroups.map((group) => (
-              <span
+              <Tooltip
+                content={
+                  <>
+                    <strong>{group.label}</strong>
+                    <span>
+                      {formatMoney(group.total)} ฿ ·{" "}
+                      {formatMoney(group.percentage)}%
+                    </span>
+                  </>
+                }
                 className="financialBreakdown__distributionSegment"
                 key={`bar-${breakdownMode}-${group.key}`}
                 style={{
                   backgroundColor: group.color,
                   flexGrow: group.total,
                 }}
-                title={`${group.label}: ${formatMoney(group.total)} ฿ (${formatMoney(
-                  group.percentage,
-                )}%)`}
+                ariaLabel={`${group.label}: ${formatMoney(group.total)} ฿ (${formatMoney(group.percentage)}%)`}
               >
-                <span className="financialBreakdown__distributionTooltip">
-                  <strong>{group.label}</strong>
-                  <span>
-                    {formatMoney(group.total)} ฿ ·{" "}
-                    {formatMoney(group.percentage)}%
-                  </span>
-                </span>
-              </span>
+                <span />
+              </Tooltip>
             ))}
           </div>
 

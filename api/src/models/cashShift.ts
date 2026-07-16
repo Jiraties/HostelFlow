@@ -38,13 +38,14 @@ export interface cashShift extends Document {
   ledgerRevision: number;
   openingMode: CashShiftOpeningMode;
   handoffFromShiftId?: string;
-  depositOpeningCash: number;
+  /** Legacy two-stash audit fields. New operating-only shifts omit these. */
+  depositOpeningCash?: number;
   operatingOpeningCash: number;
-  depositCashIn: number;
-  depositCashOut: number;
+  depositCashIn?: number;
+  depositCashOut?: number;
   operatingCashIn: number;
   operatingCashOut: number;
-  depositExpectedCash: number;
+  depositExpectedCash?: number;
   operatingExpectedCash: number;
   depositActualCash?: number;
   operatingActualCash?: number;
@@ -103,13 +104,13 @@ const cashShiftSchema = new mongoose.Schema({
     required: true,
   },
   handoffFromShiftId: { type: String },
-  depositOpeningCash: { type: Number, required: true },
+  depositOpeningCash: { type: Number },
   operatingOpeningCash: { type: Number, required: true },
-  depositCashIn: { type: Number, default: 0 },
-  depositCashOut: { type: Number, default: 0 },
+  depositCashIn: { type: Number },
+  depositCashOut: { type: Number },
   operatingCashIn: { type: Number, default: 0 },
   operatingCashOut: { type: Number, default: 0 },
-  depositExpectedCash: { type: Number, required: true },
+  depositExpectedCash: { type: Number },
   operatingExpectedCash: { type: Number, required: true },
   depositActualCash: { type: Number },
   operatingActualCash: { type: Number },

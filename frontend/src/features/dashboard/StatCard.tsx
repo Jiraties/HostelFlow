@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import Skeleton from "react-loading-skeleton";
+import Tooltip from "../../components/Tooltip";
 import "react-loading-skeleton/dist/skeleton.css";
 import "./StatCard.css";
 
@@ -153,9 +154,13 @@ export default function StatCard({
       <div className="statLabel">
         {label}
         {helperText && (
-          <span className="statTooltip" title={helperText} aria-label={helperText}>
+          <Tooltip
+            className="statTooltip"
+            content={helperText}
+            ariaLabel={helperText}
+          >
             <i className="bx bx-info-circle" />
-          </span>
+          </Tooltip>
         )}
       </div>
 

@@ -11,6 +11,7 @@ type CommercialBooking = Pick<
   booking,
   | "checkIn"
   | "checkOut"
+  | "bookingId"
   | "platformId"
   | "staffUsername"
   | "transactions"
@@ -45,6 +46,7 @@ export const effectiveCommercialSegments = (
       from: currentBooking.checkIn,
       to: originalTo,
       platformId: currentBooking.platformId,
+      channelBookingId: currentBooking.bookingId,
       amount: Math.abs(originalTransaction?.amount || 0),
       transactionId: originalTransaction?._id
         ? String(originalTransaction._id)

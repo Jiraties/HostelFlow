@@ -79,7 +79,7 @@ const extensionResult = async (bookingId, segmentId) => {
     }
     const segment = cleanBooking.commercialSegments.find((candidate) => String(candidate._id) === segmentId);
     if (!segment) {
-        throw new BookingExtensionError(409, "EXTENSION_RESULT_MISSING", "ไม่พบผลลัพธ์การต่ออายุที่บันทึกไว้");
+        throw new BookingExtensionError(409, "EXTENSION_RESULT_MISSING", "ไม่พบผลลัพธ์การเพิ่มคืนที่บันทึกไว้");
     }
     return {
         booking: cleanBooking,
@@ -100,25 +100,28 @@ const replayExistingOperation = async (bookingId, operationKeyHash, requestHash)
     if (!segment)
         return null;
     if (segment.requestHash !== requestHash) {
-        throw new BookingExtensionError(409, "IDEMPOTENCY_KEY_REUSED", "Idempotency key นี้ถูกใช้กับข้อมูลการต่ออายุชุดอื่นแล้ว");
+        throw new BookingExtensionError(409, "IDEMPOTENCY_KEY_REUSED", "Idempotency key นี้ถูกใช้กับข้อมูล Add Nights ชุดอื่นแล้ว");
     }
     return extensionResult(bookingId, String(segment._id));
 };
 const validateInput = (input) => {
     if (!Number.isInteger(input.expectedRevision) || input.expectedRevision < 0) {
-        throw new BookingExtensionError(400, "EXPECTED_REVISION_REQUIRED", "กรุณารีเฟรชข้อมูลการจองก่อนต่ออายุ");
+        throw new BookingExtensionError(400, "EXPECTED_REVISION_REQUIRED", "กรุณารีเฟรชข้อมูลการจองก่อนเพิ่มคืน");
     }
     if (!PLATFORM_IDS.includes(input.platformId)) {
         throw new BookingExtensionError(400, "INVALID_PLATFORM", "ช่องทางการจองไม่ถูกต้อง");
     }
+    if (!input.channelBookingId || input.channelBookingId.length > 100) {
+        throw new BookingExtensionError(400, "CHANNEL_BOOKING_ID_REQUIRED", "กรุณาระบุ Booking No. สำหรับคืนที่เพิ่ม");
+    }
     if (!EXTENSION_PAYMENT_METHODS.includes(input.paymentMethod)) {
-        throw new BookingExtensionError(400, "INVALID_PAYMENT_METHOD", "การต่ออายุต้องชำระด้วย OTA, Cash, Card หรือ Transfer");
+        throw new BookingExtensionError(400, "INVALID_PAYMENT_METHOD", "Add Nights ต้องชำระด้วย OTA, Cash, Card หรือ Transfer");
     }
     if (!Number.isFinite(input.amount) || input.amount <= 0) {
-        throw new BookingExtensionError(400, "INVALID_AMOUNT", "ยอดต่ออายุต้องมากกว่า 0");
+        throw new BookingExtensionError(400, "INVALID_AMOUNT", "ค่าห้องของคืนที่เพิ่มต้องมากกว่า 0");
     }
     if (!Array.isArray(input.roomIds) || input.roomIds.length === 0) {
-        throw new BookingExtensionError(400, "ROOMS_REQUIRED", "กรุณาเลือกห้องสำหรับช่วงต่ออายุ");
+        throw new BookingExtensionError(400, "ROOMS_REQUIRED", "กรุณาเลือกห้องสำหรับคืนที่เพิ่ม");
     }
     if (new Set(input.roomIds).size !== input.roomIds.length) {
         throw new BookingExtensionError(400, "DUPLICATE_ROOMS", "เลือกห้องซ้ำกัน");
@@ -130,7 +133,7 @@ const validateInput = (input) => {
     const start = parseDateOnly(input.startDate);
     const end = parseDateOnly(input.newCheckOut);
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-        throw new BookingExtensionError(400, "INVALID_EXTENSION_DATES", "วันที่ต่ออายุไม่ถูกต้อง");
+        throw new BookingExtensionError(400, "INVALID_EXTENSION_DATES", "วันที่สำหรับคืนที่เพิ่มไม่ถูกต้อง");
     }
     if (end <= start || calculateNights(start, end) < 1) {
         throw new BookingExtensionError(400, "INVALID_EXTENSION_DATES", "วันเช็คเอาท์ใหม่ต้องเพิ่มอย่างน้อย 1 คืน");
@@ -139,16 +142,16 @@ const validateInput = (input) => {
 };
 const validateBooking = (currentBooking, input, start) => {
     if (currentBooking.voided) {
-        throw new BookingExtensionError(409, "BOOKING_LIFECYCLE_CONFLICT", "ไม่สามารถต่ออายุ booking ที่ถูก void", currentBooking);
+        throw new BookingExtensionError(409, "BOOKING_LIFECYCLE_CONFLICT", "ไม่สามารถเพิ่มคืนให้ booking ที่ถูก void", currentBooking);
     }
     if (!["booked", "checkedIn"].includes(currentBooking.status)) {
-        throw new BookingExtensionError(400, "BOOKING_NOT_ELIGIBLE", "ต่ออายุได้เฉพาะ booking ที่ยังไม่ check-in หรือกำลังเข้าพัก", currentBooking);
+        throw new BookingExtensionError(400, "BOOKING_NOT_ELIGIBLE", "Add Nights ได้เฉพาะ booking ที่ยังไม่ check-in หรือกำลังเข้าพัก", currentBooking);
     }
     if ((currentBooking.revision || 0) !== input.expectedRevision) {
         throw new BookingExtensionError(409, "BOOKING_REVISION_CONFLICT", "ข้อมูลการจองถูกเปลี่ยนแล้ว กรุณารีเฟรชและลองใหม่", currentBooking);
     }
     if ((0, dateHelpers_1.toInputDate)(currentBooking.checkOut) !== input.startDate) {
-        throw new BookingExtensionError(400, "NON_CONTIGUOUS_EXTENSION", "ช่วงต่ออายุต้องเริ่มตรงกับวันเช็คเอาท์ปัจจุบัน", currentBooking);
+        throw new BookingExtensionError(400, "NON_CONTIGUOUS_EXTENSION", "คืนที่เพิ่มต้องเริ่มต่อจากวันเช็คเอาท์ปัจจุบัน", currentBooking);
     }
     const existingRooms = (currentBooking.roomStays || []).flatMap(roomStayHelpers_1.getRoomStayRoomIds);
     const invalidExistingRooms = (0, roomInventory_1.invalidRoomIds)(existingRooms);
@@ -156,7 +159,7 @@ const validateBooking = (currentBooking, input, start) => {
         throw new BookingExtensionError(400, "INVALID_EXISTING_ROOM_ID", `booking มีห้องที่ไม่เปิดใช้งาน: ${invalidExistingRooms.join(", ")}`, currentBooking);
     }
     if (start.getTime() !== new Date(`${input.startDate}T00:00:00`).getTime()) {
-        throw new BookingExtensionError(400, "INVALID_EXTENSION_DATES", "วันที่ต่ออายุไม่ถูกต้อง");
+        throw new BookingExtensionError(400, "INVALID_EXTENSION_DATES", "วันที่สำหรับคืนที่เพิ่มไม่ถูกต้อง");
     }
 };
 const hasRoomConflict = async (bookingId, roomIds, from, to, session) => Boolean(await booking_1.default.exists({
@@ -189,7 +192,7 @@ const hasRoomConflict = async (bookingId, roomIds, from, to, session) => Boolean
 }).session(session));
 const extendBooking = async ({ bookingId, input, idempotencyKey, staffUsername, }) => {
     if (!idempotencyKey || idempotencyKey.length > 200) {
-        throw new BookingExtensionError(400, "IDEMPOTENCY_KEY_REQUIRED", "กรุณาส่ง Idempotency-Key สำหรับการต่ออายุ");
+        throw new BookingExtensionError(400, "IDEMPOTENCY_KEY_REQUIRED", "กรุณาส่ง Idempotency-Key สำหรับ Add Nights");
     }
     const normalizedInput = {
         ...input,
@@ -197,6 +200,9 @@ const extendBooking = async ({ bookingId, input, idempotencyKey, staffUsername, 
             ? input.roomIds.map((roomId) => String(roomId).trim()).filter(Boolean)
             : input.roomIds,
         amount: Number(input.amount),
+        channelBookingId: typeof input.channelBookingId === "string"
+            ? input.channelBookingId.trim()
+            : "",
         note: typeof input.note === "string" ? input.note.trim() : undefined,
     };
     const { start, end } = validateInput(normalizedInput);
@@ -227,13 +233,13 @@ const extendBooking = async ({ bookingId, input, idempotencyKey, staffUsername, 
                     const existingSegment = currentBooking.commercialSegments.find((segment) => segment.operationKeyHash === operationKeyHash);
                     if (existingSegment) {
                         if (existingSegment.requestHash !== requestHash) {
-                            throw new BookingExtensionError(409, "IDEMPOTENCY_KEY_REUSED", "Idempotency key นี้ถูกใช้กับข้อมูลการต่ออายุชุดอื่นแล้ว");
+                            throw new BookingExtensionError(409, "IDEMPOTENCY_KEY_REUSED", "Idempotency key นี้ถูกใช้กับข้อมูล Add Nights ชุดอื่นแล้ว");
                         }
                         return;
                     }
                     validateBooking(currentBooking, normalizedInput, start);
                     if (await hasRoomConflict(bookingId, normalizedInput.roomIds, start, end, session)) {
-                        throw new BookingExtensionError(409, "ROOM_CONFLICT", "ห้องถูกจองในช่วงต่ออายุแล้ว");
+                        throw new BookingExtensionError(409, "ROOM_CONFLICT", "ห้องถูกจองในคืนที่ต้องการเพิ่มแล้ว");
                     }
                     const charge = {
                         _id: String(transactionId),
@@ -295,6 +301,7 @@ const extendBooking = async ({ bookingId, input, idempotencyKey, staffUsername, 
                         from: start,
                         to: end,
                         platformId: normalizedInput.platformId,
+                        channelBookingId: normalizedInput.channelBookingId,
                         amount: normalizedInput.amount,
                         transactionId: String(transactionId),
                         createdBy: staffUsername,
@@ -337,6 +344,7 @@ const extendBooking = async ({ bookingId, input, idempotencyKey, staffUsername, 
                                 addedNights: calculateNights(start, end),
                                 originalPlatform,
                                 extensionPlatform: normalizedInput.platformId,
+                                extensionBookingId: normalizedInput.channelBookingId,
                                 previousRooms: finalStay
                                     ? (0, roomStayHelpers_1.getRoomStayRoomIds)(finalStay)
                                     : [],

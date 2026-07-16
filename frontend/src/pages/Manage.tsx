@@ -20,7 +20,7 @@ import UnsavedChangesModal from "../components/UnsavedChangesModal";
 import usePageTitle from "../hooks/useTitle";
 import { formatDisplayDateTime } from "../helpers/displayDate";
 import type { DateFormatPreference } from "../types/userSettings";
-import type { DepositPreparation } from "../types/cashShiftTypes";
+import type { LegacyDepositAudit } from "../types/cashShiftTypes";
 
 type StaffUser = ManagedStaffUser;
 
@@ -55,8 +55,6 @@ type CashAuditWarning = {
 };
 
 type CashAuditMovements = {
-  depositCashIn: number;
-  depositCashOut: number;
   operatingCashIn: number;
   operatingCashOut: number;
 };
@@ -66,20 +64,14 @@ type CashAuditShift = {
   shiftNumber: number;
   status: "open" | "closed";
   openingMode: "counted" | "accepted_handoff";
-  depositOpeningCash: number;
   operatingOpeningCash: number;
-  depositCashIn: number;
-  depositCashOut: number;
   operatingCashIn: number;
   operatingCashOut: number;
-  depositExpectedCash: number;
   operatingExpectedCash: number;
-  depositActualCash?: number;
   operatingActualCash?: number;
-  depositVariance?: number;
   operatingVariance?: number;
   isFinalDayClose?: boolean;
-  depositPreparation?: DepositPreparation;
+  legacyDeposit?: LegacyDepositAudit;
   note?: string;
   startedAt: string | Date;
   endedAt?: string | Date;
@@ -95,9 +87,7 @@ type CashAuditShift = {
     fromShiftNumber: number;
     mode: "counted" | "accepted_handoff";
     elapsedMinutes: number;
-    expectedDepositOpening: number;
     expectedOperatingOpening: number;
-    depositDifference: number;
     operatingDifference: number;
     movements: CashAuditMovements;
     mismatch: boolean;
@@ -125,7 +115,7 @@ type NewUserForm = {
 
 const actionMap = {
   NEW_BOOKING: { icon: "bx-plus", text: "เพิ่ม Booking" },
-  EXTEND_BOOKING: { icon: "bx-calendar-plus", text: "ต่ออายุ Booking" },
+  EXTEND_BOOKING: { icon: "bx-calendar-plus", text: "Add Nights" },
   REMOVE_BOOKING: { icon: "bx-trash", text: "ลบ Booking" },
   EDIT_BOOKING: { icon: "bx-edit", text: "แก้ไข Booking" },
   CHECK_IN: { icon: "bx-check-circle", text: "Check-In" },
@@ -172,6 +162,7 @@ const transactionTypeLabels: Record<string, string> = {
   joinTour: "Join Tour",
   extraBed: "เตียงเสริม",
   pickACraft: "Pick A Craft",
+  trek2D: "Trek 2D",
   setMenu: "Set Menu",
   sleeperBus: "Sleeper Bus",
   onlyWalk: "Only Walk",
@@ -242,7 +233,7 @@ const signedTransactionAmount = (transaction: ReviewTransaction) => {
 
 const hasCashMismatch = (shift: CashAuditShift) =>
   shift.warnings.some((warning) =>
-    ["deposit_variance", "operating_variance", "handoff_mismatch"].includes(
+    ["operating_variance", "handoff_mismatch"].includes(
       warning.code,
     ),
   );
@@ -280,9 +271,7 @@ const CashCloseAudit = ({
   const openShiftCount = shifts.length - closedShiftCount;
   const variance = shifts.reduce(
     (total, shift) =>
-      total +
-      Math.abs(shift.depositVariance || 0) +
-      Math.abs(shift.operatingVariance || 0),
+      total + Math.abs(shift.operatingVariance || 0),
     0,
   );
   const unresolvedCount =
@@ -474,22 +463,6 @@ const CashCloseAudit = ({
                   </div>
                 </div>
                 <div className="manage__cashMath">
-                  <div className="manage__cashMathTile manage__cashMathTile--deposit">
-                    <div className="manage__cashMathTileHeader">
-                      <i className="bx bx-lock-keyhole" />
-                      <span>เงินสดมัดจำ</span>
-                    </div>
-                    <strong>
-                      {formatMoney(
-                        shift.depositActualCash ?? shift.depositExpectedCash,
-                      )}{" "}
-                      ฿
-                    </strong>
-                    <small>
-                      คาดไว้ {formatMoney(shift.depositExpectedCash)} · ต่าง{" "}
-                      {formatMoney(shift.depositVariance || 0)}
-                    </small>
-                  </div>
                   <div className="manage__cashMathTile manage__cashMathTile--operating">
                     <div className="manage__cashMathTileHeader">
                       <i className="bx bx-wallet" />
@@ -528,24 +501,7 @@ const CashCloseAudit = ({
                   <div className="manage__auditDetails">
                     <div className="manage__auditEquations">
                       <p>
-                        มัดจำ: {formatMoney(shift.depositOpeningCash)} +{" "}
-                        {formatMoney(shift.depositCashIn)} −{" "}
-                        {formatMoney(shift.depositCashOut)}{" "}
-                        {shift.depositPreparation ? (
-                          <>
-                            {shift.depositPreparation.adjustment >= 0 ? "+" : "−"}{" "}
-                            {formatMoney(
-                              Math.abs(shift.depositPreparation.adjustment),
-                            )}{" "}
-                            (เตรียมพรุ่งนี้) ={" "}
-                          </>
-                        ) : (
-                          "= "
-                        )}
-                        {formatMoney(shift.depositExpectedCash)} ฿
-                      </p>
-                      <p>
-                        ดำเนินงาน: {formatMoney(shift.operatingOpeningCash)} +{" "}
+                        เงินสดทั่วไป: {formatMoney(shift.operatingOpeningCash)} +{" "}
                         {formatMoney(shift.operatingCashIn)} −{" "}
                         {formatMoney(shift.operatingCashOut)} ={" "}
                         {formatMoney(shift.operatingExpectedCash)} ฿
@@ -553,9 +509,7 @@ const CashCloseAudit = ({
                     </div>
                     {shift.handoff && (
                       <p className="manage__auditHandoffDetail">
-                        ยอดรับจากคนก่อน: มัดจำ{" "}
-                        {formatMoney(shift.handoff.expectedDepositOpening)} /
-                        เงินสดทั่วไป{" "}
+                        ยอดเงินสดทั่วไปที่รับจากคนก่อน:{" "}
                         {formatMoney(shift.handoff.expectedOperatingOpening)} ฿
                       </p>
                     )}
@@ -564,23 +518,16 @@ const CashCloseAudit = ({
                         หมายเหตุ: {shift.note}
                       </p>
                     )}
-                    {shift.depositPreparation && (
+                    {shift.legacyDeposit && (
                       <div className="manage__depositPreparationAudit">
-                        <strong>
-                          เตรียมคืนมัดจำวันที่ {shift.depositPreparation.targetBusinessDate}
-                        </strong>
+                        <strong>ข้อมูลกองมัดจำเดิม (อ่านอย่างเดียว)</strong>
                         <p>
-                          ต้องใช้ {formatMoney(shift.depositPreparation.requiredAmount)} ฿ ·
-                          นับได้ {" "}
-                          {formatMoney(shift.depositPreparation.preparedAmount)} ฿ ·{" "}
-                          {shift.depositPreparation.refundBookingCount} การจอง
+                          เริ่ม {formatMoney(shift.legacyDeposit.openingCash || 0)} ฿ ·
+                          เข้า {formatMoney(shift.legacyDeposit.cashIn || 0)} ฿ ·
+                          ออก {formatMoney(shift.legacyDeposit.cashOut || 0)} ฿ ·
+                          คาดไว้ {formatMoney(shift.legacyDeposit.expectedCash || 0)} ฿ ·
+                          นับได้ {formatMoney(shift.legacyDeposit.actualCash || 0)} ฿
                         </p>
-                        {shift.depositPreparation.bookings.map((booking) => (
-                          <p key={booking.bookingId}>
-                            {booking.guestName} · {booking.bookingId} ·{" "}
-                            {formatMoney(booking.amount)} ฿
-                          </p>
-                        ))}
                       </div>
                     )}
                     {shift.flaggedTransactions.length > 0 && (

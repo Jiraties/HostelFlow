@@ -175,6 +175,82 @@ test("two edits from the same revision cannot both commit", async () => {
   assert.ok(["Edit A", "Edit B"].includes(stored?.name || ""));
 });
 
+test("legacy starred bookings remain pinned and migrate when toggled", async () => {
+  const created = await bookingFixture("PIN-LEGACY");
+  await Booking.collection.updateOne(
+    { _id: created._id },
+    { $unset: { pinned: "" }, $set: { starred: true } },
+  );
+
+  const legacyBooking = await Booking.findOne({ bookingId: "PIN-LEGACY" }).lean();
+  assert.equal(legacyBooking?.pinned, true);
+  assert.equal("starred" in (legacyBooking || {}), false);
+
+  const pinResponse = response();
+  await controller.pinBooking(
+    request({
+      body: { pinned: false },
+      params: { bookingId: "PIN-LEGACY" },
+      url: "/bookings/pinBooking/PIN-LEGACY",
+    }),
+    pinResponse as any,
+  );
+
+  assert.equal(pinResponse.statusCode, 200);
+  assert.equal(pinResponse.body.booking.pinned, false);
+  const stored = await Booking.collection.findOne({ bookingId: "PIN-LEGACY" });
+  assert.equal(stored?.pinned, false);
+  assert.equal("starred" in (stored || {}), false);
+});
+
+test("master booking search matches extension channel booking IDs", async () => {
+  const currentBooking = await bookingFixture("GROUNDING-BOOKING-ID");
+  await Booking.collection.updateOne(
+    { _id: currentBooking._id },
+    {
+      $push: {
+        commercialSegments: {
+          kind: "extension",
+          from: new Date(`${localDate(1)}T00:00:00`),
+          to: new Date(`${localDate(2)}T00:00:00`),
+          platformId: "BOOK",
+          channelBookingId: "BOOK-EXTENSION-98765",
+          amount: 700,
+          transactionId: new mongoose.Types.ObjectId().toString(),
+          createdBy: "staff",
+          createdAt: new Date(),
+        },
+      },
+      $set: {
+        checkOut: new Date(`${localDate(2)}T00:00:00`),
+        "roomStays.0.to": new Date(`${localDate(2)}T00:00:00`),
+      },
+    } as any,
+  );
+
+  const searchResponse = response();
+  await controller.getMasterBookings(
+    request({
+      method: "GET",
+      query: {
+        from: localDate(-1),
+        to: localDate(3),
+        bookingId: "extension-987",
+      },
+      url: "/bookings/getMasterBookings",
+    }),
+    searchResponse as any,
+  );
+
+  assert.equal(searchResponse.statusCode, 200);
+  assert.deepEqual(
+    searchResponse.body.bookings.map((booking: { bookingId: string }) =>
+      booking.bookingId,
+    ),
+    ["GROUNDING-BOOKING-ID"],
+  );
+});
+
 test("stale edit cannot overwrite check-in or cancellation", async () => {
   await bookingFixture("CHECKIN-EDIT");
   await CashShift.create({
@@ -334,7 +410,7 @@ test("check-in reuses a deposit recorded on a legacy booked stay", async () => {
   );
 });
 
-test("add transaction cannot record a deposit before check-in", async () => {
+test("add transaction cannot create deposits outside check-in", async () => {
   await bookingFixture("EARLY-DEPOSIT");
   const addDepositResponse = response();
 
@@ -354,13 +430,193 @@ test("add transaction cannot record a deposit before check-in", async () => {
     addDepositResponse as any,
   );
 
-  assert.equal(addDepositResponse.statusCode, 409);
-  assert.equal(addDepositResponse.body.error, "DEPOSIT_REQUIRES_CHECK_IN");
+  assert.equal(addDepositResponse.statusCode, 400);
+  assert.equal(addDepositResponse.body.error, "INVALID_TRANSACTION_TYPE");
   const stored = await Booking.findOne({ bookingId: "EARLY-DEPOSIT" }).lean();
   assert.equal(
     stored?.transactions.some((transaction) => transaction.type === "deposit"),
     false,
   );
+});
+
+test("staff can correct one active deposit with an audited reason", async () => {
+  const booking = await bookingFixture("DEPOSIT-CORRECTION");
+  booking.status = "checkedIn";
+  booking.transactions.push({
+    type: "deposit",
+    paymentMethod: "Cash",
+    amount: 200,
+    sourceAction: "CHECK_IN",
+    createdBy: "staff",
+  });
+  await booking.save();
+
+  const correction = response();
+  await controller.correctDeposit(
+    request({
+      body: { expectedRevision: 0, amount: 250, reason: "บันทึกยอดผิด" },
+      params: { bookingId: "DEPOSIT-CORRECTION" },
+      url: "/bookings/DEPOSIT-CORRECTION/deposit",
+      admin: false,
+    }),
+    correction as any,
+  );
+
+  assert.equal(correction.statusCode, 200, JSON.stringify(correction.body));
+  const [stored, activity] = await Promise.all([
+    Booking.findOne({ bookingId: "DEPOSIT-CORRECTION" }).lean(),
+    Activity.findOne({ bookingId: "DEPOSIT-CORRECTION", action: "EDIT_BOOKING" }).lean(),
+  ]);
+  assert.equal(stored?.revision, 1);
+  const correctedDeposit = stored?.transactions.find(
+    (transaction) => transaction.type === "deposit",
+  );
+  assert.equal(correctedDeposit?.amount, 250);
+  assert.equal(correctedDeposit?.cashShiftId, undefined);
+  assert.equal((activity?.details as any)?.summary?.action, "CORRECT_DEPOSIT");
+  assert.equal((activity?.details as any)?.summary?.reason, "บันทึกยอดผิด");
+});
+
+test("checkout requires full deposit return confirmation and bypasses cash shifts", async () => {
+  const booking = await bookingFixture("STRICT-DEPOSIT-CHECKOUT");
+  booking.status = "checkedIn";
+  booking.transactions.push({
+    type: "deposit",
+    paymentMethod: "Cash",
+    amount: 200,
+    sourceAction: "CHECK_IN",
+  });
+  await booking.save();
+
+  const missingConfirmation = response();
+  await controller.checkOut(
+    request({
+      body: { expectedRevision: 0, releaseRemainingNights: true },
+      params: { bookingId: "STRICT-DEPOSIT-CHECKOUT" },
+    }),
+    missingConfirmation as any,
+  );
+  assert.equal(missingConfirmation.statusCode, 400);
+  assert.equal(
+    missingConfirmation.body.error,
+    "DEPOSIT_RETURN_CONFIRMATION_REQUIRED",
+  );
+
+  const confirmed = response();
+  await controller.checkOut(
+    request({
+      body: {
+        expectedRevision: 0,
+        depositReturned: true,
+        releaseRemainingNights: true,
+      },
+      params: { bookingId: "STRICT-DEPOSIT-CHECKOUT" },
+      key: "strict-deposit-checkout",
+    }),
+    confirmed as any,
+  );
+  assert.equal(confirmed.statusCode, 200, JSON.stringify(confirmed.body));
+  const stored = await Booking.findOne({ bookingId: "STRICT-DEPOSIT-CHECKOUT" }).lean();
+  const refund = stored?.transactions.find(
+    (transaction) => transaction.type === "depositRefund",
+  );
+  assert.equal(refund?.amount, 200);
+  assert.equal(refund?.cashShiftId, undefined);
+});
+
+test("Resolve requires the same full deposit return confirmation", async () => {
+  const booking = await bookingFixture("STRICT-DEPOSIT-RESOLVE");
+  booking.status = "checkedIn";
+  booking.transactions.push({
+    type: "deposit",
+    paymentMethod: "Cash",
+    amount: 200,
+    sourceAction: "CHECK_IN",
+  });
+  await booking.save();
+
+  const baseBody = {
+    expectedRevision: 0,
+    outcome: "guest_left",
+    finalStatus: "checkedOut",
+    roomReleaseStatus: "released",
+    reasonCode: "other",
+    note: "Synthetic guest departure",
+    transactions: [],
+  };
+  const missingConfirmation = response();
+  await controller.resolveBooking(
+    request({
+      body: baseBody,
+      params: { bookingId: "STRICT-DEPOSIT-RESOLVE" },
+      url: "/bookings/resolveBooking/STRICT-DEPOSIT-RESOLVE",
+    }),
+    missingConfirmation as any,
+  );
+  assert.equal(missingConfirmation.statusCode, 400);
+  assert.equal(
+    missingConfirmation.body.error,
+    "DEPOSIT_RETURN_CONFIRMATION_REQUIRED",
+  );
+
+  const confirmed = response();
+  await controller.resolveBooking(
+    request({
+      body: { ...baseBody, depositReturned: true },
+      params: { bookingId: "STRICT-DEPOSIT-RESOLVE" },
+      url: "/bookings/resolveBooking/STRICT-DEPOSIT-RESOLVE",
+      key: "strict-deposit-resolve",
+    }),
+    confirmed as any,
+  );
+  assert.equal(confirmed.statusCode, 200, JSON.stringify(confirmed.body));
+  const stored = await Booking.findOne({ bookingId: "STRICT-DEPOSIT-RESOLVE" }).lean();
+  assert.equal(stored?.status, "checkedOut");
+  assert.equal(
+    stored?.transactions.filter(
+      (transaction) => transaction.type === "depositRefund",
+    ).length,
+    1,
+  );
+});
+
+test("active staff can add a normal transaction after check-out", async () => {
+  const booking = await bookingFixture("POST-CHECKOUT-TRANSACTION");
+  booking.status = "checkedOut";
+  booking.checkedInAt = new Date();
+  await booking.save();
+
+  const addTransactionResponse = response();
+  await controller.addTransaction(
+    request({
+      body: {
+        transaction: {
+          type: "misc",
+          paymentMethod: "Transfer",
+          amount: 150,
+        },
+      },
+      params: { bookingId: booking.bookingId },
+      method: "POST",
+      url: `/bookings/addTransaction/${booking.bookingId}`,
+      admin: false,
+    }),
+    addTransactionResponse as any,
+  );
+
+  assert.equal(
+    addTransactionResponse.statusCode,
+    200,
+    JSON.stringify(addTransactionResponse.body),
+  );
+  const stored = await Booking.findOne({ bookingId: booking.bookingId }).lean();
+  const addedTransaction = stored?.transactions.find(
+    (transaction) =>
+      transaction.type === "misc" && transaction.sourceAction === "ADD_TRANSACTION",
+  );
+  assert.equal(addedTransaction?.amount, 150);
+  assert.equal(addedTransaction?.paymentMethod, "Transfer");
+  assert.equal(addedTransaction?.createdBy, "staff");
 });
 
 test("Thai check-in requires a Thai title, Thai name and 13-digit national ID", async () => {
@@ -430,6 +686,117 @@ test("Thai check-in requires a Thai title, Thai name and 13-digit national ID", 
   const stored = await Booking.findOne({ bookingId: "THAI-CHECKIN" }).lean();
   assert.equal(stored?.passport?.namePrefix, "นาย");
   assert.equal(stored?.passport?.nationality, "TH");
+});
+
+test("only admin can historically onboard an expired stay without touching today's cash shift", async () => {
+  const historicalBooking = await bookingFixture("HISTORICAL-CHECKIN");
+  historicalBooking.checkIn = new Date(`${localDate(-3)}T00:00:00`);
+  historicalBooking.checkOut = new Date(`${localDate(-1)}T00:00:00`);
+  historicalBooking.roomStays[0].from = historicalBooking.checkIn;
+  historicalBooking.roomStays[0].to = historicalBooking.checkOut;
+  historicalBooking.transactions[0].paymentMethod = "Transfer";
+  await historicalBooking.save();
+
+  const payload = {
+    expectedRevision: 0,
+    deposit: 300,
+    adminHistoricalCheckIn: true,
+    passportData: {
+      namePrefix: "Ms",
+      passportNo: "HISTORICAL-PASSPORT",
+      passportName: "Historical Guest",
+      nationality: "US",
+      nextDestinationCountry: "THA",
+    },
+  };
+
+  const normalExpired = response();
+  await controller.checkIn(
+    request({
+      body: { ...payload, adminHistoricalCheckIn: false },
+      params: { bookingId: "HISTORICAL-CHECKIN" },
+      method: "PUT",
+      url: "/bookings/checkIn/HISTORICAL-CHECKIN",
+    }),
+    normalExpired as any,
+  );
+  assert.equal(normalExpired.statusCode, 409);
+
+  const staffAttempt = response();
+  await controller.checkIn(
+    request({
+      body: payload,
+      params: { bookingId: "HISTORICAL-CHECKIN" },
+      method: "PUT",
+      url: "/bookings/checkIn/HISTORICAL-CHECKIN",
+      admin: false,
+    }),
+    staffAttempt as any,
+  );
+  assert.equal(staffAttempt.statusCode, 403);
+  assert.equal(staffAttempt.body.error, "ADMIN_REQUIRED");
+
+  const adminAttempt = response();
+  await controller.checkIn(
+    request({
+      body: payload,
+      params: { bookingId: "HISTORICAL-CHECKIN" },
+      method: "PUT",
+      url: "/bookings/checkIn/HISTORICAL-CHECKIN",
+      key: "historical-checkin",
+    }),
+    adminAttempt as any,
+  );
+  assert.equal(adminAttempt.statusCode, 200, JSON.stringify(adminAttempt.body));
+
+  const stored = await Booking.findOne({ bookingId: "HISTORICAL-CHECKIN" })
+    .select("+passport.passportHash")
+    .lean();
+  assert.equal(stored?.status, "checkedIn");
+  assert.equal(stored?.checkInMode, "admin_historical_onboarding");
+  assert.equal(
+    new Date(stored?.checkedInAt || 0).getTime(),
+    historicalBooking.checkIn.getTime(),
+  );
+  const deposit = stored?.transactions.find(
+    (transaction) => transaction.type === "deposit",
+  );
+  assert.equal(deposit?.amount, 300);
+  assert.equal(deposit?.cashShiftId, undefined);
+  assert.equal(
+    new Date(deposit?.createdAt || 0).getTime(),
+    historicalBooking.checkIn.getTime(),
+  );
+
+  await CashShift.create({
+    businessDate: businessDateKey(),
+    shiftNumber: 1,
+    staffUsername: "admin",
+    status: "open",
+    openingMode: "counted",
+    depositOpeningCash: 300,
+    operatingOpeningCash: 0,
+    depositExpectedCash: 300,
+    operatingExpectedCash: 0,
+    createdBy: "admin",
+  });
+  const checkout = response();
+  await controller.checkOut(
+    request({
+      body: {
+        expectedRevision: 1,
+        depositReturned: true,
+        releaseRemainingNights: true,
+      },
+      params: { bookingId: "HISTORICAL-CHECKIN" },
+      method: "PATCH",
+      url: "/bookings/checkOut/HISTORICAL-CHECKIN",
+      key: "historical-checkout",
+    }),
+    checkout as any,
+  );
+  assert.equal(checkout.statusCode, 200, JSON.stringify(checkout.body));
+  assert.equal(checkout.body.booking.status, "checkedOut");
 });
 
 test("room move increments revision and blocks a stale general edit", async () => {

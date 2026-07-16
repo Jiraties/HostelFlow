@@ -326,13 +326,13 @@ The cancellation over-refund bug, zero-deposit checkout blocker, availability fa
 - Backend uses Bangkok business-day bounds and includes today’s non-cancelled arrivals/departures with current status.
 - The tables expose guest, dates, nights, rooms, source, room price, displayed payment method, Booking ID, check-in staff, note, and status.
 - The dashboard separately shows late check-ins and late check-outs needing review.
-- Starred rows can be promoted.
+- Pinned rows can be promoted.
 
 **What is confusing or can fail**
 
 - The column heading “สถานะ Check-In” is reused even when showing checked-out/cancelled/no-show states.
 - “ยังไม่ชำระเงิน” counts only original room charges whose method is Unpaid; partial or unusual correction cases are harder to interpret.
-- API ordering is not explicit; client status sorting may not match reception priority (unpaid/late/starred).
+- API ordering is not explicit; client status sorting may not match reception priority (unpaid/late/pinned).
 
 **Likely training question:** “Why is a checked-out guest still in Departures?”
 

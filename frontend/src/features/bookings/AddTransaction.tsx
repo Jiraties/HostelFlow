@@ -34,6 +34,7 @@ const transactionTypeOptions: OptionType[] = [
   { value: "joinTour", label: "Join Tour", color: "#22c55e" },
   { value: "slowBoat", label: "Slow Boat", color: "#2dd4bf" },
   { value: "pickACraft", label: "Pick A Craft", color: "#f59e0b" },
+  { value: "trek2D", label: "Trek 2D", color: "#16a34a" },
   { value: "setMenu", label: "Set Menu", color: "#84cc16" },
   { value: "sleeperBus", label: "Sleeper Bus", color: "#6366f1" },
   { value: "onlyWalk", label: "Only Walk", color: "#14b8a6" },
@@ -42,13 +43,54 @@ const transactionTypeOptions: OptionType[] = [
   { value: "car", label: "Car", color: "#64748b" },
   { value: "misc", label: "Misc", color: "#94a3b8" },
   { value: "adjustment", label: "ปรับราคา", color: "#a78bfa" },
-  { value: "deposit", label: "รับมัดจำ", color: "#facc15" },
-  { value: "depositRefund", label: "คืนมัดจำ", color: "#f87171" },
 ];
+
+const transactionAttachmentMeta: Record<
+  TransactionType,
+  { label: string; color: string }
+> = {
+  roomCharge: { label: "ค่าห้อง", color: "#51d1dc" },
+  deposit: { label: "รับมัดจำ", color: "#facc15" },
+  adjustment: { label: "ปรับราคา", color: "#a78bfa" },
+  depositRefund: { label: "คืนมัดจำ", color: "#f87171" },
+  cancellationRefund: { label: "คืนเงินยกเลิก", color: "#fb7185" },
+  roomRefund: { label: "คืนค่าห้อง", color: "#fb7185" },
+  settlementCharge: { label: "รับชำระยอดค้าง", color: "#22c55e" },
+  compensation: { label: "ชดเชยลูกค้า", color: "#38bdf8" },
+  depositKept: { label: "เก็บมัดจำเป็นรายได้", color: "#facc15" },
+  paymentCorrection: { label: "แก้ไขการชำระเงิน", color: "#a78bfa" },
+  towel: { label: "ผ้าเช็ดตัว", color: "#38bdf8" },
+  motorbike: { label: "มอเตอร์ไซค์", color: "#fb923c" },
+  slowBoat: { label: "Slow Boat", color: "#2dd4bf" },
+  joinTour: { label: "Join Tour", color: "#22c55e" },
+  extraBed: { label: "เตียงเสริม", color: "#ec4899" },
+  pickACraft: { label: "Pick A Craft", color: "#f59e0b" },
+  trek2D: { label: "Trek 2D", color: "#16a34a" },
+  setMenu: { label: "Set Menu", color: "#84cc16" },
+  sleeperBus: { label: "Sleeper Bus", color: "#6366f1" },
+  onlyWalk: { label: "Only Walk", color: "#14b8a6" },
+  laundry: { label: "Laundry", color: "#60a5fa" },
+  bicycle: { label: "Bicycle", color: "#fb923c" },
+  car: { label: "Car", color: "#64748b" },
+  misc: { label: "Misc", color: "#94a3b8" },
+  cardSurcharge: { label: "ค่าธรรมเนียมบัตร 3%", color: "#94a3b8" },
+};
 
 const addTransactionPaymentMethodOptions = paymentMethodOptions.filter(
   (option) => option.value !== "OTA" && option.value !== "Unpaid",
 );
+
+const transactionPresets: Partial<
+  Record<TransactionType, { amount: number; paymentMethod?: PaymentMethod }>
+> = {
+  towel: { amount: 30, paymentMethod: "Cash" },
+  laundry: { amount: 60, paymentMethod: "Cash" },
+  slowBoat: { amount: 250 },
+  joinTour: { amount: 400 },
+  onlyWalk: { amount: 400 },
+  trek2D: { amount: 600 },
+  setMenu: { amount: 120 },
+};
 
 const AddTransaction = ({
   bookingId,
@@ -80,11 +122,11 @@ const AddTransaction = ({
     onDirtyChange?.(
       Boolean(
         formData.type ||
-          formData.paymentMethod ||
-          formData.amount ||
-          formData.note ||
-          formData.relatedTransactionId ||
-          formData.adjustmentDirection !== "in",
+        formData.paymentMethod ||
+        formData.amount ||
+        formData.note ||
+        formData.relatedTransactionId ||
+        formData.adjustmentDirection !== "in",
       ),
     );
 
@@ -97,6 +139,23 @@ const AddTransaction = ({
   ) => {
     if (submitting) return;
     setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const transactionTypeChangeHandler = (value: string) => {
+    if (submitting) return;
+
+    const type = value as TransactionType | "";
+    const preset = type ? transactionPresets[type] : undefined;
+    setFormData((prev) => ({
+      ...prev,
+      type,
+      ...(preset
+        ? {
+            amount: String(preset.amount),
+            paymentMethod: preset.paymentMethod || "",
+          }
+        : {}),
+    }));
   };
 
   const formatPaymentMethodLabel = ({ label, value }: OptionType) => (
@@ -141,18 +200,40 @@ const AddTransaction = ({
     ? Number((validAmount * 0.03).toFixed(2))
     : 0;
   const totalGuestPays = validAmount + cardSurcharge;
-  const needsNote = formData.type === "adjustment" || formData.type === "depositRefund";
+  const needsNote =
+    formData.type === "adjustment" || formData.type === "depositRefund";
   const canAttachTransaction = formData.type === "adjustment";
-  const hasCashMovement =
-    formData.paymentMethod === "Cash" && validAmount > 0;
+  const hasCashMovement = formData.paymentMethod === "Cash" && validAmount > 0;
+  const attachmentTransactionLabel = (transaction: Transaction) => {
+    if (
+      transaction.type === "roomCharge" &&
+      transaction.sourceAction === "EXTEND_BOOKING"
+    ) {
+      return "ค่าห้องของคืนที่เพิ่ม";
+    }
+
+    if (
+      transaction.type === "roomCharge" &&
+      transaction.paymentMethod === "Unpaid"
+    ) {
+      return "ค่าห้องเดิม (ยังไม่ชำระ)";
+    }
+
+    if (
+      transaction.type === "settlementCharge" &&
+      transaction.relatedTransactionType === "roomCharge"
+    ) {
+      return "รับชำระค่าห้องภายหลัง";
+    }
+
+    return transactionAttachmentMeta[transaction.type].label;
+  };
   const transactionAttachmentOptions: OptionType[] = transactions
     .filter((transaction) => transaction._id)
     .map((transaction) => ({
       value: transaction._id || "",
-      label: `${transaction.type} · ${transaction.paymentMethod} · ${formatCurrency(transaction.amount)} บาท`,
-      color:
-        transactionTypeOptions.find((option) => option.value === transaction.type)
-          ?.color || "#94a3b8",
+      label: `${attachmentTransactionLabel(transaction)} · ${transaction.paymentMethod} · ${formatCurrency(transaction.amount)} บาท`,
+      color: transactionAttachmentMeta[transaction.type].color,
     }));
   const availableTransactionTypeOptions = transactionTypeOptions.filter(
     (option) => option.value !== "deposit" || bookingStatus === "checkedIn",
@@ -213,7 +294,16 @@ const AddTransaction = ({
       <ModalCloseButton onClick={onClose} />
       <div className="addTransaction__header">
         <div>
-          <h1 className="addBooking__title">เพิ่มรายการใช้จ่าย</h1>
+          <h1 className="addBooking__title">
+            {bookingStatus === "checkedOut"
+              ? "เพิ่มรายการหลัง Check-Out"
+              : "เพิ่มรายการใช้จ่าย"}
+          </h1>
+          {bookingStatus === "checkedOut" && (
+            <p className="addTransaction__description">
+              รายการนี้จะถูกบันทึกเพิ่มในประวัติของ Booking ที่ปิดแล้ว
+            </p>
+          )}
         </div>
       </div>
 
@@ -235,7 +325,7 @@ const AddTransaction = ({
               ) || null
             }
             onChange={(option: SingleValue<OptionType>) =>
-              formDataChangeHandler("type", option?.value || "")
+              transactionTypeChangeHandler(option?.value || "")
             }
           />
         </div>
@@ -291,6 +381,32 @@ const AddTransaction = ({
           </div>
         )}
 
+        {canAttachTransaction && transactionAttachmentOptions.length > 0 && (
+          <div>
+            <p className="addBooking__label">แนบรายการที่ปรับ</p>
+            <Select<OptionType>
+              styles={customStyles<OptionType>()}
+              classNamePrefix="rs"
+              options={transactionAttachmentOptions}
+              placeholder="เลือกรายการเดิม"
+              formatOptionLabel={formatTransactionTypeLabel}
+              menuPortalTarget={document.body}
+              menuPosition="fixed"
+              value={
+                transactionAttachmentOptions.find(
+                  (option) => option.value === formData.relatedTransactionId,
+                ) || null
+              }
+              onChange={(option: SingleValue<OptionType>) =>
+                formDataChangeHandler(
+                  "relatedTransactionId",
+                  option?.value || "",
+                )
+              }
+            />
+          </div>
+        )}
+
         <div>
           <p className="addBooking__label">จ่ายผ่าน</p>
           <Select<OptionType>
@@ -321,29 +437,6 @@ const AddTransaction = ({
               value={formData.note}
               placeholder="เช่น คืนมัดจำบางส่วน / ปรับราคาตามหน้างาน"
               onChange={(e) => formDataChangeHandler("note", e.target.value)}
-            />
-          </div>
-        )}
-
-        {canAttachTransaction && transactionAttachmentOptions.length > 0 && (
-          <div>
-            <p className="addBooking__label">แนบรายการที่ปรับ</p>
-            <Select<OptionType>
-              styles={customStyles<OptionType>()}
-              classNamePrefix="rs"
-              options={transactionAttachmentOptions}
-              placeholder="เลือกรายการเดิม"
-              formatOptionLabel={formatTransactionTypeLabel}
-              menuPortalTarget={document.body}
-              menuPosition="fixed"
-              value={
-                transactionAttachmentOptions.find(
-                  (option) => option.value === formData.relatedTransactionId,
-                ) || null
-              }
-              onChange={(option: SingleValue<OptionType>) =>
-                formDataChangeHandler("relatedTransactionId", option?.value || "")
-              }
             />
           </div>
         )}

@@ -94,15 +94,14 @@ const TOTAL_GUEST_CAPACITY = activeRoomInventory().reduce(
 );
 const CARD_SURCHARGE_RATE = 0.03;
 const ADD_TRANSACTION_TYPES: TransactionType[] = [
-  "deposit",
   "adjustment",
-  "depositRefund",
   "towel",
   "motorbike",
   "slowBoat",
   "joinTour",
   "extraBed",
   "pickACraft",
+  "trek2D",
   "setMenu",
   "sleeperBus",
   "onlyWalk",
@@ -115,9 +114,7 @@ const RESOLVE_BOOKING_TRANSACTION_TYPES: TransactionType[] = [
   "roomRefund",
   "settlementCharge",
   "compensation",
-  "depositKept",
   "paymentCorrection",
-  "depositRefund",
   "cancellationRefund",
   "adjustment",
 ];
@@ -732,6 +729,7 @@ export const newBooking = async (
                   from: newCheckIn,
                   to: newCheckOut,
                   platformId: booking.platformId,
+                  channelBookingId: booking.bookingId.trim(),
                   amount: roomChargeAmount,
                   transactionId: String(roomChargeTransactionId),
                   createdBy: staffUsername,
@@ -874,8 +872,8 @@ type UpdateBookingNoteBody = {
   note?: string;
 };
 
-type StarBookingBody = {
-  starred?: boolean;
+type PinBookingBody = {
+  pinned?: boolean;
 };
 
 export const editBooking = async (
@@ -940,7 +938,7 @@ export const editBooking = async (
       return res.status(400).json({
         error: "EXTENDED_BOOKING_COMMERCIAL_FIELDS_LOCKED",
         message:
-          "Booking ที่ต่ออายุแล้วต้องเปลี่ยนวันเช็คเอาท์ผ่าน Extend Booking และไม่สามารถเปลี่ยนช่องทางเดิมได้",
+          "Booking ที่เพิ่มคืนแล้วต้องเปลี่ยนวันเช็คเอาท์ผ่าน Add Nights และไม่สามารถเปลี่ยนช่องทางเดิมได้",
       });
     }
 
@@ -1167,13 +1165,13 @@ export const updateBookingNote = async (
   }
 };
 
-export const starBooking = async (
-  req: Request<EditBookingParams, {}, StarBookingBody>,
+export const pinBooking = async (
+  req: Request<EditBookingParams, {}, PinBookingBody>,
   res: Response,
 ) => {
   try {
     const { bookingId } = req.params;
-    const starred = Boolean(req.body.starred);
+    const pinned = Boolean(req.body.pinned);
 
     if (!bookingId) {
       return res.status(400).json({
@@ -1193,8 +1191,8 @@ export const starBooking = async (
 
     const updatedBooking = await Booking.findOneAndUpdate(
       { bookingId },
-      { $set: { starred } },
-      { returnDocument: "after" },
+      { $set: { pinned }, $unset: { starred: "" } },
+      { returnDocument: "after", strict: false },
     );
 
     logActivity(
@@ -1202,9 +1200,9 @@ export const starBooking = async (
       "EDIT_BOOKING",
       {
         changes: {
-          starred: {
-            before: Boolean(existingBooking.starred),
-            after: starred,
+          pinned: {
+            before: Boolean(existingBooking.pinned),
+            after: pinned,
           },
         },
       },
@@ -1212,14 +1210,14 @@ export const starBooking = async (
     );
 
     res.status(200).json({
-      message: starred ? "ปักดาว Booking สำเร็จ" : "ยกเลิกปักดาว Booking สำเร็จ",
+      message: pinned ? "ปัก Booking สำเร็จ" : "ยกเลิกปัก Booking สำเร็จ",
       booking: updatedBooking,
     });
   } catch (err) {
     console.log(err);
     res.status(500).json({
       error: "SERVER_ERROR",
-      message: "เกิดข้อผิดพลาดในการปักดาว Booking",
+      message: "เกิดข้อผิดพลาดในการปัก Booking",
     });
   }
 };
@@ -1557,10 +1555,16 @@ export const getMasterBookings = async (req: Request, res: Response) => {
     }
 
     if (typeof bookingId === "string" && bookingId.trim()) {
-      query.bookingId = {
+      const bookingIdPattern = {
         $regex: escapeRegex(bookingId.trim()),
         $options: "i",
       };
+      andFilters.push({
+        $or: [
+          { bookingId: bookingIdPattern },
+          { "commercialSegments.channelBookingId": bookingIdPattern },
+        ],
+      });
     }
 
     if (typeof room === "string" && room.trim()) {
@@ -1721,6 +1725,7 @@ export const removeBooking = async (req: Request, res: Response) => {
 type checkInData = {
   expectedRevision: number;
   deposit: number;
+  adminHistoricalCheckIn?: boolean;
   unpaidPayment?: {
     paymentMethod: PaymentMethod;
     roundingAdjustment?: number;
@@ -1738,6 +1743,7 @@ export const checkIn = async (req: Request, res: Response) => {
   try {
     const { bookingId } = req.params;
     const checkInData: checkInData = req.body;
+    const adminHistoricalCheckIn = checkInData.adminHistoricalCheckIn === true;
     const expectedRevision = expectedBookingRevision(
       checkInData.expectedRevision,
     );
@@ -1753,6 +1759,13 @@ export const checkIn = async (req: Request, res: Response) => {
       return res.status(400).json({
         message: "กรุณาแนบข้อมูล bookingId เพื่อดำเนินการ check-in",
       });
+
+    if (adminHistoricalCheckIn && !req.user?.admin) {
+      return res.status(403).json({
+        error: "ADMIN_REQUIRED",
+        message: "เฉพาะ Admin เท่านั้นที่สามารถใช้ Historical Check-In ได้",
+      });
+    }
 
     if (
       !checkInData.passportData?.namePrefix ||
@@ -1851,13 +1864,20 @@ export const checkIn = async (req: Request, res: Response) => {
       existingBooking.checkOut,
     );
 
-    if (todayStart < checkInDateStart) {
+    if (adminHistoricalCheckIn && todayStart <= checkInDateStart) {
+      return res.status(409).json({
+        error: "HISTORICAL_CHECK_IN_NOT_APPLICABLE",
+        message: "Historical Check-In ใช้ได้เฉพาะ booking ที่เลยวันเช็คอินแล้ว",
+      });
+    }
+
+    if (!adminHistoricalCheckIn && todayStart < checkInDateStart) {
       return res.status(409).json({
         message: "ยังไม่ถึงวันเช็คอินของ booking นี้",
       });
     }
 
-    if (todayStart >= checkOutDateStart) {
+    if (!adminHistoricalCheckIn && todayStart >= checkOutDateStart) {
       return res.status(409).json({
         message:
           "booking นี้เลยวันเช็คเอาท์แล้ว กรุณาแก้ไขวันที่หรือยกเลิกก่อน check-in",
@@ -1996,11 +2016,27 @@ export const checkIn = async (req: Request, res: Response) => {
         ),
       );
     }
-    const checkedInAt = new Date();
+
+    if (adminHistoricalCheckIn) {
+      newTransactions.forEach((transaction) => {
+        transaction.createdAt = existingBooking.checkIn;
+        delete transaction.cashShiftId;
+        transaction.note = transaction.note
+          ? `${transaction.note} · Historical onboarding before production`
+          : "Historical onboarding before production";
+      });
+    }
+
+    const checkedInAt = adminHistoricalCheckIn
+      ? existingBooking.checkIn
+      : new Date();
     const setFields: Record<string, unknown> = {
       status: "checkedIn",
       checkInByStaffUsername: req.user?.username,
       checkedInAt,
+      checkInMode: adminHistoricalCheckIn
+        ? "admin_historical_onboarding"
+        : "normal",
       passport: encryptedPassportData,
     };
 
@@ -2026,24 +2062,28 @@ export const checkIn = async (req: Request, res: Response) => {
       };
     }
 
-    const updatedBooking = await withMutationIdempotency(req, () =>
-      withCashLedgerTransaction(
-        newTransactions,
-        (assignedTransactions, session) =>
-          Booking.findOneAndUpdate(
-            updateQuery,
-            {
-              $push: {
-                transactions: {
-                  $each: assignedTransactions,
-                },
-              },
-              $set: setFields,
-              $inc: { revision: 1 },
+    const persistCheckIn = (
+      assignedTransactions: transcation[],
+      session?: mongoose.ClientSession,
+    ) =>
+      Booking.findOneAndUpdate(
+        updateQuery,
+        {
+          $push: {
+            transactions: {
+              $each: assignedTransactions,
             },
-            { returnDocument: "after", session, runValidators: true },
-          ),
-      ),
+          },
+          $set: setFields,
+          $inc: { revision: 1 },
+        },
+        { returnDocument: "after", session, runValidators: true },
+      );
+
+    const updatedBooking = await withMutationIdempotency(req, () =>
+      adminHistoricalCheckIn
+        ? persistCheckIn(newTransactions)
+        : withCashLedgerTransaction(newTransactions, persistCheckIn),
     );
 
     if (!updatedBooking) {
@@ -2079,6 +2119,18 @@ export const checkIn = async (req: Request, res: Response) => {
             before: existingBooking.checkedInAt,
             after: checkedInAt,
           },
+          checkInMode: {
+            before: existingBooking.checkInMode,
+            after: adminHistoricalCheckIn
+              ? "admin_historical_onboarding"
+              : "normal",
+          },
+        },
+        summary: {
+          adminHistoricalCheckIn,
+          financialTransactionDate: adminHistoricalCheckIn
+            ? existingBooking.checkIn
+            : checkedInAt,
         },
       },
       String(bookingId),
@@ -2098,11 +2150,7 @@ export const checkIn = async (req: Request, res: Response) => {
 export const checkOut = async (req: Request, res: Response) => {
   try {
     const { bookingId } = req.params;
-    const {
-      depositReturned,
-      depositDisposition: requestedDepositDisposition,
-      releaseRemainingNights = true,
-    } = req.body;
+    const { depositReturned, releaseRemainingNights = true } = req.body;
     const expectedRevision = expectedBookingRevision(req.body.expectedRevision);
     const checkedOutByStaffUsername = req.user?.username;
 
@@ -2113,25 +2161,10 @@ export const checkOut = async (req: Request, res: Response) => {
       });
     }
 
-    const depositDisposition =
-      requestedDepositDisposition ||
-      (depositReturned === true
-        ? "returned"
-        : depositReturned === false
-          ? "kept"
-          : undefined);
-
     if (!bookingId)
       return res.status(400).json({
         message: "กรุณาแนบข้อมูล bookingId เพื่อดำเนินการ check-out",
       });
-
-    if (!["returned", "kept"].includes(depositDisposition || "")) {
-      return res.status(400).json({
-        error: "INVALID_PAYLOAD",
-        message: "กรุณาระบุว่าคืนมัดจำแล้วหรือแขกยอมเสียมัดจำ",
-      });
-    }
 
     if (typeof releaseRemainingNights !== "boolean") {
       return res.status(400).json({
@@ -2169,8 +2202,14 @@ export const checkOut = async (req: Request, res: Response) => {
       existingBooking.transactions,
     );
 
+    if (remainingDepositAmount > 0 && depositReturned !== true) {
+      return res.status(400).json({
+        error: "DEPOSIT_RETURN_CONFIRMATION_REQUIRED",
+        message: `กรุณายืนยันว่าคืนมัดจำ ${remainingDepositAmount} บาทให้แขกแล้ว`,
+      });
+    }
+
     if (
-      depositDisposition === "returned" &&
       !req.user?.admin &&
       remainingDepositAmount >= LARGE_REFUND_THRESHOLD
     ) {
@@ -2201,21 +2240,13 @@ export const checkOut = async (req: Request, res: Response) => {
         ? [
             normalizeTransaction(
               {
-                type:
-                  depositDisposition === "kept"
-                    ? "depositKept"
-                    : "depositRefund",
+                type: "depositRefund",
                 paymentMethod: "Cash",
-                direction: depositDisposition === "kept" ? "in" : undefined,
                 amount: remainingDepositAmount,
               },
               {
                 createdBy: checkedOutByStaffUsername,
                 sourceAction: "CHECK_OUT",
-                note:
-                  depositDisposition === "kept"
-                    ? "แขกยอมเสียมัดจำ รับเป็นรายได้"
-                    : undefined,
               },
             ),
           ]
@@ -2237,11 +2268,8 @@ export const checkOut = async (req: Request, res: Response) => {
                 status: "checkedOut",
                 checkout: {
                   roomReleaseStatus,
-                  depositRefundAmount:
-                    depositDisposition === "returned"
-                      ? remainingDepositAmount
-                      : 0,
-                  depositDisposition,
+                  depositRefundAmount: remainingDepositAmount,
+                  depositDisposition: "returned",
                   checkedOutAt: new Date(),
                   checkedOutByStaffUsername,
                   earlyCheckOut,
@@ -2290,11 +2318,8 @@ export const checkOut = async (req: Request, res: Response) => {
           },
         },
         summary: {
-          depositRefundAmount:
-            depositDisposition === "returned" ? remainingDepositAmount : 0,
-          depositKeptAmount:
-            depositDisposition === "kept" ? remainingDepositAmount : 0,
-          depositDisposition,
+          depositRefundAmount: remainingDepositAmount,
+          depositDisposition: "returned",
           roomReleaseStatus,
           earlyCheckOut,
           nightsEarly,
@@ -2311,6 +2336,124 @@ export const checkOut = async (req: Request, res: Response) => {
     }
 
     res.status(500).json({ error: (err as Error).message });
+  }
+};
+
+export const correctDeposit = async (req: Request, res: Response) => {
+  try {
+    const { bookingId } = req.params;
+    const expectedRevision = expectedBookingRevision(req.body.expectedRevision);
+    const amount = Number(req.body.amount);
+    const reason = String(req.body.reason || "").trim();
+    const staffUsername = req.user?.username;
+
+    if (expectedRevision === null) {
+      return res.status(400).json({
+        error: "EXPECTED_REVISION_REQUIRED",
+        message: "กรุณารีเฟรชข้อมูลการจองก่อนแก้ไขมัดจำ",
+      });
+    }
+    if (!staffUsername) {
+      return res.status(401).json({ message: "กรุณาเข้าสู่ระบบใหม่" });
+    }
+    if (!Number.isFinite(amount) || amount < 0 || !reason) {
+      return res.status(400).json({
+        error: "INVALID_DEPOSIT_CORRECTION",
+        message: "กรุณาระบุยอดมัดจำและเหตุผลที่ถูกต้อง",
+      });
+    }
+
+    const existingBooking = await Booking.findOne({ bookingId }).lean<booking>();
+    if (!existingBooking) {
+      return res.status(404).json({ message: "ไม่พบ booking นี้" });
+    }
+    if ((existingBooking.revision || 0) !== expectedRevision) {
+      return sendBookingRevisionConflict(res, bookingId);
+    }
+    if (existingBooking.status !== "checkedIn" || existingBooking.voided) {
+      return res.status(409).json({
+        error: "DEPOSIT_CORRECTION_NOT_ALLOWED",
+        message: "แก้ไขมัดจำได้เฉพาะ booking ที่กำลังเข้าพัก",
+      });
+    }
+
+    const depositTransactions = existingBooking.transactions.filter(
+      (transaction) => transaction.type === "deposit",
+    );
+    const hasDepositDisposition = existingBooking.transactions.some(
+      (transaction) =>
+        transaction.type === "depositRefund" ||
+        transaction.type === "depositKept",
+    );
+    if (depositTransactions.length !== 1 || hasDepositDisposition) {
+      return res.status(409).json({
+        error: "LEGACY_DEPOSIT_READ_ONLY",
+        message: "ประวัติมัดจำแบบเดิมแก้ไขไม่ได้ แต่ยังคืนยอดคงเหลือได้ตอนออก",
+      });
+    }
+
+    const depositTransactionId = String(depositTransactions[0]._id);
+    const previousAmount = Number(depositTransactions[0].amount || 0);
+    const updatedTransactions = existingBooking.transactions.map((transaction) =>
+      String(transaction._id) === depositTransactionId
+        ? { ...transaction, amount }
+        : transaction,
+    );
+
+    const updatedBooking = await withMutationIdempotency(req, async () => {
+      const session = await mongoose.startSession();
+      try {
+        return await session.withTransaction(async () => {
+          const updated = await Booking.findOneAndUpdate(
+            {
+              bookingId,
+              status: "checkedIn",
+              voided: { $ne: true },
+              ...bookingRevisionPredicate(expectedRevision),
+            },
+            {
+              $set: { transactions: updatedTransactions },
+              $inc: { revision: 1 },
+            },
+            { returnDocument: "after", runValidators: true, session },
+          );
+          if (!updated) return null;
+
+          await logActivityStrict(
+            staffUsername,
+            "EDIT_BOOKING",
+            {
+              changes: {
+                depositAmount: { before: previousAmount, after: amount },
+              },
+              summary: {
+                action: "CORRECT_DEPOSIT",
+                reason,
+                depositTransactionId,
+              },
+            },
+            String(bookingId),
+            session,
+          );
+          return updated;
+        });
+      } finally {
+        await session.endSession();
+      }
+    });
+
+    if (!updatedBooking) {
+      return sendBookingRevisionConflict(res, bookingId);
+    }
+    return res.status(200).json({
+      message: "แก้ไขยอดมัดจำแล้ว",
+      booking: updatedBooking,
+    });
+  } catch (err) {
+    if (err instanceof IdempotencyConflictError) {
+      return sendDuplicateMutationResponse(res);
+    }
+    return res.status(500).json({ error: (err as Error).message });
   }
 };
 
@@ -2610,7 +2753,7 @@ export const extendBooking = async (
     if (!staffUsername) {
       return res.status(403).json({
         error: "EXTENSION_NOT_AUTHORIZED",
-        message: "ไม่มีสิทธิ์ต่ออายุ booking",
+        message: "ไม่มีสิทธิ์เพิ่มคืนให้ booking",
       });
     }
 
@@ -2622,7 +2765,7 @@ export const extendBooking = async (
     });
 
     return res.status(200).json({
-      message: "ต่ออายุ booking สำเร็จ",
+      message: "เพิ่มคืนให้ booking สำเร็จ",
       ...result,
     });
   } catch (err) {
@@ -2646,7 +2789,7 @@ export const extendBooking = async (
     });
     return res.status(500).json({
       error: "BOOKING_EXTENSION_FAILED",
-      message: "ไม่สามารถต่ออายุ booking ได้ กรุณาลองใหม่",
+      message: "ไม่สามารถเพิ่มคืนให้ booking ได้ กรุณาลองใหม่",
     });
   }
 };
@@ -2747,13 +2890,10 @@ export const addTransaction = async (
       });
     }
 
-    if (
-      !req.user?.admin &&
-      (booking.status === "checkedOut" || booking.status === "cancelled")
-    ) {
+    if (!req.user?.admin && booking.status === "cancelled") {
       return res.status(403).json({
         error: "ADMIN_APPROVAL_REQUIRED",
-        message: "รายการหลังปิด Booking ต้องให้ Admin ดำเนินการ",
+        message: "รายการของ Booking ที่ยกเลิกแล้วต้องให้ Admin ดำเนินการ",
       });
     }
 
@@ -3162,6 +3302,7 @@ type ResolveBookingBody = {
   roomReleaseStatus: RoomReleaseStatus;
   reasonCode: string;
   note: string;
+  depositReturned?: boolean;
   transactions?: ResolveBookingTransactionInput[];
 };
 
@@ -3182,6 +3323,7 @@ export const resolveBooking = async (
       roomReleaseStatus,
       reasonCode,
       note,
+      depositReturned,
       transactions = [],
     } = req.body;
     const resolvedByStaffUsername = req.user?.username;
@@ -3295,9 +3437,38 @@ export const resolveBooking = async (
       });
     }
 
-    let normalizedTransactions: transcation[] = [];
-    let sensitiveOutTotal = 0;
-    let depositRefundAmount = 0;
+    const remainingDepositAmount = bookingRemainingDepositAmount(
+      booking.transactions,
+    );
+    const mustReturnDeposit =
+      !bookingIsClosed &&
+      booking.status === "checkedIn" &&
+      remainingDepositAmount > 0;
+    if (mustReturnDeposit && depositReturned !== true) {
+      return res.status(400).json({
+        error: "DEPOSIT_RETURN_CONFIRMATION_REQUIRED",
+        message: `กรุณายืนยันว่าคืนมัดจำ ${remainingDepositAmount} บาทให้แขกแล้ว`,
+      });
+    }
+
+    let normalizedTransactions: transcation[] = mustReturnDeposit
+      ? [
+          normalizeTransaction(
+            {
+              type: "depositRefund",
+              paymentMethod: "Cash",
+              amount: remainingDepositAmount,
+            },
+            {
+              createdBy: resolvedByStaffUsername,
+              sourceAction: "RESOLVE_STAY",
+              note: "คืนมัดจำเต็มจำนวนเมื่อปิดการเข้าพัก",
+            },
+          ),
+        ]
+      : [];
+    let sensitiveOutTotal = mustReturnDeposit ? remainingDepositAmount : 0;
+    let depositRefundAmount = mustReturnDeposit ? remainingDepositAmount : 0;
     let cancellationRefundAmount = 0;
     let settlementChargeAmount = 0;
 
@@ -3448,6 +3619,7 @@ export const resolveBooking = async (
                 0,
               )
             : 0,
+        depositDisposition: "returned",
       };
     }
 

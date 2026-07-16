@@ -18,6 +18,46 @@ export const roomChargeTransaction = (booking: booking) => {
   return fallbackRoomCharge;
 };
 
+export const roomChargeOutstandingAmount = (booking: booking) => {
+  const unpaidRoomChargeIds = new Set(
+    booking.transactions
+      .filter(
+        (transaction) =>
+          transaction.type === "roomCharge" &&
+          transaction.paymentMethod === "Unpaid",
+      )
+      .map((transaction) => transaction._id)
+      .filter(
+        (transactionId): transactionId is string => Boolean(transactionId),
+      ),
+  );
+
+  return Math.max(
+    booking.transactions.reduce((outstandingAmount, transaction) => {
+      if (
+        transaction.type === "roomCharge" &&
+        transaction.paymentMethod === "Unpaid"
+      ) {
+        return outstandingAmount + Math.abs(transaction.amount || 0);
+      }
+
+      const relatedTransactionIsUnpaidRoomCharge =
+        transaction.relatedTransactionId !== undefined
+          ? unpaidRoomChargeIds.has(transaction.relatedTransactionId)
+          : transaction.relatedTransactionType === "roomCharge";
+      const settlesRoomCharge =
+        ["settlementCharge", "paymentCorrection"].includes(transaction.type) &&
+        transaction.paymentMethod !== "Unpaid" &&
+        relatedTransactionIsUnpaidRoomCharge;
+
+      return settlesRoomCharge
+        ? outstandingAmount - Math.abs(transaction.amount || 0)
+        : outstandingAmount;
+    }, 0),
+    0,
+  );
+};
+
 export const roomChargeSettlementTransaction = (
   booking: booking,
 ): Transaction | undefined => {

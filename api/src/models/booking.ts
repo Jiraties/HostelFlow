@@ -19,6 +19,7 @@ export type Status =
   | "checkedOut"
   | "cancelled"
   | "noShow";
+export type CheckInMode = "normal" | "admin_historical_onboarding";
 export type TransactionDirection = "in" | "out" | "neutral";
 export type TransactionReviewStatus = "none" | "needs_review" | "reviewed";
 export type SourceAction =
@@ -52,6 +53,7 @@ export type TransactionType =
   | "joinTour"
   | "extraBed"
   | "pickACraft"
+  | "trek2D"
   | "setMenu"
   | "sleeperBus"
   | "onlyWalk"
@@ -99,6 +101,7 @@ export interface commercialSegment {
   from: Date;
   to: Date;
   platformId: PlatformId;
+  channelBookingId?: string;
   amount: number;
   transactionId: string;
   createdBy: string;
@@ -208,13 +211,14 @@ export interface booking extends Document {
   staffUsername: string;
   checkInByStaffUsername?: string | null;
   checkedInAt?: Date;
+  checkInMode?: CheckInMode;
 
   passport?: Passport;
   cancellation?: Cancellation;
   checkout?: Checkout;
   resolution?: Resolution;
   note?: string;
-  starred?: boolean;
+  pinned?: boolean;
   voided: boolean;
   voidedAt?: Date;
   voidedBy?: string;
@@ -237,6 +241,7 @@ const commercialSegmentSchema = new mongoose.Schema({
   from: { type: Date, required: true },
   to: { type: Date, required: true },
   platformId: { type: String, required: true },
+  channelBookingId: { type: String, trim: true },
   amount: { type: Number, required: true },
   transactionId: { type: String, required: true },
   createdBy: { type: String, required: true },
@@ -266,6 +271,7 @@ const transactionSchema = new mongoose.Schema({
       "joinTour",
       "extraBed",
       "pickACraft",
+      "trek2D",
       "setMenu",
       "sleeperBus",
       "onlyWalk",
@@ -304,6 +310,7 @@ const transactionSchema = new mongoose.Schema({
       "joinTour",
       "extraBed",
       "pickACraft",
+      "trek2D",
       "setMenu",
       "sleeperBus",
       "onlyWalk",
@@ -440,7 +447,7 @@ const bookingSchema = new mongoose.Schema({
   platformId: { type: String },
 
   note: { type: String },
-  starred: { type: Boolean, default: false },
+  pinned: { type: Boolean, default: false },
   staffUsername: { type: String },
   bookingId: { type: String, unique: true },
 
@@ -452,6 +459,10 @@ const bookingSchema = new mongoose.Schema({
 
   checkInByStaffUsername: { type: String, default: null },
   checkedInAt: { type: Date },
+  checkInMode: {
+    type: String,
+    enum: ["normal", "admin_historical_onboarding"],
+  },
 
   transactions: [transactionSchema],
 
@@ -496,6 +507,35 @@ const bookingSchema = new mongoose.Schema({
   voidedAt: { type: Date },
   voidedBy: { type: String },
   voidReason: { type: String },
+});
+
+// Keep pins visible while deployments migrate records created under the old
+// field name. New application code and API responses use `pinned` only.
+const applyLegacyPinnedValue = (result: unknown) => {
+  const records = Array.isArray(result) ? result : [result];
+
+  records.forEach((record) => {
+    if (!record || typeof record !== "object") return;
+
+    if (record instanceof mongoose.Document) {
+      const legacyPinned = record.get("starred");
+      if (record.$isDefault("pinned") && typeof legacyPinned === "boolean") {
+        record.set("pinned", legacyPinned);
+      }
+      record.set("starred", undefined, { strict: false });
+      return;
+    }
+
+    const plainRecord = record as Record<string, unknown>;
+    if (!("pinned" in plainRecord) && typeof plainRecord.starred === "boolean") {
+      plainRecord.pinned = plainRecord.starred;
+    }
+    delete plainRecord.starred;
+  });
+};
+
+bookingSchema.post(/^find/, function (result) {
+  applyLegacyPinnedValue(result);
 });
 
 bookingSchema.index(

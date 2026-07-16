@@ -1,30 +1,17 @@
-export type DepositRequirementBooking = {
-  bookingId: string;
-  guestName: string;
-  checkOut: string | Date;
-  amount: number;
-};
-
-export type DepositRequirement = {
-  businessDate: string;
-  total: number;
-  checkoutCount: number;
-  refundBookingCount: number;
-  bookings: DepositRequirementBooking[];
-  calculatedAt: string | Date;
-};
-
-export type DepositPreparation = {
-  targetBusinessDate: string;
-  requiredAmount: number;
-  preparedAmount: number;
-  adjustment: number;
-  checkoutCount: number;
-  refundBookingCount: number;
-  bookings: DepositRequirementBooking[];
-  calculatedAt: string | Date;
-  preparedAt: string | Date;
-  preparedBy: string;
+export type LegacyDepositAudit = {
+  openingCash?: number;
+  cashIn?: number;
+  cashOut?: number;
+  expectedCash?: number;
+  actualCash?: number;
+  variance?: number;
+  preparation?: {
+    targetBusinessDate: string;
+    requiredAmount: number;
+    preparedAmount: number;
+    adjustment: number;
+    refundBookingCount: number;
+  };
 };
 
 export type CashShift = {
@@ -35,17 +22,11 @@ export type CashShift = {
   status: "open" | "closed";
   openingMode: "counted" | "accepted_handoff";
   handoffFromShiftId?: string;
-  depositOpeningCash: number;
   operatingOpeningCash: number;
-  depositCashIn: number;
-  depositCashOut: number;
   operatingCashIn: number;
   operatingCashOut: number;
-  depositExpectedCash: number;
   operatingExpectedCash: number;
-  depositActualCash?: number;
   operatingActualCash?: number;
-  depositVariance?: number;
   operatingVariance?: number;
   note?: string;
   startedAt: string | Date;
@@ -61,7 +42,7 @@ export type CashShift = {
     profilePictureUrl?: string;
   };
   isFinalDayClose?: boolean;
-  depositPreparation?: DepositPreparation;
+  legacyDeposit?: LegacyDepositAudit;
 };
 
 export type CashPositionData = {
@@ -69,17 +50,8 @@ export type CashPositionData = {
   threshold: number;
   activeShift: CashShift | null;
   previousShift: CashShift | null;
-  current: { depositCash: number; operatingCash: number };
-  openingDepositRequirement: DepositRequirement;
-  tomorrowDepositRequirement: DepositRequirement;
-  preparedForToday:
-    | (DepositPreparation & {
-        sourceBusinessDate: string;
-        sourceShiftNumber: number;
-      })
-    | null;
+  current: { operatingCash: number };
   handoff: {
-    depositCash: number;
     operatingCash: number;
     fromShiftId?: string;
     fromShiftNumber?: number;

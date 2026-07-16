@@ -32,11 +32,21 @@ type CashLedgerOperation<T> = (
   session?: ClientSession,
 ) => Promise<T>;
 
+const depositTransactionTypes = new Set([
+  "deposit",
+  "depositRefund",
+  "depositKept",
+]);
+
+export const transactionRequiresCashShift = (transaction: transcation) =>
+  transaction.paymentMethod === "Cash" &&
+  !depositTransactionTypes.has(transaction.type);
+
 export const assignCashTransactionsInSession = async (
   transactions: transcation[],
   session: ClientSession,
 ) => {
-  if (!transactions.some((transaction) => transaction.paymentMethod === "Cash")) {
+  if (!transactions.some(transactionRequiresCashShift)) {
     return transactions;
   }
 
@@ -60,7 +70,7 @@ export const assignCashTransactionsInSession = async (
 
   const cashShiftId = String(cashShift._id);
   return transactions.map((transaction) =>
-    transaction.paymentMethod === "Cash"
+    transactionRequiresCashShift(transaction)
       ? { ...transaction, cashShiftId }
       : transaction,
   );
@@ -75,7 +85,7 @@ export const withCashLedgerTransaction = async <T>(
   transactions: transcation[],
   operation: CashLedgerOperation<T>,
 ) => {
-  if (!transactions.some((transaction) => transaction.paymentMethod === "Cash")) {
+  if (!transactions.some(transactionRequiresCashShift)) {
     return operation(transactions);
   }
 

@@ -123,13 +123,16 @@ export const verifyRestoredData = async (): Promise<RestoreVerificationResult> =
     }
 
     const expectedDeposit =
-      shift.depositOpeningCash +
+      Number(shift.depositOpeningCash || 0) +
       movements.depositCashIn -
       movements.depositCashOut +
       Number(shift.depositPreparation?.adjustment || 0);
     const expectedOperating =
       shift.operatingOpeningCash + movements.operatingCashIn - movements.operatingCashOut;
-    if (!moneyEquals(shift.depositExpectedCash, expectedDeposit)) {
+    if (
+      shift.depositExpectedCash !== undefined &&
+      !moneyEquals(shift.depositExpectedCash, expectedDeposit)
+    ) {
       errors.push(`cash shift ${shift._id} has an inconsistent deposit balance`);
     }
     if (!moneyEquals(shift.operatingExpectedCash, expectedOperating)) {

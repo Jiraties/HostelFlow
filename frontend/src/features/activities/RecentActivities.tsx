@@ -22,7 +22,7 @@ const ACTIVITY_PAGE_SIZE = 10;
 
 const actionMap = {
   NEW_BOOKING: { icon: "bx-plus", text: "เพิ่ม Booking" },
-  EXTEND_BOOKING: { icon: "bx-calendar-plus", text: "ต่ออายุ Booking" },
+  EXTEND_BOOKING: { icon: "bx-calendar-plus", text: "Add Nights" },
   REMOVE_BOOKING: { icon: "bx-trash", text: "ลบ Booking" },
   EDIT_BOOKING: { icon: "bx-edit", text: "แก้ไข Booking" },
   CHECK_IN: { icon: "bx-check-circle", text: "Check-In" },
@@ -110,6 +110,7 @@ const transactionLabelMap = {
   joinTour: "Join Tour",
   extraBed: "เตียงเสริม",
   pickACraft: "Pick A Craft",
+  trek2D: "Trek 2D",
   setMenu: "Set Menu",
   sleeperBus: "Sleeper Bus",
   onlyWalk: "Only Walk",
@@ -181,7 +182,8 @@ const detailLabels: Record<string, string> = {
   checkOut: "Check Out",
   platformId: "ช่องทางการจอง",
   note: "หมายเหตุ",
-  starred: "ปักดาว",
+  pinned: "ปัก Booking",
+  starred: "ปัก Booking",
   status: "สถานะ",
   checkInByStaffUsername: "พนักงาน Check-In",
   checkedInAt: "เวลา Check-In",
@@ -437,7 +439,7 @@ const ActivityDetails = ({
         <DetailRow label="วันที่เดิม" value={summary.originalCheckOut ? formatDate(summary.originalCheckOut as string | Date, dateFormat) : null} />
         <DetailRow label="วันที่ใหม่" value={summary.newCheckOut ? `${formatDate(summary.newCheckOut as string | Date, dateFormat)} (${Number(summary.addedNights || 0)} คืน)` : null} />
         <DetailRow label="ช่องทาง" value={hasValue(summary.originalPlatform) || hasValue(summary.extensionPlatform) ? `${String(summary.originalPlatform || "-")} → ${String(summary.extensionPlatform || "-")}` : null} />
-        <DetailRow label="ห้องช่วงต่ออายุ" value={Array.isArray(summary.extensionRooms) ? formatCompactRoomNames(summary.extensionRooms) : null} />
+        <DetailRow label="ห้องสำหรับคืนที่เพิ่ม" value={Array.isArray(summary.extensionRooms) ? formatCompactRoomNames(summary.extensionRooms) : null} />
         <DetailRow label="ยอดรับชำระ" value={typeof summary.amount === "number" ? `${formatCurrency(summary.amount)} บาท (${String(summary.paymentMethod || "-")})` : null} />
         <DetailRow label="Transaction ID" value={summary.transactionId as string} />
         <DetailRow label="หมายเหตุ" value={summary.note as string} />

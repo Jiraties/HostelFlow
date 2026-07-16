@@ -1,0 +1,53 @@
+.appTooltip__trigger {
+  display: inline-flex;
+  min-width: 0;
+}
+
+.appTooltip {
+  position: fixed;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  width: max-content;
+  max-width: min(18rem, calc(100vw - 1.25rem));
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #ffffffb8;
+  border-radius: 0.65rem;
+  background: #fffffff2;
+  color: #111111;
+  backdrop-filter: blur(0.5rem);
+  box-shadow: var(--main-shadow);
+  font-family: "IBM Plex Sans Thai", sans-serif;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
+.appTooltip::after {
+  position: absolute;
+  left: var(--app-tooltip-arrow-left);
+  width: 0.65rem;
+  height: 0.65rem;
+  background: #fffffff2;
+  content: "";
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.appTooltip[data-placement="top"]::after {
+  bottom: -0.34rem;
+  border-right: 1px solid #ffffffb8;
+  border-bottom: 1px solid #ffffffb8;
+}
+
+.appTooltip[data-placement="bottom"]::after {
+  top: -0.34rem;
+  border-top: 1px solid #ffffffb8;
+  border-left: 1px solid #ffffffb8;
+}
+
+.appTooltip strong,
+.appTooltip span {
+  display: block;
+}

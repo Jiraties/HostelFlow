@@ -28,9 +28,15 @@ export class FinancialTransactionPolicyError extends Error {
 }
 
 export const canonicalTransactionDirection = (
-  transaction: Pick<transcation, "type" | "paymentMethod">,
+  transaction: Pick<transcation, "type" | "paymentMethod" | "direction">,
 ): TransactionDirection => {
   if (transaction.paymentMethod === "Unpaid") return "neutral";
+  if (
+    transaction.type === "adjustment" &&
+    (transaction.direction === "in" || transaction.direction === "out")
+  ) {
+    return transaction.direction;
+  }
   if (transaction.type === "depositKept") return "neutral";
   if (outwardTypes.includes(transaction.type)) return "out";
   return "in";
@@ -45,6 +51,18 @@ export const enforceAddTransactionPolicy = ({
   transaction: transcation;
   isAdmin: boolean;
 }): transcation => {
+  if (
+    transaction.type === "adjustment" &&
+    transaction.direction !== "in" &&
+    transaction.direction !== "out"
+  ) {
+    throw new FinancialTransactionPolicyError(
+      400,
+      "INVALID_TRANSACTION_DIRECTION",
+      "กรุณาระบุทิศทางการปรับยอดเป็นเพิ่มหรือลด",
+    );
+  }
+
   const direction = canonicalTransactionDirection(transaction);
 
   if (transaction.direction && transaction.direction !== direction) {

@@ -1,6 +1,7 @@
 import ActionButton from "../../components/ActionButton";
 import ModalCloseButton from "../../components/ModalCloseButton";
 import UnsavedChangesModal from "../../components/UnsavedChangesModal";
+import Tooltip from "../../components/Tooltip";
 import axios from "axios";
 import Skeleton from "react-loading-skeleton";
 import ManageRoomStays from "./ManageRoomStays.tsx";
@@ -78,6 +79,7 @@ const transactionMap = {
   joinTour: { icon: "bx-map", name: "Join Tour", color: "#22c55e" },
   extraBed: { icon: "bx-bed", name: "เตียงเสริม", color: "#ec4899" },
   pickACraft: { icon: "bx-palette", name: "Pick A Craft", color: "#f59e0b" },
+  trek2D: { icon: "bx-map-alt", name: "Trek 2D", color: "#16a34a" },
   setMenu: { icon: "bx-food-menu", name: "Set Menu", color: "#84cc16" },
   sleeperBus: { icon: "bx-bus", name: "Sleeper Bus", color: "#6366f1" },
   onlyWalk: { icon: "bx-walking", name: "Only Walk", color: "#14b8a6" },
@@ -117,6 +119,7 @@ const ViewBooking = ({
   const [addTransactionIsOpen, setAddTransactionIsOpen] = useState(false);
   const [cancellationIsOpen, setCancellationIsOpen] = useState(false);
   const [checkInIsOpen, setCheckInIsOpen] = useState(false);
+  const [adminHistoricalCheckIn, setAdminHistoricalCheckIn] = useState(false);
   const [checkOutIsOpen, setCheckOutIsOpen] = useState(false);
   const [resolveBookingIsOpen, setResolveBookingIsOpen] = useState(false);
   const [extendBookingIsOpen, setExtendBookingIsOpen] = useState(false);
@@ -134,7 +137,7 @@ const ViewBooking = ({
   const [noteIsEditing, setNoteIsEditing] = useState(false);
   const [noteDraft, setNoteDraft] = useState(booking?.note || "");
   const [noteSaving, setNoteSaving] = useState(false);
-  const [starSaving, setStarSaving] = useState(false);
+  const [pinSaving, setPinSaving] = useState(false);
   const [pendingUnsavedClose, setPendingUnsavedClose] = useState<
     (() => void) | null
   >(null);
@@ -377,6 +380,10 @@ const ViewBooking = ({
   const isNoShow = data.status === "booked" && isPastCheckOutDate;
   const isEarlyCheckOut =
     data.status === "checkedIn" && todayDateOnly < checkOutDateOnly;
+  const hasCheckedIn =
+    Boolean(data.checkedInAt) ||
+    data.status === "checkedIn" ||
+    data.status === "checkedOut";
 
   const statusDeterminer = (status: string, usedFor: string) => {
     const checkInIsToday = isSameDay(today, checkInDate);
@@ -421,14 +428,32 @@ const ViewBooking = ({
   const fullRoomsName = formatCompactRoomNames(
     data.roomStays.flatMap(getRoomStayRoomIds),
   );
-  const bookingPlatforms = Array.from(
-    new Set([
-      data.platformId,
-      ...(data.commercialSegments || [])
-        .filter((segment) => segment.kind === "extension")
-        .map((segment) => segment.platformId),
-    ]),
+  const storedOriginalSegment = (data.commercialSegments || []).find(
+    (segment) => segment.kind === "original",
   );
+  const extensionSegments = (data.commercialSegments || []).filter(
+    (segment) => segment.kind === "extension",
+  );
+  const bookingChannelRows = [
+    {
+      key: storedOriginalSegment?._id || "original",
+      platformId: storedOriginalSegment?.platformId || data.platformId,
+      from: storedOriginalSegment?.from || data.checkIn,
+      to:
+        storedOriginalSegment?.to ||
+        extensionSegments[0]?.from ||
+        data.checkOut,
+      channelBookingId:
+        storedOriginalSegment?.channelBookingId || data.bookingId,
+    },
+    ...extensionSegments.map((segment) => ({
+      key: segment._id || segment.transactionId,
+      platformId: segment.platformId,
+      from: segment.from,
+      to: segment.to,
+      channelBookingId: segment.channelBookingId,
+    })),
+  ];
 
   const formatTransactionAmount = (
     transaction: booking["transactions"][number],
@@ -437,14 +462,27 @@ const ViewBooking = ({
     return transaction.direction === "out" ||
       transaction.type === "depositRefund" ||
       transaction.type === "cancellationRefund"
-      ? `-${amountText} บาท`
-      : `${amountText} บาท`;
+      ? `-${amountText} THB`
+      : `${amountText} THB`;
   };
-  const transactionName = (transaction: booking["transactions"][number]) =>
-    transaction.type === "roomCharge" &&
-    transaction.sourceAction === "EXTEND_BOOKING"
-      ? "ค่าห้องช่วงต่ออายุ"
-      : transactionMap[transaction.type].name;
+  const transactionName = (transaction: booking["transactions"][number]) => {
+    if (
+      transaction.type === "roomCharge" &&
+      transaction.sourceAction === "EXTEND_BOOKING"
+    ) {
+      const extensionPlatformId =
+        transaction.platformId ||
+        (data.commercialSegments || []).find(
+          (segment) => segment.transactionId === transaction._id,
+        )?.platformId;
+      const platformLabel = extensionPlatformId
+        ? platformMap[extensionPlatformId]?.label
+        : undefined;
+      return `${platformLabel || "Unknown channel"} · ค่าเพิ่มคืน`;
+    }
+
+    return transactionMap[transaction.type].name;
+  };
 
   const isChildTransaction = (transaction: booking["transactions"][number]) =>
     transaction.type === "cardSurcharge" ||
@@ -485,11 +523,44 @@ const ViewBooking = ({
       return groups;
     }
 
+    if (
+      transaction.type === "roomCharge" &&
+      transaction.sourceAction === "EXTEND_BOOKING"
+    ) {
+      const originalRoomChargeGroup = groups.find(
+        (group) =>
+          group.transaction.type === "roomCharge" &&
+          group.transaction.sourceAction !== "EXTEND_BOOKING",
+      );
+
+      if (originalRoomChargeGroup) {
+        originalRoomChargeGroup.children.push(transaction);
+      } else {
+        groups.push({ transaction, children: [] });
+      }
+      return groups;
+    }
+
     if (transaction.type === "cardSurcharge") {
       const lastGroup = groups[groups.length - 1];
       const roomChargeGroup = groups.find(
         (group) => group.transaction.type === "roomCharge",
       );
+      const linkedGroup = transaction.relatedTransactionId
+        ? groups.find(
+            (group) =>
+              group.transaction._id === transaction.relatedTransactionId ||
+              group.children.some(
+                (child) => child._id === transaction.relatedTransactionId,
+              ),
+          )
+        : undefined;
+
+      if (linkedGroup) {
+        linkedGroup.children.push(transaction);
+        attachNextSettlementCardSurchargeToRoomCharge = false;
+        return groups;
+      }
 
       if (
         roomChargeGroup &&
@@ -615,14 +686,19 @@ const ViewBooking = ({
           </span>
         )}
         {infoItems.length > 0 && (
-          <span className="viewBooking__transactionInfo" tabIndex={0}>
+          <Tooltip
+            className="viewBooking__transactionInfo"
+            ariaLabel="ข้อมูลเพิ่มเติมของรายการ"
+            content={
+              <>
+                {infoItems.map((item, index) => (
+                  <span key={`${item}-${index}`}>{item}</span>
+                ))}
+              </>
+            }
+          >
             <i className="bx bx-info-circle" />
-            <span className="viewBooking__transactionTooltip">
-              {infoItems.map((item, index) => (
-                <span key={`${item}-${index}`}>{item}</span>
-              ))}
-            </span>
-          </span>
+          </Tooltip>
         )}
       </div>
     );
@@ -631,14 +707,24 @@ const ViewBooking = ({
   const renderChildTransaction = (
     transaction: booking["transactions"][number],
     index: number,
+    siblings: booking["transactions"] = [],
   ) => (
     <div
-      className="viewBooking__priceChild"
+      className={
+        "viewBooking__priceChild" +
+        (index < siblings.length - 1
+          ? " viewBooking__priceChild--continues"
+          : "") +
+        (transaction.type === "roomCharge" &&
+        transaction.sourceAction === "EXTEND_BOOKING"
+          ? " viewBooking__priceChild--extension"
+          : "")
+      }
       key={`${transaction.type}-${transaction.amount}-${index}`}
     >
       <div className="viewBooking__priceChildMain">
         <span className="viewBooking__priceChildMarker" />
-        <div>
+        <div className="viewBooking__priceChildDetails">
           <p className="viewBooking__priceChildText">
             <span className="viewBooking__priceChildAmount">
               {formatTransactionAmount(transaction)}
@@ -685,16 +771,16 @@ const ViewBooking = ({
     }
   };
 
-  const toggleStarHandler = async () => {
-    if (starSaving) return;
+  const togglePinHandler = async () => {
+    if (pinSaving) return;
 
-    const nextStarred = !data.starred;
-    setStarSaving(true);
+    const nextPinned = !data.pinned;
+    setPinSaving(true);
 
     try {
       const response = await axios.patch(
-        `${API_URL}/bookings/starBooking/${data.bookingId}`,
-        { starred: nextStarred },
+        `${API_URL}/bookings/pinBooking/${data.bookingId}`,
+        { pinned: nextPinned },
         { withCredentials: true },
       );
 
@@ -702,7 +788,7 @@ const ViewBooking = ({
         updateBooking(response.data.booking);
       }
     } finally {
-      setStarSaving(false);
+      setPinSaving(false);
     }
   };
 
@@ -758,8 +844,15 @@ const ViewBooking = ({
         onClose={() =>
           requestUnsavedModalClose(
             checkInIsDirty,
-            () => setCheckInIsOpen(false),
-            () => setPendingUnsavedClose(() => () => setCheckInIsOpen(false)),
+            () => {
+              setCheckInIsOpen(false);
+              setAdminHistoricalCheckIn(false);
+            },
+            () =>
+              setPendingUnsavedClose(() => () => {
+                setCheckInIsOpen(false);
+                setAdminHistoricalCheckIn(false);
+              }),
           )
         }
       >
@@ -767,11 +860,16 @@ const ViewBooking = ({
           booking={data}
           isLateCheckIn={isLateCheckIn}
           nightsLate={nightsLate}
-          onClose={() => setCheckInIsOpen(false)}
+          adminHistoricalCheckIn={adminHistoricalCheckIn}
+          onClose={() => {
+            setCheckInIsOpen(false);
+            setAdminHistoricalCheckIn(false);
+          }}
           onDirtyChange={setCheckInIsDirty}
           handleCheckInSuccess={(updatedBooking) => {
             updateBooking(updatedBooking);
             setCheckInIsOpen(false);
+            setAdminHistoricalCheckIn(false);
           }}
         />
       </Modal>
@@ -799,6 +897,7 @@ const ViewBooking = ({
             updateBooking(updatedBooking);
             setCheckOutIsOpen(false);
           }}
+          onBookingUpdated={updateBooking}
         />
       </Modal>
       <Modal
@@ -1033,20 +1132,65 @@ const ViewBooking = ({
             )}
             <div className="viewBooking__item">
               <span className="viewBooking__label">ช่องทางการจอง: </span>
-              <div className="viewBooking__platformList">
-                {bookingPlatforms.map((platformId) => (
-                  <div className="viewBooking__platform" key={platformId}>
-                    <p
-                      className="viewBooking__infoText"
-                      style={{ color: platformMap[platformId]?.color }}
-                    >
-                      {platformMap[platformId]?.label || "ไม่ทราบ"}
-                    </p>
-                    <img
-                      className="viewBooking__logo"
-                      src={platformMap[platformId]?.logo}
-                      alt={platformMap[platformId]?.label}
-                    />
+              <div className="viewBooking__channelJourney">
+                {bookingChannelRows.map((channel, index) => (
+                  <div
+                    className={
+                      "viewBooking__channelSegment" +
+                      (index < bookingChannelRows.length - 1
+                        ? " viewBooking__channelSegment--connected"
+                        : "")
+                    }
+                    key={channel.key}
+                  >
+                    <div className="viewBooking__channelLogoWrap">
+                      <img
+                        className="viewBooking__logo"
+                        src={platformMap[channel.platformId]?.logo}
+                        alt={platformMap[channel.platformId]?.label}
+                      />
+                    </div>
+                    <div className="viewBooking__channelDetails">
+                      <div className="viewBooking__channelTopline">
+                        <p className="viewBooking__channelName">
+                          {platformMap[channel.platformId]?.label || "ไม่ทราบ"}
+                        </p>
+                        <span
+                          className="viewBooking__channelDates"
+                          // style={{
+                          //   backgroundColor:
+                          //     platformMap[channel.platformId]?.color,
+                          // }}
+                        >
+                          {formatDisplayDate(channel.from, dateFormat, {
+                            includeYear: false,
+                          })}
+                          {" - "}
+                          {formatDisplayDate(channel.to, dateFormat, {
+                            includeYear: false,
+                          })}
+                        </span>
+                      </div>
+                      <button
+                        className="viewBooking__channelBookingNo"
+                        type="button"
+                        onClick={() => {
+                          if (!channel.channelBookingId) return;
+                          navigator.clipboard.writeText(
+                            channel.channelBookingId,
+                          );
+                          toast.success("คัดลอก Booking No สำเร็จ");
+                        }}
+                        disabled={!channel.channelBookingId}
+                      >
+                        <span>
+                          No. {channel.channelBookingId || "ไม่ได้บันทึก"}
+                        </span>
+                        {channel.channelBookingId && (
+                          <i className="bx bx-copy" aria-hidden="true" />
+                        )}
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1066,19 +1210,6 @@ const ViewBooking = ({
             </div>
 
             <div className="viewBooking__item">
-              <span className="viewBooking__label">Booking No: </span>
-              <div
-                className="viewBookng__bookingNo"
-                onClick={() => {
-                  navigator.clipboard.writeText(data.bookingId);
-                  toast.success("คัดลอก Booking No สำเร็จ");
-                }}
-              >
-                <p className="viewBooking__infoText">{data.bookingId}</p>
-                <i className="bx bx-copy viewBooking__copyIcon" />
-              </div>
-            </div>
-            <div className="viewBooking__item">
               <span className="viewBooking__label">ห้อง: </span>
               <p className="viewBooking__infoText">{fullRoomsName}</p>
             </div>
@@ -1090,7 +1221,7 @@ const ViewBooking = ({
               <p className="viewBooking__infoText">{data.staffUsername}</p>
             </div>
 
-            <PassportView bookingId={data.bookingId} />
+            {hasCheckedIn && <PassportView bookingId={data.bookingId} />}
           </div>
           <div className="viewBooking__mainRight">
             {/* <p>ค่าใช้จ่าย</p> */}
@@ -1116,14 +1247,7 @@ const ViewBooking = ({
                           renderChildTransaction(transaction, index)
                         ) : (
                           <div className="viewBooking__price">
-                            <div
-                              style={{
-                                display: "flex",
-                                gap: "1rem",
-                                alignItems: "center",
-                                minWidth: 0,
-                              }}
-                            >
+                            <div className="viewBooking__priceMain">
                               <i
                                 className={`bx ${transactionMap[transaction.type].icon} viewBooking__bedIcon`}
                                 style={{
@@ -1131,11 +1255,13 @@ const ViewBooking = ({
                                     transactionMap[transaction.type].color,
                                 }}
                               />
-                              <div style={{ minWidth: 0 }}>
+                              <div className="viewBooking__priceDetails">
                                 <p className="viewBooking__infoText viewBooking__priceAmount">
                                   {formatTransactionAmount(transaction)}
                                 </p>
-                                <p>{transactionName(transaction)}</p>
+                                <p className="viewBooking__transactionName">
+                                  {transactionName(transaction)}
+                                </p>
                                 {renderReviewMeta(transaction)}
                               </div>
                             </div>
@@ -1225,6 +1351,22 @@ const ViewBooking = ({
                     <i className="bx bx-edit" />
                     แก้ไข
                   </button>
+                  {user?.admin &&
+                    data.status === "booked" &&
+                    checkInIsBeforeToday && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAdminHistoricalCheckIn(true);
+                          setCheckInIsOpen(true);
+                          setMoreActionsIsOpen(false);
+                        }}
+                      >
+                        <i className="bx bx-history" />
+                        <span>Onboard Existing Stay</span>
+                        <span className="viewBooking__adminTag">Admin</span>
+                      </button>
+                    )}
                   {user?.admin && (
                     <button
                       type="button"
@@ -1294,29 +1436,37 @@ const ViewBooking = ({
 
             <ActionButton
               text=""
-              icon={data.starred ? "bxf bx-star" : "bx-star"}
-              className={data.starred ? "viewBooking__starAction" : ""}
-              disabled={starSaving}
+              icon={data.pinned ? "bxf bx-pin-alt" : "bx-pin-alt"}
+              className={data.pinned ? "viewBooking__pinAction" : ""}
+              ariaLabel={data.pinned ? "ยกเลิกปัก Booking" : "ปัก Booking"}
+              disabled={pinSaving}
               onClick={() =>
-                toast.promise(toggleStarHandler(), {
-                  loading: data.starred
-                    ? "กำลังยกเลิกปักดาว..."
-                    : "กำลังปักดาว...",
-                  success: data.starred
-                    ? "ยกเลิกปักดาวแล้ว"
-                    : "ปักดาว Booking แล้ว",
+                toast.promise(togglePinHandler(), {
+                  loading: data.pinned
+                    ? "กำลังยกเลิกปัก Booking..."
+                    : "กำลังปัก Booking...",
+                  success: data.pinned
+                    ? "ยกเลิกปัก Booking แล้ว"
+                    : "ปัก Booking แล้ว",
                   error: (err) =>
                     err.response?.data?.message ||
-                    "เกิดข้อผิดพลาดในการปักดาว Booking",
+                    "เกิดข้อผิดพลาดในการปัก Booking",
                 })
               }
             />
           </div>
           <div className="viewBooking__actionsRow">
+            {data.status === "checkedOut" && !data.voided && (
+              <ActionButton
+                text="เพิ่มรายการหลัง Check-Out"
+                onClick={() => setAddTransactionIsOpen(true)}
+                icon="bx-plus-circle"
+              />
+            )}
             {!data.voided &&
               (data.status === "booked" || data.status === "checkedIn") && (
                 <ActionButton
-                  text="Extend"
+                  text=""
                   onClick={() => setExtendBookingIsOpen(true)}
                   icon="bx-calendar-plus"
                 />
@@ -1324,7 +1474,10 @@ const ViewBooking = ({
             {data.status === "booked" && !isNoShow && (
               <ActionButton
                 text={isLateCheckIn ? "Late Check In" : "Check In"}
-                onClick={() => setCheckInIsOpen(true)}
+                onClick={() => {
+                  setAdminHistoricalCheckIn(false);
+                  setCheckInIsOpen(true);
+                }}
                 icon="bx-check-circle"
                 className={
                   isLateCheckIn ? "viewBooking__lateCheckInAction" : ""

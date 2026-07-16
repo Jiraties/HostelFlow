@@ -106,6 +106,7 @@
 .extendBooking__summarySection {
   display: flex;
   flex-direction: column;
+  margin-top: 2rem;
 }
 
 .extendBooking__summaryVisual,
@@ -159,6 +160,10 @@
   .extendBooking__leftColumn,
   .extendBooking__rightColumn {
     gap: 1.25rem;
+  }
+
+  .extendBooking__summarySection {
+    margin-top: 1.25rem;
   }
 
   .extendBooking__summaryVisual,

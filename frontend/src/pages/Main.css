@@ -542,50 +542,6 @@
   line-height: 1;
 }
 
-.main__metricInfo .main__metricTooltip {
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + 0.45rem);
-  z-index: 8;
-  display: none;
-  flex-direction: column;
-  gap: 0.25rem;
-  width: max-content;
-  max-width: 18rem;
-  padding: 0.55rem 0.7rem;
-  border-radius: 0.6rem;
-  background: #ffffff50;
-  backdrop-filter: blur(4px);
-  color: #000;
-  box-shadow: var(--main-shadow);
-  font-size: 0.78rem;
-  line-height: 1.35;
-  white-space: normal;
-  transform: translateX(-50%);
-}
-
-.main__metricTooltip::after {
-  position: absolute;
-  left: 50%;
-  bottom: -0.35rem;
-  width: 0.7rem;
-  height: 0.7rem;
-  background: #ffffff;
-  content: "";
-  transform: translateX(-50%) rotate(45deg);
-}
-
-.main__adminPanelHeader .main__metricTooltip span,
-.main__summaryMetricLabel .main__metricTooltip span {
-  display: block;
-  margin: 0;
-  color: inherit;
-}
-
-.main__metricInfo:hover .main__metricTooltip {
-  display: flex;
-}
-
 .main__revenueHero {
   background: linear-gradient(
     180deg,

@@ -15,6 +15,7 @@ import {
 } from "recharts";
 
 import ActionButton from "../components/ActionButton";
+import AppTooltip from "../components/Tooltip";
 import AddBooking from "../features/bookings/AddBooking";
 import UnsavedChangesModal from "../components/UnsavedChangesModal";
 import PageHeader from "../components/PageHeader";
@@ -47,7 +48,6 @@ import "./Home.css";
 import "../features/bookings/CheckIn.css";
 import "./Main.css";
 import FinancialBreakdown from "../features/finance/FinancialBreakdown";
-import DepositPreparationModal from "../features/finance/DepositPreparationModal";
 
 const getFetchErrorMessage = (err: unknown) => {
   if (axios.isAxiosError(err) && err.response?.data?.message) {
@@ -88,6 +88,7 @@ type TodayRevenueStats = {
 const serviceHighlightMeta: Partial<
   Record<TransactionType, { label: string; icon: string; color: string }>
 > = {
+  roomCharge: { label: "Room Charge", icon: "bx-bed", color: "#51d1dc" },
   depositKept: {
     label: "มัดจำที่แขกยอมเสีย",
     icon: "bx-wallet",
@@ -98,10 +99,20 @@ const serviceHighlightMeta: Partial<
   slowBoat: { label: "Slow Boat", icon: "bx-water", color: "#14b8a6" },
   sleeperBus: { label: "Sleeper Bus", icon: "bx-bus", color: "#6366f1" },
   towel: { label: "Towel", icon: "bx-bath", color: "#0ea5e9" },
+  extraBed: { label: "Extra Bed", icon: "bx-bed", color: "#ec4899" },
+  pickACraft: { label: "Pick A Craft", icon: "bx-palette", color: "#f59e0b" },
+  trek2D: { label: "Trek 2D", icon: "bx-map-alt", color: "#16a34a" },
+  setMenu: { label: "Set Menu", icon: "bx-food-menu", color: "#84cc16" },
+  onlyWalk: { label: "Only Walk", icon: "bx-walk", color: "#14b8a6" },
   laundry: { label: "Laundry", icon: "bx-washer", color: "#3b82f6" },
   bicycle: { label: "Bicycle", icon: "bx-cycling", color: "#eab308" },
   car: { label: "Car", icon: "bx-car", color: "#64748b" },
   misc: { label: "Misc", icon: "bx-dots-horizontal-rounded", color: "#64748b" },
+};
+
+const formatServiceType = (type: TransactionType) => {
+  const words = type.replace(/([a-z])([A-Z])/g, "$1 $2");
+  return words.charAt(0).toUpperCase() + words.slice(1);
 };
 
 const priorityTodayServiceTypes: TransactionType[] = [
@@ -167,15 +178,14 @@ const dashboardHelpText = {
 };
 
 const ExpectedStayRevenueInfo = () => (
-  <span
+  <AppTooltip
     className="main__metricInfo"
-    onClick={(event) => event.stopPropagation()}
+    content={dashboardHelpText.bookedRevenue}
+    ariaLabel={dashboardHelpText.bookedRevenue}
+    stopClickPropagation
   >
     <i className="bx bx-info-circle" />
-    <span className="main__metricTooltip">
-      <span>{dashboardHelpText.bookedRevenue}</span>
-    </span>
-  </span>
+  </AppTooltip>
 );
 
 type ReviewBooking = booking & {
@@ -489,13 +499,10 @@ const Main = () => {
   const [cashPosition, setCashPosition] = useState<CashPositionData | null>(
     null,
   );
-  const [depositOpeningCash, setDepositOpeningCash] = useState("0");
   const [operatingOpeningCash, setOperatingOpeningCash] = useState("0");
-  const [depositActualCash, setDepositActualCash] = useState("");
   const [operatingActualCash, setOperatingActualCash] = useState("");
   const [recountHandoff, setRecountHandoff] = useState(false);
   const [cashCloseExpanded, setCashCloseExpanded] = useState(false);
-  const [depositPreparationOpen, setDepositPreparationOpen] = useState(false);
   const [closeNote, setCloseNote] = useState("");
   const [addBookingIsOpen, setAddBookingIsOpen] = useState(false);
   const [addBookingIsDirty, setAddBookingIsDirty] = useState(false);
@@ -617,9 +624,7 @@ const Main = () => {
 
       const nextPosition = positionResponse.data as CashPositionData;
       setCashPosition(nextPosition);
-      setDepositOpeningCash(String(nextPosition.handoff.depositCash || 0));
       setOperatingOpeningCash(String(nextPosition.handoff.operatingCash || 0));
-      setDepositActualCash("");
       setOperatingActualCash("");
       setCloseNote("");
       setRecountHandoff(false);
@@ -689,40 +694,20 @@ const Main = () => {
     hasPreviousCashShift &&
     previousShiftBelongsToCurrentStaff;
   const cashCloseIsCollapsed = cashCloseIsComplete && !cashCloseExpanded;
-  const depositExpectedCash = activeCashShift?.depositExpectedCash || 0;
   const operatingExpectedCash = activeCashShift?.operatingExpectedCash || 0;
-  const tomorrowDepositRequirement = cashPosition?.tomorrowDepositRequirement;
-  const tomorrowDepositExpectedCash = tomorrowDepositRequirement?.total || 0;
-  const depositVariance =
-    depositActualCash === ""
-      ? 0
-      : Number(depositActualCash || 0) - depositExpectedCash;
   const operatingVariance =
     operatingActualCash === ""
       ? 0
       : Number(operatingActualCash || 0) - operatingExpectedCash;
-  const finalDayDepositVariance =
-    depositActualCash === ""
-      ? 0
-      : Number(depositActualCash || 0) - tomorrowDepositExpectedCash;
   const ordinaryCloseVarianceNeedsNote = Boolean(
     cashPosition &&
-    (Math.abs(depositVariance) > cashPosition.threshold ||
-      Math.abs(operatingVariance) > cashPosition.threshold),
-  );
-  const finalDayVarianceNeedsNote = Boolean(
-    cashPosition &&
-    (Math.abs(finalDayDepositVariance) > cashPosition.threshold ||
-      Math.abs(operatingVariance) > cashPosition.threshold),
+    Math.abs(operatingVariance) > cashPosition.threshold,
   );
   const openingVarianceNeedsNote = Boolean(
     cashPosition &&
-    (Math.abs(
-        Number(depositOpeningCash || 0) - cashPosition.handoff.depositCash,
-      ) > cashPosition.threshold ||
-      Math.abs(
-        Number(operatingOpeningCash || 0) - cashPosition.handoff.operatingCash,
-      ) > cashPosition.threshold),
+    Math.abs(
+      Number(operatingOpeningCash || 0) - cashPosition.handoff.operatingCash,
+    ) > cashPosition.threshold,
   );
   const activeShiftStaffName =
     activeCashShift?.staff?.name ||
@@ -735,7 +720,7 @@ const Main = () => {
   const cashShiftTitle = activeCashShift
     ? `กะของ ${activeShiftStaffName || activeCashShift.staffUsername} เปิดอยู่`
     : cashDayIsFinalized
-      ? "ปิดยอดวันนี้และเตรียมมัดจำแล้ว"
+      ? "ปิดยอดวันนี้แล้ว"
     : hasPreviousCashShift
       ? `รับต่อจาก ${previousShiftStaffName || "กะก่อนหน้า"}`
       : "เริ่มกะแรกของวันนี้";
@@ -745,7 +730,7 @@ const Main = () => {
       ? "ไม่สามารถเปิดกะเพิ่มในวันที่ปิดยอดสุดท้ายแล้ว"
     : hasPreviousCashShift
       ? "รับยอดปิดกะก่อนหน้า หรือเลือกนับใหม่ถ้าเงินไม่ตรง"
-      : "นับเงินสองกล่องก่อนเริ่มรับผิดชอบกะ";
+      : "นับเงินสดทั่วไปก่อนเริ่มรับผิดชอบกะ";
   const cashShiftActionTitle = activeCashShift
     ? "ปิดกะ"
     : cashDayIsFinalized
@@ -770,7 +755,6 @@ const Main = () => {
         `${API_URL}/finance/cash-shifts/start`,
         {
           openingMode,
-          depositOpeningCash: Number(depositOpeningCash || 0),
           operatingOpeningCash: Number(operatingOpeningCash || 0),
           note: closeNote.trim(),
         },
@@ -789,17 +773,13 @@ const Main = () => {
     if (!canCloseActiveShift) {
       throw new Error("เฉพาะผู้รับผิดชอบกะหรือผู้ดูแลระบบเท่านั้นที่ปิดกะได้");
     }
-    if (depositActualCash === "" || operatingActualCash === "") {
-      throw new Error("กรุณากรอกยอดเงินสดที่นับได้ทั้งสองกล่อง");
+    if (operatingActualCash === "") {
+      throw new Error("กรุณากรอกยอดเงินสดที่นับได้");
     }
 
-    const selectedDepositVariance = closeDay
-      ? finalDayDepositVariance
-      : depositVariance;
     if (
       cashPosition &&
-      (Math.abs(selectedDepositVariance) > cashPosition.threshold ||
-        Math.abs(operatingVariance) > cashPosition.threshold) &&
+      Math.abs(operatingVariance) > cashPosition.threshold &&
       !closeNote.trim()
     ) {
       throw new Error("กรุณาระบุหมายเหตุเมื่อยอดเงินสดไม่ตรงกัน");
@@ -810,7 +790,6 @@ const Main = () => {
       await axios.post(
         `${API_URL}/finance/cash-shifts/${activeCashShift._id}/close`,
         {
-          depositActualCash: Number(depositActualCash || 0),
           operatingActualCash: Number(operatingActualCash || 0),
           closeDay,
           note: closeNote.trim(),
@@ -821,11 +800,6 @@ const Main = () => {
     } finally {
       setCashCloseSaving(false);
     }
-  };
-
-  const closeCashDay = async () => {
-    await closeCashShift(true);
-    setDepositPreparationOpen(false);
   };
 
   const unpaidArrivals = arrivals.filter(
@@ -967,46 +941,6 @@ const Main = () => {
           initialType={financialBreakdownType}
         />
       </Modal>
-      <Modal
-        open={depositPreparationOpen}
-        className="home__modalCenter"
-        onClose={() => {
-          if (!cashCloseSaving) setDepositPreparationOpen(false);
-        }}
-      >
-        <DepositPreparationModal
-          requirement={tomorrowDepositRequirement}
-          currentDepositCash={depositExpectedCash}
-          operatingExpectedCash={operatingExpectedCash}
-          depositActualCash={depositActualCash}
-          operatingActualCash={operatingActualCash}
-          note={closeNote}
-          noteRequired={finalDayVarianceNeedsNote}
-          saving={cashCloseSaving}
-          canSubmit={canCloseActiveShift}
-          onDepositActualCashChange={setDepositActualCash}
-          onOperatingActualCashChange={setOperatingActualCash}
-          onNoteChange={setCloseNote}
-          onClose={() => setDepositPreparationOpen(false)}
-          onConfirm={() =>
-            toast.promise(closeCashDay(), {
-              loading: "กำลังปิดวันและบันทึกยอดเตรียมมัดจำ",
-              success: "ปิดวันและเตรียมมัดจำเรียบร้อย",
-              error: (err) => {
-                if (axios.isAxiosError(err)) {
-                  return (
-                    err.response?.data?.message ||
-                    "เกิดข้อผิดพลาดในการปิดยอด"
-                  );
-                }
-                if (err instanceof Error) return err.message;
-                return "เกิดข้อผิดพลาดในการปิดยอด";
-              },
-            })
-          }
-        />
-      </Modal>
-
       <PageHeader
         title={`หน้าแรก | ${fullFormattedDate}`}
         lastUpdated={lastUpdated}
@@ -1112,7 +1046,7 @@ const Main = () => {
               <div className="main__todayServiceChips">
                 {todayServiceHighlights.map((service) => {
                   const meta = serviceHighlightMeta[service.type] || {
-                    label: service.type,
+                    label: formatServiceType(service.type),
                     icon: "bx-receipt",
                     color: "var(--primary-color)",
                   };
@@ -1392,24 +1326,6 @@ const Main = () => {
         ) : (
           <div className="main__cashCloseGrid">
             <div className="main__cashCloseOverview">
-              <div className="main__cashCloseTile main__cashCloseTile--deposit">
-                <div className="main__cashCloseTileHeader">
-                  <i className="bx bx-lock-keyhole" />
-                  <span>เงินมัดจำ</span>
-                </div>
-                <strong>
-                  {cashCloseLoading
-                    ? "-"
-                    : `${formatMoney(cashPosition?.current.depositCash || 0)} ฿`}
-                </strong>
-                {!activeCashShift && !hasPreviousCashShift && cashPosition && (
-                  <p>
-                    ยอดเปิดตามมัดจำที่ต้องคืนวันนี้ {" "}
-                    {cashPosition.openingDepositRequirement.refundBookingCount}
-                    {" "}การจอง
-                  </p>
-                )}
-              </div>
               <div className="main__cashCloseTile main__cashCloseTile--operating">
                 <div className="main__cashCloseTileHeader">
                   <i className="bx bx-wallet" />
@@ -1430,65 +1346,34 @@ const Main = () => {
               </div>
               <div className="main__cashCloseForm">
                 {activeCashShift ? (
-                  <>
-                    <label>
-                      <span>เงินมัดจำ</span>
-                      <input
-                        className="boxInput"
-                        type="number"
-                        min="0"
-                        disabled={!canCloseActiveShift}
-                        value={depositActualCash}
-                        placeholder={`${formatMoney(depositExpectedCash)} คาดไว้`}
-                        onChange={(event) =>
-                          setDepositActualCash(event.target.value)
-                        }
-                      />
-                    </label>
-                    <label>
-                      <span>รายได้เงินสด</span>
-                      <input
-                        className="boxInput"
-                        type="number"
-                        min="0"
-                        disabled={!canCloseActiveShift}
-                        value={operatingActualCash}
-                        placeholder={`${formatMoney(operatingExpectedCash)} คาดไว้`}
-                        onChange={(event) =>
-                          setOperatingActualCash(event.target.value)
-                        }
-                      />
-                    </label>
-                  </>
+                  <label>
+                    <span>เงินสดที่นับได้</span>
+                    <input
+                      className="boxInput"
+                      type="number"
+                      min="0"
+                      disabled={!canCloseActiveShift}
+                      value={operatingActualCash}
+                      placeholder={`${formatMoney(operatingExpectedCash)} คาดไว้`}
+                      onChange={(event) =>
+                        setOperatingActualCash(event.target.value)
+                      }
+                    />
+                  </label>
                 ) : (
-                  <>
-                    <label>
-                      <span>เงินมัดจำ</span>
-                      <input
-                        className="boxInput"
-                        type="number"
-                        min="0"
-                        value={depositOpeningCash}
-                        disabled={hasPreviousCashShift && !recountHandoff}
-                        onChange={(event) =>
-                          setDepositOpeningCash(event.target.value)
-                        }
-                      />
-                    </label>
-                    <label>
-                      <span>รายได้เงินสด</span>
-                      <input
-                        className="boxInput"
-                        type="number"
-                        min="0"
-                        value={operatingOpeningCash}
-                        disabled={hasPreviousCashShift && !recountHandoff}
-                        onChange={(event) =>
-                          setOperatingOpeningCash(event.target.value)
-                        }
-                      />
-                    </label>
-                  </>
+                  <label>
+                    <span>เงินสดเริ่มกะ</span>
+                    <input
+                      className="boxInput"
+                      type="number"
+                      min="0"
+                      value={operatingOpeningCash}
+                      disabled={hasPreviousCashShift && !recountHandoff}
+                      onChange={(event) =>
+                        setOperatingOpeningCash(event.target.value)
+                      }
+                    />
+                  </label>
                 )}
                 {(ordinaryCloseVarianceNeedsNote ||
                   openingVarianceNeedsNote) && (
@@ -1512,9 +1397,6 @@ const Main = () => {
                       onChange={(event) => {
                         setRecountHandoff(event.target.checked);
                         if (!event.target.checked && cashPosition) {
-                          setDepositOpeningCash(
-                            String(cashPosition.handoff.depositCash || 0),
-                          );
                           setOperatingOpeningCash(
                             String(cashPosition.handoff.operatingCash || 0),
                           );
@@ -1571,10 +1453,22 @@ const Main = () => {
                   />
                   {activeCashShift && (
                     <ActionButton
-                      text="ปิดวันและเตรียมพรุ่งนี้"
+                      text="ปิดยอดวันนี้"
                       icon="bx-moon"
                       disabled={cashCloseSaving || !canCloseActiveShift}
-                      onClick={() => setDepositPreparationOpen(true)}
+                      onClick={() =>
+                        toast.promise(closeCashShift(true), {
+                          loading: "กำลังปิดยอดวันนี้",
+                          success: "ปิดยอดวันนี้เรียบร้อย",
+                          error: (err) =>
+                            axios.isAxiosError(err)
+                              ? err.response?.data?.message ||
+                                "เกิดข้อผิดพลาดในการปิดยอด"
+                              : err instanceof Error
+                                ? err.message
+                                : "เกิดข้อผิดพลาดในการปิดยอด",
+                        })
+                      }
                     />
                   )}
                 </div>

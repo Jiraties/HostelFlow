@@ -22,6 +22,7 @@ export type TransactionType =
   | "joinTour"
   | "extraBed"
   | "pickACraft"
+  | "trek2D"
   | "setMenu"
   | "sleeperBus"
   | "onlyWalk"
@@ -53,6 +54,7 @@ export interface commercialSegment {
   from: string | Date;
   to: string | Date;
   platformId: PlatformId;
+  channelBookingId?: string;
   amount: number;
   transactionId: string;
   createdBy: string;
@@ -149,13 +151,14 @@ export interface booking {
   staffUsername: string;
   checkInByStaffUsername?: string | null;
   checkedInAt?: string | Date;
+  checkInMode?: "normal" | "admin_historical_onboarding";
 
   passport?: Passport;
   cancellation?: Cancellation;
   checkout?: Checkout;
   resolution?: Resolution;
   note?: string;
-  starred?: boolean;
+  pinned?: boolean;
 }
 
 export type roomId =

@@ -57,6 +57,7 @@ const transactionMap: Record<string, string> = {
   joinTour: "Join Tour",
   extraBed: "เตียงเสริม",
   pickACraft: "Pick A Craft",
+  trek2D: "Trek 2D",
   setMenu: "Set Menu",
   sleeperBus: "Sleeper Bus",
   onlyWalk: "Only Walk",
@@ -488,7 +489,7 @@ export const getBookingsReport = async (req: Request, res: Response) => {
               86400000,
           );
           const row = sheet.addRow({
-            bookingId: booking.bookingId,
+            bookingId: segment.channelBookingId || booking.bookingId,
             checkIn: formatInputDate(new Date(segment.from)),
             checkOut: formatInputDate(new Date(segment.to)),
             nights,

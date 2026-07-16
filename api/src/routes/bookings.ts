@@ -18,8 +18,9 @@ import {
   cancelBooking,
   resolveBooking,
   updateBookingNote,
-  starBooking,
+  pinBooking,
   extendBooking,
+  correctDeposit,
 } from "../controller/booking";
 import { requirePassportAccess } from "../middleware/passportAuthorization";
 
@@ -29,7 +30,7 @@ bookingsRouter.post("/newBooking", newBooking);
 bookingsRouter.post("/:bookingId/extensions", extendBooking);
 bookingsRouter.patch("/editBooking/:bookingId", editBooking);
 bookingsRouter.patch("/updateBookingNote/:bookingId", updateBookingNote);
-bookingsRouter.patch("/starBooking/:bookingId", starBooking);
+bookingsRouter.patch("/pinBooking/:bookingId", pinBooking);
 bookingsRouter.post("/addTransaction/:bookingId", addTransaction);
 bookingsRouter.get("/getTodayBookings/:type", getTodayBookings);
 bookingsRouter.get("/getNeedsReviewBookings", getNeedsReviewBookings);
@@ -39,6 +40,7 @@ bookingsRouter.get("/getRoomAvailability", getRoomAvailability);
 bookingsRouter.delete("/removeBooking/:bookingId", removeBooking);
 bookingsRouter.put("/checkIn/:bookingId", checkIn);
 bookingsRouter.patch("/checkOut/:bookingId", checkOut);
+bookingsRouter.patch("/:bookingId/deposit", correctDeposit);
 bookingsRouter.patch("/manageRoomStays/:bookingId", manageRoomStays);
 bookingsRouter.patch("/cancelBooking/:bookingId", cancelBooking);
 bookingsRouter.patch("/resolveBooking/:bookingId", resolveBooking);

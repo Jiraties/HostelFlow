@@ -35,12 +35,6 @@ import {
   withCashShiftMutationLock,
 } from "../services/cashShiftMutationLock";
 import { CashShiftLedgerConflictError } from "../services/cashLedgerTransaction";
-import {
-  buildDepositRequirement,
-  depositPreparationAdjustment,
-  nextBusinessDateKey,
-  type DepositRequirement,
-} from "../helpers/depositPreparationHelpers";
 
 const sendDuplicateMutationResponse = (res: Response) =>
   res.status(409).json({
@@ -67,6 +61,7 @@ const expectedStayRevenueTransactionMeta: Partial<
   joinTour: { label: "Join Tour", color: "#22c55e", icon: "bx-map" },
   extraBed: { label: "เตียงเสริม", color: "#ec4899", icon: "bx-bed" },
   pickACraft: { label: "Pick A Craft", color: "#f59e0b", icon: "bx-palette" },
+  trek2D: { label: "Trek 2D", color: "#16a34a", icon: "bx-map-alt" },
   setMenu: { label: "Set Menu", color: "#84cc16", icon: "bx-food-menu" },
   sleeperBus: { label: "Sleeper Bus", color: "#6366f1", icon: "bx-bus" },
   onlyWalk: { label: "Only Walk", color: "#14b8a6", icon: "bx-walk" },
@@ -96,6 +91,7 @@ const expectedStayRevenueTypes = new Set<TransactionType>([
   "joinTour",
   "extraBed",
   "pickACraft",
+  "trek2D",
   "setMenu",
   "sleeperBus",
   "onlyWalk",
@@ -239,24 +235,6 @@ const getBusinessDayBoundsFromKey = (dateKey?: string) => {
   };
 };
 
-const getDepositRequirementForDate = async (
-  businessDate: string,
-  session?: ClientSession,
-): Promise<DepositRequirement | null> => {
-  const bounds = getBusinessDayBoundsFromKey(businessDate);
-  if (!bounds) return null;
-
-  const bookings = await Booking.find({
-    status: { $nin: ["checkedOut", "cancelled", "noShow"] },
-    checkOut: { $gte: bounds.start, $lt: bounds.end },
-  })
-    .select("bookingId name checkOut transactions")
-    .sort({ checkOut: 1, name: 1 })
-    .session(session || null)
-    .lean<booking[]>();
-  return buildDepositRequirement(bounds.businessDate, bookings);
-};
-
 const getTransactionsForBusinessDate = async (
   businessDate?: string,
   staffUsername?: string,
@@ -397,11 +375,6 @@ const enrichCashShift = async <
   const movements = summarizeCashStashes(
     await getShiftTransactions(shiftObject as T & { startedAt: Date }),
   );
-  const depositExpectedCash =
-    Number((shiftObject as any).depositOpeningCash || 0) +
-    movements.depositCashIn -
-    movements.depositCashOut +
-    Number((shiftObject as any).depositPreparation?.adjustment || 0);
   const operatingExpectedCash =
     Number((shiftObject as any).operatingOpeningCash || 0) +
     movements.operatingCashIn -
@@ -409,9 +382,53 @@ const enrichCashShift = async <
 
   return {
     ...shiftObject,
-    ...movements,
-    depositExpectedCash,
+    operatingCashIn: movements.operatingCashIn,
+    operatingCashOut: movements.operatingCashOut,
     operatingExpectedCash,
+  };
+};
+
+const operatingCashShiftView = (shift: any) => {
+  const {
+    depositOpeningCash: _depositOpeningCash,
+    depositCashIn: _depositCashIn,
+    depositCashOut: _depositCashOut,
+    depositExpectedCash: _depositExpectedCash,
+    depositActualCash: _depositActualCash,
+    depositVariance: _depositVariance,
+    depositPreparation: _depositPreparation,
+    ...operatingShift
+  } = shift;
+
+  return operatingShift;
+};
+
+const cashShiftAuditView = (shift: any) => {
+  const legacyValues = [
+    shift.depositOpeningCash,
+    shift.depositCashIn,
+    shift.depositCashOut,
+    shift.depositExpectedCash,
+    shift.depositActualCash,
+    shift.depositVariance,
+    shift.depositPreparation,
+  ];
+
+  return {
+    ...operatingCashShiftView(shift),
+    legacyDeposit: legacyValues.some(
+      (value) => value !== undefined && value !== null,
+    )
+      ? {
+          openingCash: shift.depositOpeningCash,
+          cashIn: shift.depositCashIn,
+          cashOut: shift.depositCashOut,
+          expectedCash: shift.depositExpectedCash,
+          actualCash: shift.depositActualCash,
+          variance: shift.depositVariance,
+          preparation: shift.depositPreparation,
+        }
+      : undefined,
   };
 };
 
@@ -449,23 +466,9 @@ const getCashPositionForDate = async (businessDate?: string) => {
   const bounds = getBusinessDayBoundsFromKey(businessDate);
   if (!bounds) return null;
 
-  const tomorrowBusinessDate = nextBusinessDateKey(bounds.businessDate);
-  const [shifts, openingDepositRequirement, tomorrowDepositRequirement, preparedForToday] =
-    await Promise.all([
-      CashShift.find({ businessDate: bounds.businessDate }).sort({
-        shiftNumber: 1,
-      }),
-      getDepositRequirementForDate(bounds.businessDate),
-      getDepositRequirementForDate(tomorrowBusinessDate),
-      CashShift.findOne({
-        isFinalDayClose: true,
-        "depositPreparation.targetBusinessDate": bounds.businessDate,
-      })
-        .sort({ endedAt: -1 })
-        .select("businessDate shiftNumber depositPreparation endedAt")
-        .lean(),
-    ]);
-  if (!openingDepositRequirement || !tomorrowDepositRequirement) return null;
+  const shifts = await CashShift.find({ businessDate: bounds.businessDate }).sort({
+    shiftNumber: 1,
+  });
   const activeShift = shifts.find((shift) => shift.status === "open");
   const previousShift = [...shifts]
     .reverse()
@@ -489,12 +492,6 @@ const getCashPositionForDate = async (businessDate?: string) => {
   const unassignedMovements = summarizeCashStashes(
     await getUnassignedCashTransactionsBetween(unassignedStart, bounds.end),
   );
-  const currentDepositCash = enrichedActiveShift
-    ? enrichedActiveShift.depositExpectedCash
-    : (enrichedPreviousShift?.depositActualCash ??
-        openingDepositRequirement.total) +
-      unassignedMovements.depositCashIn -
-      unassignedMovements.depositCashOut;
   const currentOperatingCash = enrichedActiveShift
     ? enrichedActiveShift.operatingExpectedCash
     : (enrichedPreviousShift?.operatingActualCash || 0) +
@@ -504,26 +501,20 @@ const getCashPositionForDate = async (businessDate?: string) => {
   return {
     businessDate: bounds.businessDate,
     threshold: CASH_VARIANCE_THRESHOLD,
-    activeShift: enrichedActiveShift || null,
-    previousShift: enrichedPreviousShift || null,
+    activeShift: enrichedActiveShift
+      ? operatingCashShiftView(enrichedActiveShift)
+      : null,
+    previousShift: enrichedPreviousShift
+      ? operatingCashShiftView(enrichedPreviousShift)
+      : null,
     current: {
-      depositCash: currentDepositCash,
       operatingCash: currentOperatingCash,
     },
-    unassignedCash: unassignedMovements,
-    openingDepositRequirement,
-    tomorrowDepositRequirement,
-    preparedForToday: preparedForToday?.depositPreparation
-      ? {
-          sourceBusinessDate: preparedForToday.businessDate,
-          sourceShiftNumber: preparedForToday.shiftNumber,
-          ...preparedForToday.depositPreparation,
-        }
-      : null,
+    unassignedCash: {
+      operatingCashIn: unassignedMovements.operatingCashIn,
+      operatingCashOut: unassignedMovements.operatingCashOut,
+    },
     handoff: {
-      depositCash: activeShift
-        ? enrichedPreviousShift?.depositActualCash || 0
-        : currentDepositCash,
       operatingCash: activeShift
         ? enrichedPreviousShift?.operatingActualCash || 0
         : currentOperatingCash,
@@ -532,13 +523,12 @@ const getCashPositionForDate = async (businessDate?: string) => {
         : undefined,
       fromShiftNumber: enrichedPreviousShift?.shiftNumber,
     },
-    shifts: enrichedShifts,
+    shifts: enrichedShifts.map(operatingCashShiftView),
   };
 };
 
 type CashAuditWarning = {
   code:
-    | "deposit_variance"
     | "operating_variance"
     | "handoff_mismatch"
     | "open_shift"
@@ -549,13 +539,17 @@ type CashAuditWarning = {
 };
 
 const hasCashMovement = (movements: ReturnType<typeof summarizeCashStashes>) =>
-  Object.values(movements).some((amount) => Math.abs(amount) > 0);
+  Math.abs(movements.operatingCashIn) > 0 ||
+  Math.abs(movements.operatingCashOut) > 0;
 
 const cashMovementTotal = (movements: ReturnType<typeof summarizeCashStashes>) =>
-  movements.depositCashIn -
-  movements.depositCashOut +
   movements.operatingCashIn -
   movements.operatingCashOut;
+
+type OperatingCashMovements = Pick<
+  ReturnType<typeof summarizeCashStashes>,
+  "operatingCashIn" | "operatingCashOut"
+>;
 
 const formatCashAuditAmount = (amount: number) =>
   new Intl.NumberFormat("th-TH", { maximumFractionDigits: 2 }).format(amount);
@@ -573,7 +567,7 @@ const getCashShiftAuditForDate = async (businessDate?: string) => {
   const gaps: Array<{
     from: Date;
     to: Date;
-    movements: ReturnType<typeof summarizeCashStashes>;
+    movements: OperatingCashMovements;
     warning: CashAuditWarning;
   }> = [];
 
@@ -601,7 +595,10 @@ const getCashShiftAuditForDate = async (businessDate?: string) => {
     gaps.push({
       from: gap.start,
       to: gap.end,
-      movements,
+      movements: {
+        operatingCashIn: movements.operatingCashIn,
+        operatingCashOut: movements.operatingCashOut,
+      },
       warning: {
         code: "unassigned_cash_activity",
         severity: "critical",
@@ -619,18 +616,7 @@ const getCashShiftAuditForDate = async (businessDate?: string) => {
           Boolean(transaction.reviewFlags?.length),
       );
       const warnings: CashAuditWarning[] = [];
-      const depositVariance = Number(shift.depositVariance || 0);
       const operatingVariance = Number(shift.operatingVariance || 0);
-      if (
-        shift.status === "closed" &&
-        Math.abs(depositVariance) > CASH_VARIANCE_THRESHOLD
-      ) {
-        warnings.push({
-          code: "deposit_variance",
-          severity: "critical",
-          message: `เงินมัดจำต่าง ${formatCashAuditAmount(depositVariance)} บาท`,
-        });
-      }
       if (
         shift.status === "closed" &&
         Math.abs(operatingVariance) > CASH_VARIANCE_THRESHOLD
@@ -665,22 +651,15 @@ const getCashShiftAuditForDate = async (businessDate?: string) => {
             new Date(shift.startedAt),
           ),
         );
-        const expectedDepositOpening = cashBalanceAfterMovements(
-          Number(previousShift.depositActualCash || 0),
-          handoffMovements.depositCashIn,
-          handoffMovements.depositCashOut,
-        );
         const expectedOperatingOpening = cashBalanceAfterMovements(
           Number(previousShift.operatingActualCash || 0),
           handoffMovements.operatingCashIn,
           handoffMovements.operatingCashOut,
         );
-        const depositDifference = Number(shift.depositOpeningCash) - expectedDepositOpening;
         const operatingDifference = Number(shift.operatingOpeningCash) - expectedOperatingOpening;
         const mismatch =
           shift.openingMode === "counted" &&
-          (Math.abs(depositDifference) > CASH_VARIANCE_THRESHOLD ||
-            Math.abs(operatingDifference) > CASH_VARIANCE_THRESHOLD);
+          Math.abs(operatingDifference) > CASH_VARIANCE_THRESHOLD;
         if (mismatch) {
           warnings.push({
             code: "handoff_mismatch",
@@ -700,17 +679,18 @@ const getCashShiftAuditForDate = async (businessDate?: string) => {
                 60000,
             ),
           ),
-          expectedDepositOpening,
           expectedOperatingOpening,
-          depositDifference,
           operatingDifference,
-          movements: handoffMovements,
+          movements: {
+            operatingCashIn: handoffMovements.operatingCashIn,
+            operatingCashOut: handoffMovements.operatingCashOut,
+          },
           mismatch,
         };
       }
 
       return {
-        ...shift,
+        ...cashShiftAuditView(shift),
         warnings,
         auditResolution: shift.auditResolution,
         flaggedTransactions,
@@ -1340,11 +1320,13 @@ export const resolveCashShiftAudit = async (req: Request, res: Response) => {
         businessDate: cashShift.businessDate,
         shiftNumber: cashShift.shiftNumber,
         note,
-        warningCodes: auditedShift.warnings.map((warning) => warning.code),
+        warningCodes: auditedShift.warnings.map(
+          (warning: CashAuditWarning) => warning.code,
+        ),
       },
     });
 
-    res.status(200).json({ cashShift });
+    res.status(200).json({ cashShift: cashShiftAuditView(cashShift.toObject()) });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
@@ -1404,42 +1386,23 @@ export const startCashShift = async (req: Request, res: Response) => {
       });
     }
 
-    const openingDepositRequirement = previousShift
-      ? null
-      : await getDepositRequirementForDate(bounds.businessDate);
-    const expectedDepositOpening = cashBalanceAfterMovements(
-      previousShift
-        ? Number(previousShift.depositActualCash || 0)
-        : Number(openingDepositRequirement?.total || 0),
-      handoffMovements.depositCashIn,
-      handoffMovements.depositCashOut,
-    );
     const expectedOperatingOpening = cashBalanceAfterMovements(
       previousShift?.operatingActualCash || 0,
       handoffMovements.operatingCashIn,
       handoffMovements.operatingCashOut,
     );
-    const depositOpeningCash =
-      openingMode === "accepted_handoff"
-        ? expectedDepositOpening
-        : Number(req.body.depositOpeningCash || 0);
     const operatingOpeningCash =
       openingMode === "accepted_handoff"
         ? expectedOperatingOpening
         : Number(req.body.operatingOpeningCash || 0);
 
-    if (
-      !isValidCashCount(depositOpeningCash) ||
-      !isValidCashCount(operatingOpeningCash)
-    ) {
+    if (!isValidCashCount(operatingOpeningCash)) {
       return res.status(400).json({ message: "ยอดเงินสดไม่ถูกต้อง" });
     }
 
     const openingNoteRequired =
-      Math.abs(depositOpeningCash - expectedDepositOpening) >
-        CASH_VARIANCE_THRESHOLD ||
       Math.abs(operatingOpeningCash - expectedOperatingOpening) >
-        CASH_VARIANCE_THRESHOLD;
+      CASH_VARIANCE_THRESHOLD;
     if (openingNoteRequired && !String(req.body.note || "").trim()) {
       return res.status(400).json({
         message: "กรุณาระบุหมายเหตุเมื่อยอดรับส่งเงินไม่ตรงกัน",
@@ -1455,9 +1418,7 @@ export const startCashShift = async (req: Request, res: Response) => {
         status: "open",
         openingMode,
         handoffFromShiftId: previousShift ? String(previousShift._id) : undefined,
-        depositOpeningCash,
         operatingOpeningCash,
-        depositExpectedCash: depositOpeningCash,
         operatingExpectedCash: operatingOpeningCash,
         note: String(req.body.note || "").trim(),
         startedAt: new Date(),
@@ -1471,9 +1432,7 @@ export const startCashShift = async (req: Request, res: Response) => {
         businessDate: bounds.businessDate,
         shiftNumber,
         openingMode,
-        depositOpeningCash,
         operatingOpeningCash,
-        expectedDepositOpening,
         expectedOperatingOpening,
         note: String(req.body.note || "").trim(),
       },
@@ -1529,12 +1488,8 @@ export const closeCashShift = async (req: Request, res: Response) => {
       });
     }
 
-    const depositActualCash = Number(req.body.depositActualCash);
     const operatingActualCash = Number(req.body.operatingActualCash);
-    if (
-      !isValidCashCount(depositActualCash) ||
-      !isValidCashCount(operatingActualCash)
-    ) {
+    if (!isValidCashCount(operatingActualCash)) {
       return res.status(400).json({ message: "ยอดเงินสดไม่ถูกต้อง" });
     }
 
@@ -1590,42 +1545,14 @@ export const closeCashShift = async (req: Request, res: Response) => {
               const movements = summarizeCashStashes(
                 await getShiftTransactions(cashShift, session),
               );
-              const depositExpectedBeforePreparation =
-                cashShift.depositOpeningCash +
-                movements.depositCashIn -
-                movements.depositCashOut;
-              const tomorrowDepositRequirement = closeDay
-                ? await getDepositRequirementForDate(
-                    nextBusinessDateKey(cashShift.businessDate),
-                    session,
-                  )
-                : null;
-              if (closeDay && !tomorrowDepositRequirement) {
-                throw new CashShiftCloseValidationError(
-                  400,
-                  "ไม่สามารถคำนวณมัดจำวันพรุ่งนี้ได้",
-                );
-              }
-
-              const preparationAdjustment = tomorrowDepositRequirement
-                ? depositPreparationAdjustment(
-                    depositExpectedBeforePreparation,
-                    tomorrowDepositRequirement.total,
-                  )
-                : 0;
-              const depositExpectedCash = tomorrowDepositRequirement
-                ? tomorrowDepositRequirement.total
-                : depositExpectedBeforePreparation;
               const operatingExpectedCash =
                 cashShift.operatingOpeningCash +
                 movements.operatingCashIn -
                 movements.operatingCashOut;
-              const depositVariance = depositActualCash - depositExpectedCash;
               const operatingVariance = operatingActualCash - operatingExpectedCash;
 
               if (
-                (Math.abs(depositVariance) > CASH_VARIANCE_THRESHOLD ||
-                  Math.abs(operatingVariance) > CASH_VARIANCE_THRESHOLD) &&
+                Math.abs(operatingVariance) > CASH_VARIANCE_THRESHOLD &&
                 !String(req.body.note || "").trim()
               ) {
                 throw new CashShiftCloseValidationError(
@@ -1635,21 +1562,6 @@ export const closeCashShift = async (req: Request, res: Response) => {
               }
 
               const closedAt = new Date();
-              const depositPreparation = tomorrowDepositRequirement
-                ? {
-                    targetBusinessDate: tomorrowDepositRequirement.businessDate,
-                    requiredAmount: tomorrowDepositRequirement.total,
-                    preparedAmount: depositActualCash,
-                    adjustment: preparationAdjustment,
-                    checkoutCount: tomorrowDepositRequirement.checkoutCount,
-                    refundBookingCount:
-                      tomorrowDepositRequirement.refundBookingCount,
-                    bookings: tomorrowDepositRequirement.bookings,
-                    calculatedAt: tomorrowDepositRequirement.calculatedAt,
-                    preparedAt: closedAt,
-                    preparedBy: closingUsername,
-                  }
-                : undefined;
               const closedShift = await CashShift.findOneAndUpdate(
                 {
                   _id: cashShift._id,
@@ -1659,18 +1571,12 @@ export const closeCashShift = async (req: Request, res: Response) => {
                 {
                   $set: {
                     status: "closed",
-                    depositCashIn: movements.depositCashIn,
-                    depositCashOut: movements.depositCashOut,
                     operatingCashIn: movements.operatingCashIn,
                     operatingCashOut: movements.operatingCashOut,
-                    depositExpectedCash,
                     operatingExpectedCash,
-                    depositActualCash,
                     operatingActualCash,
-                    depositVariance,
                     operatingVariance,
                     isFinalDayClose: closeDay,
-                    depositPreparation,
                     note: String(req.body.note || cashShift.note || "").trim(),
                     endedAt: closedAt,
                     closedBy: closingUsername,
@@ -1686,13 +1592,7 @@ export const closeCashShift = async (req: Request, res: Response) => {
                   action: "CLOSE_CASH_SHIFT",
                   businessDate: cashShift.businessDate,
                   shiftNumber: cashShift.shiftNumber,
-                  depositExpectedCash,
-                  depositActualCash,
-                  depositVariance,
-                  depositCashIn: movements.depositCashIn,
-                  depositCashOut: movements.depositCashOut,
                   closeDay,
-                  depositPreparation,
                   operatingExpectedCash,
                   operatingActualCash,
                   operatingVariance,

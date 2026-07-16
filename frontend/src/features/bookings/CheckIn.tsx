@@ -83,6 +83,7 @@ const destinationCountryOptions: OptionType[] = [
 type CheckInPayload = {
   expectedRevision: number;
   deposit: number;
+  adminHistoricalCheckIn?: boolean;
   passportData: {
     namePrefix: string;
     passportNo: string;
@@ -100,6 +101,7 @@ const CheckIn = ({
   booking,
   isLateCheckIn,
   nightsLate,
+  adminHistoricalCheckIn = false,
   handleCheckInSuccess,
   onClose,
   onDirtyChange,
@@ -107,6 +109,7 @@ const CheckIn = ({
   booking: booking;
   isLateCheckIn?: boolean;
   nightsLate?: number;
+  adminHistoricalCheckIn?: boolean;
   handleCheckInSuccess: (booking: booking) => void;
   onClose?: () => void;
   onDirtyChange?: (isDirty: boolean) => void;
@@ -217,7 +220,8 @@ const CheckIn = ({
       cashTotal += Number(receivedCash) - roomCharge.amount;
     }
   }
-  const hasCashMovement = cashTotal > 0;
+  const depositCash = hasExistingDeposit ? 0 : Number(deposit) || 0;
+  const hasCashMovement = cashTotal - depositCash > 0;
   const hasPaymentToConfirm =
     !hasExistingDeposit || roomCharge.paymentMethod === "Unpaid";
 
@@ -240,7 +244,11 @@ const CheckIn = ({
     }
 
     if (hasPaymentToConfirm && !confirmedPayment) {
-      throw new Error("กรุณายืนยันการรับเงินสดจากลูกค้า");
+      throw new Error(
+        adminHistoricalCheckIn
+          ? "กรุณายืนยันยอดเงินที่รับไว้ก่อนเริ่มใช้ระบบ"
+          : "กรุณายืนยันการรับเงินสดจากลูกค้า",
+      );
     }
 
     const parsedReceivedCash = Number(receivedCash);
@@ -261,6 +269,7 @@ const CheckIn = ({
       const payload: CheckInPayload = {
         expectedRevision: booking.revision,
         deposit: Number(deposit),
+        adminHistoricalCheckIn,
         passportData: {
           namePrefix,
           passportNo,
@@ -301,8 +310,23 @@ const CheckIn = ({
       <div>
         <div className="checkIn__header">
           <h1 className="checkIn__title">เช็คอิน {booking.name}</h1>
-          {(isLateCheckIn || roomCharge.paymentMethod === "Unpaid" || hasCashMovement) && (
+          {(adminHistoricalCheckIn ||
+            isLateCheckIn ||
+            roomCharge.paymentMethod === "Unpaid" ||
+            hasCashMovement) && (
             <div className="bookingNoticeStack">
+              {adminHistoricalCheckIn && (
+                <div className="checkIn__reminder checkOut__earlyReminder">
+                  <i className="bx bx-history" />
+                  <p>
+                    โหมดชั่วคราวสำหรับ Admin: ระบบจะลงวันที่ check-in และรายการเงิน
+                    เป็นวันเข้าพักเดิม โดยไม่เพิ่มเงินเข้ากะปัจจุบัน
+                    <strong>
+                      กรุณารวมมัดจำที่ถืออยู่ในยอดเงินมัดจำเริ่มต้นของวันเปิดระบบ
+                    </strong>
+                  </p>
+                </div>
+              )}
               {isLateCheckIn && (
                 <div className="checkIn__reminder checkOut__earlyReminder">
                   <i className="bx bx-message-bubble-exclamation" />
@@ -324,7 +348,7 @@ const CheckIn = ({
                   </p>
                 </div>
               )}
-              {hasCashMovement && <CashShiftNudge />}
+              {hasCashMovement && !adminHistoricalCheckIn && <CashShiftNudge />}
             </div>
           )}
         </div>
@@ -423,7 +447,11 @@ const CheckIn = ({
         </div>
         <div className="checkIn__right">
           <div>
-            <p className="checkIn__label">มัดจำ (บาท)</p>
+              <p className="checkIn__label">
+                {adminHistoricalCheckIn
+                  ? "มัดจำที่รับไว้ก่อนเริ่มระบบ (บาท)"
+                  : "มัดจำ (บาท)"}
+              </p>
             <input
               className="boxInput"
               type="number"
@@ -558,7 +586,9 @@ const CheckIn = ({
 
                 {hasPaymentToConfirm && (
                   <label className="checkbox">
-                    ยืนยันรับเงิน
+                    {adminHistoricalCheckIn
+                      ? "ยืนยันยอดที่รับไว้แล้ว"
+                      : "ยืนยันรับเงิน"}
                     <input
                       type="checkbox"
                       checked={confirmedPayment}
@@ -588,7 +618,7 @@ const CheckIn = ({
             />
           )}
         <ActionButton
-          text="Check In"
+          text={adminHistoricalCheckIn ? "Onboard Existing Stay" : "Check In"}
           disabled={submitting}
           onClick={() =>
             toast.promise(checkInHandler(), {

@@ -149,13 +149,38 @@ const nameCell = (params: ICellRendererParams<SpreadsheetRow, string>) => {
 
   return (
     <div className="spreadsheet__nameCell">
-      {params.data?.starred && (
-        <i className="bxf bx-star spreadsheet__starIcon" aria-hidden="true" />
+      {params.data?.pinned && (
+        <i className="bxf bx-pin-alt spreadsheet__pinIcon" aria-hidden="true" />
       )}
       <span>{params.value}</span>
     </div>
   );
 };
+
+const remainingDepositAmount = (currentBooking: booking) =>
+  Math.max(
+    currentBooking.transactions.reduce((total, transaction) => {
+      if (transaction.type === "deposit") return total + transaction.amount;
+      if (
+        transaction.type === "depositRefund" ||
+        transaction.type === "depositKept"
+      ) {
+        return total - transaction.amount;
+      }
+      return total;
+    }, 0),
+    0,
+  );
+
+const thbValueFormatter = (value?: number | null) =>
+  value == null
+    ? ""
+    : new Intl.NumberFormat("th-TH", {
+        style: "currency",
+        currency: "THB",
+        minimumFractionDigits: 0,
+        currencyDisplay: "code",
+      }).format(value);
 
 const CustomLoadingOverlay = () => {
   return (
@@ -216,18 +241,22 @@ const Spreadsheet = ({
     return () => mediaQuery.removeEventListener("change", syncIsMobile);
   }, []);
 
-  const dateValueFormater = (
-    params: ValueFormatterParams<SpreadsheetRow, Date>,
-  ) => (params.value ? formatDisplayDate(params.value, dateFormat) : "");
+  const dateValueFormater = useCallback(
+    (params: ValueFormatterParams<SpreadsheetRow, Date>) =>
+      params.value ? formatDisplayDate(params.value, dateFormat) : "",
+    [dateFormat],
+  );
 
-  const separatorDateFormatter = (date: Date) =>
-    formatDisplayDate(date, dateFormat);
+  const separatorDateFormatter = useCallback(
+    (date: Date) => formatDisplayDate(date, dateFormat),
+    [dateFormat],
+  );
 
   const rowData = useMemo<SpreadsheetRow[]>(() => {
     if (!isMaster) {
       return [...bookings].sort((a, b) => {
-        if (Boolean(a.starred) === Boolean(b.starred)) return 0;
-        return a.starred ? -1 : 1;
+        if (Boolean(a.pinned) === Boolean(b.pinned)) return 0;
+        return a.pinned ? -1 : 1;
       });
     }
 
@@ -304,10 +333,10 @@ const Spreadsheet = ({
     return rows;
   }, [
     bookings,
-    dateFormat,
     isMaster,
     masterRange?.from,
     masterRange?.to,
+    separatorDateFormatter,
     todayKey,
   ]);
 
@@ -364,7 +393,7 @@ const Spreadsheet = ({
             params.data?.roomStays?.map(formatRoomStayRooms).join(", ") || ""
           );
         },
-        headerName: "Room",
+        headerName: "Rooms",
         filter: true,
         flex: 1,
         minWidth: 160,
@@ -390,15 +419,7 @@ const Spreadsheet = ({
         },
         valueFormatter: (
           params: ValueFormatterParams<SpreadsheetRow, number | undefined>,
-        ) =>
-          params.value == null
-            ? ""
-            : new Intl.NumberFormat("th-TH", {
-                style: "currency",
-                currency: "THB",
-                minimumFractionDigits: 0,
-                currencyDisplay: "code",
-              }).format(params.value),
+        ) => thbValueFormatter(params.value),
       },
       {
         valueGetter: (params: ValueGetterParams<SpreadsheetRow>) => {
@@ -414,6 +435,27 @@ const Spreadsheet = ({
             param.value === "Unpaid",
         },
       },
+      ...(status === "departures"
+        ? [
+            {
+              headerName: "Deposit",
+              width: 125,
+              minWidth: 120,
+              valueGetter: (params: ValueGetterParams<SpreadsheetRow>) => {
+                if (isSeparatorRow(params.data) || !params.data) {
+                  return undefined;
+                }
+                return remainingDepositAmount(params.data);
+              },
+              valueFormatter: (
+                params: ValueFormatterParams<
+                  SpreadsheetRow,
+                  number | undefined
+                >,
+              ) => thbValueFormatter(params.value),
+            } satisfies ColDef<SpreadsheetRow>,
+          ]
+        : []),
       {
         field: "bookingId",
         headerName: "Booking ID",
@@ -470,7 +512,7 @@ const Spreadsheet = ({
     ];
 
     return columns;
-  }, [dateFormat, isMaster, isMobile]);
+  }, [dateValueFormater, isMaster, isMobile, status]);
 
   const onRowDoubleClicked = (event: RowClickedEvent<SpreadsheetRow>) => {
     if (!event.data || isSeparatorRow(event.data)) return;
@@ -490,11 +532,11 @@ const Spreadsheet = ({
       if (isMaster) return;
 
       params.nodes.sort((a, b) => {
-        const aIsStarred = !isSeparatorRow(a.data) && Boolean(a.data?.starred);
-        const bIsStarred = !isSeparatorRow(b.data) && Boolean(b.data?.starred);
+        const aIsPinned = !isSeparatorRow(a.data) && Boolean(a.data?.pinned);
+        const bIsPinned = !isSeparatorRow(b.data) && Boolean(b.data?.pinned);
 
-        if (aIsStarred === bIsStarred) return 0;
-        return aIsStarred ? -1 : 1;
+        if (aIsPinned === bIsPinned) return 0;
+        return aIsPinned ? -1 : 1;
       });
     },
     [isMaster],
@@ -529,8 +571,8 @@ const Spreadsheet = ({
           onGridReady={onGridReady}
           postSortRows={postSortRows}
           rowClassRules={{
-            spreadsheet__starredRow: (params) =>
-              !isSeparatorRow(params.data) && Boolean(params.data?.starred),
+            spreadsheet__pinnedRow: (params) =>
+              !isSeparatorRow(params.data) && Boolean(params.data?.pinned),
           }}
           getRowId={(params) =>
             isSeparatorRow(params.data)

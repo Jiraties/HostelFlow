@@ -175,6 +175,7 @@
 
 .checkOut__actions {
   display: flex;
+  gap: 1rem;
   justify-content: flex-end;
   margin-top: 2rem;
 }
@@ -188,4 +189,18 @@
     width: 100%;
     justify-content: center;
   }
+}
+.checkOut__depositReturnConfirmation {
+  margin-top: 1rem;
+}
+
+.checkOut__depositCorrection {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.checkOut__depositCorrection label {
+  display: grid;
+  gap: 0.35rem;
 }

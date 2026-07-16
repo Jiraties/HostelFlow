@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.withCashLedgerTransaction = exports.assignCashTransactionsInSession = exports.CashShiftLedgerConflictError = void 0;
+exports.withCashLedgerTransaction = exports.assignCashTransactionsInSession = exports.transactionRequiresCashShift = exports.CashShiftLedgerConflictError = void 0;
 const mongoose_1 = __importDefault(require("mongoose"));
 const cashShift_1 = __importDefault(require("../models/cashShift"));
 const BUSINESS_TIME_ZONE = "Asia/Bangkok";
@@ -25,8 +25,16 @@ class CashShiftLedgerConflictError extends Error {
     }
 }
 exports.CashShiftLedgerConflictError = CashShiftLedgerConflictError;
+const depositTransactionTypes = new Set([
+    "deposit",
+    "depositRefund",
+    "depositKept",
+]);
+const transactionRequiresCashShift = (transaction) => transaction.paymentMethod === "Cash" &&
+    !depositTransactionTypes.has(transaction.type);
+exports.transactionRequiresCashShift = transactionRequiresCashShift;
 const assignCashTransactionsInSession = async (transactions, session) => {
-    if (!transactions.some((transaction) => transaction.paymentMethod === "Cash")) {
+    if (!transactions.some(exports.transactionRequiresCashShift)) {
         return transactions;
     }
     const cashShift = await cashShift_1.default.findOne({
@@ -42,7 +50,7 @@ const assignCashTransactionsInSession = async (transactions, session) => {
         throw new CashShiftLedgerConflictError();
     }
     const cashShiftId = String(cashShift._id);
-    return transactions.map((transaction) => transaction.paymentMethod === "Cash"
+    return transactions.map((transaction) => (0, exports.transactionRequiresCashShift)(transaction)
         ? { ...transaction, cashShiftId }
         : transaction);
 };
@@ -53,7 +61,7 @@ exports.assignCashTransactionsInSession = assignCashTransactionsInSession;
  * selected shift remains open for the entire transaction.
  */
 const withCashLedgerTransaction = async (transactions, operation) => {
-    if (!transactions.some((transaction) => transaction.paymentMethod === "Cash")) {
+    if (!transactions.some(exports.transactionRequiresCashShift)) {
         return operation(transactions);
     }
     const session = await mongoose_1.default.startSession();

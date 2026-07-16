@@ -135,3 +135,9 @@
     text-align: left;
   }
 }
+.addTransaction__description {
+  margin-top: 0.35rem;
+  color: #777777;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}

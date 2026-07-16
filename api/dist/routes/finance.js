@@ -14,7 +14,6 @@ financeRouter.get("/today-revenue-breakdown", finance_1.getTodayRevenueBreakdown
 financeRouter.get("/today-revenue-summary", finance_1.getTodayRevenueSummary);
 financeRouter.get("/review-events", finance_1.getReviewEvents);
 financeRouter.patch("/review-events/:bookingId/:transactionId/approve", finance_1.approveReviewEvent);
-financeRouter.post("/daily-close", finance_1.upsertDailyClose);
 financeRouter.post("/cash-shifts/start", finance_1.startCashShift);
 financeRouter.post("/cash-shifts/:shiftId/close", finance_1.closeCashShift);
 financeRouter.patch("/cash-shifts/:shiftId/audit-resolution", finance_1.resolveCashShiftAudit);

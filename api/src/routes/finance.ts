@@ -11,7 +11,6 @@ import {
   getReviewEvents,
   resolveCashShiftAudit,
   startCashShift,
-  upsertDailyClose,
 } from "../controller/finance";
 
 const financeRouter = express.Router();
@@ -30,7 +29,6 @@ financeRouter.patch(
   "/review-events/:bookingId/:transactionId/approve",
   approveReviewEvent,
 );
-financeRouter.post("/daily-close", upsertDailyClose);
 financeRouter.post("/cash-shifts/start", startCashShift);
 financeRouter.post("/cash-shifts/:shiftId/close", closeCashShift);
 financeRouter.patch(

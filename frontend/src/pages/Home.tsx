@@ -19,6 +19,7 @@ import { useLocation, useSearchParams } from "react-router";
 import {
   formatBookingDates,
   formatBookingsDates,
+  roomChargeOutstandingAmount,
 } from "../helpers/bookingHelpers";
 import { platformOptions, roomIdOptions } from "../helpers/options";
 import { customStyles } from "../helpers/selectStyling";
@@ -50,7 +51,6 @@ type CashPositionData = {
     staffUsername: string;
   } | null;
   current: {
-    depositCash: number;
     operatingCash: number;
   };
 };
@@ -97,6 +97,23 @@ const getFetchErrorMessage = (err: unknown) => {
   }
 
   return "เกิดข้อผิดพลาดในการโหลดข้อมูล";
+};
+
+const bookingMatchesChannelBookingId = (
+  currentBooking: booking,
+  bookingId: string,
+) => {
+  const normalizedBookingId = bookingId.trim().toLocaleLowerCase();
+  if (!normalizedBookingId) return false;
+
+  return [
+    currentBooking.bookingId,
+    ...(currentBooking.commercialSegments || []).map(
+      (segment) => segment.channelBookingId || "",
+    ),
+  ].some(
+    (candidate) => candidate.trim().toLocaleLowerCase() === normalizedBookingId,
+  );
 };
 
 const Home = ({ status }: { status: HomeStatus }) => {
@@ -168,11 +185,6 @@ const Home = ({ status }: { status: HomeStatus }) => {
   const bookingCheckOutIsToday = (booking: booking) =>
     booking.checkOut.toDateString() === today.toDateString();
 
-  const roomChargeTransaction = (booking: booking) =>
-    booking.transactions.find(
-      (transaction) => transaction.type === "roomCharge",
-    )!;
-
   const sumBookingTransactions = (
     booking: booking,
     predicate: (transaction: booking["transactions"][number]) => boolean,
@@ -215,8 +227,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
     unpaidCheckins: isMaster
       ? 0
       : arrivalsToday.filter(
-          (booking) =>
-            roomChargeTransaction(booking).paymentMethod === "Unpaid",
+          (booking) => roomChargeOutstandingAmount(booking) > 0,
         ).length,
     cashToReturnToday:
       isMaster || status === "arrivals" ? 0 : cashRefundedToday,
@@ -229,7 +240,6 @@ const Home = ({ status }: { status: HomeStatus }) => {
     guestsInHouse: occupancy,
     // guestsInHouse: `${Math.trunc((occupancy / 46) * 100)}%`,
     deposit: depositToReturn,
-    depositStash: cashPosition?.current.depositCash || 0,
     operatingStash: cashPosition?.current.operatingCash || 0,
   };
   const cashShiftHelperText = cashPosition?.activeShift
@@ -257,12 +267,6 @@ const Home = ({ status }: { status: HomeStatus }) => {
           //   value: stats.revenueToday,
           // },
           {
-            id: "depositStash",
-            label: "เงินมัดจำ (฿)",
-            value: stats.depositStash,
-            helperText: cashShiftHelperText,
-          },
-          {
             id: "operatingStash",
             label: "รายได้เงินสด (฿)",
             value: stats.operatingStash,
@@ -281,12 +285,6 @@ const Home = ({ status }: { status: HomeStatus }) => {
             value: stats.departuresToday,
           },
           { id: "deposit", label: "มัดจำที่ต้องคืน (฿)", value: stats.deposit },
-          {
-            id: "depositStash",
-            label: "เงินมัดจำ (฿)",
-            value: stats.depositStash,
-            helperText: cashShiftHelperText,
-          },
           {
             id: "operatingStash",
             label: "รายได้เงินสด (฿)",
@@ -445,8 +443,8 @@ const Home = ({ status }: { status: HomeStatus }) => {
       return;
     }
 
-    const bookingToOpen = bookings.find(
-      (booking) => booking.bookingId === bookingIdQuery,
+    const bookingToOpen = bookings.find((currentBooking) =>
+      bookingMatchesChannelBookingId(currentBooking, bookingIdQuery),
     );
 
     if (!bookingToOpen) return;
@@ -493,7 +491,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
           className="boxInput home__filterInput"
           type="text"
           value={masterFilters.bookingId}
-          placeholder="ค้นหา Booking ID"
+          placeholder="ค้นหา Booking ID หลักหรือ Add Nights"
           onChange={(e) => updateMasterFilter("bookingId", e.target.value)}
         />
       </div>

@@ -105,6 +105,7 @@ const PassportView = ({ bookingId }: PassportViewProps) => {
                 className="passportView__hideButton"
                 onClick={hidePassportData}
               >
+                <i className="bx bx-eye-slash" />
                 ซ่อนข้อมูล Passport
               </button>
             </div>

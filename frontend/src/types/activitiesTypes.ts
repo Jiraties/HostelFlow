@@ -40,6 +40,7 @@ export type TransactionType =
   | "joinTour"
   | "extraBed"
   | "pickACraft"
+  | "trek2D"
   | "setMenu"
   | "sleeperBus"
   | "onlyWalk"

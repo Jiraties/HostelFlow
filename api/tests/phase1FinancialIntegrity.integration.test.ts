@@ -11,7 +11,11 @@ import CashShiftMutationLock from "../src/models/cashShiftMutationLock";
 import DailyClose from "../src/models/dailyClose";
 import MutationIdempotencyKey from "../src/models/mutationIdempotencyKey";
 import { withCashLedgerTransaction } from "../src/services/cashLedgerTransaction";
-import { closeCashShift, upsertDailyClose } from "../src/controller/finance";
+import {
+  closeCashShift,
+  getCashPosition,
+  getCashShiftAudit,
+} from "../src/controller/finance";
 
 type CapturedResponse = {
   statusCode: number;
@@ -106,7 +110,7 @@ beforeEach(async () => {
   );
 });
 
-test("cash mutation racing shift close is included atomically in closed totals", async () => {
+test("deposit recording bypasses a cash shift racing close", async () => {
   const booking = await Booking.create({
     name: "Synthetic Guest",
     bookingId: "RACE-1",
@@ -155,7 +159,6 @@ test("cash mutation racing shift close is included atomically in closed totals",
     request(
       `/finance/cash-shifts/${shift._id}/close`,
       {
-        depositActualCash: 100,
         operatingActualCash: 0,
         closeDay: false,
       },
@@ -175,14 +178,13 @@ test("cash mutation racing shift close is included atomically in closed totals",
     CashShift.findById(shift._id).lean(),
   ]);
   assert.equal(closedShift?.status, "closed");
-  assert.equal(closedShift?.depositCashIn, 100);
-  assert.equal(closedShift?.depositExpectedCash, 100);
-  assert.equal(closedShift?.depositVariance, 0);
+  assert.equal(closedShift?.operatingCashIn, 0);
+  assert.equal(closedShift?.operatingExpectedCash, 0);
   assert.equal(storedBooking?.transactions.length, 1);
-  assert.equal(storedBooking?.transactions[0].cashShiftId, String(shift._id));
+  assert.equal(storedBooking?.transactions[0].cashShiftId, undefined);
 });
 
-test("two close requests cannot both succeed and closed shifts reject later cash", async () => {
+test("two close requests cannot both succeed; deposits bypass the closed shift", async () => {
   const booking = await Booking.create({
     name: "Synthetic Closed Shift Guest",
     bookingId: "CLOSE-2",
@@ -209,7 +211,7 @@ test("two close requests cannot both succeed and closed shifts reject later cash
     closeCashShift(
       request(
         `/finance/cash-shifts/${shift._id}/close`,
-        { depositActualCash: 0, operatingActualCash: 0, closeDay: false },
+        { operatingActualCash: 0, closeDay: false },
         { shiftId: String(shift._id) },
         "double-close-a",
       ),
@@ -218,7 +220,7 @@ test("two close requests cannot both succeed and closed shifts reject later cash
     closeCashShift(
       request(
         `/finance/cash-shifts/${shift._id}/close`,
-        { depositActualCash: 0, operatingActualCash: 0, closeDay: false },
+        { operatingActualCash: 0, closeDay: false },
         { shiftId: String(shift._id) },
         "double-close-b",
       ),
@@ -227,84 +229,72 @@ test("two close requests cannot both succeed and closed shifts reject later cash
   ]);
 
   assert.deepEqual([first.statusCode, second.statusCode].sort(), [200, 409]);
+  await withCashLedgerTransaction(
+    [{ type: "deposit", paymentMethod: "Cash", amount: 50 }],
+    (transactions, session) =>
+      Booking.findByIdAndUpdate(
+        booking._id,
+        { $push: { transactions: { $each: transactions } } },
+        { returnDocument: "after", session },
+      ),
+  );
+  const stored = await Booking.findById(booking._id).lean();
+  assert.equal(stored?.transactions.length, 1);
+  assert.equal(stored?.transactions[0].cashShiftId, undefined);
   await assert.rejects(
     withCashLedgerTransaction(
-      [{ type: "deposit", paymentMethod: "Cash", amount: 50 }],
-      (transactions, session) =>
-        Booking.findByIdAndUpdate(
-          booking._id,
-          { $push: { transactions: { $each: transactions } } },
-          { returnDocument: "after", session },
-        ),
+      [{ type: "misc", paymentMethod: "Cash", amount: 50 }],
+      async () => null,
     ),
     { name: "CashShiftLedgerConflictError" },
   );
-  const stored = await Booking.findById(booking._id).lean();
-  assert.equal(stored?.transactions.length, 0);
 });
 
-test("two daily-close revisions based on the same revision cannot both commit", async () => {
-  const businessDate = businessDateKey();
-  const initialResponse = response();
-  await upsertDailyClose(
-    request(
-      "/finance/daily-close",
-      { businessDate, expectedRevision: 0, openingCash: 0, actualCash: 0 },
-      {},
-      "daily-initial",
-    ),
-    initialResponse as any,
-  );
-  assert.equal(initialResponse.statusCode, 200);
-  assert.equal(initialResponse.body.dailyClose.revision, 1);
+test("cash position is operating-only while audit preserves legacy deposit figures", async () => {
+  await CashShift.create({
+    businessDate: businessDateKey(),
+    shiftNumber: 1,
+    staffUsername: "test-admin",
+    status: "closed",
+    openingMode: "counted",
+    depositOpeningCash: 200,
+    depositCashIn: 100,
+    depositCashOut: 50,
+    depositExpectedCash: 250,
+    depositActualCash: 250,
+    depositVariance: 0,
+    operatingOpeningCash: 1000,
+    operatingCashIn: 0,
+    operatingCashOut: 0,
+    operatingExpectedCash: 1000,
+    operatingActualCash: 1000,
+    operatingVariance: 0,
+    startedAt: new Date(Date.now() - 60_000),
+    endedAt: new Date(),
+    createdBy: "test-admin",
+  });
 
-  const firstResponse = response();
-  const secondResponse = response();
-  await Promise.all([
-    upsertDailyClose(
-      request(
-        "/finance/daily-close",
-        {
-          businessDate,
-          expectedRevision: 1,
-          openingCash: 0,
-          actualCash: 1,
-          note: "synthetic count A",
-        },
-        {},
-        "daily-a",
-      ),
-      firstResponse as any,
-    ),
-    upsertDailyClose(
-      request(
-        "/finance/daily-close",
-        {
-          businessDate,
-          expectedRevision: 1,
-          openingCash: 0,
-          actualCash: 2,
-          note: "synthetic count B",
-        },
-        {},
-        "daily-b",
-      ),
-      secondResponse as any,
-    ),
-  ]);
-
-  assert.deepEqual(
-    [firstResponse.statusCode, secondResponse.statusCode].sort(),
-    [200, 409],
+  const positionResponse = response();
+  await getCashPosition(
+    { ...request("/finance/cash-position", {}), query: {} } as any,
+    positionResponse as any,
   );
-  const stored = await DailyClose.findOne({ businessDate }).lean();
-  assert.equal(stored?.revision, 2);
-  assert.equal(stored?.revisions?.length, 1);
-  assert.equal(stored?.revisions?.[0].revision, 1);
-  assert.ok([1, 2].includes(stored?.actualCash || 0));
+  assert.equal(positionResponse.statusCode, 200);
+  assert.equal(positionResponse.body.current.operatingCash, 1000);
+  assert.equal("depositCash" in positionResponse.body.current, false);
+  assert.equal("depositOpeningCash" in positionResponse.body.previousShift, false);
+
+  const auditResponse = response();
+  await getCashShiftAudit(
+    { ...request("/finance/cash-shift-audit", {}), query: {} } as any,
+    auditResponse as any,
+  );
+  assert.equal(auditResponse.statusCode, 200);
+  assert.equal(auditResponse.body.shifts[0].legacyDeposit.actualCash, 250);
+  assert.equal("depositActualCash" in auditResponse.body.shifts[0], false);
 });
 
-test("refund policy rejects forged, excessive, split-threshold and concurrent refunds", async () => {
+test("general transaction API rejects manual deposit collection and refunds", async () => {
   const booking = await Booking.create({
     name: "Synthetic Refund Guest",
     bookingId: "REFUND-1",
@@ -314,8 +304,6 @@ test("refund policy rejects forged, excessive, split-threshold and concurrent re
       { type: "deposit", paymentMethod: "Transfer", amount: 3000 },
     ],
   });
-  const depositId = String(booking.transactions[0]._id);
-
   const invoke = async (
     transaction: Record<string, unknown>,
     key: string,
@@ -333,109 +321,30 @@ test("refund policy rejects forged, excessive, split-threshold and concurrent re
     return res;
   };
 
-  const forged = await invoke(
+  const manualDeposit = await invoke(
     {
       type: "deposit",
       paymentMethod: "Transfer",
       amount: 10,
       direction: "out",
     },
-    "forged",
+    "manual-deposit",
   );
-  assert.equal(forged.statusCode, 400);
-  assert.equal(forged.body.error, "INVALID_TRANSACTION_DIRECTION");
+  assert.equal(manualDeposit.statusCode, 400);
+  assert.equal(manualDeposit.body.error, "INVALID_TRANSACTION_TYPE");
 
-  const negativeAdjustment = await invoke(
-    {
-      type: "adjustment",
-      paymentMethod: "Transfer",
-      amount: 10,
-      direction: "out",
-      note: "synthetic negative adjustment",
-      relatedTransactionId: depositId,
-    },
-    "negative-adjustment",
-  );
-  assert.equal(negativeAdjustment.statusCode, 400);
-
-  const excessive = await invoke(
+  const manualRefund = await invoke(
     {
       type: "depositRefund",
       paymentMethod: "Transfer",
-      amount: 3001,
-      note: "synthetic excessive refund",
+      amount: 200,
+      note: "synthetic manual refund",
     },
-    "excessive",
+    "manual-refund",
     true,
   );
-  assert.equal(excessive.statusCode, 409);
-
-  const first = await invoke(
-    {
-      type: "depositRefund",
-      paymentMethod: "Transfer",
-      amount: 1500,
-      note: "synthetic legitimate refund",
-    },
-    "legitimate",
-  );
-  assert.equal(first.statusCode, 200);
-
-  const splitThreshold = await invoke(
-    {
-      type: "depositRefund",
-      paymentMethod: "Transfer",
-      amount: 500,
-      note: "synthetic split refund",
-    },
-    "split-threshold",
-  );
-  assert.equal(splitThreshold.statusCode, 403);
-
-  await Booking.updateOne(
-    { bookingId: "REFUND-1" },
-    {
-      $set: {
-        transactions: [
-          { type: "deposit", paymentMethod: "Transfer", amount: 1000 },
-        ],
-      },
-      $inc: { __v: 1 },
-    },
-  );
-
-  const concurrent = await Promise.all([
-    invoke(
-      {
-        type: "depositRefund",
-        paymentMethod: "Transfer",
-        amount: 600,
-        note: "synthetic concurrent refund A",
-      },
-      "concurrent-a",
-    ),
-    invoke(
-      {
-        type: "depositRefund",
-        paymentMethod: "Transfer",
-        amount: 600,
-        note: "synthetic concurrent refund B",
-      },
-      "concurrent-b",
-    ),
-  ]);
-  assert.deepEqual(
-    concurrent.map((item) => item.statusCode).sort(),
-    [200, 409],
-  );
-
+  assert.equal(manualRefund.statusCode, 400);
+  assert.equal(manualRefund.body.error, "INVALID_TRANSACTION_TYPE");
   const stored = await Booking.findOne({ bookingId: "REFUND-1" }).lean();
-  const refunded = (stored?.transactions || []).reduce(
-    (total, transaction) =>
-      transaction.type === "depositRefund"
-        ? total + Math.abs(transaction.amount || 0)
-        : total,
-    0,
-  );
-  assert.equal(refunded, 600);
+  assert.equal(stored?.transactions.length, 1);
 });

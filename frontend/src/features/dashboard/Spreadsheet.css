@@ -79,13 +79,13 @@
   white-space: nowrap;
 }
 
-.spreadsheet__starIcon {
+.spreadsheet__pinIcon {
   color: #ffbf00;
   flex: 0 0 auto;
   font-size: 1rem;
 }
 
-.spreadsheet__starredRow {
+.spreadsheet__pinnedRow {
   background-color: color-mix(in srgb, #ffbf00 5%, #fff);
 }
 

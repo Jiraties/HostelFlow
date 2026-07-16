@@ -20,6 +20,10 @@ exports.FinancialTransactionPolicyError = FinancialTransactionPolicyError;
 const canonicalTransactionDirection = (transaction) => {
     if (transaction.paymentMethod === "Unpaid")
         return "neutral";
+    if (transaction.type === "adjustment" &&
+        (transaction.direction === "in" || transaction.direction === "out")) {
+        return transaction.direction;
+    }
     if (transaction.type === "depositKept")
         return "neutral";
     if (outwardTypes.includes(transaction.type))
@@ -28,6 +32,11 @@ const canonicalTransactionDirection = (transaction) => {
 };
 exports.canonicalTransactionDirection = canonicalTransactionDirection;
 const enforceAddTransactionPolicy = ({ booking, transaction, isAdmin, }) => {
+    if (transaction.type === "adjustment" &&
+        transaction.direction !== "in" &&
+        transaction.direction !== "out") {
+        throw new FinancialTransactionPolicyError(400, "INVALID_TRANSACTION_DIRECTION", "กรุณาระบุทิศทางการปรับยอดเป็นเพิ่มหรือลด");
+    }
     const direction = (0, exports.canonicalTransactionDirection)(transaction);
     if (transaction.direction && transaction.direction !== direction) {
         throw new FinancialTransactionPolicyError(400, "INVALID_TRANSACTION_DIRECTION", "ทิศทางรายการไม่ตรงกับประเภทรายการ");

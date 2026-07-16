@@ -16,6 +16,42 @@ import {
   transactionTodayExtrasRevenueAmount,
   transactionTodayReductionAmount,
 } from "../src/helpers/financeHelpers";
+import { transactionRequiresCashShift } from "../src/services/cashLedgerTransaction";
+
+test("only operating Cash transactions require a cash shift", () => {
+  assert.equal(
+    transactionRequiresCashShift({
+      type: "deposit",
+      paymentMethod: "Cash",
+      amount: 200,
+    }),
+    false,
+  );
+  assert.equal(
+    transactionRequiresCashShift({
+      type: "depositRefund",
+      paymentMethod: "Cash",
+      amount: 200,
+    }),
+    false,
+  );
+  assert.equal(
+    transactionRequiresCashShift({
+      type: "depositKept",
+      paymentMethod: "Cash",
+      amount: 200,
+    }),
+    false,
+  );
+  assert.equal(
+    transactionRequiresCashShift({
+      type: "misc",
+      paymentMethod: "Cash",
+      amount: 200,
+    }),
+    true,
+  );
+});
 import type { booking, transcation } from "../src/models/booking";
 
 test("summarizeTransactions separates cash, deposits, refunds, card fees, and unpaid balances", () => {

@@ -58,6 +58,38 @@
   font-weight: 500;
 }
 
+.financialBreakdown__datePicker {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.financialBreakdown__datePicker span {
+  color: #666666;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.financialBreakdown__datePicker input {
+  min-height: 2.35rem;
+  padding: 0.35rem 0.65rem;
+  border: 0;
+  border-radius: 999rem;
+  outline: none;
+  background-color: #f4f6f8;
+  color: #333333;
+  cursor: pointer;
+  font-family: "IBM Plex Sans Thai", sans-serif;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.financialBreakdown__datePicker input:focus-visible {
+  box-shadow: 0 0 0 0.15rem
+    color-mix(in srgb, var(--primary-color) 35%, transparent);
+}
+
 .financialBreakdown__summary {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
@@ -208,48 +240,8 @@
   border-radius: 999rem;
 }
 
-.financialBreakdown__distributionTooltip {
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + 0.55rem);
-  z-index: 4;
-  display: none;
-  width: max-content;
-  max-width: 14rem;
-  padding: 0.55rem 0.7rem;
-  border-radius: 0.65rem;
-  background: #ffffffd9;
-  backdrop-filter: blur(6px);
-  box-shadow: var(--main-shadow);
-  color: #000000;
-  font-size: 0.78rem;
-  line-height: 1.35;
-  transform: translateX(-50%);
-}
-
-.financialBreakdown__distributionTooltip::after {
-  position: absolute;
-  left: 50%;
-  bottom: -0.35rem;
-  width: 0.7rem;
-  height: 0.7rem;
-  background: #ffffffd9;
-  content: "";
-  transform: translateX(-50%) rotate(45deg);
-}
-
-.financialBreakdown__distributionTooltip strong,
-.financialBreakdown__distributionTooltip span {
-  display: block;
-}
-
 .financialBreakdown__distributionSegment:hover {
   filter: brightness(0.96);
-}
-
-.financialBreakdown__distributionSegment:hover
-  .financialBreakdown__distributionTooltip {
-  display: block;
 }
 
 .financialBreakdown__section {
@@ -479,6 +471,10 @@
   .financialBreakdown__categoryHeader {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .financialBreakdown__datePicker input {
+    width: 100%;
   }
 
   .financialBreakdown__summary {

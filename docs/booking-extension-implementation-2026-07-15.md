@@ -20,7 +20,7 @@ Commercial segments represent who sold each contiguous date range. Room stays in
 - The extension starts exactly at the current final checkout and adds at least one occupied night.
 - Requested rooms must be unique, active internal inventory and available for every added night.
 - Same-room extensions lengthen the final room stay; a different room set appends a contiguous stay.
-- Extension platform is recorded on the extension segment and never overwrites the booking's original `platformId`.
+- Extension platform and its required channel booking reference are recorded on the extension segment and never overwrite the booking's original `platformId` or HostelFlow booking ID.
 - Payment must be `OTA`, `Cash`, `Card`, or `Transfer`; `Unpaid` is rejected by the API.
 - Amount must be finite and positive. Card retains HostelFlow's existing 3% surcharge behavior.
 - The booking revision and a stable `Idempotency-Key` are mandatory.
@@ -28,7 +28,7 @@ Commercial segments represent who sold each contiguous date range. Room stays in
 
 ## 4. Data-model changes
 
-`Booking.commercialSegments` is an embedded array containing a stable `_id`, kind, half-open `from`/`to` dates, platform, amount, linked room-charge transaction ID, actor/time, and optional note. Extension segments also contain non-selected SHA-256 operation and request hashes used for durable replay.
+`Booking.commercialSegments` is an embedded array containing a stable `_id`, kind, half-open `from`/`to` dates, platform, channel booking reference, amount, linked room-charge transaction ID, actor/time, and optional note. Extension segments also contain non-selected SHA-256 operation and request hashes used for durable replay. The reference is optional in storage only for compatibility with segments committed before this field existed; the extension API requires it.
 
 Transactions can carry `platformId` and `commercialSegmentId`; extension room charges and Card surcharges use `sourceAction: EXTEND_BOOKING`. New bookings create an original commercial segment and attach their original room charge to it.
 
@@ -55,6 +55,7 @@ Body:
   "newCheckOut": "2026-07-20",
   "roomIds": ["Balcony"],
   "platformId": "WALK",
+  "channelBookingId": "WALK-20260718-01",
   "amount": 1000,
   "paymentMethod": "Transfer",
   "note": "Extended at reception"
@@ -91,7 +92,7 @@ The existing deposit transactions remain unchanged and no second deposit is crea
 
 ## 10. Staff-facing workflow
 
-Eligible booking details show **Extend Booking**. The modal displays current/new checkout, added nights, current final rooms, keep/move controls, extension channel (default Walk-In), paid payment methods only, amount, optional note, Card surcharge, and final total. Availability is previewed through the existing endpoint and revalidated authoritatively on submit.
+Eligible booking details show **Extend Booking**. The modal displays current/new checkout, added nights, current final rooms, keep/move controls, extension channel (default Walk-In), required channel Booking No., paid payment methods only, amount, optional note, Card surcharge, and final total. Availability is previewed through the existing endpoint and revalidated authoritatively on submit.
 
 The browser creates one UUID when the modal opens and reuses it across network retries. A 409 tells staff to refresh; the UI never silently changes the operation key. On success, the booking modal and parent calendar/list/dashboard data refresh through existing callbacks.
 
@@ -106,10 +107,10 @@ Existing runtime-security source, test, documentation, and generated changes alr
 
 ## 12. Tests and command results
 
-- `cd api && npm test`: PASS — 54 tests, 0 failures; includes 12 booking-extension integration, concurrency, rollback, cash, calendar, revenue, and platform-attribution tests.
-- Focused extension replica-set suite: PASS — 12/12.
+- `cd api && npm test` (2026-07-16): FAIL — 65/66 passed. The unrelated `refund policy rejects forged, excessive, split-threshold and concurrent refunds` test expected HTTP 400 and received 409. All 12 booking-extension tests passed within the same run.
+- Focused extension replica-set suite: PASS — 12/12, including required channel Booking No. persistence and validation.
 - `cd api && npm run build`: PASS.
-- `cd frontend && npm run build`: PASS; existing large-chunk warning remains.
+- `cd frontend && npx vite build`: PASS; existing large-chunk warning remains. The combined `npm run build` is currently blocked by the unrelated unused `ActivityDetails` declaration in `RecentActivities.tsx`.
 - `cd frontend && npm run lint`: FAIL with 9 errors and 5 warnings. The touched extension/booking-detail TSX set passes targeted lint; one booking-detail hook warning was fixed. Remaining findings are pre-existing AuthContext, user/activity/dashboard, room-stay, and app hook issues.
 - `git diff --check`: PASS.
 
