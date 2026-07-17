@@ -13,6 +13,8 @@ import {
   transactionDashboardCollectedRevenueAmount,
   transactionDashboardGrossRevenueAmount,
   transactionFallsOnBusinessDate,
+  transactionNeedsReview,
+  transactionRequiresReview,
   transactionTodayExtrasRevenueAmount,
   transactionTodayReductionAmount,
 } from "../src/helpers/financeHelpers";
@@ -219,6 +221,60 @@ test("cash close validation rejects negative counts and carries handoff movement
   assert.equal(cashBalanceAfterMovements(1000, 250, 75), 1175);
 });
 
+test("minor rounding adjustments stay below review noise while material or repeated changes remain visible", () => {
+  const minorRounding: transcation = {
+    type: "adjustment",
+    paymentMethod: "Cash",
+    amount: 0.08,
+    reasonOfAdjustment: "rounding",
+  };
+
+  assert.deepEqual(transactionNeedsReview(minorRounding), []);
+  assert.deepEqual(
+    transactionNeedsReview({ ...minorRounding, amount: 1 }),
+    [],
+  );
+  assert.deepEqual(
+    transactionNeedsReview({ ...minorRounding, amount: 1.01 }),
+    ["adjustment"],
+  );
+  assert.deepEqual(
+    transactionNeedsReview({
+      ...minorRounding,
+      reasonOfAdjustment: undefined,
+    }),
+    ["adjustment"],
+  );
+  assert.deepEqual(transactionNeedsReview(minorRounding, 2), [
+    "repeated_sensitive_type",
+  ]);
+});
+
+test("the current review policy suppresses legacy minor-rounding flags", () => {
+  assert.equal(
+    transactionRequiresReview({
+      type: "adjustment",
+      paymentMethod: "Cash",
+      amount: 0.08,
+      reasonOfAdjustment: "rounding",
+      reviewStatus: "needs_review",
+      reviewFlags: ["adjustment"],
+    }),
+    false,
+  );
+  assert.equal(
+    transactionRequiresReview({
+      type: "adjustment",
+      paymentMethod: "Cash",
+      amount: 0.08,
+      reasonOfAdjustment: "rounding",
+      reviewStatus: "needs_review",
+      reviewFlags: ["adjustment", "repeated_sensitive_type"],
+    }),
+    true,
+  );
+});
+
 test("dashboard gross revenue counts unpaid room revenue while collected revenue waits for settlement", () => {
   const unpaidRoomCharge: transcation = {
     _id: "room-charge-2",
@@ -242,6 +298,52 @@ test("dashboard gross revenue counts unpaid room revenue while collected revenue
       cashSettlement,
     ]),
     900,
+  );
+});
+
+test("cancellation write-off clears an uncollected room balance without changing collected cash", () => {
+  const transactions: transcation[] = [
+    {
+      _id: "room-advance",
+      type: "roomCharge",
+      paymentMethod: "Unpaid",
+      amount: 1000,
+    },
+    {
+      type: "settlementCharge",
+      paymentMethod: "Transfer",
+      relatedTransactionType: "roomCharge",
+      relatedTransactionId: "room-advance",
+      amount: 500,
+    },
+    {
+      type: "roomChargeWriteOff",
+      paymentMethod: "Unpaid",
+      relatedTransactionType: "roomCharge",
+      relatedTransactionId: "room-advance",
+      amount: 500,
+      direction: "out",
+    },
+  ];
+
+  const summary = summarizeTransactions(transactions);
+  assert.equal(summary.unpaidBalance, 0);
+  assert.equal(
+    transactions.reduce(
+      (total, transaction) =>
+        total + transactionDashboardGrossRevenueAmount(transaction),
+      0,
+    ),
+    500,
+  );
+  assert.equal(
+    transactions.reduce(
+      (total, transaction) =>
+        total +
+        transactionDashboardCollectedRevenueAmount(transaction, transactions),
+      0,
+    ),
+    500,
   );
 });
 

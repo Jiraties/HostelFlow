@@ -2,6 +2,27 @@ import type { booking } from "../types/bookingTypes";
 
 type Transaction = booking["transactions"][number];
 
+const ROUNDING_ADJUSTMENT_REVIEW_THRESHOLD = 1;
+
+export const transactionRequiresReview = (transaction: Transaction) => {
+  if (transaction.reviewStatus === "reviewed") return false;
+
+  const isMinorRoundingAdjustment =
+    transaction.type === "adjustment" &&
+    transaction.reasonOfAdjustment === "rounding" &&
+    Math.abs(transaction.amount || 0) <= ROUNDING_ADJUSTMENT_REVIEW_THRESHOLD;
+  const effectiveFlags = (transaction.reviewFlags || []).filter(
+    (flag) =>
+      !isMinorRoundingAdjustment ||
+      !["adjustment", "negative_adjustment"].includes(flag),
+  );
+
+  return (
+    effectiveFlags.length > 0 ||
+    (transaction.reviewStatus === "needs_review" && !isMinorRoundingAdjustment)
+  );
+};
+
 export const roomChargeTransaction = (booking: booking) => {
   const transaction = booking.transactions.find(
     (transaction) => transaction.type === "roomCharge",
@@ -19,6 +40,8 @@ export const roomChargeTransaction = (booking: booking) => {
 };
 
 export const roomChargeOutstandingAmount = (booking: booking) => {
+  if (booking.status === "cancelled") return 0;
+
   const unpaidRoomChargeIds = new Set(
     booking.transactions
       .filter(
@@ -33,38 +56,47 @@ export const roomChargeOutstandingAmount = (booking: booking) => {
   );
 
   return Math.max(
-    booking.transactions.reduce((outstandingAmount, transaction) => {
-      if (
-        transaction.type === "roomCharge" &&
-        transaction.paymentMethod === "Unpaid"
-      ) {
-        return outstandingAmount + Math.abs(transaction.amount || 0);
-      }
+    Number(
+      booking.transactions
+        .reduce((outstandingAmount, transaction) => {
+          if (
+            transaction.type === "roomCharge" &&
+            transaction.paymentMethod === "Unpaid"
+          ) {
+            return outstandingAmount + Math.abs(transaction.amount || 0);
+          }
 
-      const relatedTransactionIsUnpaidRoomCharge =
-        transaction.relatedTransactionId !== undefined
-          ? unpaidRoomChargeIds.has(transaction.relatedTransactionId)
-          : transaction.relatedTransactionType === "roomCharge";
-      const settlesRoomCharge =
-        ["settlementCharge", "paymentCorrection"].includes(transaction.type) &&
-        transaction.paymentMethod !== "Unpaid" &&
-        relatedTransactionIsUnpaidRoomCharge;
+          const relatedTransactionIsUnpaidRoomCharge =
+            transaction.relatedTransactionId !== undefined
+              ? unpaidRoomChargeIds.has(transaction.relatedTransactionId)
+              : transaction.relatedTransactionType === "roomCharge";
+          const settlesRoomCharge =
+            ["settlementCharge", "paymentCorrection"].includes(
+              transaction.type,
+            ) &&
+            transaction.paymentMethod !== "Unpaid" &&
+            relatedTransactionIsUnpaidRoomCharge;
+          const writesOffRoomCharge =
+            transaction.type === "roomChargeWriteOff" &&
+            relatedTransactionIsUnpaidRoomCharge;
 
-      return settlesRoomCharge
-        ? outstandingAmount - Math.abs(transaction.amount || 0)
-        : outstandingAmount;
-    }, 0),
+          return settlesRoomCharge || writesOffRoomCharge
+            ? outstandingAmount - Math.abs(transaction.amount || 0)
+            : outstandingAmount;
+        }, 0)
+        .toFixed(2),
+    ),
     0,
   );
 };
 
-export const roomChargeSettlementTransaction = (
+export const roomChargeSettlementTransactions = (
   booking: booking,
-): Transaction | undefined => {
+): Transaction[] => {
   const roomCharge = roomChargeTransaction(booking);
-  if (!roomCharge._id) return undefined;
+  if (!roomCharge._id) return [];
 
-  return booking.transactions.find(
+  return booking.transactions.filter(
     (transaction) =>
       transaction.type === "settlementCharge" &&
       transaction.relatedTransactionType === "roomCharge" &&
@@ -73,16 +105,37 @@ export const roomChargeSettlementTransaction = (
   );
 };
 
+export const advanceRoomPaymentTransaction = (
+  booking: booking,
+): Transaction | undefined => {
+  const transactionId = booking.advancePayment?.transactionId;
+  if (!transactionId) return undefined;
+
+  return booking.transactions.find(
+    (transaction) => transaction._id === transactionId,
+  );
+};
+
 export const roomChargeDisplayPaymentMethod = (
   booking: booking,
-): Transaction["paymentMethod"] =>
-  roomChargeSettlementTransaction(booking)?.paymentMethod ||
-  roomChargeTransaction(booking).paymentMethod;
+): Transaction["paymentMethod"] => {
+  if (roomChargeOutstandingAmount(booking) > 0) return "Unpaid";
+
+  const settlements = roomChargeSettlementTransactions(booking);
+  return (
+    settlements[settlements.length - 1]?.paymentMethod ||
+    roomChargeTransaction(booking).paymentMethod
+  );
+};
 
 export const isRoomChargeSettlementTransaction = (
   booking: booking,
   transaction: Transaction,
-) => roomChargeSettlementTransaction(booking)?._id === transaction._id;
+) =>
+  transaction._id !== booking.advancePayment?.transactionId &&
+  roomChargeSettlementTransactions(booking).some(
+    (settlement) => settlement._id === transaction._id,
+  );
 
 export const calculateNights = (checkIn: Date, checkOut: Date) => {
   const start = new Date(

@@ -1038,3 +1038,144 @@ test("new booking ignores cancelled released stays but blocks cancelled held sta
     0,
   );
 });
+
+test("Walk-In advance payment accepts a percentage or amount and is retained on cancellation", async () => {
+  const createAdvanceBooking = async (
+    bookingId: string,
+    roomId: string,
+    advancePayment: Record<string, unknown> = {
+      enabled: true,
+      paymentMethod: "Transfer",
+      calculationMode: "percentage",
+      percentage: 35,
+    },
+  ) => {
+    const createResponse = response();
+    await controller.newBooking(
+      request({
+        body: {
+          booking: {
+            name: "Advance Payment Guest",
+            bookingId,
+            checkIn: localDate(),
+            checkOut: localDate(1),
+            platformId: "WALK",
+            roomIds: [roomId],
+            paymentMethod: "Transfer",
+            price: 1001,
+            advancePayment,
+          },
+        },
+        method: "POST",
+        url: "/bookings/newBooking",
+      }),
+      createResponse as any,
+      (() => undefined) as any,
+    );
+    assert.equal(createResponse.statusCode, 201, JSON.stringify(createResponse.body));
+    return createResponse.body.booking;
+  };
+
+  const bookingForCheckIn = await createAdvanceBooking(
+    "ADVANCE-CHECK-IN",
+    "Window",
+  );
+  assert.equal(bookingForCheckIn.advancePayment.percentage, 35);
+  assert.equal(bookingForCheckIn.advancePayment.amount, 350.35);
+  assert.equal(
+    bookingForCheckIn.transactions.find(
+      (transaction: any) => transaction.type === "roomCharge",
+    )?.paymentMethod,
+    "Unpaid",
+  );
+  assert.equal(
+    bookingForCheckIn.transactions.find(
+      (transaction: any) =>
+        transaction.type === "settlementCharge" &&
+        transaction.sourceAction === "NEW_BOOKING",
+    )?.amount,
+    350.35,
+  );
+
+  const checkInResponse = response();
+  await controller.checkIn(
+    request({
+      body: {
+        expectedRevision: 0,
+        deposit: 0,
+        passportData: {
+          namePrefix: "Mr",
+          passportNo: "ADVANCE-PASSPORT",
+          passportName: "ADVANCE PAYMENT GUEST",
+          nationality: "US",
+          nextDestinationCountry: "LAO",
+        },
+        unpaidPayment: {
+          paymentMethod: "Transfer",
+          roundingAdjustment: 0,
+        },
+      },
+      params: { bookingId: "ADVANCE-CHECK-IN" },
+      method: "PUT",
+      url: "/bookings/checkIn/ADVANCE-CHECK-IN",
+    }),
+    checkInResponse as any,
+  );
+  assert.equal(checkInResponse.statusCode, 200, JSON.stringify(checkInResponse.body));
+  const checkedIn = await Booking.findOne({
+    bookingId: "ADVANCE-CHECK-IN",
+  }).lean();
+  assert.deepEqual(
+    checkedIn?.transactions
+      .filter((transaction) => transaction.type === "settlementCharge")
+      .map((transaction) => transaction.amount),
+    [350.35, 650.65],
+  );
+
+  const bookingForCancellation = await createAdvanceBooking(
+    "ADVANCE-CANCEL",
+    "Balcony",
+    {
+      enabled: true,
+      paymentMethod: "Transfer",
+      calculationMode: "amount",
+      amount: 333.33,
+    },
+  );
+  assert.equal(bookingForCancellation.advancePayment.calculationMode, "amount");
+  assert.equal(bookingForCancellation.advancePayment.amount, 333.33);
+  const cancelResponse = response();
+  await controller.cancelBooking(
+    request({
+      body: {
+        expectedRevision: 0,
+        cancellationType: "refundable",
+        reopenRoom: true,
+      },
+      params: { bookingId: "ADVANCE-CANCEL" },
+      url: "/bookings/cancelBooking/ADVANCE-CANCEL",
+    }),
+    cancelResponse as any,
+  );
+  assert.equal(cancelResponse.statusCode, 200, JSON.stringify(cancelResponse.body));
+
+  const cancelled = await Booking.findOne({
+    bookingId: "ADVANCE-CANCEL",
+  }).lean();
+  assert.equal(cancelled?.status, "cancelled");
+  assert.equal(cancelled?.cancellation?.cancellationType, "non_refundable");
+  assert.equal(cancelled?.cancellation?.refundAmount, 0);
+  assert.equal(cancelled?.cancellation?.keptAmount, 333.33);
+  assert.equal(
+    cancelled?.transactions.find(
+      (transaction) => transaction.type === "roomChargeWriteOff",
+    )?.amount,
+    667.67,
+  );
+  assert.equal(
+    cancelled?.transactions.some(
+      (transaction) => transaction.type === "cancellationRefund",
+    ),
+    false,
+  );
+});

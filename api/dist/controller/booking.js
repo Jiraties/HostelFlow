@@ -38,6 +38,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getNeedsReviewBookings = exports.resolveBooking = exports.cancelBooking = exports.getPassportData = exports.addTransaction = exports.extendBooking = exports.manageRoomStays = exports.getBookingById = exports.getMonthCalendar = exports.correctDeposit = exports.checkOut = exports.checkIn = exports.removeBooking = exports.getMasterBookings = exports.getAdminDashboardStats = exports.getTodayBookings = exports.pinBooking = exports.updateBookingNote = exports.editBooking = exports.getRoomAvailability = exports.newBooking = void 0;
 const booking_1 = __importStar(require("../models/booking"));
+const standaloneSale_1 = __importDefault(require("../models/standaloneSale"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const crypto_1 = __importDefault(require("crypto"));
 const mongoose_1 = __importDefault(require("mongoose"));
@@ -73,6 +74,9 @@ const ADD_TRANSACTION_TYPES = [
     "bicycle",
     "car",
     "misc",
+    "rainCoat",
+    "passwordLock",
+    "cooking",
 ];
 const RESOLVE_BOOKING_TRANSACTION_TYPES = [
     "roomRefund",
@@ -355,6 +359,7 @@ const getGuestsInHouse = async (date = new Date()) => {
         }, 0), 0);
 };
 const calculateCardSurcharge = (amount) => Number((amount * CARD_SURCHARGE_RATE).toFixed(2));
+const roundMoney = (amount) => Number(amount.toFixed(2));
 const buildTransactionsWithCardSurcharge = (transaction, options) => {
     const transactions = [(0, financeHelpers_1.normalizeTransaction)(transaction, options)];
     if (transaction.paymentMethod === "Card" &&
@@ -380,17 +385,23 @@ const formatLocalDateKey = (date) => {
     const { year, month, day } = getBusinessDateParts(date);
     return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 };
-const unpaidRoomChargeAmount = (booking) => Math.max(booking.transactions.reduce((sum, transaction) => {
-    if (transaction.type === "roomCharge") {
-        return sum + (0, financeHelpers_1.transactionUnpaidAmount)(transaction);
-    }
-    if (["settlementCharge", "paymentCorrection"].includes(transaction.type) &&
-        transaction.relatedTransactionType === "roomCharge" &&
-        transaction.paymentMethod !== "Unpaid") {
-        return sum - Math.abs(transaction.amount || 0);
-    }
-    return sum;
-}, 0), 0);
+const unpaidRoomChargeAmount = (booking) => booking.status === "cancelled"
+    ? 0
+    : Math.max(roundMoney(booking.transactions.reduce((sum, transaction) => {
+        if (transaction.type === "roomCharge") {
+            return sum + (0, financeHelpers_1.transactionUnpaidAmount)(transaction);
+        }
+        if (["settlementCharge", "paymentCorrection"].includes(transaction.type) &&
+            transaction.relatedTransactionType === "roomCharge" &&
+            transaction.paymentMethod !== "Unpaid") {
+            return sum - Math.abs(transaction.amount || 0);
+        }
+        if (transaction.type === "roomChargeWriteOff" &&
+            transaction.relatedTransactionType === "roomCharge") {
+            return sum - Math.abs(transaction.amount || 0);
+        }
+        return sum;
+    }, 0)), 0);
 const calculateNights = (checkIn, checkOut) => {
     const checkInDate = new Date(checkIn + "T00:00:00");
     const checkOutDate = new Date(checkOut + "T00:00:00");
@@ -412,6 +423,13 @@ const newBooking = async (req, res, next) => {
             return res.status(400).json({ message: "ไม่พบข้อมูล booking" });
         const { booking } = req.body;
         const requestedRoomIds = getRequestedRoomIds(booking);
+        const advancePaymentRequested = booking.advancePayment?.enabled === true;
+        const advancePaymentMethod = booking.advancePayment?.paymentMethod;
+        const advancePaymentCalculationMode = booking.advancePayment?.calculationMode === "amount"
+            ? "amount"
+            : "percentage";
+        const requestedAdvancePaymentPercentage = Number(booking.advancePayment?.percentage ?? 50);
+        const requestedAdvancePaymentAmount = Number(booking.advancePayment?.amount);
         if (!booking.name?.trim() ||
             !booking.checkIn ||
             !booking.checkOut ||
@@ -433,6 +451,29 @@ const newBooking = async (req, res, next) => {
                 message: "ช่องทางการชำระเงินไม่ถูกต้อง",
             });
         }
+        if (advancePaymentRequested && booking.platformId !== "WALK") {
+            return res.status(400).json({
+                error: "ADVANCE_PAYMENT_REQUIRES_WALK_IN",
+                message: "รับเงินล่วงหน้าได้เฉพาะการจอง Walk-In",
+            });
+        }
+        if (advancePaymentRequested &&
+            advancePaymentCalculationMode === "percentage" &&
+            (!Number.isFinite(requestedAdvancePaymentPercentage) ||
+                requestedAdvancePaymentPercentage <= 0 ||
+                requestedAdvancePaymentPercentage > 100)) {
+            return res.status(400).json({
+                error: "INVALID_ADVANCE_PAYMENT_PERCENTAGE",
+                message: "เปอร์เซ็นต์เงินล่วงหน้าต้องมากกว่า 0 และไม่เกิน 100",
+            });
+        }
+        if (advancePaymentRequested &&
+            (!advancePaymentMethod || !PAYMENT_METHODS.includes(advancePaymentMethod))) {
+            return res.status(400).json({
+                error: "INVALID_ADVANCE_PAYMENT_METHOD",
+                message: "กรุณาเลือกช่องทางรับเงินล่วงหน้า",
+            });
+        }
         if (hasDuplicateRoomIds(booking)) {
             return res.status(400).json({
                 message: "เลือกห้องซ้ำกัน",
@@ -449,6 +490,33 @@ const newBooking = async (req, res, next) => {
         if (!Number.isFinite(roomChargeAmount) || roomChargeAmount <= 0) {
             return res.status(400).json({
                 message: "ราคาห้องต้องมากกว่า 0",
+            });
+        }
+        if (advancePaymentRequested &&
+            advancePaymentCalculationMode === "amount" &&
+            (!Number.isFinite(requestedAdvancePaymentAmount) ||
+                requestedAdvancePaymentAmount <= 0 ||
+                requestedAdvancePaymentAmount > roomChargeAmount)) {
+            return res.status(400).json({
+                error: "INVALID_ADVANCE_PAYMENT_AMOUNT",
+                message: "ยอดเงินล่วงหน้าต้องมากกว่า 0 และไม่เกินราคาห้องทั้งหมด",
+            });
+        }
+        const advancePaymentAmount = advancePaymentRequested
+            ? advancePaymentCalculationMode === "amount"
+                ? Number(requestedAdvancePaymentAmount.toFixed(2))
+                : Number(((roomChargeAmount * requestedAdvancePaymentPercentage) /
+                    100).toFixed(2))
+            : 0;
+        const advancePaymentPercentage = advancePaymentRequested
+            ? advancePaymentCalculationMode === "amount"
+                ? Number(((advancePaymentAmount / roomChargeAmount) * 100).toFixed(4))
+                : requestedAdvancePaymentPercentage
+            : 0;
+        if (advancePaymentRequested && advancePaymentAmount <= 0) {
+            return res.status(400).json({
+                error: "ADVANCE_PAYMENT_TOO_SMALL",
+                message: "ยอดเงินล่วงหน้าต่ำกว่าหน่วยเงินที่ระบบบันทึกได้",
             });
         }
         const newCheckIn = new Date(booking.checkIn + "T00:00:00");
@@ -476,12 +544,17 @@ const newBooking = async (req, res, next) => {
             }
             const commercialSegmentId = new mongoose_1.default.Types.ObjectId();
             const roomChargeTransactionId = new mongoose_1.default.Types.ObjectId();
+            const advancePaymentTransactionId = advancePaymentRequested
+                ? new mongoose_1.default.Types.ObjectId()
+                : null;
             const createdAt = new Date();
             const roomChargeTransaction = {
                 _id: String(roomChargeTransactionId),
                 type: "roomCharge",
                 amount: roomChargeAmount,
-                paymentMethod: booking.paymentMethod,
+                paymentMethod: advancePaymentRequested
+                    ? "Unpaid"
+                    : booking.paymentMethod,
                 platformId: booking.platformId,
                 commercialSegmentId: String(commercialSegmentId),
                 createdAt,
@@ -490,6 +563,27 @@ const newBooking = async (req, res, next) => {
                 createdBy: req.user?.username,
                 sourceAction: "NEW_BOOKING",
             });
+            if (advancePaymentRequested &&
+                advancePaymentMethod &&
+                advancePaymentTransactionId) {
+                transactions.push(...buildTransactionsWithCardSurcharge({
+                    _id: String(advancePaymentTransactionId),
+                    type: "settlementCharge",
+                    paymentMethod: advancePaymentMethod,
+                    relatedTransactionType: "roomCharge",
+                    relatedTransactionId: String(roomChargeTransactionId),
+                    amount: advancePaymentAmount,
+                    platformId: booking.platformId,
+                    commercialSegmentId: String(commercialSegmentId),
+                    createdAt,
+                }, {
+                    createdBy: req.user?.username,
+                    sourceAction: "NEW_BOOKING",
+                    note: advancePaymentCalculationMode === "amount"
+                        ? `Non-refundable advance room payment: THB ${advancePaymentAmount}`
+                        : `Non-refundable ${advancePaymentPercentage}% advance room payment`,
+                }));
+            }
             const savedBooking = await (0, cashLedgerTransaction_1.withCashLedgerTransaction)(transactions, async (assignedTransactions, session) => {
                 const bookingDocument = new booking_1.default({
                     name: booking.name.trim(),
@@ -519,6 +613,17 @@ const newBooking = async (req, res, next) => {
                         },
                     ],
                     note: booking.note || "",
+                    ...(advancePaymentRequested && advancePaymentTransactionId
+                        ? {
+                            advancePayment: {
+                                calculationMode: advancePaymentCalculationMode,
+                                percentage: advancePaymentPercentage,
+                                amount: advancePaymentAmount,
+                                nonRefundableOnCancellation: true,
+                                transactionId: String(advancePaymentTransactionId),
+                            },
+                        }
+                        : {}),
                     transactions: assignedTransactions,
                     staffUsername,
                     bookingId: booking.bookingId.trim(),
@@ -548,6 +653,15 @@ const newBooking = async (req, res, next) => {
                 roomIds: requestedRoomIds,
                 price: booking.price,
                 paymentMethod: booking.paymentMethod,
+                ...(advancePaymentRequested
+                    ? {
+                        advancePayment: {
+                            calculationMode: advancePaymentCalculationMode,
+                            percentage: advancePaymentPercentage,
+                            paymentMethod: advancePaymentMethod,
+                        },
+                    }
+                    : {}),
                 bookingId: booking.bookingId,
             },
         });
@@ -900,11 +1014,17 @@ const getAdminDashboardStats = async (req, res) => {
     const revenueRange = normalizeRevenueChartRange(req.query.revenueRange);
     const { start: chartStart, end: chartEnd } = getRevenueChartBounds(today, revenueRange, startOfMonth, startOfTomorrow);
     try {
-        const [monthFinancialBookings, chartFinancialBookings, occupancyBookings, monthBookings, channelMixBookings, unpaidBookings, occupancy,] = await Promise.all([
+        const [monthFinancialBookings, chartFinancialBookings, monthStandaloneSales, chartStandaloneSales, occupancyBookings, monthBookings, channelMixBookings, unpaidBookings, occupancy,] = await Promise.all([
             booking_1.default.find({
                 "transactions.createdAt": { $gte: startOfMonth, $lt: startOfNextMonth },
             }),
             booking_1.default.find({
+                "transactions.createdAt": { $gte: chartStart, $lt: chartEnd },
+            }),
+            standaloneSale_1.default.find({
+                "transactions.createdAt": { $gte: startOfMonth, $lt: startOfNextMonth },
+            }),
+            standaloneSale_1.default.find({
                 "transactions.createdAt": { $gte: chartStart, $lt: chartEnd },
             }),
             booking_1.default.find({
@@ -943,10 +1063,10 @@ const getAdminDashboardStats = async (req, res) => {
             .map((transaction) => ({
             transaction,
             bookingTransactions: booking.transactions || [],
-            bookingId: String(booking._id),
+            bookingId: booking.saleId || String(booking._id),
         })));
-        const monthFinancialTransactions = transactionsInRange(monthFinancialBookings, startOfMonth, startOfNextMonth);
-        const chartFinancialTransactions = transactionsInRange(chartFinancialBookings, chartStart, chartEnd);
+        const monthFinancialTransactions = transactionsInRange([...monthFinancialBookings, ...monthStandaloneSales], startOfMonth, startOfNextMonth);
+        const chartFinancialTransactions = transactionsInRange([...chartFinancialBookings, ...chartStandaloneSales], chartStart, chartEnd);
         const calculateGrossRevenue = (transactions) => transactions.reduce((sum, { transaction }) => sum + (0, financeHelpers_1.transactionDashboardGrossRevenueAmount)(transaction), 0);
         const calculateCollectedRevenue = (transactions) => transactions.reduce((sum, { transaction, bookingTransactions }) => sum +
             (0, financeHelpers_1.transactionDashboardCollectedRevenueAmount)(transaction, bookingTransactions), 0);
@@ -1332,7 +1452,9 @@ const checkIn = async (req, res) => {
         const existingDepositAmount = (0, financeHelpers_1.bookingRemainingDepositAmount)(existingBooking.transactions);
         const unpaidRoomCharge = existingBooking.transactions.find((transaction) => transaction.type === "roomCharge" &&
             transaction.paymentMethod === "Unpaid");
-        if (unpaidRoomCharge && !checkInData.unpaidPayment) {
+        const outstandingRoomChargeAmount = unpaidRoomChargeAmount(existingBooking);
+        const hasOutstandingRoomCharge = outstandingRoomChargeAmount > 0;
+        if (hasOutstandingRoomCharge && !checkInData.unpaidPayment) {
             return res.status(400).json({
                 message: "กรุณาระบุช่องทางการจ่ายค่าห้อง",
             });
@@ -1343,7 +1465,7 @@ const checkIn = async (req, res) => {
                 message: "ช่องทางการจ่ายค่าห้องไม่ถูกต้อง",
             });
         }
-        if (checkInData.unpaidPayment && !unpaidRoomCharge) {
+        if (checkInData.unpaidPayment && !hasOutstandingRoomCharge) {
             return res.status(400).json({
                 message: "booking นี้ไม่มีค่าห้องค้างชำระ",
             });
@@ -1405,13 +1527,15 @@ const checkIn = async (req, res) => {
                 sourceAction: "CHECK_IN",
                 note: "Rounding adjustment at check-in",
             }));
-        if (checkInData.unpaidPayment && unpaidRoomCharge) {
+        if (checkInData.unpaidPayment &&
+            unpaidRoomCharge &&
+            hasOutstandingRoomCharge) {
             newTransactions.push(...buildTransactionsWithCardSurcharge({
                 type: "settlementCharge",
                 paymentMethod: checkInData.unpaidPayment.paymentMethod,
                 relatedTransactionType: "roomCharge",
                 relatedTransactionId: String(unpaidRoomCharge._id),
-                amount: unpaidRoomCharge.amount,
+                amount: outstandingRoomChargeAmount,
             }, {
                 createdBy: req.user?.username,
                 sourceAction: "CHECK_IN",
@@ -1445,7 +1569,9 @@ const checkIn = async (req, res) => {
             voided: { $ne: true },
             ...(0, bookingConcurrency_1.bookingRevisionPredicate)(expectedRevision),
         };
-        if (checkInData.unpaidPayment && unpaidRoomCharge) {
+        if (checkInData.unpaidPayment &&
+            unpaidRoomCharge &&
+            hasOutstandingRoomCharge) {
             updateQuery.transactions = {
                 $elemMatch: {
                     paymentMethod: "Unpaid",
@@ -2280,15 +2406,24 @@ const cancelBooking = async (req, res) => {
         const paidByMethod = (0, financeHelpers_1.summarizeReceivedPaymentsByMethod)(existingBooking.transactions);
         const paidAmount = Array.from(paidByMethod.values()).reduce((sum, amount) => sum + amount, 0);
         const hasReceivedPayment = paidAmount > 0;
+        const hasNonRefundableAdvance = existingBooking.advancePayment?.nonRefundableOnCancellation === true;
+        const effectiveCancellationType = hasNonRefundableAdvance
+            ? "non_refundable"
+            : hasReceivedPayment
+                ? cancellationType
+                : "no_payment_received";
         if (hasReceivedPayment &&
+            !hasNonRefundableAdvance &&
             (typeof cancellationType !== "string" ||
                 !paidCancellationTypes.includes(cancellationType)))
             return res.status(400).json({
                 error: "INVALID_PAYLOAD",
                 message: "กรุณาระบุประเภทการยกเลิกให้ถูกต้อง",
             });
-        const refundAmount = hasReceivedPayment && cancellationType === "refundable" ? paidAmount : 0;
-        const keptAmount = hasReceivedPayment && cancellationType === "non_refundable"
+        const refundAmount = hasReceivedPayment && effectiveCancellationType === "refundable"
+            ? paidAmount
+            : 0;
+        const keptAmount = hasReceivedPayment && effectiveCancellationType === "non_refundable"
             ? paidAmount
             : 0;
         if (!req.user?.admin && refundAmount >= financeHelpers_1.LARGE_REFUND_THRESHOLD) {
@@ -2307,7 +2442,33 @@ const cancelBooking = async (req, res) => {
                 sourceAction: "CANCEL_BOOKING",
             }))
             : [];
-        const updatedBooking = await (0, mutationIdempotency_1.withMutationIdempotency)(req, () => (0, cashLedgerTransaction_1.withCashLedgerTransaction)(refundTransactions, (assignedTransactions, session) => booking_1.default.findOneAndUpdate({
+        const originalUnpaidRoomCharge = existingBooking.transactions.find((transaction) => transaction.type === "roomCharge" &&
+            transaction.sourceAction !== "EXTEND_BOOKING" &&
+            transaction.paymentMethod === "Unpaid");
+        const remainingAdvanceBookingBalance = hasNonRefundableAdvance
+            ? unpaidRoomChargeAmount(existingBooking)
+            : 0;
+        const writeOffTransactions = originalUnpaidRoomCharge && remainingAdvanceBookingBalance > 0
+            ? [
+                (0, financeHelpers_1.normalizeTransaction)({
+                    type: "roomChargeWriteOff",
+                    paymentMethod: "Unpaid",
+                    relatedTransactionType: "roomCharge",
+                    relatedTransactionId: String(originalUnpaidRoomCharge._id),
+                    amount: remainingAdvanceBookingBalance,
+                    direction: "out",
+                }, {
+                    createdBy: cancelledByStaffUsername,
+                    sourceAction: "CANCEL_BOOKING",
+                    note: "Uncollected room balance closed after cancellation",
+                }),
+            ]
+            : [];
+        const cancellationTransactions = [
+            ...refundTransactions,
+            ...writeOffTransactions,
+        ];
+        const updatedBooking = await (0, mutationIdempotency_1.withMutationIdempotency)(req, () => (0, cashLedgerTransaction_1.withCashLedgerTransaction)(cancellationTransactions, (assignedTransactions, session) => booking_1.default.findOneAndUpdate({
             bookingId,
             status: "booked",
             voided: { $ne: true },
@@ -2316,9 +2477,7 @@ const cancelBooking = async (req, res) => {
             $set: {
                 status: "cancelled",
                 cancellation: {
-                    cancellationType: hasReceivedPayment
-                        ? cancellationType
-                        : "no_payment_received",
+                    cancellationType: effectiveCancellationType,
                     roomReleaseStatus: reopenRoom ? "released" : "blocked",
                     refundAmount,
                     keptAmount,
@@ -2355,10 +2514,11 @@ const cancelBooking = async (req, res) => {
             },
             summary: {
                 cancellationType: hasReceivedPayment
-                    ? cancellationType
+                    ? effectiveCancellationType
                     : "no_payment_received",
                 refundAmount,
                 keptAmount,
+                writtenOffAmount: remainingAdvanceBookingBalance,
                 roomReleaseStatus: reopenRoom ? "released" : "blocked",
             },
         }, String(bookingId));

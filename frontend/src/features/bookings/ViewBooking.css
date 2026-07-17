@@ -460,6 +460,47 @@
   overflow: hidden;
 }
 
+.viewBooking__advanceStatus {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #eee;
+  background-color: color-mix(in srgb, var(--green) 5%, transparent);
+}
+
+.viewBooking__advanceStatus--cancelled {
+  background-color: #00000005;
+}
+
+.viewBooking__advanceStatus > i {
+  margin-top: 0.1rem;
+  color: var(--green);
+  font-size: 1.1rem;
+}
+
+.viewBooking__advanceStatus--cancelled > i {
+  color: var(--red);
+}
+
+.viewBooking__advanceStatus > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  line-height: 1.35;
+}
+
+.viewBooking__advanceStatus span {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.viewBooking__advanceStatus small {
+  color: #6b7280;
+  font-size: 0.78rem;
+  font-weight: 400;
+}
+
 .viewBooking__priceList {
   display: flex;
   flex-direction: column;

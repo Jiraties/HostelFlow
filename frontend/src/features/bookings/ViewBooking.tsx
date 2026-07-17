@@ -17,10 +17,13 @@ import { useCallback, useState, useEffect, useRef } from "react";
 import { API_URL } from "../../config/api.ts";
 import { platformMap } from "../../helpers/maps.ts";
 import {
+  advanceRoomPaymentTransaction,
   formatBookingDates,
   isRoomChargeSettlementTransaction,
   isSameDay,
   roomChargeDisplayPaymentMethod,
+  roomChargeOutstandingAmount,
+  transactionRequiresReview,
 } from "../../helpers/bookingHelpers.ts";
 import { requestUnsavedModalClose } from "../../helpers/modalGuards.ts";
 import {
@@ -57,6 +60,11 @@ const transactionMap = {
     color: "#fb7185",
   },
   roomRefund: { icon: "bx-undo", name: "คืนค่าห้อง", color: "#fb7185" },
+  roomChargeWriteOff: {
+    icon: "bx-calendar-x",
+    name: "ปิดยอดค่าห้องที่เหลือ",
+    color: "#94a3b8",
+  },
   settlementCharge: {
     icon: "bx-receipt",
     name: "เก็บเงินเพิ่ม",
@@ -73,11 +81,11 @@ const transactionMap = {
     name: "แก้ไขการชำระเงิน",
     color: "#a78bfa",
   },
-  towel: { icon: "bx-bath", name: "ผ้าเช็ดตัว", color: "#38bdf8" },
-  motorbike: { icon: "bx-cycling", name: "มอเตอร์ไซค์", color: "#fb923c" },
+  towel: { icon: "bx-bath", name: "Towel", color: "#38bdf8" },
+  motorbike: { icon: "bx-cycling", name: "Motorbike", color: "#fb923c" },
   slowBoat: { icon: "bx-water", name: "Slow Boat", color: "#2dd4bf" },
   joinTour: { icon: "bx-map", name: "Join Tour", color: "#22c55e" },
-  extraBed: { icon: "bx-bed", name: "เตียงเสริม", color: "#ec4899" },
+  extraBed: { icon: "bx-bed", name: "Extra Bed", color: "#ec4899" },
   pickACraft: { icon: "bx-palette", name: "Pick A Craft", color: "#f59e0b" },
   trek2D: { icon: "bx-map-alt", name: "Trek 2D", color: "#16a34a" },
   setMenu: { icon: "bx-food-menu", name: "Set Menu", color: "#84cc16" },
@@ -91,6 +99,9 @@ const transactionMap = {
     name: "Misc",
     color: "#94a3b8",
   },
+  rainCoat: { icon: "bx-cloud-rain", name: "Rain Coat", color: "#0ea5e9" },
+  passwordLock: { icon: "bx-lock", name: "Password Lock", color: "#8b5cf6" },
+  cooking: { icon: "bx-food-menu", name: "Cooking", color: "#f97316" },
   cardSurcharge: {
     icon: "bx-credit-card-alt",
     name: "ค่าธรรมเนียมบัตร 3%",
@@ -466,6 +477,13 @@ const ViewBooking = ({
       : `${amountText} THB`;
   };
   const transactionName = (transaction: booking["transactions"][number]) => {
+    const advancePayment = data.advancePayment;
+    if (advancePayment && transaction._id === advancePayment.transactionId) {
+      return advancePayment.calculationMode === "amount"
+        ? "ค่าห้องล่วงหน้า"
+        : `ค่าห้องล่วงหน้า ${advancePayment.percentage}%`;
+    }
+
     if (
       transaction.type === "roomCharge" &&
       transaction.sourceAction === "EXTEND_BOOKING"
@@ -488,10 +506,14 @@ const ViewBooking = ({
     transaction.type === "cardSurcharge" ||
     transaction.type === "depositRefund" ||
     transaction.type === "cancellationRefund" ||
+    transaction.type === "roomChargeWriteOff" ||
+    transaction._id === data.advancePayment?.transactionId ||
     (transaction.type === "adjustment" &&
       Boolean(transaction.relatedTransactionId));
 
   const effectiveRoomChargePaymentMethod = roomChargeDisplayPaymentMethod(data);
+  const outstandingRoomChargeAmount = roomChargeOutstandingAmount(data);
+  const advancePaymentTransaction = advanceRoomPaymentTransaction(data);
   let attachNextSettlementCardSurchargeToRoomCharge = false;
 
   const groupedTransactions = data.transactions.reduce<
@@ -500,6 +522,22 @@ const ViewBooking = ({
       children: booking["transactions"];
     }[]
   >((groups, transaction) => {
+    if (
+      transaction._id === data.advancePayment?.transactionId ||
+      transaction.type === "roomChargeWriteOff"
+    ) {
+      const roomChargeGroup = groups.find(
+        (group) => group.transaction.type === "roomCharge",
+      );
+
+      if (roomChargeGroup) {
+        roomChargeGroup.children.push(transaction);
+      } else {
+        groups.push({ transaction, children: [] });
+      }
+      return groups;
+    }
+
     if (isRoomChargeSettlementTransaction(data, transaction)) {
       attachNextSettlementCardSurchargeToRoomCharge =
         transaction.paymentMethod === "Card";
@@ -622,6 +660,20 @@ const ViewBooking = ({
     transaction: booking["transactions"][number],
     compact = false,
   ) => {
+    if (transaction.type === "roomChargeWriteOff") {
+      return (
+        <div
+          className={
+            "viewBooking__paymentMethod" +
+            (compact ? " viewBooking__paymentMethod--compact" : "")
+          }
+        >
+          <p>ปิดยอด</p>
+          <i className="bx bx-check" />
+        </div>
+      );
+    }
+
     const paymentMethod =
       transaction.type === "roomCharge" &&
       transaction.sourceAction !== "EXTEND_BOOKING"
@@ -649,10 +701,7 @@ const ViewBooking = ({
 
   const renderReviewMeta = (transaction: booking["transactions"][number]) => {
     const isReviewed = transaction.reviewStatus === "reviewed";
-    const needsReview =
-      !isReviewed &&
-      (transaction.reviewStatus === "needs_review" ||
-        Boolean(transaction.reviewFlags?.length));
+    const needsReview = transactionRequiresReview(transaction);
     const linkedTransaction = transaction.relatedTransactionId
       ? data.transactions.find(
           (existingTransaction) =>
@@ -1227,6 +1276,47 @@ const ViewBooking = ({
             {/* <p>ค่าใช้จ่าย</p> */}
             <div className="viewBooking__transactions">
               <div className="viewBooking__priceListWrap">
+                {data.advancePayment && advancePaymentTransaction && (
+                  <div
+                    className={
+                      "viewBooking__advanceStatus" +
+                      (data.status === "cancelled"
+                        ? " viewBooking__advanceStatus--cancelled"
+                        : "")
+                    }
+                  >
+                    <i
+                      className={
+                        data.status === "cancelled"
+                          ? "bx bx-lock-keyhole"
+                          : "bx bx-wallet"
+                      }
+                      aria-hidden="true"
+                    />
+                    <div>
+                      <span>
+                        {data.status === "cancelled"
+                          ? "ยกเลิกแล้ว · เก็บเงินล่วงหน้า"
+                          : data.advancePayment.calculationMode === "amount"
+                            ? "ชำระค่าห้องล่วงหน้า"
+                            : `ชำระค่าห้องล่วงหน้า ${data.advancePayment.percentage}%`}
+                      </span>
+                      <small>
+                        {advancePaymentTransaction.amount.toLocaleString(
+                          "th-TH",
+                        )}{" "}
+                        THB
+                        {data.status !== "cancelled" && (
+                          <>
+                            {" · เหลือ "}
+                            {outstandingRoomChargeAmount.toLocaleString("th-TH")}{" "}
+                            THB
+                          </>
+                        )}
+                      </small>
+                    </div>
+                  </div>
+                )}
                 <div
                   className="viewBooking__priceList"
                   ref={priceListRef}
@@ -1427,6 +1517,7 @@ const ViewBooking = ({
 
             <ActionButton
               text=""
+              tooltip="เพิ่มโน้ต"
               icon="bx-note"
               onClick={() => {
                 setNoteDraft(data.note || "");
@@ -1436,6 +1527,7 @@ const ViewBooking = ({
 
             <ActionButton
               text=""
+              tooltip="ปักหมุด"
               icon={data.pinned ? "bxf bx-pin-alt" : "bx-pin-alt"}
               className={data.pinned ? "viewBooking__pinAction" : ""}
               ariaLabel={data.pinned ? "ยกเลิกปัก Booking" : "ปัก Booking"}
@@ -1467,6 +1559,7 @@ const ViewBooking = ({
               (data.status === "booked" || data.status === "checkedIn") && (
                 <ActionButton
                   text=""
+                  tooltip="เพิ่มจำนวนคืน"
                   onClick={() => setExtendBookingIsOpen(true)}
                   icon="bx-calendar-plus"
                 />

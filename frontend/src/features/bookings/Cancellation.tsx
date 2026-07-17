@@ -98,30 +98,42 @@ const Cancellation = ({
     };
   }, [booking.transactions]);
 
+  const hasNonRefundableAdvance =
+    booking.advancePayment?.nonRefundableOnCancellation === true;
+  const initialCancellationType: CancellationType = hasNonRefundableAdvance
+    ? "non_refundable"
+    : "refundable";
+
   const [cancellationType, setCancellationType] =
-    useState<CancellationType>("refundable");
+    useState<CancellationType>(initialCancellationType);
   const [reopenRoom, setReopenRoom] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const hasReceivedPayment = paidBreakdown.paidTotal > 0;
+  const effectiveCancellationType = hasReceivedPayment
+    ? hasNonRefundableAdvance
+      ? "non_refundable"
+      : cancellationType
+    : "no_payment_received";
 
   const refundAmount =
-    hasReceivedPayment && cancellationType === "refundable"
+    hasReceivedPayment && effectiveCancellationType === "refundable"
       ? paidBreakdown.paidTotal
       : 0;
   const keptAmount =
-    hasReceivedPayment && cancellationType === "non_refundable"
+    hasReceivedPayment && effectiveCancellationType === "non_refundable"
       ? paidBreakdown.paidTotal
       : 0;
-  const effectiveCancellationType = hasReceivedPayment
-    ? cancellationType
-    : "no_payment_received";
   const availableCancellationTypeOptions = hasReceivedPayment
-    ? cancellationTypeOptions.filter(
-        (option) => option.value !== "no_payment_received",
-      )
+    ? hasNonRefundableAdvance
+      ? cancellationTypeOptions.filter(
+          (option) => option.value === "non_refundable",
+        )
       : cancellationTypeOptions.filter(
-        (option) => option.value === "no_payment_received",
-      );
+          (option) => option.value !== "no_payment_received",
+        )
+      : cancellationTypeOptions.filter(
+          (option) => option.value === "no_payment_received",
+        );
   const cashRefundAmount = paidBreakdown.paidByMethod.find(
     ([method]) => method === "Cash",
   )?.[1] || 0;
@@ -134,10 +146,12 @@ const Cancellation = ({
     ) || null;
 
   useEffect(() => {
-    onDirtyChange?.(cancellationType !== "refundable" || reopenRoom !== true);
+    onDirtyChange?.(
+      cancellationType !== initialCancellationType || reopenRoom !== true,
+    );
 
     return () => onDirtyChange?.(false);
-  }, [cancellationType, onDirtyChange, reopenRoom]);
+  }, [cancellationType, initialCancellationType, onDirtyChange, reopenRoom]);
 
   const submitHandler = async () => {
     if (submitting) return;
@@ -175,6 +189,18 @@ const Cancellation = ({
       {onClose && <ModalCloseButton onClick={onClose} />}
       <h1 className="addBooking__title">ยกเลิกการจอง</h1>
       {hasCashMovement && <CashShiftNudge />}
+      {hasNonRefundableAdvance && (
+        <div className="cancellation__advanceNotice">
+          <i className="bx bx-lock-keyhole" aria-hidden="true" />
+          <p>
+            การจองนี้รับค่าห้องล่วงหน้าแล้ว
+            {booking.advancePayment?.calculationMode === "amount"
+              ? ` ${formatCurrency(booking.advancePayment.amount)}`
+              : ` ${booking.advancePayment?.percentage}%`}
+            {" "}ระบบจะเก็บยอดที่รับไว้และปิดยอดที่เหลือโดยอัตโนมัติ
+          </p>
+        </div>
+      )}
 
       <section className="cancellation__section">
         <div className="addBooking__grid">
@@ -185,7 +211,7 @@ const Cancellation = ({
               classNamePrefix="rs"
               options={availableCancellationTypeOptions}
               value={selectedCancellationType}
-              isDisabled={!hasReceivedPayment}
+              isDisabled={!hasReceivedPayment || hasNonRefundableAdvance}
               onChange={(option: SingleValue<OptionType>) =>
                 setCancellationType(
                   (option?.value as CancellationType) || "refundable",

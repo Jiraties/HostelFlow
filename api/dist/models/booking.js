@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PASSPORT_SENSITIVE_SELECT = void 0;
+exports.transactionSchema = exports.PASSPORT_SENSITIVE_SELECT = void 0;
 const mongoose_1 = __importDefault(require("mongoose"));
 exports.PASSPORT_SENSITIVE_SELECT = [
     "+passport.passportHash",
@@ -38,7 +38,7 @@ const commercialSegmentSchema = new mongoose_1.default.Schema({
     operationKeyHash: { type: String, select: false },
     requestHash: { type: String, select: false },
 });
-const transactionSchema = new mongoose_1.default.Schema({
+exports.transactionSchema = new mongoose_1.default.Schema({
     type: {
         type: String,
         enum: [
@@ -48,6 +48,7 @@ const transactionSchema = new mongoose_1.default.Schema({
             "depositRefund",
             "cancellationRefund",
             "roomRefund",
+            "roomChargeWriteOff",
             "settlementCharge",
             "compensation",
             "depositKept",
@@ -66,6 +67,9 @@ const transactionSchema = new mongoose_1.default.Schema({
             "bicycle",
             "car",
             "misc",
+            "rainCoat",
+            "passwordLock",
+            "cooking",
             "cardSurcharge",
         ],
     },
@@ -87,6 +91,7 @@ const transactionSchema = new mongoose_1.default.Schema({
             "depositRefund",
             "cancellationRefund",
             "roomRefund",
+            "roomChargeWriteOff",
             "settlementCharge",
             "compensation",
             "depositKept",
@@ -105,6 +110,9 @@ const transactionSchema = new mongoose_1.default.Schema({
             "bicycle",
             "car",
             "misc",
+            "rainCoat",
+            "passwordLock",
+            "cooking",
         ],
         required: false,
     },
@@ -127,6 +135,8 @@ const transactionSchema = new mongoose_1.default.Schema({
             "ADD_TRANSACTION",
             "CANCEL_BOOKING",
             "RESOLVE_STAY",
+            "ADD_STANDALONE_SALE",
+            "ADJUST_STANDALONE_SALE",
             "SYSTEM_MIGRATION",
         ],
     },
@@ -159,6 +169,21 @@ const cancellationSchema = new mongoose_1.default.Schema({
     keptAmount: { type: Number, default: 0 },
     cancelledAt: { type: Date, required: true },
     cancelledByStaffUsername: { type: String, required: true },
+}, { _id: false });
+const advancePaymentSchema = new mongoose_1.default.Schema({
+    calculationMode: {
+        type: String,
+        enum: ["percentage", "amount"],
+        default: "percentage",
+    },
+    percentage: { type: Number, min: 0.01, max: 100, required: true },
+    amount: { type: Number, min: 0, required: true },
+    nonRefundableOnCancellation: {
+        type: Boolean,
+        required: true,
+        validate: (value) => value === true,
+    },
+    transactionId: { type: String, required: true },
 }, { _id: false });
 const checkoutSchema = new mongoose_1.default.Schema({
     roomReleaseStatus: {
@@ -232,7 +257,7 @@ const bookingSchema = new mongoose_1.default.Schema({
         type: String,
         enum: ["normal", "admin_historical_onboarding"],
     },
-    transactions: [transactionSchema],
+    transactions: [exports.transactionSchema],
     passport: {
         passportHash: { type: String, select: false },
         namePrefix: {
@@ -263,6 +288,7 @@ const bookingSchema = new mongoose_1.default.Schema({
             authTag: { type: String, select: false },
         },
     },
+    advancePayment: advancePaymentSchema,
     cancellation: cancellationSchema,
     checkout: checkoutSchema,
     resolution: resolutionSchema,

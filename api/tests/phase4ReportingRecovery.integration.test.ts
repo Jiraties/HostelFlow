@@ -329,6 +329,7 @@ test("synthetic isolated-restore consistency verification detects corruption", a
   assert.equal(consistent.ok, true, consistent.errors.join("\n"));
   assert.deepEqual(consistent.counts, {
     bookings: 1,
+    standaloneSales: 0,
     users: 1,
     cashShifts: 1,
     dailyCloses: 1,

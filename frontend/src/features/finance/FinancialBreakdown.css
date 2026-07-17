@@ -403,6 +403,9 @@
 }
 
 .financialBreakdown__transactionMain strong {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
   font-weight: 400;
 }
 

@@ -20,11 +20,14 @@ export type SourceAction =
   | "ADD_TRANSACTION"
   | "CANCEL_BOOKING"
   | "RESOLVE_STAY"
+  | "ADD_STANDALONE_SALE"
+  | "ADJUST_STANDALONE_SALE"
   | "SYSTEM_MIGRATION";
 
 export const CASH_VARIANCE_THRESHOLD = 20;
 export const LARGE_CASH_TRANSACTION_THRESHOLD = 5000;
 export const LARGE_REFUND_THRESHOLD = 2000;
+export const ROUNDING_ADJUSTMENT_REVIEW_THRESHOLD = 1;
 
 export const isValidCashCount = (value: number) =>
   Number.isFinite(value) && value >= 0;
@@ -70,6 +73,9 @@ const revenueTransactionTypes: TransactionType[] = [
   "bicycle",
   "car",
   "misc",
+  "rainCoat",
+  "passwordLock",
+  "cooking",
   "cardSurcharge",
 ];
 
@@ -90,12 +96,16 @@ const dashboardOriginalRevenueTransactionTypes: TransactionType[] = [
   "bicycle",
   "car",
   "misc",
+  "rainCoat",
+  "passwordLock",
+  "cooking",
   "cardSurcharge",
 ];
 
 const dashboardRevenueRefundTransactionTypes: TransactionType[] = [
   "cancellationRefund",
   "roomRefund",
+  "roomChargeWriteOff",
   "compensation",
 ];
 
@@ -405,7 +415,9 @@ export const calculateTodayRevenueSummary = (
       const alreadyNetted =
         arrivals.includes(booking) &&
         ["cancelled", "noShow"].includes(booking.status) &&
-        ["roomRefund", "cancellationRefund"].includes(transaction.type);
+        ["roomRefund", "roomChargeWriteOff", "cancellationRefund"].includes(
+          transaction.type,
+        );
       return alreadyNetted
         ? sum
         : sum + transactionTodayReductionAmount(transaction);
@@ -495,7 +507,10 @@ export const bookingRemainingDepositAmount = (transactions: transcation[]) =>
   );
 
 export const transactionUnpaidAmount = (transaction: transcation) =>
-  transaction.paymentMethod === "Unpaid" ? Math.abs(transaction.amount || 0) : 0;
+  transaction.paymentMethod === "Unpaid" &&
+  transaction.type !== "roomChargeWriteOff"
+    ? Math.abs(transaction.amount || 0)
+    : 0;
 
 export const transactionNeedsReview = (
   transaction: transcation,
@@ -504,19 +519,29 @@ export const transactionNeedsReview = (
   const flags: string[] = [];
   const amount = Math.abs(transaction.amount || 0);
   const direction = transactionDirection(transaction);
+  const isMinorRoundingAdjustment =
+    transaction.type === "adjustment" &&
+    transaction.reasonOfAdjustment === "rounding" &&
+    amount <= ROUNDING_ADJUSTMENT_REVIEW_THRESHOLD;
 
-  if (direction === "out" && transaction.type === "adjustment") {
+  if (
+    direction === "out" &&
+    transaction.type === "adjustment" &&
+    !isMinorRoundingAdjustment
+  ) {
     flags.push("negative_adjustment");
   }
   if (
     direction === "out" &&
-    !["adjustment", "depositRefund"].includes(transaction.type)
+    !["adjustment", "depositRefund", "roomChargeWriteOff"].includes(
+      transaction.type,
+    )
   ) {
     flags.push("refund");
   }
   if (
     direction === "out" &&
-    transaction.type !== "adjustment" &&
+    !["adjustment", "roomChargeWriteOff"].includes(transaction.type) &&
     amount >= LARGE_REFUND_THRESHOLD
   ) {
     flags.push("large_refund");
@@ -524,12 +549,27 @@ export const transactionNeedsReview = (
   if (transaction.paymentMethod === "Cash" && amount >= LARGE_CASH_TRANSACTION_THRESHOLD) {
     flags.push("large_cash");
   }
-  if (transaction.type === "adjustment") flags.push("adjustment");
+  if (transaction.type === "adjustment" && !isMinorRoundingAdjustment) {
+    flags.push("adjustment");
+  }
   if (sameTypeCount >= 2 && ["adjustment", "depositRefund"].includes(transaction.type)) {
     flags.push("repeated_sensitive_type");
   }
 
   return flags;
+};
+
+export const transactionRequiresReview = (transaction: transcation) => {
+  if (transaction.reviewStatus === "reviewed") return false;
+
+  const policyFlags = transactionNeedsReview(transaction);
+  const retainedStoredFlags = (transaction.reviewFlags || []).filter(
+    (flag) =>
+      !["adjustment", "negative_adjustment"].includes(flag) ||
+      policyFlags.includes(flag),
+  );
+
+  return policyFlags.length > 0 || retainedStoredFlags.length > 0;
 };
 
 export const normalizeTransaction = (
@@ -584,6 +624,15 @@ export const summarizeTransactions = (transactions: transcation[]) =>
         ["settlementCharge", "paymentCorrection"].includes(transaction.type) &&
         transaction.relatedTransactionType === "roomCharge" &&
         transaction.paymentMethod !== "Unpaid"
+      ) {
+        summary.unpaidBalance = Math.max(
+          summary.unpaidBalance - Math.abs(transaction.amount || 0),
+          0,
+        );
+      }
+      if (
+        transaction.type === "roomChargeWriteOff" &&
+        transaction.relatedTransactionType === "roomCharge"
       ) {
         summary.unpaidBalance = Math.max(
           summary.unpaidBalance - Math.abs(transaction.amount || 0),

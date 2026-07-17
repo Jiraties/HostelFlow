@@ -4,6 +4,7 @@ import Booking from "../models/booking";
 import CashShift from "../models/cashShift";
 import DailyClose from "../models/dailyClose";
 import User from "../models/user";
+import StandaloneSale from "../models/standaloneSale";
 import type {
   booking,
   PaymentMethod,
@@ -24,6 +25,7 @@ import {
   transactionTodayReductionAmount,
   transactionDirection,
   transactionFallsOnBusinessDate,
+  transactionRequiresReview,
 } from "../helpers/financeHelpers";
 import { transactionPlatformId } from "../helpers/commercialSegmentHelpers";
 import {
@@ -55,11 +57,11 @@ const expectedStayRevenueTransactionMeta: Partial<
     icon: "bx-wallet",
   },
   adjustment: { label: "ปรับราคา", color: "#a78bfa", icon: "bx-edit-alt" },
-  towel: { label: "ผ้าเช็ดตัว", color: "#38bdf8", icon: "bx-bath" },
-  motorbike: { label: "มอเตอร์ไซค์", color: "#fb923c", icon: "bx-cycling" },
+  towel: { label: "Towel", color: "#38bdf8", icon: "bx-bath" },
+  motorbike: { label: "Motorbike", color: "#fb923c", icon: "bx-cycling" },
   slowBoat: { label: "Slow Boat", color: "#2dd4bf", icon: "bx-water" },
   joinTour: { label: "Join Tour", color: "#22c55e", icon: "bx-map" },
-  extraBed: { label: "เตียงเสริม", color: "#ec4899", icon: "bx-bed" },
+  extraBed: { label: "Extra Bed", color: "#ec4899", icon: "bx-bed" },
   pickACraft: { label: "Pick A Craft", color: "#f59e0b", icon: "bx-palette" },
   trek2D: { label: "Trek 2D", color: "#16a34a", icon: "bx-map-alt" },
   setMenu: { label: "Set Menu", color: "#84cc16", icon: "bx-food-menu" },
@@ -69,12 +71,20 @@ const expectedStayRevenueTransactionMeta: Partial<
   bicycle: { label: "Bicycle", color: "#fb923c", icon: "bx-cycling" },
   car: { label: "Car", color: "#64748b", icon: "bx-car" },
   misc: { label: "Misc", color: "#94a3b8", icon: "bx-dots-horizontal-rounded" },
+  rainCoat: { label: "Rain Coat", color: "#0ea5e9", icon: "bx-cloud-rain" },
+  passwordLock: { label: "Password Lock", color: "#8b5cf6", icon: "bx-lock" },
+  cooking: { label: "Cooking", color: "#f97316", icon: "bx-food-menu" },
   cardSurcharge: {
     label: "ค่าธรรมเนียมบัตร 3%",
     color: "#94a3b8",
     icon: "bx-credit-card-alt",
   },
   roomRefund: { label: "คืนค่าห้อง", color: "#fb7185", icon: "bx-undo" },
+  roomChargeWriteOff: {
+    label: "ปิดยอดค่าห้องที่เหลือ",
+    color: "#94a3b8",
+    icon: "bx-calendar-x",
+  },
   cancellationRefund: {
     label: "คืนเงินยกเลิก",
     color: "#fb7185",
@@ -99,11 +109,15 @@ const expectedStayRevenueTypes = new Set<TransactionType>([
   "bicycle",
   "car",
   "misc",
+  "rainCoat",
+  "passwordLock",
+  "cooking",
   "cardSurcharge",
 ]);
 
 const expectedStayRevenueReductionTypes = new Set<TransactionType>([
   "roomRefund",
+  "roomChargeWriteOff",
   "cancellationRefund",
   "compensation",
 ]);
@@ -118,7 +132,9 @@ const paymentMethodMeta: Record<PaymentMethod, { label: string; icon: string }> 
 
 type ExpectedStayRevenueBreakdownTransaction = {
   transactionId?: string;
-  bookingId: string;
+  bookingId?: string;
+  saleId?: string;
+  sourceType?: "booking" | "standaloneSale";
   guestName: string;
   platformId: PlatformId;
   type: TransactionType;
@@ -132,6 +148,33 @@ type ExpectedStayRevenueBreakdownTransaction = {
   createdBy?: string;
   note?: string;
   reference?: string;
+};
+
+const standaloneSaleBookingView = (sale: any): booking =>
+  ({
+    bookingId: sale.saleId,
+    name: sale.customerName || "ลูกค้าทั่วไป",
+    platformId: "WALK",
+    checkIn: new Date(0),
+    checkOut: new Date(0),
+    status: "checkedOut",
+    transactions: sale.transactions || [],
+    staffUsername: sale.createdBy,
+    sourceType: "standaloneSale",
+    saleId: sale.saleId,
+  }) as unknown as booking;
+
+const standaloneTransactionMeta = (source: booking) => {
+  const value = source as unknown as {
+    sourceType?: "standaloneSale";
+    saleId?: string;
+  };
+  return value.sourceType === "standaloneSale"
+    ? {
+        sourceType: "standaloneSale" as const,
+        saleId: value.saleId || source.bookingId,
+      }
+    : { sourceType: "booking" as const, bookingId: source.bookingId };
 };
 
 type ExpectedStayRevenueBreakdownCategory = {
@@ -242,7 +285,7 @@ const getTransactionsForBusinessDate = async (
   const bounds = getBusinessDayBoundsFromKey(businessDate);
   if (!bounds) return null;
 
-  const bookings = await Booking.find({
+  const [bookings, standaloneSales] = await Promise.all([Booking.find({
     $or: [
       { "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end } },
       { checkIn: { $gte: bounds.start, $lt: bounds.end } },
@@ -250,9 +293,14 @@ const getTransactionsForBusinessDate = async (
       { "cancellation.cancelledAt": { $gte: bounds.start, $lt: bounds.end } },
       { "checkout.checkedOutAt": { $gte: bounds.start, $lt: bounds.end } },
     ],
-  }).lean<booking[]>();
+  }).lean<booking[]>(), StandaloneSale.find({
+    "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end },
+  }).lean()]);
 
-  const transactions = bookings.flatMap((booking) =>
+  const transactions = [
+    ...bookings,
+    ...standaloneSales.map(standaloneSaleBookingView),
+  ].flatMap((booking) =>
     (booking.transactions || [])
       .filter((transaction) =>
         transactionFallsOnBusinessDate(
@@ -268,7 +316,7 @@ const getTransactionsForBusinessDate = async (
       })
       .map((transaction) => ({
         ...transaction,
-        bookingId: booking.bookingId,
+        ...standaloneTransactionMeta(booking),
         guestName: booking.name,
         staffUsername: transaction.createdBy || booking.staffUsername,
       })),
@@ -328,16 +376,17 @@ const getShiftTransactions = async (
   session?: ClientSession,
 ) => {
   const shiftId = String(shift._id);
-  const bookings = await Booking.find({ "transactions.cashShiftId": shiftId })
-    .session(session || null)
-    .lean<booking[]>();
+  const [bookings, standaloneSales] = await Promise.all([
+    Booking.find({ "transactions.cashShiftId": shiftId }).session(session || null).lean<booking[]>(),
+    StandaloneSale.find({ "transactions.cashShiftId": shiftId }).session(session || null).lean(),
+  ]);
 
-  return bookings.flatMap((booking) =>
+  return [...bookings, ...standaloneSales.map(standaloneSaleBookingView)].flatMap((booking) =>
     (booking.transactions || [])
       .filter((transaction) => transaction.cashShiftId === shiftId)
       .map((transaction) => ({
         ...transaction,
-        bookingId: booking.bookingId,
+        ...standaloneTransactionMeta(booking),
         guestName: booking.name,
         staffUsername: transaction.createdBy || booking.staffUsername,
       })),
@@ -345,11 +394,13 @@ const getShiftTransactions = async (
 };
 
 const getUnassignedCashTransactionsBetween = async (start: Date, end: Date) => {
-  const bookings = await Booking.find({
+  const [bookings, standaloneSales] = await Promise.all([Booking.find({
     "transactions.createdAt": { $gte: start, $lt: end },
-  }).lean<booking[]>();
+  }).lean<booking[]>(), StandaloneSale.find({
+    "transactions.createdAt": { $gte: start, $lt: end },
+  }).lean()]);
 
-  return bookings.flatMap((booking) =>
+  return [...bookings, ...standaloneSales.map(standaloneSaleBookingView)].flatMap((booking) =>
     (booking.transactions || [])
       .filter((transaction) => {
         if (transaction.cashShiftId) return false;
@@ -358,7 +409,7 @@ const getUnassignedCashTransactionsBetween = async (start: Date, end: Date) => {
       })
       .map((transaction) => ({
         ...transaction,
-        bookingId: booking.bookingId,
+        ...standaloneTransactionMeta(booking),
         guestName: booking.name,
         staffUsername: transaction.createdBy || booking.staffUsername,
       })),
@@ -611,9 +662,7 @@ const getCashShiftAuditForDate = async (businessDate?: string) => {
     enrichedShifts.map(async (shift, index) => {
       const shiftTransactions = await getShiftTransactions(shift as { _id?: unknown; startedAt: Date; endedAt?: Date });
       const flaggedTransactions = shiftTransactions.filter(
-        (transaction) =>
-          transaction.reviewStatus === "needs_review" ||
-          Boolean(transaction.reviewFlags?.length),
+        transactionRequiresReview,
       );
       const warnings: CashAuditWarning[] = [];
       const operatingVariance = Number(shift.operatingVariance || 0);
@@ -736,7 +785,7 @@ const addBreakdownTransaction = (
   existingCategory.transactionCount += 1;
   existingCategory.transactions.push({
     transactionId: transaction._id ? String(transaction._id) : undefined,
-    bookingId: booking.bookingId,
+    ...standaloneTransactionMeta(booking),
     guestName: booking.name,
     platformId: transactionPlatformId(booking, transaction),
     type: transaction.type,
@@ -784,7 +833,7 @@ const addPaymentMethodBreakdownTransaction = (
   existingPaymentMethod.transactionCount += 1;
   existingPaymentMethod.transactions.push({
     transactionId: transaction._id ? String(transaction._id) : undefined,
-    bookingId: booking.bookingId,
+    ...standaloneTransactionMeta(booking),
     guestName: booking.name,
     platformId: transactionPlatformId(booking, transaction),
     type: transaction.type,
@@ -888,9 +937,18 @@ export const getExpectedStayRevenueBreakdown = async (
       });
     }
 
-    const bookings = await Booking.find({
-      "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end },
-    }).lean<booking[]>();
+    const [bookingRecords, standaloneSales] = await Promise.all([
+      Booking.find({
+        "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end },
+      }).lean<booking[]>(),
+      StandaloneSale.find({
+        "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end },
+      }).lean(),
+    ]);
+    const bookings = [
+      ...bookingRecords,
+      ...standaloneSales.map(standaloneSaleBookingView),
+    ];
     const categories = new Map<
       TransactionType,
       ExpectedStayRevenueBreakdownCategory
@@ -1020,12 +1078,21 @@ export const getTodayRevenueBreakdown = async (req: Request, res: Response) => {
       });
     }
 
-    const bookings = await Booking.find({
-      $or: [
-        { checkIn: { $gte: bounds.start, $lt: bounds.end } },
-        { "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end } },
-      ],
-    }).lean<booking[]>();
+    const [bookingRecords, standaloneSales] = await Promise.all([
+      Booking.find({
+        $or: [
+          { checkIn: { $gte: bounds.start, $lt: bounds.end } },
+          { "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end } },
+        ],
+      }).lean<booking[]>(),
+      StandaloneSale.find({
+        "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end },
+      }).lean(),
+    ]);
+    const bookings = [
+      ...bookingRecords,
+      ...standaloneSales.map(standaloneSaleBookingView),
+    ];
     const todaySummary = calculateTodayRevenueSummary(
       bookings,
       bounds.start,
@@ -1108,7 +1175,9 @@ export const getTodayRevenueBreakdown = async (req: Request, res: Response) => {
         const arrivalReductionAlreadyNetted =
           isTodayArrival &&
           ["cancelled", "noShow"].includes(booking.status) &&
-          ["roomRefund", "cancellationRefund"].includes(transaction.type);
+          ["roomRefund", "roomChargeWriteOff", "cancellationRefund"].includes(
+            transaction.type,
+          );
         if (reductionAmount > 0 && !arrivalReductionAlreadyNetted) {
           addBreakdownTransaction(
             reductions,
@@ -1188,12 +1257,21 @@ export const getTodayRevenueSummary = async (req: Request, res: Response) => {
       });
     }
 
-    const bookings = await Booking.find({
-      $or: [
-        { checkIn: { $gte: bounds.start, $lt: bounds.end } },
-        { "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end } },
-      ],
-    }).lean<booking[]>();
+    const [bookingRecords, standaloneSales] = await Promise.all([
+      Booking.find({
+        $or: [
+          { checkIn: { $gte: bounds.start, $lt: bounds.end } },
+          { "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end } },
+        ],
+      }).lean<booking[]>(),
+      StandaloneSale.find({
+        "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end },
+      }).lean(),
+    ]);
+    const bookings = [
+      ...bookingRecords,
+      ...standaloneSales.map(standaloneSaleBookingView),
+    ];
 
     res.status(200).json(
       calculateTodayRevenueSummary(bookings, bounds.start, bounds.end),
@@ -1829,9 +1907,7 @@ export const getReviewEvents = async (req: Request, res: Response) => {
 
     const transactions = reconciliation.transactions.filter(
       (transaction: transcation & { bookingId?: string }) =>
-        transaction.reviewStatus !== "reviewed" &&
-        (transaction.reviewStatus === "needs_review" ||
-          (transaction.reviewFlags || []).length > 0),
+        transactionRequiresReview(transaction),
     );
 
     res.status(200).json({
@@ -1874,9 +1950,7 @@ export const approveReviewEvent = async (req: Request, res: Response) => {
       });
     }
 
-    const requiresReview =
-      transaction.reviewStatus === "needs_review" ||
-      (transaction.reviewFlags || []).length > 0;
+    const requiresReview = transactionRequiresReview(transaction);
 
     if (!requiresReview) {
       return res.status(400).json({
@@ -1916,5 +1990,51 @@ export const approveReviewEvent = async (req: Request, res: Response) => {
     });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
+  }
+};
+
+export const approveStandaloneReviewEvent = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    if (!req.user?.admin || !req.user.username) {
+      return res.status(403).json({
+        message: "เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถอนุมัติรายการตรวจสอบได้",
+      });
+    }
+    const sale = await StandaloneSale.findOne({ saleId: req.params.saleId });
+    if (!sale) return res.status(404).json({ message: "ไม่พบรายการแขกนอก" });
+    const transaction = sale.transactions.find(
+      (item) => String(item._id) === String(req.params.transactionId),
+    );
+    if (!transaction) return res.status(404).json({ message: "ไม่พบรายการธุรกรรม" });
+    if (transaction.reviewStatus !== "reviewed") {
+      if (
+        transaction.reviewStatus !== "needs_review" &&
+        !(transaction.reviewFlags || []).length
+      ) {
+        return res.status(400).json({ message: "รายการนี้ไม่จำเป็นต้องตรวจสอบ" });
+      }
+      transaction.reviewStatus = "reviewed";
+      transaction.reviewedBy = req.user.username;
+      transaction.reviewedAt = new Date();
+      sale.markModified("transactions");
+      await sale.save();
+      await logActivity(req.user.username, "REVIEW_TRANSACTION", {
+        summary: {
+          sourceType: "standaloneSale",
+          saleId: sale.saleId,
+          customerName: sale.customerName || "ลูกค้าทั่วไป",
+          transactionId: String(transaction._id),
+          type: transaction.type,
+          amount: transaction.amount,
+          flags: transaction.reviewFlags || [],
+        },
+      });
+    }
+    return res.status(200).json({ transaction });
+  } catch (err) {
+    return res.status(500).json({ error: (err as Error).message });
   }
 };

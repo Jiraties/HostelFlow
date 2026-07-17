@@ -1,9 +1,10 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.transactionFallsOnBusinessDate = exports.summarizeTransactions = exports.normalizeTransaction = exports.transactionNeedsReview = exports.transactionUnpaidAmount = exports.bookingRemainingDepositAmount = exports.transactionDepositLiabilityDelta = exports.transactionDashboardCollectedRevenueAmount = exports.calculateTodayRevenueSummary = exports.bookingTodayArrivalRevenueAmount = exports.transactionTodayReductionAmount = exports.transactionTodayExtrasRevenueAmount = exports.transactionDashboardGrossRevenueAmount = exports.transactionRefundAmount = exports.transactionRevenueAmount = exports.transactionIsRevenue = exports.summarizeCashStashes = exports.transactionCashStashImpact = exports.emptyCashStashSummary = exports.transactionCashImpact = exports.summarizeReceivedPaymentsByMethod = exports.transactionSignedAmount = exports.transactionDirection = exports.cashBalanceAfterMovements = exports.isValidCashCount = exports.LARGE_REFUND_THRESHOLD = exports.LARGE_CASH_TRANSACTION_THRESHOLD = exports.CASH_VARIANCE_THRESHOLD = void 0;
+exports.transactionFallsOnBusinessDate = exports.summarizeTransactions = exports.normalizeTransaction = exports.transactionRequiresReview = exports.transactionNeedsReview = exports.transactionUnpaidAmount = exports.bookingRemainingDepositAmount = exports.transactionDepositLiabilityDelta = exports.transactionDashboardCollectedRevenueAmount = exports.calculateTodayRevenueSummary = exports.bookingTodayArrivalRevenueAmount = exports.transactionTodayReductionAmount = exports.transactionTodayExtrasRevenueAmount = exports.transactionDashboardGrossRevenueAmount = exports.transactionRefundAmount = exports.transactionRevenueAmount = exports.transactionIsRevenue = exports.summarizeCashStashes = exports.transactionCashStashImpact = exports.emptyCashStashSummary = exports.transactionCashImpact = exports.summarizeReceivedPaymentsByMethod = exports.transactionSignedAmount = exports.transactionDirection = exports.cashBalanceAfterMovements = exports.isValidCashCount = exports.ROUNDING_ADJUSTMENT_REVIEW_THRESHOLD = exports.LARGE_REFUND_THRESHOLD = exports.LARGE_CASH_TRANSACTION_THRESHOLD = exports.CASH_VARIANCE_THRESHOLD = void 0;
 exports.CASH_VARIANCE_THRESHOLD = 20;
 exports.LARGE_CASH_TRANSACTION_THRESHOLD = 5000;
 exports.LARGE_REFUND_THRESHOLD = 2000;
+exports.ROUNDING_ADJUSTMENT_REVIEW_THRESHOLD = 1;
 const isValidCashCount = (value) => Number.isFinite(value) && value >= 0;
 exports.isValidCashCount = isValidCashCount;
 const cashBalanceAfterMovements = (openingCash, cashIn, cashOut) => openingCash + cashIn - cashOut;
@@ -41,6 +42,9 @@ const revenueTransactionTypes = [
     "bicycle",
     "car",
     "misc",
+    "rainCoat",
+    "passwordLock",
+    "cooking",
     "cardSurcharge",
 ];
 const dashboardOriginalRevenueTransactionTypes = [
@@ -60,11 +64,15 @@ const dashboardOriginalRevenueTransactionTypes = [
     "bicycle",
     "car",
     "misc",
+    "rainCoat",
+    "passwordLock",
+    "cooking",
     "cardSurcharge",
 ];
 const dashboardRevenueRefundTransactionTypes = [
     "cancellationRefund",
     "roomRefund",
+    "roomChargeWriteOff",
     "compensation",
 ];
 const transactionDirection = (transaction) => {
@@ -273,7 +281,7 @@ const calculateTodayRevenueSummary = (bookings, start, end) => {
     const todayReductions = todayTransactions.reduce((sum, { booking, transaction }) => {
         const alreadyNetted = arrivals.includes(booking) &&
             ["cancelled", "noShow"].includes(booking.status) &&
-            ["roomRefund", "cancellationRefund"].includes(transaction.type);
+            ["roomRefund", "roomChargeWriteOff", "cancellationRefund"].includes(transaction.type);
         return alreadyNetted
             ? sum
             : sum + (0, exports.transactionTodayReductionAmount)(transaction);
@@ -322,35 +330,53 @@ const transactionDepositLiabilityDelta = (transaction) => {
 exports.transactionDepositLiabilityDelta = transactionDepositLiabilityDelta;
 const bookingRemainingDepositAmount = (transactions) => Math.max(transactions.reduce((total, transaction) => total + (0, exports.transactionDepositLiabilityDelta)(transaction), 0), 0);
 exports.bookingRemainingDepositAmount = bookingRemainingDepositAmount;
-const transactionUnpaidAmount = (transaction) => transaction.paymentMethod === "Unpaid" ? Math.abs(transaction.amount || 0) : 0;
+const transactionUnpaidAmount = (transaction) => transaction.paymentMethod === "Unpaid" &&
+    transaction.type !== "roomChargeWriteOff"
+    ? Math.abs(transaction.amount || 0)
+    : 0;
 exports.transactionUnpaidAmount = transactionUnpaidAmount;
 const transactionNeedsReview = (transaction, sameTypeCount = 0) => {
     const flags = [];
     const amount = Math.abs(transaction.amount || 0);
     const direction = (0, exports.transactionDirection)(transaction);
-    if (direction === "out" && transaction.type === "adjustment") {
+    const isMinorRoundingAdjustment = transaction.type === "adjustment" &&
+        transaction.reasonOfAdjustment === "rounding" &&
+        amount <= exports.ROUNDING_ADJUSTMENT_REVIEW_THRESHOLD;
+    if (direction === "out" &&
+        transaction.type === "adjustment" &&
+        !isMinorRoundingAdjustment) {
         flags.push("negative_adjustment");
     }
     if (direction === "out" &&
-        !["adjustment", "depositRefund"].includes(transaction.type)) {
+        !["adjustment", "depositRefund", "roomChargeWriteOff"].includes(transaction.type)) {
         flags.push("refund");
     }
     if (direction === "out" &&
-        transaction.type !== "adjustment" &&
+        !["adjustment", "roomChargeWriteOff"].includes(transaction.type) &&
         amount >= exports.LARGE_REFUND_THRESHOLD) {
         flags.push("large_refund");
     }
     if (transaction.paymentMethod === "Cash" && amount >= exports.LARGE_CASH_TRANSACTION_THRESHOLD) {
         flags.push("large_cash");
     }
-    if (transaction.type === "adjustment")
+    if (transaction.type === "adjustment" && !isMinorRoundingAdjustment) {
         flags.push("adjustment");
+    }
     if (sameTypeCount >= 2 && ["adjustment", "depositRefund"].includes(transaction.type)) {
         flags.push("repeated_sensitive_type");
     }
     return flags;
 };
 exports.transactionNeedsReview = transactionNeedsReview;
+const transactionRequiresReview = (transaction) => {
+    if (transaction.reviewStatus === "reviewed")
+        return false;
+    const policyFlags = (0, exports.transactionNeedsReview)(transaction);
+    const retainedStoredFlags = (transaction.reviewFlags || []).filter((flag) => !["adjustment", "negative_adjustment"].includes(flag) ||
+        policyFlags.includes(flag));
+    return policyFlags.length > 0 || retainedStoredFlags.length > 0;
+};
+exports.transactionRequiresReview = transactionRequiresReview;
 const normalizeTransaction = (transaction, options) => {
     const normalized = {
         ...transaction,
@@ -390,6 +416,10 @@ const summarizeTransactions = (transactions) => transactions.reduce((summary, tr
     if (["settlementCharge", "paymentCorrection"].includes(transaction.type) &&
         transaction.relatedTransactionType === "roomCharge" &&
         transaction.paymentMethod !== "Unpaid") {
+        summary.unpaidBalance = Math.max(summary.unpaidBalance - Math.abs(transaction.amount || 0), 0);
+    }
+    if (transaction.type === "roomChargeWriteOff" &&
+        transaction.relatedTransactionType === "roomCharge") {
         summary.unpaidBalance = Math.max(summary.unpaidBalance - Math.abs(transaction.amount || 0), 0);
     }
     summary.cardSurcharges +=

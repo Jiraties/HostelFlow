@@ -1095,3 +1095,13 @@
     align-items: flex-start;
   }
 }
+.manage__nonGuestBadge {
+  display: inline-flex;
+  margin-right: 0.45rem;
+  padding: 0.16rem 0.45rem;
+  border-radius: 999px;
+  background: #fff0d7;
+  color: #a85c00;
+  font-size: 0.7rem;
+  font-weight: 800;
+}

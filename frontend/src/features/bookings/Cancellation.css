@@ -17,6 +17,26 @@
   gap: 1rem;
 }
 
+.cancellation__advanceNotice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.65rem;
+  background-color: #00000007;
+  line-height: 1.45;
+}
+
+.cancellation__advanceNotice i {
+  margin-top: 0.15rem;
+  color: var(--red);
+  font-size: 1.1rem;
+}
+
+.cancellation__advanceNotice p {
+  font-weight: 400;
+}
+
 .cancellation__section h2 {
   font-size: 1rem;
   font-weight: 500;

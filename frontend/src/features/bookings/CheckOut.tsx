@@ -90,26 +90,32 @@ const CheckOut = ({
   );
   const depositPaymentMethod = depositTransactions[0]?.paymentMethod || "Cash";
   const unpaidRoomChargeAmount = Math.max(
-    booking.transactions.reduce((sum, transaction) => {
-      if (transaction.type === "roomCharge") {
-        return (
-          sum +
-          (transaction.paymentMethod === "Unpaid"
-            ? Math.abs(transaction.amount || 0)
-            : 0)
-        );
-      }
+    Number(
+      booking.transactions
+        .reduce((sum, transaction) => {
+          if (transaction.type === "roomCharge") {
+            return (
+              sum +
+              (transaction.paymentMethod === "Unpaid"
+                ? Math.abs(transaction.amount || 0)
+                : 0)
+            );
+          }
 
-      if (
-        ["settlementCharge", "paymentCorrection"].includes(transaction.type) &&
-        transaction.relatedTransactionType === "roomCharge" &&
-        transaction.paymentMethod !== "Unpaid"
-      ) {
-        return sum - Math.abs(transaction.amount || 0);
-      }
+          if (
+            ["settlementCharge", "paymentCorrection"].includes(
+              transaction.type,
+            ) &&
+            transaction.relatedTransactionType === "roomCharge" &&
+            transaction.paymentMethod !== "Unpaid"
+          ) {
+            return sum - Math.abs(transaction.amount || 0);
+          }
 
-      return sum;
-    }, 0),
+          return sum;
+        }, 0)
+        .toFixed(2),
+    ),
     0,
   );
   const hasUnpaidBalance = unpaidRoomChargeAmount > 0;

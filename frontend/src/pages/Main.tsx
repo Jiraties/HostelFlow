@@ -48,6 +48,7 @@ import "./Home.css";
 import "../features/bookings/CheckIn.css";
 import "./Main.css";
 import FinancialBreakdown from "../features/finance/FinancialBreakdown";
+import StandaloneSaleModal from "../features/finance/StandaloneSaleModal";
 
 const getFetchErrorMessage = (err: unknown) => {
   if (axios.isAxiosError(err) && err.response?.data?.message) {
@@ -108,6 +109,9 @@ const serviceHighlightMeta: Partial<
   bicycle: { label: "Bicycle", icon: "bx-cycling", color: "#eab308" },
   car: { label: "Car", icon: "bx-car", color: "#64748b" },
   misc: { label: "Misc", icon: "bx-dots-horizontal-rounded", color: "#64748b" },
+  rainCoat: { label: "Rain Coat", icon: "bx-cloud-rain", color: "#0ea5e9" },
+  passwordLock: { label: "Password Lock", icon: "bx-lock", color: "#8b5cf6" },
+  cooking: { label: "Cooking", icon: "bx-food-menu", color: "#f97316" },
 };
 
 const formatServiceType = (type: TransactionType) => {
@@ -505,6 +509,7 @@ const Main = () => {
   const [cashCloseExpanded, setCashCloseExpanded] = useState(false);
   const [closeNote, setCloseNote] = useState("");
   const [addBookingIsOpen, setAddBookingIsOpen] = useState(false);
+  const [standaloneSaleIsOpen, setStandaloneSaleIsOpen] = useState(false);
   const [addBookingIsDirty, setAddBookingIsDirty] = useState(false);
   const [financialBreakdownMode, setFinancialBreakdownMode] = useState<
     "monthly" | "today" | null
@@ -700,8 +705,7 @@ const Main = () => {
       ? 0
       : Number(operatingActualCash || 0) - operatingExpectedCash;
   const ordinaryCloseVarianceNeedsNote = Boolean(
-    cashPosition &&
-    Math.abs(operatingVariance) > cashPosition.threshold,
+    cashPosition && Math.abs(operatingVariance) > cashPosition.threshold,
   );
   const openingVarianceNeedsNote = Boolean(
     cashPosition &&
@@ -721,23 +725,23 @@ const Main = () => {
     ? `กะของ ${activeShiftStaffName || activeCashShift.staffUsername} เปิดอยู่`
     : cashDayIsFinalized
       ? "ปิดยอดวันนี้แล้ว"
-    : hasPreviousCashShift
-      ? `รับต่อจาก ${previousShiftStaffName || "กะก่อนหน้า"}`
-      : "เริ่มกะแรกของวันนี้";
+      : hasPreviousCashShift
+        ? `รับต่อจาก ${previousShiftStaffName || "กะก่อนหน้า"}`
+        : "เริ่มกะแรกของวันนี้";
   const cashShiftSubtitle = activeCashShift
     ? ""
     : cashDayIsFinalized
       ? "ไม่สามารถเปิดกะเพิ่มในวันที่ปิดยอดสุดท้ายแล้ว"
-    : hasPreviousCashShift
-      ? "รับยอดปิดกะก่อนหน้า หรือเลือกนับใหม่ถ้าเงินไม่ตรง"
-      : "นับเงินสดทั่วไปก่อนเริ่มรับผิดชอบกะ";
+      : hasPreviousCashShift
+        ? "รับยอดปิดกะก่อนหน้า หรือเลือกนับใหม่ถ้าเงินไม่ตรง"
+        : "นับเงินสดทั่วไปก่อนเริ่มรับผิดชอบกะ";
   const cashShiftActionTitle = activeCashShift
     ? "ปิดกะ"
     : cashDayIsFinalized
       ? "ปิดยอดวันนี้แล้ว"
-    : hasPreviousCashShift && !recountHandoff
-      ? "รับส่งเงิน"
-      : "นับเงินเริ่มกะ";
+      : hasPreviousCashShift && !recountHandoff
+        ? "รับส่งเงิน"
+        : "นับเงินเริ่มกะ";
 
   const startCashShift = async (
     openingMode: "counted" | "accepted_handoff",
@@ -915,6 +919,18 @@ const Main = () => {
         />
       </Modal>
       <Modal
+        open={standaloneSaleIsOpen}
+        className="home__modalCenter"
+        onClose={() => setStandaloneSaleIsOpen(false)}
+      >
+        <StandaloneSaleModal
+          onClose={() => setStandaloneSaleIsOpen(false)}
+          onSaved={() => {
+            void refreshDashboard();
+          }}
+        />
+      </Modal>
+      <Modal
         open={!!pendingUnsavedClose}
         className="home__modalCenter"
         onClose={() => setPendingUnsavedClose(null)}
@@ -955,6 +971,12 @@ const Main = () => {
           highlight
         />
         <ActionButton
+          text="เพิ่มรายการใช้จ่ายแขกนอก"
+          icon="bx-dollar"
+          onClick={() => setStandaloneSaleIsOpen(true)}
+          // highlight
+        />
+        {/* <ActionButton
           text="Arrivals"
           icon="bx-arrow-to-left"
           onClick={() => navigate("/arrivals")}
@@ -968,7 +990,7 @@ const Main = () => {
           text="รายการจองทั้งหมด"
           icon="bx-table"
           onClick={() => navigate("/master")}
-        />
+        /> */}
       </section>
 
       <section className="main__statsGrid">

@@ -7,8 +7,12 @@ import ModalCloseButton from "../../components/ModalCloseButton";
 import CashShiftNudge from "../../components/CashShiftNudge";
 import { API_URL } from "../../config/api";
 import { formatBookingDates } from "../../helpers/bookingHelpers";
-import { paymentMethodOptions } from "../../helpers/options";
 import { customStyles, type OptionType } from "../../helpers/selectStyling";
+import {
+  addTransactionPaymentMethodOptions,
+  transactionPresets,
+  transactionTypeOptions,
+} from "../../helpers/transactionFormOptions";
 import type { booking } from "../../types/bookingTypes";
 import "./AddTransaction.css";
 import "./Cancellation.css";
@@ -27,24 +31,6 @@ type AddTransactionFormData = {
   adjustmentDirection: AdjustmentDirection;
 };
 
-const transactionTypeOptions: OptionType[] = [
-  { value: "towel", label: "ผ้าเช็ดตัว", color: "#38bdf8" },
-  { value: "motorbike", label: "มอเตอร์ไซค์", color: "#fb923c" },
-  { value: "extraBed", label: "เตียงเสริม", color: "#ec4899" },
-  { value: "joinTour", label: "Join Tour", color: "#22c55e" },
-  { value: "slowBoat", label: "Slow Boat", color: "#2dd4bf" },
-  { value: "pickACraft", label: "Pick A Craft", color: "#f59e0b" },
-  { value: "trek2D", label: "Trek 2D", color: "#16a34a" },
-  { value: "setMenu", label: "Set Menu", color: "#84cc16" },
-  { value: "sleeperBus", label: "Sleeper Bus", color: "#6366f1" },
-  { value: "onlyWalk", label: "Only Walk", color: "#14b8a6" },
-  { value: "laundry", label: "Laundry", color: "#60a5fa" },
-  { value: "bicycle", label: "Bicycle", color: "#fb923c" },
-  { value: "car", label: "Car", color: "#64748b" },
-  { value: "misc", label: "Misc", color: "#94a3b8" },
-  { value: "adjustment", label: "ปรับราคา", color: "#a78bfa" },
-];
-
 const transactionAttachmentMeta: Record<
   TransactionType,
   { label: string; color: string }
@@ -55,15 +41,16 @@ const transactionAttachmentMeta: Record<
   depositRefund: { label: "คืนมัดจำ", color: "#f87171" },
   cancellationRefund: { label: "คืนเงินยกเลิก", color: "#fb7185" },
   roomRefund: { label: "คืนค่าห้อง", color: "#fb7185" },
+  roomChargeWriteOff: { label: "ปิดยอดค่าห้องที่เหลือ", color: "#94a3b8" },
   settlementCharge: { label: "รับชำระยอดค้าง", color: "#22c55e" },
   compensation: { label: "ชดเชยลูกค้า", color: "#38bdf8" },
   depositKept: { label: "เก็บมัดจำเป็นรายได้", color: "#facc15" },
   paymentCorrection: { label: "แก้ไขการชำระเงิน", color: "#a78bfa" },
-  towel: { label: "ผ้าเช็ดตัว", color: "#38bdf8" },
-  motorbike: { label: "มอเตอร์ไซค์", color: "#fb923c" },
+  towel: { label: "Towel", color: "#38bdf8" },
+  motorbike: { label: "Motorbike", color: "#fb923c" },
   slowBoat: { label: "Slow Boat", color: "#2dd4bf" },
   joinTour: { label: "Join Tour", color: "#22c55e" },
-  extraBed: { label: "เตียงเสริม", color: "#ec4899" },
+  extraBed: { label: "Extra Bed", color: "#ec4899" },
   pickACraft: { label: "Pick A Craft", color: "#f59e0b" },
   trek2D: { label: "Trek 2D", color: "#16a34a" },
   setMenu: { label: "Set Menu", color: "#84cc16" },
@@ -73,23 +60,10 @@ const transactionAttachmentMeta: Record<
   bicycle: { label: "Bicycle", color: "#fb923c" },
   car: { label: "Car", color: "#64748b" },
   misc: { label: "Misc", color: "#94a3b8" },
+  rainCoat: { label: "Rain Coat", color: "#0ea5e9" },
+  passwordLock: { label: "Password Lock", color: "#8b5cf6" },
+  cooking: { label: "Cooking", color: "#f97316" },
   cardSurcharge: { label: "ค่าธรรมเนียมบัตร 3%", color: "#94a3b8" },
-};
-
-const addTransactionPaymentMethodOptions = paymentMethodOptions.filter(
-  (option) => option.value !== "OTA" && option.value !== "Unpaid",
-);
-
-const transactionPresets: Partial<
-  Record<TransactionType, { amount: number; paymentMethod?: PaymentMethod }>
-> = {
-  towel: { amount: 30, paymentMethod: "Cash" },
-  laundry: { amount: 60, paymentMethod: "Cash" },
-  slowBoat: { amount: 250 },
-  joinTour: { amount: 400 },
-  onlyWalk: { amount: 400 },
-  trek2D: { amount: 600 },
-  setMenu: { amount: 120 },
 };
 
 const AddTransaction = ({

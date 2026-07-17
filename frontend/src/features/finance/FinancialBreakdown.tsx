@@ -20,7 +20,9 @@ import type {
 
 type ExpectedStayRevenueBreakdownTransaction = {
   transactionId?: string;
-  bookingId: string;
+  bookingId?: string;
+  saleId?: string;
+  sourceType?: "booking" | "standaloneSale";
   guestName: string;
   platformId: PlatformId;
   type: TransactionType;
@@ -242,13 +244,18 @@ const BreakdownSection = ({
                         className="financialBreakdown__transaction"
                         key={
                           transaction.transactionId ||
-                          `${transaction.bookingId}-${group.key}-${index}`
+                          `${transaction.bookingId || transaction.saleId}-${group.key}-${index}`
                         }
                       >
                         <div className="financialBreakdown__transactionMain">
-                          <strong>{transaction.guestName}</strong>
+                          <strong>
+                            {transaction.sourceType === "standaloneSale" && (
+                              <span className="nonGuestBadge">แขกนอก</span>
+                            )}
+                            {transaction.guestName}
+                          </strong>
                           <span>
-                            {transaction.bookingId} · {transaction.label} ·{" "}
+                            {transaction.saleId || transaction.bookingId} · {transaction.label} ·{" "}
                             {formatDateTime(transaction.createdAt, dateFormat)}
                           </span>
                         </div>

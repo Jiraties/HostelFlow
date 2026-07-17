@@ -12,6 +12,7 @@ export type TransactionType =
   | "depositRefund"
   | "cancellationRefund"
   | "roomRefund"
+  | "roomChargeWriteOff"
   | "settlementCharge"
   | "compensation"
   | "depositKept"
@@ -30,6 +31,9 @@ export type TransactionType =
   | "bicycle"
   | "car"
   | "misc"
+  | "rainCoat"
+  | "passwordLock"
+  | "cooking"
   | "cardSurcharge";
 
 export type ResolutionOutcome =
@@ -77,6 +81,14 @@ interface Cancellation {
   cancelledByStaffUsername: string;
 }
 
+interface AdvancePayment {
+  calculationMode?: "percentage" | "amount";
+  percentage: number;
+  amount: number;
+  nonRefundableOnCancellation: true;
+  transactionId: string;
+}
+
 interface Checkout {
   roomReleaseStatus: RoomReleaseStatus;
   depositRefundAmount: number;
@@ -118,6 +130,8 @@ export interface transcation {
     | "ADD_TRANSACTION"
     | "CANCEL_BOOKING"
     | "RESOLVE_STAY"
+    | "ADD_STANDALONE_SALE"
+    | "ADJUST_STANDALONE_SALE"
     | "SYSTEM_MIGRATION";
   note?: string;
   reference?: string;
@@ -154,6 +168,7 @@ export interface booking {
   checkInMode?: "normal" | "admin_historical_onboarding";
 
   passport?: Passport;
+  advancePayment?: AdvancePayment;
   cancellation?: Cancellation;
   checkout?: Checkout;
   resolution?: Resolution;

@@ -36,9 +36,28 @@ interface BookingFormData {
   note: string;
 }
 
-type BookingFormErrors = Partial<Record<keyof BookingFormData, string>>;
+type BookingFormErrors = Partial<
+  Record<
+    | keyof BookingFormData
+    | "advancePaymentPercentage"
+    | "advancePaymentAmount",
+    string
+  >
+>;
 type RoomOptionWithReason = OptionType & { disabledReason?: string };
 type AvailabilityStatus = "idle" | "loading" | "ready" | "error";
+type AdvancePaymentCalculationMode = "percentage" | "amount";
+const advancePaymentMethodOptions = paymentMethodOptions.filter((option) =>
+  ["Cash", "Card", "Transfer"].includes(option.value),
+);
+
+const formatCurrency = (amount: number) =>
+  new Intl.NumberFormat("th-TH", {
+    style: "currency",
+    currency: "THB",
+    minimumFractionDigits: amount % 1 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
 
 const nightsBetween = (checkIn: string, checkOut: string) => {
   if (!checkIn || !checkOut) return "";
@@ -136,6 +155,13 @@ const AddBooking = ({
     user?.username,
   ]);
   const [formData, setFormData] = useState<BookingFormData>(initialFormData);
+  const [advancePaymentEnabled, setAdvancePaymentEnabled] = useState(false);
+  const [advancePaymentCalculationMode, setAdvancePaymentCalculationMode] =
+    useState<AdvancePaymentCalculationMode>("percentage");
+  const [advancePaymentPercentage, setAdvancePaymentPercentage] =
+    useState("50");
+  const [advancePaymentAmountInput, setAdvancePaymentAmountInput] =
+    useState("");
   const [nights, setNights] = useState(() =>
     nightsBetween(initialFormData.checkIn, initialFormData.checkOut),
   );
@@ -144,14 +170,33 @@ const AddBooking = ({
     formData.paymentMethod === "Cash" &&
     Number.isFinite(Number(formData.price)) &&
     Number(formData.price) > 0;
+  const roomChargeAmount = Number(formData.price);
+  const parsedAdvancePaymentPercentage = Number(advancePaymentPercentage);
+  const parsedAdvancePaymentAmount = Number(advancePaymentAmountInput);
+  const advancePaymentAmount =
+    advancePaymentCalculationMode === "amount"
+      ? parsedAdvancePaymentAmount
+      : Number.isFinite(roomChargeAmount) &&
+          Number.isFinite(parsedAdvancePaymentPercentage)
+        ? Number(
+            (
+              (roomChargeAmount * parsedAdvancePaymentPercentage) /
+              100
+            ).toFixed(2),
+          )
+        : 0;
+  const visiblePaymentMethodOptions = advancePaymentEnabled
+    ? advancePaymentMethodOptions
+    : paymentMethodOptions;
 
   useEffect(() => {
     onDirtyChange?.(
-      JSON.stringify(formData) !== JSON.stringify(initialFormData),
+      JSON.stringify(formData) !== JSON.stringify(initialFormData) ||
+        advancePaymentEnabled,
     );
 
     return () => onDirtyChange?.(false);
-  }, [formData, initialFormData, onDirtyChange]);
+  }, [advancePaymentEnabled, formData, initialFormData, onDirtyChange]);
 
   const roomAvailabilityReady =
     !isEditMode &&
@@ -357,7 +402,62 @@ const AddBooking = ({
 
       return updated;
     });
+    if (field === "platformId" && value !== "WALK") {
+      setAdvancePaymentEnabled(false);
+      setFormErrors((prev) => ({
+        ...prev,
+        advancePaymentPercentage: undefined,
+        advancePaymentAmount: undefined,
+      }));
+    }
     setFormErrors((prev) => ({ ...prev, [field]: undefined }));
+  };
+
+  const advancePaymentChangeHandler = (enabled: boolean) => {
+    if (submitting) return;
+
+    setAdvancePaymentEnabled(enabled);
+    setFormErrors((prev) => ({
+      ...prev,
+      advancePaymentPercentage: undefined,
+      advancePaymentAmount: undefined,
+    }));
+    if (
+      enabled &&
+      !advancePaymentMethodOptions.some(
+        (option) => option.value === formData.paymentMethod,
+      )
+    ) {
+      formDataChangeHandler("paymentMethod", "Transfer");
+    }
+  };
+
+  const advancePaymentCalculationModeChangeHandler = (
+    mode: AdvancePaymentCalculationMode,
+  ) => {
+    if (submitting || mode === advancePaymentCalculationMode) return;
+
+    if (mode === "amount" && !advancePaymentAmountInput) {
+      const calculatedAmount =
+        Number.isFinite(roomChargeAmount) &&
+        Number.isFinite(parsedAdvancePaymentPercentage)
+          ? Number(
+              (
+                (roomChargeAmount * parsedAdvancePaymentPercentage) /
+                100
+              ).toFixed(2),
+            )
+          : 0;
+      setAdvancePaymentAmountInput(
+        calculatedAmount > 0 ? String(calculatedAmount) : "",
+      );
+    }
+    setAdvancePaymentCalculationMode(mode);
+    setFormErrors((prev) => ({
+      ...prev,
+      advancePaymentPercentage: undefined,
+      advancePaymentAmount: undefined,
+    }));
   };
 
   const dateRangeChangeHandler = (checkIn: string, checkOut: string) => {
@@ -446,6 +546,26 @@ const AddBooking = ({
       if (!formData.paymentMethod) {
         nextErrors.paymentMethod = "กรุณาเลือกช่องทางการชำระเงิน";
       }
+      if (
+        advancePaymentEnabled &&
+        advancePaymentCalculationMode === "percentage" &&
+        (!Number.isFinite(parsedAdvancePaymentPercentage) ||
+          parsedAdvancePaymentPercentage <= 0 ||
+          parsedAdvancePaymentPercentage > 100)
+      ) {
+        nextErrors.advancePaymentPercentage =
+          "เปอร์เซ็นต์ต้องมากกว่า 0 และไม่เกิน 100";
+      }
+      if (
+        advancePaymentEnabled &&
+        advancePaymentCalculationMode === "amount" &&
+        (!Number.isFinite(parsedAdvancePaymentAmount) ||
+          parsedAdvancePaymentAmount <= 0 ||
+          parsedAdvancePaymentAmount > roomChargeAmount)
+      ) {
+        nextErrors.advancePaymentAmount =
+          "ยอดเงินต้องมากกว่า 0 และไม่เกินราคาห้องทั้งหมด";
+      }
       if (!formData.bookingId.trim()) {
         nextErrors.bookingId = "กรุณากรอก Booking ID / Confirmation Number";
       }
@@ -503,7 +623,23 @@ const AddBooking = ({
       const response = await axios
         .post(
           `${API_URL}/bookings/newBooking`,
-          { booking: formData },
+          {
+            booking: {
+              ...formData,
+              ...(advancePaymentEnabled
+                ? {
+                    advancePayment: {
+                      enabled: true,
+                      paymentMethod: formData.paymentMethod,
+                      calculationMode: advancePaymentCalculationMode,
+                      ...(advancePaymentCalculationMode === "amount"
+                        ? { amount: parsedAdvancePaymentAmount }
+                        : { percentage: parsedAdvancePaymentPercentage }),
+                    },
+                  }
+                : {}),
+            },
+          },
           { withCredentials: true },
         )
         .catch((err) => {
@@ -531,6 +667,10 @@ const AddBooking = ({
         staffUsername: user?.username || "",
         note: "",
       });
+      setAdvancePaymentEnabled(false);
+      setAdvancePaymentCalculationMode("percentage");
+      setAdvancePaymentPercentage("50");
+      setAdvancePaymentAmountInput("");
       setNights("");
     } finally {
       setSubmitting(false);
@@ -722,15 +862,19 @@ const AddBooking = ({
               )}
             </div>
             <div>
-              <p className="addBooking__label">จ่ายผ่าน</p>
+              <p className="addBooking__label">
+                {advancePaymentEnabled
+                  ? "ช่องทางรับเงินล่วงหน้า"
+                  : "จ่ายผ่าน"}
+              </p>
               <Select<OptionType>
                 styles={customStyles<OptionType>()}
                 classNamePrefix="rs"
-                options={paymentMethodOptions}
+                options={visiblePaymentMethodOptions}
                 placeholder="เลือกช่องทางการชำระเงิน"
                 formatOptionLabel={formatPaymentMethodLabel}
                 value={
-                  paymentMethodOptions.find(
+                  visiblePaymentMethodOptions.find(
                     (option) => option.value === formData.paymentMethod,
                   ) || null
                 }
@@ -742,6 +886,152 @@ const AddBooking = ({
                 <p className="addBooking__fieldError">
                   {formErrors.paymentMethod}
                 </p>
+              )}
+              {formData.platformId === "WALK" && (
+                <div className="addBooking__advanceWrap">
+                  <label className="addBooking__advanceOption">
+                    <input
+                      type="checkbox"
+                      checked={advancePaymentEnabled}
+                      onChange={(event) =>
+                        advancePaymentChangeHandler(event.target.checked)
+                      }
+                    />
+                    <span className="addBooking__advanceCheckmark" />
+                    <span className="addBooking__advanceCopy">
+                      <span>รับค่าห้องล่วงหน้า</span>
+                      <small>ยกเลิกแล้วไม่คืนเงินล่วงหน้า</small>
+                    </span>
+                  </label>
+
+                  {advancePaymentEnabled && (
+                    <>
+                      <div
+                        className="addBooking__advanceMode"
+                        role="group"
+                        aria-label="วิธีระบุค่าห้องล่วงหน้า"
+                      >
+                        <button
+                          type="button"
+                          className={
+                            advancePaymentCalculationMode === "percentage"
+                              ? "addBooking__advanceModeButton addBooking__advanceModeButton--active"
+                              : "addBooking__advanceModeButton"
+                          }
+                          aria-pressed={
+                            advancePaymentCalculationMode === "percentage"
+                          }
+                          onClick={() =>
+                            advancePaymentCalculationModeChangeHandler(
+                              "percentage",
+                            )
+                          }
+                        >
+                          เปอร์เซ็นต์
+                        </button>
+                        <button
+                          type="button"
+                          className={
+                            advancePaymentCalculationMode === "amount"
+                              ? "addBooking__advanceModeButton addBooking__advanceModeButton--active"
+                              : "addBooking__advanceModeButton"
+                          }
+                          aria-pressed={
+                            advancePaymentCalculationMode === "amount"
+                          }
+                          onClick={() =>
+                            advancePaymentCalculationModeChangeHandler("amount")
+                          }
+                        >
+                          จำนวนเงิน
+                        </button>
+                      </div>
+                      <label className="addBooking__advancePercentage">
+                        <span>
+                          {advancePaymentCalculationMode === "amount"
+                            ? "ยอดเงินที่รับล่วงหน้า"
+                            : "เปอร์เซ็นต์ที่รับล่วงหน้า"}
+                        </span>
+                        <span className="addBooking__advancePercentageInput">
+                          <input
+                            className={`boxInput ${
+                              (advancePaymentCalculationMode === "amount"
+                                ? formErrors.advancePaymentAmount
+                                : formErrors.advancePaymentPercentage)
+                                ? "boxInput--error"
+                                : ""
+                            }`}
+                            type="number"
+                            inputMode="decimal"
+                            min="0.01"
+                            max={
+                              advancePaymentCalculationMode === "amount"
+                                ? formData.price || undefined
+                                : "100"
+                            }
+                            step="0.01"
+                            value={
+                              advancePaymentCalculationMode === "amount"
+                                ? advancePaymentAmountInput
+                                : advancePaymentPercentage
+                            }
+                            onChange={(event) => {
+                              if (
+                                advancePaymentCalculationMode === "amount"
+                              ) {
+                                setAdvancePaymentAmountInput(event.target.value);
+                              } else {
+                                setAdvancePaymentPercentage(event.target.value);
+                              }
+                              setFormErrors((prev) => ({
+                                ...prev,
+                                advancePaymentPercentage: undefined,
+                                advancePaymentAmount: undefined,
+                              }));
+                            }}
+                          />
+                          <span>
+                            {advancePaymentCalculationMode === "amount"
+                              ? "฿"
+                              : "%"}
+                          </span>
+                        </span>
+                      </label>
+                      {(advancePaymentCalculationMode === "amount"
+                        ? formErrors.advancePaymentAmount
+                        : formErrors.advancePaymentPercentage) && (
+                        <p className="addBooking__fieldError">
+                          {advancePaymentCalculationMode === "amount"
+                            ? formErrors.advancePaymentAmount
+                            : formErrors.advancePaymentPercentage}
+                        </p>
+                      )}
+
+                      {advancePaymentAmount > 0 &&
+                        advancePaymentAmount <= roomChargeAmount &&
+                        (advancePaymentCalculationMode === "amount" ||
+                          parsedAdvancePaymentPercentage <= 100) && (
+                          <div className="addBooking__advanceSummary">
+                            <div>
+                              <span>รับตอนนี้</span>
+                              <span>{formatCurrency(advancePaymentAmount)}</span>
+                            </div>
+                            <div>
+                              <span>เหลือชำระตอนเช็คอิน</span>
+                              <span>
+                                {formatCurrency(
+                                  Math.max(
+                                    roomChargeAmount - advancePaymentAmount,
+                                    0,
+                                  ),
+                                )}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                    </>
+                  )}
+                </div>
               )}
             </div>
             <div>

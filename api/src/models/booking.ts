@@ -30,6 +30,8 @@ export type SourceAction =
   | "ADD_TRANSACTION"
   | "CANCEL_BOOKING"
   | "RESOLVE_STAY"
+  | "ADD_STANDALONE_SALE"
+  | "ADJUST_STANDALONE_SALE"
   | "SYSTEM_MIGRATION";
 export type CancellationType =
   | "refundable"
@@ -43,6 +45,7 @@ export type TransactionType =
   | "depositRefund"
   | "cancellationRefund"
   | "roomRefund"
+  | "roomChargeWriteOff"
   | "settlementCharge"
   | "compensation"
   | "depositKept"
@@ -61,6 +64,9 @@ export type TransactionType =
   | "bicycle"
   | "car"
   | "misc"
+  | "rainCoat"
+  | "passwordLock"
+  | "cooking"
   | "cardSurcharge";
 
 export type ResolutionOutcome =
@@ -152,6 +158,14 @@ interface Cancellation {
   cancelledByStaffUsername: string;
 }
 
+interface AdvancePayment {
+  calculationMode?: "percentage" | "amount";
+  percentage: number;
+  amount: number;
+  nonRefundableOnCancellation: true;
+  transactionId: string;
+}
+
 interface Checkout {
   roomReleaseStatus: RoomReleaseStatus;
   depositRefundAmount: number;
@@ -214,6 +228,7 @@ export interface booking extends Document {
   checkInMode?: CheckInMode;
 
   passport?: Passport;
+  advancePayment?: AdvancePayment;
   cancellation?: Cancellation;
   checkout?: Checkout;
   resolution?: Resolution;
@@ -251,7 +266,7 @@ const commercialSegmentSchema = new mongoose.Schema({
   requestHash: { type: String, select: false },
 });
 
-const transactionSchema = new mongoose.Schema({
+export const transactionSchema = new mongoose.Schema({
   type: {
     type: String,
     enum: [
@@ -261,6 +276,7 @@ const transactionSchema = new mongoose.Schema({
       "depositRefund",
       "cancellationRefund",
       "roomRefund",
+      "roomChargeWriteOff",
       "settlementCharge",
       "compensation",
       "depositKept",
@@ -279,6 +295,9 @@ const transactionSchema = new mongoose.Schema({
       "bicycle",
       "car",
       "misc",
+      "rainCoat",
+      "passwordLock",
+      "cooking",
       "cardSurcharge",
     ],
   },
@@ -300,6 +319,7 @@ const transactionSchema = new mongoose.Schema({
       "depositRefund",
       "cancellationRefund",
       "roomRefund",
+      "roomChargeWriteOff",
       "settlementCharge",
       "compensation",
       "depositKept",
@@ -318,6 +338,9 @@ const transactionSchema = new mongoose.Schema({
       "bicycle",
       "car",
       "misc",
+      "rainCoat",
+      "passwordLock",
+      "cooking",
     ],
     required: false,
   },
@@ -340,6 +363,8 @@ const transactionSchema = new mongoose.Schema({
       "ADD_TRANSACTION",
       "CANCEL_BOOKING",
       "RESOLVE_STAY",
+      "ADD_STANDALONE_SALE",
+      "ADJUST_STANDALONE_SALE",
       "SYSTEM_MIGRATION",
     ],
   },
@@ -374,6 +399,25 @@ const cancellationSchema = new mongoose.Schema(
     keptAmount: { type: Number, default: 0 },
     cancelledAt: { type: Date, required: true },
     cancelledByStaffUsername: { type: String, required: true },
+  },
+  { _id: false },
+);
+
+const advancePaymentSchema = new mongoose.Schema(
+  {
+    calculationMode: {
+      type: String,
+      enum: ["percentage", "amount"],
+      default: "percentage",
+    },
+    percentage: { type: Number, min: 0.01, max: 100, required: true },
+    amount: { type: Number, min: 0, required: true },
+    nonRefundableOnCancellation: {
+      type: Boolean,
+      required: true,
+      validate: (value: boolean) => value === true,
+    },
+    transactionId: { type: String, required: true },
   },
   { _id: false },
 );
@@ -496,6 +540,8 @@ const bookingSchema = new mongoose.Schema({
       authTag: { type: String, select: false },
     },
   },
+
+  advancePayment: advancePaymentSchema,
 
   cancellation: cancellationSchema,
 

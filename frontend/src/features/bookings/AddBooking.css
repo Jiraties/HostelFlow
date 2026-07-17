@@ -111,6 +111,174 @@
   margin-left: auto;
 }
 
+.addBooking__advanceWrap {
+  margin-top: 0.7rem;
+}
+
+.addBooking__advanceOption {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.6rem;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.addBooking__advanceOption:hover {
+  background-color: #00000004;
+}
+
+.addBooking__advanceOption:has(input:checked) {
+  border-color: color-mix(in srgb, var(--green) 45%, #e5e7eb);
+  background-color: color-mix(in srgb, var(--green) 5%, transparent);
+}
+
+.addBooking__advanceOption input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.addBooking__advanceCheckmark {
+  flex: 0 0 1.05rem;
+  width: 1.05rem;
+  height: 1.05rem;
+  margin-top: 0.1rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.3rem;
+  background-color: #fff;
+  display: grid;
+  place-items: center;
+}
+
+.addBooking__advanceOption input:focus-visible + .addBooking__advanceCheckmark {
+  outline: 2px solid color-mix(in srgb, var(--green) 45%, transparent);
+  outline-offset: 2px;
+}
+
+.addBooking__advanceOption input:checked + .addBooking__advanceCheckmark {
+  border-color: var(--green);
+  background-color: var(--green);
+}
+
+.addBooking__advanceOption input:checked + .addBooking__advanceCheckmark::after {
+  content: "";
+  width: 0.28rem;
+  height: 0.52rem;
+  margin-top: -0.08rem;
+  border: solid #fff;
+  border-width: 0 0.12rem 0.12rem 0;
+  transform: rotate(45deg);
+}
+
+.addBooking__advanceCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  line-height: 1.35;
+}
+
+.addBooking__advanceCopy > span {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.addBooking__advanceCopy small {
+  color: #6b7280;
+  font-size: 0.78rem;
+  font-weight: 400;
+}
+
+.addBooking__advanceMode {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin-top: 0.55rem;
+  padding: 0.2rem;
+  border-radius: 0.55rem;
+  background-color: #00000008;
+}
+
+.addBooking__advanceModeButton {
+  min-height: 2rem;
+  padding: 0.3rem 0.65rem;
+  border: 0;
+  border-radius: 0.4rem;
+  background-color: transparent;
+  color: #6b7280;
+  font-family: "IBM Plex Sans Thai", sans-serif;
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.addBooking__advanceModeButton--active {
+  background-color: #fff;
+  color: var(--text);
+  box-shadow: var(--light-shadow);
+  font-weight: 500;
+}
+
+.addBooking__advanceModeButton:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--green) 45%, transparent);
+  outline-offset: 1px;
+}
+
+.addBooking__advancePercentage {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.55rem;
+  font-size: 0.82rem;
+}
+
+.addBooking__advancePercentageInput {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.addBooking__advancePercentageInput input {
+  box-sizing: border-box;
+  width: 5.25rem;
+  height: 2.25rem;
+  padding: 0.35rem 0.55rem;
+  text-align: right;
+}
+
+.addBooking__advancePercentageInput > span {
+  color: #6b7280;
+  font-weight: 400;
+}
+
+.addBooking__advanceSummary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.55rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.55rem;
+  background-color: #00000005;
+  font-size: 0.82rem;
+}
+
+.addBooking__advanceSummary > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.addBooking__advanceSummary > div > span:last-child {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 .platformCell__dot {
   width: 0.5rem;
   height: 0.5rem;

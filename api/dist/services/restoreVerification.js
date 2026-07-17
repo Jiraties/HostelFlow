@@ -8,8 +8,10 @@ const booking_1 = __importDefault(require("../models/booking"));
 const cashShift_1 = __importDefault(require("../models/cashShift"));
 const dailyClose_1 = __importDefault(require("../models/dailyClose"));
 const user_1 = __importDefault(require("../models/user"));
+const standaloneSale_1 = __importDefault(require("../models/standaloneSale"));
 const roomInventory_1 = require("../config/roomInventory");
 const financeHelpers_1 = require("../helpers/financeHelpers");
+const cashLedgerTransaction_1 = require("./cashLedgerTransaction");
 const moneyEquals = (left, right) => Math.abs(left - right) < 0.005;
 /**
  * Read-only consistency checks intended for an isolated restored database.
@@ -17,10 +19,11 @@ const moneyEquals = (left, right) => Math.abs(left - right) < 0.005;
  * never selected, decrypted, or logged.
  */
 const verifyRestoredData = async () => {
-    const [bookings, users, cashShifts, dailyCloses] = await Promise.all([
+    const [bookings, standaloneSales, users, cashShifts, dailyCloses] = await Promise.all([
         booking_1.default.find({})
             .select("bookingId revision roomStays commercialSegments transactions voided")
             .lean(),
+        standaloneSale_1.default.find({}).select("saleId revision transactions").lean(),
         user_1.default.find({}).select("username active").lean(),
         cashShift_1.default.find({}).lean(),
         dailyClose_1.default.find({}).select("businessDate staffUsername revision").lean(),
@@ -48,6 +51,9 @@ const verifyRestoredData = async () => {
             }
             if (transaction.paymentMethod === "Cash" && Math.abs(transaction.amount || 0) > 0) {
                 const shiftId = transaction.cashShiftId;
+                if (!shiftId && !(0, cashLedgerTransaction_1.transactionRequiresCashShift)(transaction)) {
+                    continue;
+                }
                 if (!shiftId || !shiftIds.has(String(shiftId))) {
                     errors.push(`booking ${booking.bookingId} has cash activity without a valid shift`);
                     continue;
@@ -67,6 +73,31 @@ const verifyRestoredData = async () => {
                 !Number.isFinite(segment.amount) ||
                 segment.amount <= 0) {
                 errors.push(`booking ${booking.bookingId} has an invalid commercial segment`);
+            }
+        }
+    }
+    for (const sale of standaloneSales) {
+        if (!sale.saleId || !Number.isInteger(sale.revision) || sale.revision < 0) {
+            errors.push(`standalone sale ${sale.saleId || "<missing>"} is invalid`);
+        }
+        for (const transaction of sale.transactions || []) {
+            if (!Number.isFinite(transaction.amount) || transaction.amount < 0) {
+                errors.push(`standalone sale ${sale.saleId} has an invalid transaction amount`);
+            }
+            if (transaction.paymentMethod === "Cash" && Math.abs(transaction.amount || 0) > 0) {
+                const shiftId = transaction.cashShiftId;
+                if (!shiftId && !(0, cashLedgerTransaction_1.transactionRequiresCashShift)(transaction)) {
+                    continue;
+                }
+                if (!shiftId || !shiftIds.has(String(shiftId))) {
+                    errors.push(`standalone sale ${sale.saleId} has cash activity without a valid shift`);
+                    continue;
+                }
+                const key = String(shiftId);
+                transactionsByShift.set(key, [
+                    ...(transactionsByShift.get(key) || []),
+                    transaction,
+                ]);
             }
         }
     }
@@ -115,6 +146,7 @@ const verifyRestoredData = async () => {
         checkedAt: new Date().toISOString(),
         counts: {
             bookings: bookings.length,
+            standaloneSales: standaloneSales.length,
             users: users.length,
             cashShifts: cashShifts.length,
             dailyCloses: dailyCloses.length,

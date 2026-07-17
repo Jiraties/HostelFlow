@@ -12,6 +12,8 @@ export type actionType =
   | "POST_CLOSE_ADJUSTMENT"
   | "MANAGE_ROOM_STAYS"
   | "ADD_TRANSACTION"
+  | "ADD_STANDALONE_SALE"
+  | "ADJUST_STANDALONE_SALE"
   | "CREATE_USER"
   | "RESET_USER_PASSWORD"
   | "UPDATE_USER"
@@ -30,6 +32,7 @@ export type TransactionType =
   | "depositRefund"
   | "cancellationRefund"
   | "roomRefund"
+  | "roomChargeWriteOff"
   | "settlementCharge"
   | "compensation"
   | "depositKept"
@@ -48,6 +51,9 @@ export type TransactionType =
   | "bicycle"
   | "car"
   | "misc"
+  | "rainCoat"
+  | "passwordLock"
+  | "cooking"
   | "cardSurcharge";
 
 export type PaymentMethod = "OTA" | "Cash" | "Card" | "Transfer" | "Unpaid";

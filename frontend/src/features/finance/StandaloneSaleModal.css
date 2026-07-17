@@ -1,0 +1,59 @@
+.standaloneSale * {
+  font-weight: 400;
+}
+
+.standaloneSale h1,
+.standaloneSale strong,
+.standaloneSale .nonGuestBadge,
+.standaloneSale .cashShiftNudge button,
+.standaloneSale .addTransaction__paymentTag {
+  font-weight: 500;
+}
+
+.standaloneSale__header {
+  align-items: flex-start;
+  padding-right: 3rem;
+}
+
+.standaloneSale__form {
+  gap: 1.2rem;
+}
+
+.standaloneSale__selectOption {
+  display: flex;
+  align-items: center;
+}
+
+.standaloneSale__selectOption > span {
+  width: 10px;
+  height: 10px;
+  display: inline-block;
+  margin-right: 8px;
+  border-radius: 50%;
+}
+
+.standaloneSale__optionalFields {
+  display: grid;
+  gap: 1.2rem;
+}
+
+.standaloneSale__actions {
+  margin-top: 2rem;
+}
+
+.standaloneSale__detailsAction--active {
+  color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 7%, #fff);
+}
+
+.nonGuestBadge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.18rem 0.48rem;
+  border-radius: 999px;
+  background: #ffb53450;
+  color: #f78d0b !important;
+  font-weight: 500;
+  font-size: 0.72rem;
+}

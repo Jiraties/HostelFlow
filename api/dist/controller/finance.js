@@ -3,12 +3,13 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.approveReviewEvent = exports.getReviewEvents = exports.upsertDailyClose = exports.closeCashShift = exports.startCashShift = exports.resolveCashShiftAudit = exports.getCashShiftAudit = exports.getCashPosition = exports.getReconciliation = exports.getTodayRevenueSummary = exports.getTodayRevenueBreakdown = exports.getExpectedStayRevenueBreakdown = void 0;
+exports.approveStandaloneReviewEvent = exports.approveReviewEvent = exports.getReviewEvents = exports.upsertDailyClose = exports.closeCashShift = exports.startCashShift = exports.resolveCashShiftAudit = exports.getCashShiftAudit = exports.getCashPosition = exports.getReconciliation = exports.getTodayRevenueSummary = exports.getTodayRevenueBreakdown = exports.getExpectedStayRevenueBreakdown = void 0;
 const mongoose_1 = __importDefault(require("mongoose"));
 const booking_1 = __importDefault(require("../models/booking"));
 const cashShift_1 = __importDefault(require("../models/cashShift"));
 const dailyClose_1 = __importDefault(require("../models/dailyClose"));
 const user_1 = __importDefault(require("../models/user"));
+const standaloneSale_1 = __importDefault(require("../models/standaloneSale"));
 const activityServices_1 = require("../services/activityServices");
 const financeHelpers_1 = require("../helpers/financeHelpers");
 const commercialSegmentHelpers_1 = require("../helpers/commercialSegmentHelpers");
@@ -29,11 +30,11 @@ const expectedStayRevenueTransactionMeta = {
         icon: "bx-wallet",
     },
     adjustment: { label: "ปรับราคา", color: "#a78bfa", icon: "bx-edit-alt" },
-    towel: { label: "ผ้าเช็ดตัว", color: "#38bdf8", icon: "bx-bath" },
-    motorbike: { label: "มอเตอร์ไซค์", color: "#fb923c", icon: "bx-cycling" },
+    towel: { label: "Towel", color: "#38bdf8", icon: "bx-bath" },
+    motorbike: { label: "Motorbike", color: "#fb923c", icon: "bx-cycling" },
     slowBoat: { label: "Slow Boat", color: "#2dd4bf", icon: "bx-water" },
     joinTour: { label: "Join Tour", color: "#22c55e", icon: "bx-map" },
-    extraBed: { label: "เตียงเสริม", color: "#ec4899", icon: "bx-bed" },
+    extraBed: { label: "Extra Bed", color: "#ec4899", icon: "bx-bed" },
     pickACraft: { label: "Pick A Craft", color: "#f59e0b", icon: "bx-palette" },
     trek2D: { label: "Trek 2D", color: "#16a34a", icon: "bx-map-alt" },
     setMenu: { label: "Set Menu", color: "#84cc16", icon: "bx-food-menu" },
@@ -43,12 +44,20 @@ const expectedStayRevenueTransactionMeta = {
     bicycle: { label: "Bicycle", color: "#fb923c", icon: "bx-cycling" },
     car: { label: "Car", color: "#64748b", icon: "bx-car" },
     misc: { label: "Misc", color: "#94a3b8", icon: "bx-dots-horizontal-rounded" },
+    rainCoat: { label: "Rain Coat", color: "#0ea5e9", icon: "bx-cloud-rain" },
+    passwordLock: { label: "Password Lock", color: "#8b5cf6", icon: "bx-lock" },
+    cooking: { label: "Cooking", color: "#f97316", icon: "bx-food-menu" },
     cardSurcharge: {
         label: "ค่าธรรมเนียมบัตร 3%",
         color: "#94a3b8",
         icon: "bx-credit-card-alt",
     },
     roomRefund: { label: "คืนค่าห้อง", color: "#fb7185", icon: "bx-undo" },
+    roomChargeWriteOff: {
+        label: "ปิดยอดค่าห้องที่เหลือ",
+        color: "#94a3b8",
+        icon: "bx-calendar-x",
+    },
     cancellationRefund: {
         label: "คืนเงินยกเลิก",
         color: "#fb7185",
@@ -72,10 +81,14 @@ const expectedStayRevenueTypes = new Set([
     "bicycle",
     "car",
     "misc",
+    "rainCoat",
+    "passwordLock",
+    "cooking",
     "cardSurcharge",
 ]);
 const expectedStayRevenueReductionTypes = new Set([
     "roomRefund",
+    "roomChargeWriteOff",
     "cancellationRefund",
     "compensation",
 ]);
@@ -85,6 +98,27 @@ const paymentMethodMeta = {
     Card: { label: "Card", icon: "bx-credit-card-alt" },
     Transfer: { label: "Transfer", icon: "bx-arrow-right-left" },
     Unpaid: { label: "Unpaid", icon: "bx-error" },
+};
+const standaloneSaleBookingView = (sale) => ({
+    bookingId: sale.saleId,
+    name: sale.customerName || "ลูกค้าทั่วไป",
+    platformId: "WALK",
+    checkIn: new Date(0),
+    checkOut: new Date(0),
+    status: "checkedOut",
+    transactions: sale.transactions || [],
+    staffUsername: sale.createdBy,
+    sourceType: "standaloneSale",
+    saleId: sale.saleId,
+});
+const standaloneTransactionMeta = (source) => {
+    const value = source;
+    return value.sourceType === "standaloneSale"
+        ? {
+            sourceType: "standaloneSale",
+            saleId: value.saleId || source.bookingId,
+        }
+        : { sourceType: "booking", bookingId: source.bookingId };
 };
 const getBusinessDateParts = (date = new Date()) => {
     const parts = new Intl.DateTimeFormat("en-CA", {
@@ -151,16 +185,21 @@ const getTransactionsForBusinessDate = async (businessDate, staffUsername) => {
     const bounds = getBusinessDayBoundsFromKey(businessDate);
     if (!bounds)
         return null;
-    const bookings = await booking_1.default.find({
-        $or: [
-            { "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end } },
-            { checkIn: { $gte: bounds.start, $lt: bounds.end } },
-            { checkOut: { $gte: bounds.start, $lt: bounds.end } },
-            { "cancellation.cancelledAt": { $gte: bounds.start, $lt: bounds.end } },
-            { "checkout.checkedOutAt": { $gte: bounds.start, $lt: bounds.end } },
-        ],
-    }).lean();
-    const transactions = bookings.flatMap((booking) => (booking.transactions || [])
+    const [bookings, standaloneSales] = await Promise.all([booking_1.default.find({
+            $or: [
+                { "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end } },
+                { checkIn: { $gte: bounds.start, $lt: bounds.end } },
+                { checkOut: { $gte: bounds.start, $lt: bounds.end } },
+                { "cancellation.cancelledAt": { $gte: bounds.start, $lt: bounds.end } },
+                { "checkout.checkedOutAt": { $gte: bounds.start, $lt: bounds.end } },
+            ],
+        }).lean(), standaloneSale_1.default.find({
+            "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end },
+        }).lean()]);
+    const transactions = [
+        ...bookings,
+        ...standaloneSales.map(standaloneSaleBookingView),
+    ].flatMap((booking) => (booking.transactions || [])
         .filter((transaction) => (0, financeHelpers_1.transactionFallsOnBusinessDate)(transaction, booking.checkIn, bounds.start, bounds.end))
         .filter((transaction) => {
         if (!staffUsername)
@@ -169,7 +208,7 @@ const getTransactionsForBusinessDate = async (businessDate, staffUsername) => {
     })
         .map((transaction) => ({
         ...transaction,
-        bookingId: booking.bookingId,
+        ...standaloneTransactionMeta(booking),
         guestName: booking.name,
         staffUsername: transaction.createdBy || booking.staffUsername,
     })));
@@ -215,23 +254,26 @@ const attachDailyCloseStaffProfiles = async (dailyCloses) => {
 };
 const getShiftTransactions = async (shift, session) => {
     const shiftId = String(shift._id);
-    const bookings = await booking_1.default.find({ "transactions.cashShiftId": shiftId })
-        .session(session || null)
-        .lean();
-    return bookings.flatMap((booking) => (booking.transactions || [])
+    const [bookings, standaloneSales] = await Promise.all([
+        booking_1.default.find({ "transactions.cashShiftId": shiftId }).session(session || null).lean(),
+        standaloneSale_1.default.find({ "transactions.cashShiftId": shiftId }).session(session || null).lean(),
+    ]);
+    return [...bookings, ...standaloneSales.map(standaloneSaleBookingView)].flatMap((booking) => (booking.transactions || [])
         .filter((transaction) => transaction.cashShiftId === shiftId)
         .map((transaction) => ({
         ...transaction,
-        bookingId: booking.bookingId,
+        ...standaloneTransactionMeta(booking),
         guestName: booking.name,
         staffUsername: transaction.createdBy || booking.staffUsername,
     })));
 };
 const getUnassignedCashTransactionsBetween = async (start, end) => {
-    const bookings = await booking_1.default.find({
-        "transactions.createdAt": { $gte: start, $lt: end },
-    }).lean();
-    return bookings.flatMap((booking) => (booking.transactions || [])
+    const [bookings, standaloneSales] = await Promise.all([booking_1.default.find({
+            "transactions.createdAt": { $gte: start, $lt: end },
+        }).lean(), standaloneSale_1.default.find({
+            "transactions.createdAt": { $gte: start, $lt: end },
+        }).lean()]);
+    return [...bookings, ...standaloneSales.map(standaloneSaleBookingView)].flatMap((booking) => (booking.transactions || [])
         .filter((transaction) => {
         if (transaction.cashShiftId)
             return false;
@@ -240,7 +282,7 @@ const getUnassignedCashTransactionsBetween = async (start, end) => {
     })
         .map((transaction) => ({
         ...transaction,
-        bookingId: booking.bookingId,
+        ...standaloneTransactionMeta(booking),
         guestName: booking.name,
         staffUsername: transaction.createdBy || booking.staffUsername,
     })));
@@ -418,8 +460,7 @@ const getCashShiftAuditForDate = async (businessDate) => {
     }
     const auditShifts = await Promise.all(enrichedShifts.map(async (shift, index) => {
         const shiftTransactions = await getShiftTransactions(shift);
-        const flaggedTransactions = shiftTransactions.filter((transaction) => transaction.reviewStatus === "needs_review" ||
-            Boolean(transaction.reviewFlags?.length));
+        const flaggedTransactions = shiftTransactions.filter(financeHelpers_1.transactionRequiresReview);
         const warnings = [];
         const operatingVariance = Number(shift.operatingVariance || 0);
         if (shift.status === "closed" &&
@@ -511,7 +552,7 @@ const addBreakdownTransaction = (categories, transaction, booking, amount, direc
     existingCategory.transactionCount += 1;
     existingCategory.transactions.push({
         transactionId: transaction._id ? String(transaction._id) : undefined,
-        bookingId: booking.bookingId,
+        ...standaloneTransactionMeta(booking),
         guestName: booking.name,
         platformId: (0, commercialSegmentHelpers_1.transactionPlatformId)(booking, transaction),
         type: transaction.type,
@@ -549,7 +590,7 @@ const addPaymentMethodBreakdownTransaction = (paymentMethods, transaction, booki
     existingPaymentMethod.transactionCount += 1;
     existingPaymentMethod.transactions.push({
         transactionId: transaction._id ? String(transaction._id) : undefined,
-        bookingId: booking.bookingId,
+        ...standaloneTransactionMeta(booking),
         guestName: booking.name,
         platformId: (0, commercialSegmentHelpers_1.transactionPlatformId)(booking, transaction),
         type: transaction.type,
@@ -620,9 +661,18 @@ const getExpectedStayRevenueBreakdown = async (req, res) => {
                 message: "Invalid date range. Use startDate and endDate as YYYY-MM-DD.",
             });
         }
-        const bookings = await booking_1.default.find({
-            "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end },
-        }).lean();
+        const [bookingRecords, standaloneSales] = await Promise.all([
+            booking_1.default.find({
+                "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end },
+            }).lean(),
+            standaloneSale_1.default.find({
+                "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end },
+            }).lean(),
+        ]);
+        const bookings = [
+            ...bookingRecords,
+            ...standaloneSales.map(standaloneSaleBookingView),
+        ];
         const categories = new Map();
         const reductions = new Map();
         const paymentMethods = new Map();
@@ -692,12 +742,21 @@ const getTodayRevenueBreakdown = async (req, res) => {
                 message: "Invalid business date. Use YYYY-MM-DD.",
             });
         }
-        const bookings = await booking_1.default.find({
-            $or: [
-                { checkIn: { $gte: bounds.start, $lt: bounds.end } },
-                { "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end } },
-            ],
-        }).lean();
+        const [bookingRecords, standaloneSales] = await Promise.all([
+            booking_1.default.find({
+                $or: [
+                    { checkIn: { $gte: bounds.start, $lt: bounds.end } },
+                    { "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end } },
+                ],
+            }).lean(),
+            standaloneSale_1.default.find({
+                "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end },
+            }).lean(),
+        ]);
+        const bookings = [
+            ...bookingRecords,
+            ...standaloneSales.map(standaloneSaleBookingView),
+        ];
         const todaySummary = (0, financeHelpers_1.calculateTodayRevenueSummary)(bookings, bounds.start, bounds.end);
         const categories = new Map();
         const reductions = new Map();
@@ -735,7 +794,7 @@ const getTodayRevenueBreakdown = async (req, res) => {
                 const reductionAmount = (0, financeHelpers_1.transactionTodayReductionAmount)(transaction);
                 const arrivalReductionAlreadyNetted = isTodayArrival &&
                     ["cancelled", "noShow"].includes(booking.status) &&
-                    ["roomRefund", "cancellationRefund"].includes(transaction.type);
+                    ["roomRefund", "roomChargeWriteOff", "cancellationRefund"].includes(transaction.type);
                 if (reductionAmount > 0 && !arrivalReductionAlreadyNetted) {
                     addBreakdownTransaction(reductions, transaction, booking, reductionAmount, direction);
                 }
@@ -782,12 +841,21 @@ const getTodayRevenueSummary = async (req, res) => {
                 message: "Invalid business date. Use YYYY-MM-DD.",
             });
         }
-        const bookings = await booking_1.default.find({
-            $or: [
-                { checkIn: { $gte: bounds.start, $lt: bounds.end } },
-                { "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end } },
-            ],
-        }).lean();
+        const [bookingRecords, standaloneSales] = await Promise.all([
+            booking_1.default.find({
+                $or: [
+                    { checkIn: { $gte: bounds.start, $lt: bounds.end } },
+                    { "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end } },
+                ],
+            }).lean(),
+            standaloneSale_1.default.find({
+                "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end },
+            }).lean(),
+        ]);
+        const bookings = [
+            ...bookingRecords,
+            ...standaloneSales.map(standaloneSaleBookingView),
+        ];
         res.status(200).json((0, financeHelpers_1.calculateTodayRevenueSummary)(bookings, bounds.start, bounds.end));
     }
     catch (err) {
@@ -1305,9 +1373,7 @@ const getReviewEvents = async (req, res) => {
         if (!reconciliation) {
             return res.status(400).json({ message: "Invalid date format" });
         }
-        const transactions = reconciliation.transactions.filter((transaction) => transaction.reviewStatus !== "reviewed" &&
-            (transaction.reviewStatus === "needs_review" ||
-                (transaction.reviewFlags || []).length > 0));
+        const transactions = reconciliation.transactions.filter((transaction) => (0, financeHelpers_1.transactionRequiresReview)(transaction));
         res.status(200).json({
             businessDate: reconciliation.businessDate,
             transactions,
@@ -1341,8 +1407,7 @@ const approveReviewEvent = async (req, res) => {
                 transaction,
             });
         }
-        const requiresReview = transaction.reviewStatus === "needs_review" ||
-            (transaction.reviewFlags || []).length > 0;
+        const requiresReview = (0, financeHelpers_1.transactionRequiresReview)(transaction);
         if (!requiresReview) {
             return res.status(400).json({
                 message: "รายการนี้ไม่จำเป็นต้องตรวจสอบ",
@@ -1376,4 +1441,46 @@ const approveReviewEvent = async (req, res) => {
     }
 };
 exports.approveReviewEvent = approveReviewEvent;
+const approveStandaloneReviewEvent = async (req, res) => {
+    try {
+        if (!req.user?.admin || !req.user.username) {
+            return res.status(403).json({
+                message: "เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถอนุมัติรายการตรวจสอบได้",
+            });
+        }
+        const sale = await standaloneSale_1.default.findOne({ saleId: req.params.saleId });
+        if (!sale)
+            return res.status(404).json({ message: "ไม่พบรายการแขกนอก" });
+        const transaction = sale.transactions.find((item) => String(item._id) === String(req.params.transactionId));
+        if (!transaction)
+            return res.status(404).json({ message: "ไม่พบรายการธุรกรรม" });
+        if (transaction.reviewStatus !== "reviewed") {
+            if (transaction.reviewStatus !== "needs_review" &&
+                !(transaction.reviewFlags || []).length) {
+                return res.status(400).json({ message: "รายการนี้ไม่จำเป็นต้องตรวจสอบ" });
+            }
+            transaction.reviewStatus = "reviewed";
+            transaction.reviewedBy = req.user.username;
+            transaction.reviewedAt = new Date();
+            sale.markModified("transactions");
+            await sale.save();
+            await (0, activityServices_1.logActivity)(req.user.username, "REVIEW_TRANSACTION", {
+                summary: {
+                    sourceType: "standaloneSale",
+                    saleId: sale.saleId,
+                    customerName: sale.customerName || "ลูกค้าทั่วไป",
+                    transactionId: String(transaction._id),
+                    type: transaction.type,
+                    amount: transaction.amount,
+                    flags: transaction.reviewFlags || [],
+                },
+            });
+        }
+        return res.status(200).json({ transaction });
+    }
+    catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+};
+exports.approveStandaloneReviewEvent = approveStandaloneReviewEvent;
 //# sourceMappingURL=finance.js.map

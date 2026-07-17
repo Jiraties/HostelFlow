@@ -7,10 +7,12 @@ const ActionButton = ({
   className = "",
   highlight = false,
   disabled = false,
+  tooltip,
   ariaLabel,
 }: {
   text: string;
   icon: string;
+  tooltip?: string;
   onClick: () => void;
   className?: string;
   highlight?: boolean;
@@ -22,6 +24,7 @@ const ActionButton = ({
   return (
     <button
       type="button"
+      title={tooltip || ""}
       className={
         "home__action " +
         className +

@@ -33,6 +33,8 @@ type ActivityStats = {
 type ReviewTransaction = {
   _id?: string;
   bookingId?: string;
+  saleId?: string;
+  sourceType?: "booking" | "standaloneSale";
   guestName?: string;
   staffUsername?: string;
   type: string;
@@ -128,6 +130,8 @@ const actionMap = {
   },
   MANAGE_ROOM_STAYS: { icon: "bx-calendar-cog", text: "แก้ช่วงการเข้าพัก" },
   ADD_TRANSACTION: { icon: "bx-dollar", text: "เพิ่มรายการใช้จ่าย" },
+  ADD_STANDALONE_SALE: { icon: "bx-receipt", text: "เพิ่มรายการใช้จ่ายแขกนอก" },
+  ADJUST_STANDALONE_SALE: { icon: "bx-edit-alt", text: "ปรับรายการแขกนอก" },
   CREATE_USER: { icon: "bx-user-plus", text: "สร้างผู้ใช้" },
   RESET_USER_PASSWORD: { icon: "bx-key", text: "เปลี่ยนรหัสผ่าน" },
   UPDATE_USER: { icon: "bx-cog", text: "แก้ไขผู้ใช้" },
@@ -152,15 +156,16 @@ const transactionTypeLabels: Record<string, string> = {
   depositRefund: "คืนมัดจำ",
   cancellationRefund: "คืนเงินยกเลิก",
   roomRefund: "คืนค่าห้อง",
+  roomChargeWriteOff: "ปิดยอดค่าห้องที่เหลือ",
   settlementCharge: "Settlement Charge",
   compensation: "ชดเชยลูกค้า",
   depositKept: "เก็บมัดจำเป็นรายได้",
   paymentCorrection: "แก้ไขการชำระเงิน",
-  towel: "ผ้าเช็ดตัว",
-  motorbike: "มอเตอร์ไซค์",
+  towel: "Towel",
+  motorbike: "Motorbike",
   slowBoat: "Slow Boat",
   joinTour: "Join Tour",
-  extraBed: "เตียงเสริม",
+  extraBed: "Extra Bed",
   pickACraft: "Pick A Craft",
   trek2D: "Trek 2D",
   setMenu: "Set Menu",
@@ -170,6 +175,9 @@ const transactionTypeLabels: Record<string, string> = {
   bicycle: "Bicycle",
   car: "Car",
   misc: "Misc",
+  rainCoat: "Rain Coat",
+  passwordLock: "Password Lock",
+  cooking: "Cooking",
   cardSurcharge: "ค่าธรรมเนียมบัตร",
 };
 
@@ -218,7 +226,7 @@ const formatMoney = (value: number) =>
 
 const transactionKey = (transaction: ReviewTransaction, index = 0) =>
   transaction._id ||
-  `${transaction.bookingId || "booking"}-${transaction.type}-${transaction.amount}-${index}`;
+  `${transaction.bookingId || transaction.saleId || "transaction"}-${transaction.type}-${transaction.amount}-${index}`;
 
 const transactionLabel = (type: string) => transactionTypeLabels[type] || type;
 
@@ -541,7 +549,11 @@ const CashCloseAudit = ({
                                 transactionIndex,
                               )}
                             >
+                              {transaction.sourceType === "standaloneSale" && (
+                                <span className="manage__nonGuestBadge">แขกนอก</span>
+                              )}
                               {transaction.guestName ||
+                                transaction.saleId ||
                                 transaction.bookingId ||
                                 "-"}{" "}
                               · {transactionLabel(transaction.type)} ·{" "}
@@ -647,6 +659,9 @@ const CashCloseAudit = ({
                 <div className="manage__reviewMain">
                   <div className="manage__reviewTitleRow">
                     <strong>
+                      {transaction.sourceType === "standaloneSale" && (
+                        <span className="manage__nonGuestBadge">แขกนอก</span>
+                      )}
                       {transaction.guestName || transaction.bookingId || "-"}
                     </strong>
                     <span
@@ -669,6 +684,7 @@ const CashCloseAudit = ({
                     {transaction.bookingId && (
                       <span>{transaction.bookingId}</span>
                     )}
+                    {transaction.saleId && <span>{transaction.saleId}</span>}
                     {transaction.createdAt && (
                       <span>
                         {formatDateTime(transaction.createdAt, dateFormat)}
@@ -695,7 +711,7 @@ const CashCloseAudit = ({
                     aria-label="อนุมัติรายการ"
                     disabled={
                       !transaction._id ||
-                      !transaction.bookingId ||
+                      (!transaction.bookingId && !transaction.saleId) ||
                       approvingTransactionId === transaction._id
                     }
                     className="manage__approveAction"
@@ -902,7 +918,7 @@ const Manage = () => {
   };
 
   const approveTransactionHandler = async (transaction: ReviewTransaction) => {
-    if (!transaction.bookingId || !transaction._id) {
+    if ((!transaction.bookingId && !transaction.saleId) || !transaction._id) {
       toast.error("ไม่พบข้อมูลรายการที่ต้องอนุมัติ");
       return;
     }
@@ -910,8 +926,11 @@ const Manage = () => {
     setApprovingTransactionId(transaction._id);
 
     try {
+      const approvalPath = transaction.sourceType === "standaloneSale"
+        ? `standaloneSale/${transaction.saleId}/${transaction._id}`
+        : `${transaction.bookingId}/${transaction._id}`;
       await axios.patch(
-        `${API_URL}/finance/review-events/${transaction.bookingId}/${transaction._id}/approve`,
+        `${API_URL}/finance/review-events/${approvalPath}/approve`,
         {},
         { withCredentials: true },
       );
