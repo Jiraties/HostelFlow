@@ -208,7 +208,7 @@ const Spreadsheet = ({
   };
 }) => {
   const modules = [AllCommunityModule];
-  const { user } = useAuth();
+  const { user, resolveStaffName } = useAuth();
   const isMaster = status === "master";
   const tableDensity = user?.settings.tableDensity || "comfortable";
   const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
@@ -469,6 +469,8 @@ const Spreadsheet = ({
         headerName: "Checked-In By",
         width: 130,
         minWidth: 120,
+        valueFormatter: (params) =>
+          params.value ? resolveStaffName(String(params.value)) : "-",
       },
       { field: "note", flex: 1.1, minWidth: 180, sortable: false },
       {
@@ -512,7 +514,7 @@ const Spreadsheet = ({
     ];
 
     return columns;
-  }, [dateValueFormater, isMaster, isMobile, status]);
+  }, [dateValueFormater, isMaster, isMobile, resolveStaffName, status]);
 
   const onRowDoubleClicked = (event: RowClickedEvent<SpreadsheetRow>) => {
     if (!event.data || isSeparatorRow(event.data)) return;

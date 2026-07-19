@@ -10,8 +10,8 @@
     z-index: 2;
     display: grid;
     place-items: center;
-    width: 2.4rem;
-    height: 2.4rem;
+    width: var(--mobile-touch-target, 2.75rem);
+    height: var(--mobile-touch-target, 2.75rem);
     padding: 0;
     border: none;
     border-radius: 50%;
@@ -19,6 +19,11 @@
     color: var(--text);
     box-shadow: var(--light-shadow);
     cursor: pointer;
+  }
+
+  .modalCloseButton:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
   }
 
   .modalCloseButton i {

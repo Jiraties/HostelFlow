@@ -152,6 +152,7 @@
   margin-top: 0.1rem;
   border: 1px solid #cbd5e1;
   border-radius: 0.3rem;
+  box-sizing: border-box;
   background-color: #fff;
   display: grid;
   place-items: center;
@@ -171,7 +172,6 @@
   content: "";
   width: 0.28rem;
   height: 0.52rem;
-  margin-top: -0.08rem;
   border: solid #fff;
   border-width: 0 0.12rem 0.12rem 0;
   transform: rotate(45deg);
@@ -336,7 +336,8 @@
   }
 
   .addBooking__dateInput:first-child {
-    border-bottom: 0.1rem solid #e8e8e8;
+    border-bottom: 0;
+    box-shadow: 0 0.35rem 0.8rem rgba(149, 157, 165, 0.1);
   }
 }
 

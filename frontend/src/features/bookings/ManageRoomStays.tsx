@@ -6,6 +6,7 @@ import { roomIdOptions } from "../../helpers/options";
 import { useEffect, useMemo, useState } from "react";
 import ActionButton from "../../components/ActionButton";
 import ModalCloseButton from "../../components/ModalCloseButton";
+import { PreferredDateInput } from "../../components/PreferredDateInput";
 import toast from "react-hot-toast";
 import axios from "axios";
 import { API_URL } from "../../config/api";
@@ -297,8 +298,7 @@ const ManageRoomStays = ({
                 </p>
               </div>
               <div className="addBooking__dateInputs">
-                <input
-                  type="date"
+                <PreferredDateInput
                   value={
                     isFirstStay(index) ? bookingCheckIn : roomStay.from || ""
                   }
@@ -330,8 +330,7 @@ const ManageRoomStays = ({
                   }}
                   className="boxInput addBooking__dateInput manageRoomStays__boundaryDate"
                 />
-                <input
-                  type="date"
+                <PreferredDateInput
                   value={
                     isLastStay(index) ? bookingCheckOut : roomStay.to || ""
                   }

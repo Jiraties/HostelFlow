@@ -13,6 +13,7 @@ financeRouter.post("/standalone-sales/:saleId/adjustments", standaloneSales_1.ad
 financeRouter.get("/reconciliation", finance_1.getReconciliation);
 financeRouter.get("/cash-shift-audit", finance_1.getCashShiftAudit);
 financeRouter.get("/cash-position", finance_1.getCashPosition);
+financeRouter.get("/deposit-return-reminder", finance_1.getDepositReturnReminder);
 financeRouter.get("/expected-stay-revenue-breakdown", finance_1.getExpectedStayRevenueBreakdown);
 financeRouter.get("/today-revenue-breakdown", finance_1.getTodayRevenueBreakdown);
 financeRouter.get("/today-revenue-summary", finance_1.getTodayRevenueSummary);

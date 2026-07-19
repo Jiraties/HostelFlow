@@ -978,9 +978,9 @@
 
 @media (max-width: 760px) {
   .manage {
-    --manage-page-padding: 1rem;
+    --manage-page-padding: var(--mobile-page-padding, 1rem);
 
-    gap: 1rem;
+    gap: var(--mobile-section-gap, 1rem);
   }
 
   .manage__overview,
@@ -992,7 +992,9 @@
   .manage__staffSection,
   .manage__finance,
   .manage__overviewCard {
-    border-radius: 1.35rem;
+    border-radius: var(--mobile-card-radius, 1.25rem);
+    border: 0;
+    box-shadow: var(--mobile-shadow, var(--main-shadow));
   }
 
   .manage__staffSection,
@@ -1013,6 +1015,9 @@
     flex-basis: min(86vw, 18rem);
     width: min(86vw, 18rem);
     border-radius: 1rem;
+    border: 0;
+    background-color: var(--background);
+    box-shadow: none;
   }
 
   .manage__userActions {
@@ -1054,6 +1059,7 @@
     flex-direction: column;
     overflow: visible;
     padding: 0;
+    gap: 0.5rem;
   }
 
   .manage__cashChainItem {
@@ -1069,12 +1075,47 @@
   }
 
   .manage__handoffLine {
-    width: 2px;
+    width: 0.28rem;
     height: 1.5rem;
+    border-radius: 99rem;
+    background-color: color-mix(in srgb, var(--primary-color) 38%, #fff);
   }
 
   .manage__cashShiftCard {
     width: auto;
+    border: 0;
+    border-radius: 1.1rem;
+    box-shadow: none;
+  }
+
+  .manage__auditDetailsButton,
+  .manage__auditDetails {
+    border-top: 0;
+  }
+
+  .manage__auditDetailsButton {
+    background-color: var(--background);
+  }
+
+  .manage__auditDetails {
+    margin: 0.35rem 0.75rem 0.75rem;
+    padding: 0.85rem;
+    border-radius: 0.9rem;
+    background-color: var(--background);
+  }
+
+  .manage__reviewItem,
+  .manage__financePanel,
+  .manage__cashMathTile {
+    border: 0;
+    border-radius: 1rem;
+    background-color: var(--background);
+    box-shadow: none;
+  }
+
+  .manage button,
+  .manage .home__action {
+    min-height: var(--mobile-touch-target, 2.75rem);
   }
 }
 
@@ -1093,6 +1134,16 @@
 
   .manage__reviewItem {
     align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .manage__reviewActions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .manage__reviewActions > * {
+    flex: 1 1 auto;
   }
 }
 .manage__nonGuestBadge {

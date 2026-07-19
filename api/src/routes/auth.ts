@@ -1,6 +1,7 @@
 import express from "express";
 import {
   adminCreateUser,
+  getStaffDirectory,
   getProfilePicture,
   listUsers,
   login,
@@ -31,6 +32,7 @@ const upload = multer({
 });
 
 authRouter.get("/users", authMiddleware, listUsers);
+authRouter.get("/staff-directory", authMiddleware, getStaffDirectory);
 authRouter.get("/users/:userId/profile-picture", getProfilePicture);
 authRouter.post("/admin/createUser", authMiddleware, adminCreateUser);
 authRouter.patch("/users/:userId", authMiddleware, updateUser);

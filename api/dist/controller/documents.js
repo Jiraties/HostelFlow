@@ -39,6 +39,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getHotelAccomodationReportStatus = exports.getHotelAccomodationReport = exports.getImmigrationReport = exports.getImmigrationReportStatus = exports.getBookingsReport = void 0;
 const exceljs_1 = __importDefault(require("exceljs"));
 const booking_1 = __importStar(require("../models/booking"));
+const user_1 = __importDefault(require("../models/user"));
 const crypto_1 = __importDefault(require("crypto"));
 const path_1 = __importDefault(require("path"));
 const passportHelpers_1 = require("../helpers/passportHelpers");
@@ -47,6 +48,7 @@ const bookingsReportHelpers_1 = require("../helpers/bookingsReportHelpers");
 const roomStayHelpers_1 = require("../helpers/roomStayHelpers");
 const activityServices_1 = require("../services/activityServices");
 const commercialSegmentHelpers_1 = require("../helpers/commercialSegmentHelpers");
+const transactionCorrections_1 = require("../services/transactionCorrections");
 const setSensitiveDownloadHeaders = (res) => {
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("Pragma", "no-cache");
@@ -342,15 +344,27 @@ const getBookingsReport = async (req, res) => {
         if (bookingStatus && bookingStatus !== "all") {
             query.status = bookingStatus;
         }
-        if (paymentMethod && paymentMethod !== "all") {
-            query["transactions.paymentMethod"] = paymentMethod;
-        }
-        const bookings = await booking_1.default.find(query).sort({
+        const bookingRecords = await booking_1.default.find(query).sort({
             checkIn: 1,
             name: 1,
         });
+        const bookings = bookingRecords.filter((booking) => !paymentMethod ||
+            paymentMethod === "all" ||
+            (0, transactionCorrections_1.effectiveBookingTransactions)(booking).some((transaction) => transaction.paymentMethod === paymentMethod));
         if (!bookings)
             return res.status(400).json({ message: "ไมพบการจอง" });
+        const staffUsernames = [
+            ...new Set(bookings.flatMap((booking) => [
+                booking.staffUsername,
+                ...(booking.commercialSegments || []).map((segment) => segment.createdBy),
+                ...(booking.transactions || []).map((transaction) => transaction.createdBy),
+            ])),
+        ].filter((username) => Boolean(username));
+        const staff = await user_1.default.find({ username: { $in: staffUsernames } })
+            .select("username name")
+            .lean();
+        const staffNames = new Map(staff.map((member) => [member.username, member.name]));
+        const displayStaffName = (username) => (username && staffNames.get(username)) || "ไม่ทราบชื่อพนักงาน";
         const workbook = new exceljs_1.default.Workbook();
         const sheet = workbook.addWorksheet("Bookings");
         sheet.columns = [
@@ -365,7 +379,7 @@ const getBookingsReport = async (req, res) => {
             { header: "ยอดเงิน", key: "amount", width: 14 },
             { header: "เงินมัดจำที่รับ", key: "depositCollected", width: 16 },
             { header: "ชำระเงิน", key: "paymentMethods", width: 20 },
-            { header: "Staff", key: "staffUsername", width: 18 },
+            { header: "Staff", key: "staffName", width: 18 },
             { header: "Note", key: "note", width: 30 },
         ];
         sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
@@ -380,9 +394,10 @@ const getBookingsReport = async (req, res) => {
             cell.border = cellBorder;
         });
         bookings.forEach((booking) => {
-            const transactions = booking.transactions || [];
-            const roomSlices = (0, commercialSegmentHelpers_1.commercialRoomSlices)(booking);
-            (0, commercialSegmentHelpers_1.effectiveCommercialSegments)(booking)
+            const transactions = (0, transactionCorrections_1.effectiveBookingTransactions)(booking);
+            const financialBooking = { ...booking.toObject(), transactions };
+            const roomSlices = (0, commercialSegmentHelpers_1.commercialRoomSlices)(financialBooking);
+            (0, commercialSegmentHelpers_1.effectiveCommercialSegments)(financialBooking)
                 .filter((segment) => !bookingChannel || segment.platformId === bookingChannel)
                 .forEach((segment) => {
                 const platform = platformMap[segment.platformId] || {
@@ -406,12 +421,12 @@ const getBookingsReport = async (req, res) => {
                     platformId: platform.label,
                     status: booking.status,
                     rooms,
-                    amount: segment.amount,
+                    amount: linkedTransaction?.amount ?? segment.amount,
                     depositCollected: segment.kind === "original"
                         ? (0, bookingsReportHelpers_1.bookingsReportDepositCollectedTotal)(transactions)
                         : "",
                     paymentMethods: linkedTransaction?.paymentMethod || "",
-                    staffUsername: segment.createdBy || booking.staffUsername,
+                    staffName: displayStaffName(segment.createdBy || booking.staffUsername),
                     note: segment.note || booking.note || "",
                 });
                 const platformCell = row.getCell("platformId");
@@ -441,14 +456,14 @@ const getBookingsReport = async (req, res) => {
                     checkOut: formatInputDate(booking.checkOut),
                     nights: booking.nights,
                     name: booking.name,
-                    platformId: platformMap[(0, commercialSegmentHelpers_1.transactionPlatformId)(booking, transaction)]?.label ||
-                        (0, commercialSegmentHelpers_1.transactionPlatformId)(booking, transaction),
+                    platformId: platformMap[(0, commercialSegmentHelpers_1.transactionPlatformId)(financialBooking, transaction)]
+                        ?.label || (0, commercialSegmentHelpers_1.transactionPlatformId)(financialBooking, transaction),
                     status: booking.status,
                     rooms: transactionLabel,
                     amount,
                     depositCollected: "",
                     paymentMethods: transaction.paymentMethod,
-                    staffUsername: booking.staffUsername,
+                    staffName: displayStaffName(transaction.createdBy || booking.staffUsername),
                     note: "",
                 });
                 transactionRow.eachCell((cell, colNumber) => {

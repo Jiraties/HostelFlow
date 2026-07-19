@@ -1,10 +1,18 @@
 import type { CSSProperties, ReactNode } from "react";
-import { useCallback, useId, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 
 import "./Tooltip.css";
 
 const VIEWPORT_GAP = 10;
+const CLOSE_DELAY_MS = 180;
 
 const Tooltip = ({
   children,
@@ -24,6 +32,7 @@ const Tooltip = ({
   const tooltipId = useId();
   const triggerRef = useRef<HTMLSpanElement | null>(null);
   const tooltipRef = useRef<HTMLSpanElement | null>(null);
+  const closeTimeoutRef = useRef<number | null>(null);
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState({
     left: 0,
@@ -62,6 +71,27 @@ const Tooltip = ({
     });
   }, []);
 
+  const cancelClose = () => {
+    if (closeTimeoutRef.current === null) return;
+    window.clearTimeout(closeTimeoutRef.current);
+    closeTimeoutRef.current = null;
+  };
+
+  const showTooltip = () => {
+    cancelClose();
+    setOpen(true);
+  };
+
+  const scheduleClose = () => {
+    cancelClose();
+    closeTimeoutRef.current = window.setTimeout(() => {
+      setOpen(false);
+      closeTimeoutRef.current = null;
+    }, CLOSE_DELAY_MS);
+  };
+
+  useEffect(() => () => cancelClose(), []);
+
   useLayoutEffect(() => {
     if (!open) return;
 
@@ -83,10 +113,10 @@ const Tooltip = ({
         tabIndex={0}
         aria-label={ariaLabel}
         aria-describedby={open ? tooltipId : undefined}
-        onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
+        onMouseEnter={showTooltip}
+        onMouseLeave={scheduleClose}
+        onFocus={showTooltip}
+        onBlur={scheduleClose}
         onClick={(event) => {
           if (stopClickPropagation) event.stopPropagation();
         }}
@@ -101,6 +131,8 @@ const Tooltip = ({
             className="appTooltip"
             role="tooltip"
             data-placement={position.placement}
+            onMouseEnter={showTooltip}
+            onMouseLeave={scheduleClose}
             style={
               {
                 left: position.left,

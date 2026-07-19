@@ -22,6 +22,24 @@ type TransactionType = Transaction["type"];
 type PaymentMethod = Transaction["paymentMethod"];
 type AdjustmentDirection = "in" | "out";
 
+const addTransactionTypePriority = new Map(
+  [
+    "towel",
+    "pickACraft",
+    "laundry",
+    "slowBoat",
+    "motorbike",
+    "joinTour",
+    "extraBed",
+  ].map((type, index) => [type, index]),
+);
+
+const prioritizedTransactionTypeOptions = [...transactionTypeOptions].sort(
+  (first, second) =>
+    (addTransactionTypePriority.get(first.value) ?? Number.MAX_SAFE_INTEGER) -
+    (addTransactionTypePriority.get(second.value) ?? Number.MAX_SAFE_INTEGER),
+);
+
 type AddTransactionFormData = {
   type: TransactionType | "";
   paymentMethod: PaymentMethod | "";
@@ -209,7 +227,7 @@ const AddTransaction = ({
       label: `${attachmentTransactionLabel(transaction)} · ${transaction.paymentMethod} · ${formatCurrency(transaction.amount)} บาท`,
       color: transactionAttachmentMeta[transaction.type].color,
     }));
-  const availableTransactionTypeOptions = transactionTypeOptions.filter(
+  const availableTransactionTypeOptions = prioritizedTransactionTypeOptions.filter(
     (option) => option.value !== "deposit" || bookingStatus === "checkedIn",
   );
 

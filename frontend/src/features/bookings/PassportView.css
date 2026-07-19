@@ -87,3 +87,26 @@
   font-weight: 500;
   overflow-wrap: anywhere;
 }
+
+@media (max-width: 760px) {
+  .passportView {
+    background-color: var(--background);
+    box-shadow: none;
+  }
+
+  .passportView__nonHidden {
+    border-radius: 1rem;
+  }
+
+  .passportView__content {
+    gap: 0.65rem;
+  }
+
+  .passportView__row,
+  .passportView__row:last-child {
+    padding: 0.7rem;
+    border-bottom: 0;
+    border-radius: 0.8rem;
+    background-color: var(--background);
+  }
+}

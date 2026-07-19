@@ -137,6 +137,45 @@
 }
 
 @media (max-width: 760px) {
+  .spreadsheet {
+    overflow: hidden;
+    border-radius: var(--mobile-card-radius, 1.25rem) !important;
+    box-shadow: var(--mobile-shadow, var(--main-shadow)) !important;
+  }
+
+  .spreadsheet .ag-header {
+    background-color: var(--background);
+  }
+
+  .spreadsheet .ag-header-cell {
+    padding-inline: 0.65rem;
+    font-size: 0.78rem;
+  }
+
+  .spreadsheet .ag-row:nth-child(even):not(.ag-full-width-row) {
+    background-color: var(--background);
+  }
+
+  .spreadsheet .ag-cell {
+    padding-inline: 0.65rem;
+    font-size: 0.84rem;
+  }
+
+  .spreadsheet .ag-body-horizontal-scroll {
+    min-height: 0.7rem !important;
+    height: 0.7rem !important;
+    background-color: transparent;
+  }
+
+  .spreadsheet .ag-pinned-right-cols-container {
+    background-color: var(--background);
+    box-shadow: -0.45rem 0 0.9rem rgba(149, 157, 165, 0.14);
+  }
+
+  .spreadsheet .daySeparator {
+    padding-inline: 0.75rem;
+  }
+
   .ag-cell:has(.bookingStatusCell) {
     padding: 0;
   }
@@ -150,8 +189,10 @@
     min-width: 0;
     width: 100%;
     padding: 0;
-    border-radius: 0;
-    margin: 0;
+    border-radius: 0.7rem;
+    margin: 0.2rem;
+    width: calc(100% - 0.4rem);
+    height: calc(100% - 0.4rem);
   }
 
   .bookingStatusCell i {
@@ -165,8 +206,8 @@
   }
 
   .bookingStatusCell--booked {
-    background-color: var(--light-red);
-    color: var(--red);
+    background-color: #00adef20;
+    color: #00adef;
   }
 
   .bookingStatusCell--checkedIn {

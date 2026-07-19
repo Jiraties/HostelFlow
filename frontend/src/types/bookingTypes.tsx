@@ -132,6 +132,7 @@ export interface transcation {
     | "RESOLVE_STAY"
     | "ADD_STANDALONE_SALE"
     | "ADJUST_STANDALONE_SALE"
+    | "CORRECT_TRANSACTION"
     | "SYSTEM_MIGRATION";
   note?: string;
   reference?: string;
@@ -142,6 +143,60 @@ export interface transcation {
   cashShiftId?: string;
   platformId?: PlatformId;
   commercialSegmentId?: string;
+  originalTransactionId?: string;
+  corrected?: boolean;
+  correctionCount?: number;
+  latestCorrectionId?: string;
+  legacyAdjustmentCount?: number;
+}
+
+export type TransactionCorrectionType =
+  | "recorded_mistake"
+  | "charge_change";
+
+export type TransactionCorrectionReason =
+  | "incorrect_amount"
+  | "incorrect_payment_method"
+  | "incorrect_category"
+  | "incorrect_note"
+  | "manager_discount"
+  | "waived_fee"
+  | "agreed_rate_correction"
+  | "cancelled_service"
+  | "guest_compensation"
+  | "other";
+
+export interface TransactionCorrectionSnapshot {
+  type: TransactionType;
+  paymentMethod: PaymentMethod;
+  amount: number;
+  note?: string;
+  reference?: string;
+  cashShiftId?: string;
+}
+
+export interface TransactionCorrection {
+  _id?: string;
+  targetTransactionId: string;
+  before: TransactionCorrectionSnapshot;
+  after: TransactionCorrectionSnapshot;
+  correctionType: TransactionCorrectionType;
+  reasonCode: TransactionCorrectionReason;
+  note: string;
+  correctedBy: string;
+  correctedByName?: string;
+  correctedAt: string | Date;
+  financialChange: boolean;
+  originalBusinessDate: string;
+  affectedCashShiftId?: string;
+}
+
+export interface BookingFinancialSummary {
+  bookingTotal: number;
+  amountReceived: number;
+  outstandingBalance: number;
+  guestCredit: number;
+  remainingDeposit: number;
 }
 
 export interface booking {
@@ -161,6 +216,10 @@ export interface booking {
   bookingId: string;
 
   transactions: transcation[];
+  effectiveTransactions?: transcation[];
+  transactionCorrections?: TransactionCorrection[];
+  legacyTransactionAdjustments?: transcation[];
+  financialSummary?: BookingFinancialSummary;
 
   staffUsername: string;
   checkInByStaffUsername?: string | null;

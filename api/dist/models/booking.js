@@ -137,6 +137,7 @@ exports.transactionSchema = new mongoose_1.default.Schema({
             "RESOLVE_STAY",
             "ADD_STANDALONE_SALE",
             "ADJUST_STANDALONE_SALE",
+            "CORRECT_TRANSACTION",
             "SYSTEM_MIGRATION",
         ],
     },
@@ -153,6 +154,51 @@ exports.transactionSchema = new mongoose_1.default.Schema({
     cashShiftId: { type: String },
     platformId: { type: String },
     commercialSegmentId: { type: String },
+});
+const transactionCorrectionSnapshotSchema = new mongoose_1.default.Schema({
+    type: { type: String, required: true },
+    paymentMethod: {
+        type: String,
+        enum: ["OTA", "Cash", "Card", "Transfer", "Unpaid"],
+        required: true,
+    },
+    amount: { type: Number, min: 0, required: true },
+    note: { type: String },
+    reference: { type: String },
+    cashShiftId: { type: String },
+}, { _id: false });
+const transactionCorrectionSchema = new mongoose_1.default.Schema({
+    targetTransactionId: { type: String, required: true },
+    before: { type: transactionCorrectionSnapshotSchema, required: true },
+    after: { type: transactionCorrectionSnapshotSchema, required: true },
+    correctionType: {
+        type: String,
+        enum: ["recorded_mistake", "charge_change"],
+        required: true,
+    },
+    reasonCode: {
+        type: String,
+        enum: [
+            "incorrect_amount",
+            "incorrect_payment_method",
+            "incorrect_category",
+            "incorrect_note",
+            "manager_discount",
+            "waived_fee",
+            "agreed_rate_correction",
+            "cancelled_service",
+            "guest_compensation",
+            "other",
+        ],
+        required: true,
+    },
+    note: { type: String, required: true },
+    correctedBy: { type: String, required: true },
+    correctedByName: { type: String },
+    correctedAt: { type: Date, default: Date.now, required: true },
+    financialChange: { type: Boolean, required: true },
+    originalBusinessDate: { type: String, required: true },
+    affectedCashShiftId: { type: String },
 });
 const cancellationSchema = new mongoose_1.default.Schema({
     cancellationType: {
@@ -258,6 +304,10 @@ const bookingSchema = new mongoose_1.default.Schema({
         enum: ["normal", "admin_historical_onboarding"],
     },
     transactions: [exports.transactionSchema],
+    transactionCorrections: {
+        type: [transactionCorrectionSchema],
+        default: [],
+    },
     passport: {
         passportHash: { type: String, select: false },
         namePrefix: {

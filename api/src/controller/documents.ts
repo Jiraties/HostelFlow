@@ -1,5 +1,6 @@
 import ExcelJs from "exceljs";
 import Booking, { PASSPORT_SENSITIVE_SELECT } from "../models/booking";
+import User from "../models/user";
 import crypto from "crypto";
 import path from "path";
 import {
@@ -27,6 +28,9 @@ import {
   effectiveCommercialSegments,
   transactionPlatformId,
 } from "../helpers/commercialSegmentHelpers";
+import {
+  effectiveBookingTransactions,
+} from "../services/transactionCorrections";
 
 const setSensitiveDownloadHeaders = (res: Response) => {
   res.setHeader("Cache-Control", "no-store");
@@ -418,16 +422,42 @@ export const getBookingsReport = async (req: Request, res: Response) => {
       query.status = bookingStatus;
     }
 
-    if (paymentMethod && paymentMethod !== "all") {
-      query["transactions.paymentMethod"] = paymentMethod;
-    }
-
-    const bookings = await Booking.find(query).sort({
+    const bookingRecords = await Booking.find(query).sort({
       checkIn: 1,
       name: 1,
     });
+    const bookings = bookingRecords.filter(
+      (booking) =>
+        !paymentMethod ||
+        paymentMethod === "all" ||
+        effectiveBookingTransactions(booking).some(
+          (transaction) => transaction.paymentMethod === paymentMethod,
+        ),
+    );
 
     if (!bookings) return res.status(400).json({ message: "ไมพบการจอง" });
+
+    const staffUsernames = [
+      ...new Set(
+        bookings.flatMap((booking) => [
+          booking.staffUsername,
+          ...(booking.commercialSegments || []).map(
+            (segment) => segment.createdBy,
+          ),
+          ...(booking.transactions || []).map(
+            (transaction) => transaction.createdBy,
+          ),
+        ]),
+      ),
+    ].filter((username): username is string => Boolean(username));
+    const staff = await User.find({ username: { $in: staffUsernames } })
+      .select("username name")
+      .lean();
+    const staffNames = new Map(
+      staff.map((member) => [member.username, member.name]),
+    );
+    const displayStaffName = (username?: string) =>
+      (username && staffNames.get(username)) || "ไม่ทราบชื่อพนักงาน";
 
     const workbook = new ExcelJs.Workbook();
     const sheet = workbook.addWorksheet("Bookings");
@@ -444,7 +474,7 @@ export const getBookingsReport = async (req: Request, res: Response) => {
       { header: "ยอดเงิน", key: "amount", width: 14 },
       { header: "เงินมัดจำที่รับ", key: "depositCollected", width: 16 },
       { header: "ชำระเงิน", key: "paymentMethods", width: 20 },
-      { header: "Staff", key: "staffUsername", width: 18 },
+      { header: "Staff", key: "staffName", width: 18 },
       { header: "Note", key: "note", width: 30 },
     ];
 
@@ -461,9 +491,10 @@ export const getBookingsReport = async (req: Request, res: Response) => {
     });
 
     bookings.forEach((booking) => {
-      const transactions = booking.transactions || [];
-      const roomSlices = commercialRoomSlices(booking);
-      effectiveCommercialSegments(booking)
+      const transactions = effectiveBookingTransactions(booking);
+      const financialBooking = { ...booking.toObject(), transactions };
+      const roomSlices = commercialRoomSlices(financialBooking);
+      effectiveCommercialSegments(financialBooking)
         .filter(
           (segment) =>
             !bookingChannel || segment.platformId === bookingChannel,
@@ -501,13 +532,15 @@ export const getBookingsReport = async (req: Request, res: Response) => {
             platformId: platform.label,
             status: booking.status,
             rooms,
-            amount: segment.amount,
+            amount: linkedTransaction?.amount ?? segment.amount,
             depositCollected:
               segment.kind === "original"
                 ? bookingsReportDepositCollectedTotal(transactions)
                 : "",
             paymentMethods: linkedTransaction?.paymentMethod || "",
-            staffUsername: segment.createdBy || booking.staffUsername,
+            staffName: displayStaffName(
+              segment.createdBy || booking.staffUsername,
+            ),
             note: segment.note || booking.note || "",
           });
 
@@ -544,14 +577,16 @@ export const getBookingsReport = async (req: Request, res: Response) => {
             nights: booking.nights,
             name: booking.name,
             platformId:
-              platformMap[transactionPlatformId(booking, transaction)]?.label ||
-              transactionPlatformId(booking, transaction),
+              platformMap[transactionPlatformId(financialBooking, transaction)]
+                ?.label || transactionPlatformId(financialBooking, transaction),
             status: booking.status,
             rooms: transactionLabel,
             amount,
             depositCollected: "",
             paymentMethods: transaction.paymentMethod,
-            staffUsername: booking.staffUsername,
+            staffName: displayStaffName(
+              transaction.createdBy || booking.staffUsername,
+            ),
             note: "",
           });
 

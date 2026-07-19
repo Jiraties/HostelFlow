@@ -32,6 +32,7 @@ export type SourceAction =
   | "RESOLVE_STAY"
   | "ADD_STANDALONE_SALE"
   | "ADJUST_STANDALONE_SALE"
+  | "CORRECT_TRANSACTION"
   | "SYSTEM_MIGRATION";
 export type CancellationType =
   | "refundable"
@@ -149,6 +150,47 @@ export interface transcation {
   commercialSegmentId?: string;
 }
 
+export type TransactionCorrectionType =
+  | "recorded_mistake"
+  | "charge_change";
+
+export type TransactionCorrectionReason =
+  | "incorrect_amount"
+  | "incorrect_payment_method"
+  | "incorrect_category"
+  | "incorrect_note"
+  | "manager_discount"
+  | "waived_fee"
+  | "agreed_rate_correction"
+  | "cancelled_service"
+  | "guest_compensation"
+  | "other";
+
+export interface TransactionCorrectionSnapshot {
+  type: TransactionType;
+  paymentMethod: PaymentMethod;
+  amount: number;
+  note?: string;
+  reference?: string;
+  cashShiftId?: string;
+}
+
+export interface TransactionCorrection {
+  _id?: string;
+  targetTransactionId: string;
+  before: TransactionCorrectionSnapshot;
+  after: TransactionCorrectionSnapshot;
+  correctionType: TransactionCorrectionType;
+  reasonCode: TransactionCorrectionReason;
+  note: string;
+  correctedBy: string;
+  correctedByName?: string;
+  correctedAt: Date;
+  financialChange: boolean;
+  originalBusinessDate: string;
+  affectedCashShiftId?: string;
+}
+
 interface Cancellation {
   cancellationType: CancellationType;
   roomReleaseStatus: RoomReleaseStatus;
@@ -221,6 +263,7 @@ export interface booking extends Document {
   bookingId: string;
 
   transactions: transcation[];
+  transactionCorrections: TransactionCorrection[];
 
   staffUsername: string;
   checkInByStaffUsername?: string | null;
@@ -365,6 +408,7 @@ export const transactionSchema = new mongoose.Schema({
       "RESOLVE_STAY",
       "ADD_STANDALONE_SALE",
       "ADJUST_STANDALONE_SALE",
+      "CORRECT_TRANSACTION",
       "SYSTEM_MIGRATION",
     ],
   },
@@ -381,6 +425,56 @@ export const transactionSchema = new mongoose.Schema({
   cashShiftId: { type: String },
   platformId: { type: String },
   commercialSegmentId: { type: String },
+});
+
+const transactionCorrectionSnapshotSchema = new mongoose.Schema(
+  {
+    type: { type: String, required: true },
+    paymentMethod: {
+      type: String,
+      enum: ["OTA", "Cash", "Card", "Transfer", "Unpaid"],
+      required: true,
+    },
+    amount: { type: Number, min: 0, required: true },
+    note: { type: String },
+    reference: { type: String },
+    cashShiftId: { type: String },
+  },
+  { _id: false },
+);
+
+const transactionCorrectionSchema = new mongoose.Schema({
+  targetTransactionId: { type: String, required: true },
+  before: { type: transactionCorrectionSnapshotSchema, required: true },
+  after: { type: transactionCorrectionSnapshotSchema, required: true },
+  correctionType: {
+    type: String,
+    enum: ["recorded_mistake", "charge_change"],
+    required: true,
+  },
+  reasonCode: {
+    type: String,
+    enum: [
+      "incorrect_amount",
+      "incorrect_payment_method",
+      "incorrect_category",
+      "incorrect_note",
+      "manager_discount",
+      "waived_fee",
+      "agreed_rate_correction",
+      "cancelled_service",
+      "guest_compensation",
+      "other",
+    ],
+    required: true,
+  },
+  note: { type: String, required: true },
+  correctedBy: { type: String, required: true },
+  correctedByName: { type: String },
+  correctedAt: { type: Date, default: Date.now, required: true },
+  financialChange: { type: Boolean, required: true },
+  originalBusinessDate: { type: String, required: true },
+  affectedCashShiftId: { type: String },
 });
 
 const cancellationSchema = new mongoose.Schema(
@@ -509,6 +603,10 @@ const bookingSchema = new mongoose.Schema({
   },
 
   transactions: [transactionSchema],
+  transactionCorrections: {
+    type: [transactionCorrectionSchema],
+    default: [],
+  },
 
   passport: {
     passportHash: { type: String, select: false },

@@ -49,6 +49,7 @@ import "../features/bookings/CheckIn.css";
 import "./Main.css";
 import FinancialBreakdown from "../features/finance/FinancialBreakdown";
 import StandaloneSaleModal from "../features/finance/StandaloneSaleModal";
+import { DepositReturnReminderModal } from "../features/finance/DepositReturnReminderModal";
 
 const getFetchErrorMessage = (err: unknown) => {
   if (axios.isAxiosError(err) && err.response?.data?.message) {
@@ -478,7 +479,7 @@ const TodayList = ({
 
 const Main = () => {
   usePageTitle("HostelFlow · หน้าแรก");
-  const { user } = useAuth();
+  const { user, resolveStaffName } = useAuth();
   const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
   const navigate = useNavigate();
   const location = useLocation();
@@ -510,6 +511,7 @@ const Main = () => {
   const [closeNote, setCloseNote] = useState("");
   const [addBookingIsOpen, setAddBookingIsOpen] = useState(false);
   const [standaloneSaleIsOpen, setStandaloneSaleIsOpen] = useState(false);
+  const [depositReminderIsOpen, setDepositReminderIsOpen] = useState(false);
   const [addBookingIsDirty, setAddBookingIsDirty] = useState(false);
   const [financialBreakdownMode, setFinancialBreakdownMode] = useState<
     "monthly" | "today" | null
@@ -521,7 +523,7 @@ const Main = () => {
   >(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  const fullFormattedDate = formatHeaderDate(new Date());
+  const fullFormattedDate = formatHeaderDate(new Date(), dateFormat);
 
   const fetchDailyOps = useCallback(async () => {
     setLoading(true);
@@ -707,6 +709,10 @@ const Main = () => {
   const ordinaryCloseVarianceNeedsNote = Boolean(
     cashPosition && Math.abs(operatingVariance) > cashPosition.threshold,
   );
+  const finalDayCloseCashIsInvalid =
+    operatingActualCash === "" ||
+    !Number.isFinite(Number(operatingActualCash)) ||
+    Number(operatingActualCash) < 0;
   const openingVarianceNeedsNote = Boolean(
     cashPosition &&
     Math.abs(
@@ -715,14 +721,12 @@ const Main = () => {
   );
   const activeShiftStaffName =
     activeCashShift?.staff?.name ||
-    activeCashShift?.staff?.username ||
-    activeCashShift?.staffUsername;
+    resolveStaffName(activeCashShift?.staffUsername);
   const previousShiftStaffName =
     previousCashShift?.staff?.name ||
-    previousCashShift?.staff?.username ||
-    previousCashShift?.staffUsername;
+    resolveStaffName(previousCashShift?.staffUsername);
   const cashShiftTitle = activeCashShift
-    ? `กะของ ${activeShiftStaffName || activeCashShift.staffUsername} เปิดอยู่`
+    ? `กะของ ${activeShiftStaffName} เปิดอยู่`
     : cashDayIsFinalized
       ? "ปิดยอดวันนี้แล้ว"
       : hasPreviousCashShift
@@ -770,7 +774,10 @@ const Main = () => {
     }
   };
 
-  const closeCashShift = async (closeDay = false) => {
+  const closeCashShift = async (
+    closeDay = false,
+    depositReminder?: { calculationToken: string },
+  ) => {
     if (!activeCashShift) {
       throw new Error("ยังไม่มีกะเงินสดที่เปิดอยู่");
     }
@@ -797,6 +804,11 @@ const Main = () => {
           operatingActualCash: Number(operatingActualCash || 0),
           closeDay,
           note: closeNote.trim(),
+          ...(closeDay && depositReminder
+            ? {
+                depositReminderToken: depositReminder.calculationToken,
+              }
+            : {}),
         },
         { withCredentials: true },
       );
@@ -900,6 +912,25 @@ const Main = () => {
 
   return (
     <main className="home main">
+      <Modal
+        open={depositReminderIsOpen}
+        className="home__modalCenter"
+        onClose={() => setDepositReminderIsOpen(false)}
+      >
+        {cashPosition ? (
+          <DepositReturnReminderModal
+            businessDate={cashPosition.businessDate}
+            closingCashAmount={Number(operatingActualCash)}
+            dateFormat={dateFormat}
+            onClose={() => setDepositReminderIsOpen(false)}
+            onConfirm={(calculationToken) =>
+              closeCashShift(true, { calculationToken })
+            }
+          />
+        ) : (
+          <div />
+        )}
+      </Modal>
       <Modal
         open={addBookingIsOpen}
         className="home__modalCenter"
@@ -1477,20 +1508,12 @@ const Main = () => {
                     <ActionButton
                       text="ปิดยอดวันนี้"
                       icon="bx-moon"
-                      disabled={cashCloseSaving || !canCloseActiveShift}
-                      onClick={() =>
-                        toast.promise(closeCashShift(true), {
-                          loading: "กำลังปิดยอดวันนี้",
-                          success: "ปิดยอดวันนี้เรียบร้อย",
-                          error: (err) =>
-                            axios.isAxiosError(err)
-                              ? err.response?.data?.message ||
-                                "เกิดข้อผิดพลาดในการปิดยอด"
-                              : err instanceof Error
-                                ? err.message
-                                : "เกิดข้อผิดพลาดในการปิดยอด",
-                        })
+                      disabled={
+                        cashCloseSaving ||
+                        !canCloseActiveShift ||
+                        finalDayCloseCashIsInvalid
                       }
+                      onClick={() => setDepositReminderIsOpen(true)}
                     />
                   )}
                 </div>

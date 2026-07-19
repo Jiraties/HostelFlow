@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ActionButton from "../../components/ActionButton";
 import ModalCloseButton from "../../components/ModalCloseButton";
 import CashShiftNudge from "../../components/CashShiftNudge";
@@ -22,6 +22,7 @@ import {
   paymentMethodOptions,
 } from "../../helpers/options";
 import { getRoomStayRoomIds } from "../../helpers/roomStayHelpers";
+import { generateWalkInBookingId } from "../../helpers/walkInBookingId";
 
 interface BookingFormData {
   name: string;
@@ -100,6 +101,7 @@ const AddBooking = ({
   };
 }) => {
   const { user } = useAuth();
+  const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
   const isEditMode = mode === "edit" && !!editModeBooking;
   const [submitting, setSubmitting] = useState(false);
   const [occupiedRoomIds, setOccupiedRoomIds] = useState<string[]>([]);
@@ -142,7 +144,8 @@ const AddBooking = ({
         defaultPlatform === "TRAV"
           ? "OTA"
           : user?.settings.defaultPaymentMethod || "",
-      bookingId: "",
+      bookingId:
+        defaultPlatform === "WALK" ? generateWalkInBookingId() : "",
       staffUsername: user?.username || "",
       note: "",
     };
@@ -155,6 +158,9 @@ const AddBooking = ({
     user?.username,
   ]);
   const [formData, setFormData] = useState<BookingFormData>(initialFormData);
+  const generatedWalkInBookingIdRef = useRef(
+    initialFormData.platformId === "WALK" ? initialFormData.bookingId : "",
+  );
   const [advancePaymentEnabled, setAdvancePaymentEnabled] = useState(false);
   const [advancePaymentCalculationMode, setAdvancePaymentCalculationMode] =
     useState<AdvancePaymentCalculationMode>("percentage");
@@ -389,8 +395,35 @@ const AddBooking = ({
   ) => {
     if (submitting) return;
 
+    let replacementBookingId: string | undefined;
+    if (field === "platformId") {
+      if (
+        value === "WALK" &&
+        (!formData.bookingId.trim() ||
+          formData.bookingId === generatedWalkInBookingIdRef.current)
+      ) {
+        replacementBookingId = generateWalkInBookingId();
+        generatedWalkInBookingIdRef.current = replacementBookingId;
+      } else if (
+        value !== "WALK" &&
+        formData.bookingId === generatedWalkInBookingIdRef.current
+      ) {
+        replacementBookingId = "";
+        generatedWalkInBookingIdRef.current = "";
+      }
+    } else if (
+      field === "bookingId" &&
+      value !== generatedWalkInBookingIdRef.current
+    ) {
+      generatedWalkInBookingIdRef.current = "";
+    }
+
     setFormData((prev) => {
       const updated = { ...prev, [field]: value };
+
+      if (replacementBookingId !== undefined) {
+        updated.bookingId = replacementBookingId;
+      }
 
       if (field === "platformId") {
         const platformId = value as PlatformId | "";
@@ -732,6 +765,7 @@ const AddBooking = ({
               <BookingDateRangePicker
                 checkIn={formData.checkIn}
                 checkOut={formData.checkOut}
+                dateFormat={dateFormat}
                 hasError={Boolean(formErrors.checkIn || formErrors.checkOut)}
                 onChange={dateRangeChangeHandler}
                 onCheckInChange={checkInInputChangeHandler}
@@ -1043,8 +1077,13 @@ const AddBooking = ({
                   formErrors.bookingId ? "boxInput--error" : ""
                 }`}
                 type="text"
+                inputMode={formData.platformId === "WALK" ? "numeric" : undefined}
                 value={formData.bookingId}
-                placeholder="เช่น 4012345678"
+                placeholder={
+                  formData.platformId === "WALK"
+                    ? "เช่น 170720261819"
+                    : "เช่น 4012345678"
+                }
                 onChange={(e) =>
                   formDataChangeHandler("bookingId", e.target.value)
                 }

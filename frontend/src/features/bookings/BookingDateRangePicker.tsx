@@ -1,10 +1,17 @@
 import dayjs, { type Dayjs } from "dayjs";
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  dateFormatPlaceholder,
+  formatDateInputValue,
+  parseDateInputValue,
+} from "../../helpers/displayDate";
+import type { DateFormatPreference } from "../../types/userSettings";
 import "./BookingDateRangePicker.css";
 
 type BookingDateRangePickerProps = {
   checkIn: string;
   checkOut: string;
+  dateFormat: DateFormatPreference;
   hasError?: boolean;
   onChange: (checkIn: string, checkOut: string) => void;
   onCheckInChange: (checkIn: string) => void;
@@ -14,29 +21,18 @@ type BookingDateRangePickerProps = {
 const weekdayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const toDateKey = (date: Dayjs) => date.format("YYYY-MM-DD");
-const displayDate = (value: string) =>
-  value ? dayjs(value).format("DD/MM/YYYY") : "";
 
-const parseTypedDate = (value: string) => {
-  const normalizedValue = value.trim();
-  const match = normalizedValue.match(
-    /^(?:(\d{4})-(\d{2})-(\d{2})|(\d{2})\/(\d{2})\/(\d{4}))$/,
-  );
-  if (!match) return null;
-
-  const [year, month, day] = match[1]
-    ? [match[1], match[2], match[3]]
-    : [match[6], match[5], match[4]];
-  const date = dayjs(`${year}-${month}-${day}`);
-
-  return date.isValid() && toDateKey(date) === `${year}-${month}-${day}`
-    ? toDateKey(date)
-    : null;
+const maskNumericDate = (value: string) => {
+  const digits = value.replace(/\D/g, "").slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
 };
 
 export function BookingDateRangePicker({
   checkIn,
   checkOut,
+  dateFormat,
   hasError = false,
   onChange,
   onCheckInChange,
@@ -48,8 +44,12 @@ export function BookingDateRangePicker({
     dayjs(checkIn || checkOut || undefined).startOf("month"),
   );
   const [pendingCheckIn, setPendingCheckIn] = useState<string | null>(null);
-  const [checkInDraft, setCheckInDraft] = useState(() => displayDate(checkIn));
-  const [checkOutDraft, setCheckOutDraft] = useState(() => displayDate(checkOut));
+  const [checkInDraft, setCheckInDraft] = useState(() =>
+    formatDateInputValue(checkIn, dateFormat),
+  );
+  const [checkOutDraft, setCheckOutDraft] = useState(() =>
+    formatDateInputValue(checkOut, dateFormat),
+  );
 
   const calendarDays = useMemo(() => {
     const firstVisibleDay = displayMonth.startOf("month").startOf("week");
@@ -57,12 +57,12 @@ export function BookingDateRangePicker({
   }, [displayMonth]);
 
   useEffect(() => {
-    setCheckInDraft(displayDate(checkIn));
-  }, [checkIn]);
+    setCheckInDraft(formatDateInputValue(checkIn, dateFormat));
+  }, [checkIn, dateFormat]);
 
   useEffect(() => {
-    setCheckOutDraft(displayDate(checkOut));
-  }, [checkOut]);
+    setCheckOutDraft(formatDateInputValue(checkOut, dateFormat));
+  }, [checkOut, dateFormat]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -95,14 +95,23 @@ export function BookingDateRangePicker({
 
   const selectDay = (date: Dayjs) => {
     const selectedDate = toDateKey(date);
+    const moveToSelectedMonth = () => {
+      if (!date.isSame(displayMonth, "month")) {
+        setDisplayMonth(date.startOf("month"));
+      }
+    };
 
     if (!pendingCheckIn) {
       setPendingCheckIn(selectedDate);
+      onChange(selectedDate, "");
+      moveToSelectedMonth();
       return;
     }
 
     if (selectedDate <= pendingCheckIn) {
       setPendingCheckIn(selectedDate);
+      onChange(selectedDate, "");
+      moveToSelectedMonth();
       return;
     }
 
@@ -124,7 +133,7 @@ export function BookingDateRangePicker({
       return;
     }
 
-    const parsedDate = parseTypedDate(value);
+    const parsedDate = parseDateInputValue(value, dateFormat);
     if (parsedDate) {
       onDateChange(parsedDate);
       return;
@@ -142,29 +151,43 @@ export function BookingDateRangePicker({
       >
         <input
           type="text"
-          inputMode="numeric"
-          placeholder="DD/MM/YYYY"
+          inputMode={dateFormat === "d MMM yyyy" ? "text" : "numeric"}
+          maxLength={dateFormat === "d MMM yyyy" ? 11 : 10}
+          placeholder={dateFormatPlaceholder(dateFormat)}
           value={checkInDraft}
           aria-label="Check-in date"
           onFocus={openPicker}
-          onChange={(event) => setCheckInDraft(event.target.value)}
+          onChange={(event) =>
+            setCheckInDraft(
+              dateFormat === "d MMM yyyy"
+                ? event.target.value
+                : maskNumericDate(event.target.value),
+            )
+          }
           onBlur={() =>
             commitTypedDate(checkInDraft, onCheckInChange, () =>
-              setCheckInDraft(displayDate(checkIn)),
+              setCheckInDraft(formatDateInputValue(checkIn, dateFormat)),
             )
           }
         />
         <input
           type="text"
-          inputMode="numeric"
-          placeholder="DD/MM/YYYY"
+          inputMode={dateFormat === "d MMM yyyy" ? "text" : "numeric"}
+          maxLength={dateFormat === "d MMM yyyy" ? 11 : 10}
+          placeholder={dateFormatPlaceholder(dateFormat)}
           value={checkOutDraft}
           aria-label="Check-out date"
           onFocus={openPicker}
-          onChange={(event) => setCheckOutDraft(event.target.value)}
+          onChange={(event) =>
+            setCheckOutDraft(
+              dateFormat === "d MMM yyyy"
+                ? event.target.value
+                : maskNumericDate(event.target.value),
+            )
+          }
           onBlur={() =>
             commitTypedDate(checkOutDraft, onCheckOutChange, () =>
-              setCheckOutDraft(displayDate(checkOut)),
+              setCheckOutDraft(formatDateInputValue(checkOut, dateFormat)),
             )
           }
         />
@@ -224,7 +247,6 @@ export function BookingDateRangePicker({
                   }${isInRange ? " bookingDateRangePicker__day--inRange" : ""}`}
                   type="button"
                   key={dateKey}
-                  disabled={!isCurrentMonth}
                   aria-label={date.format("D MMMM YYYY")}
                   aria-pressed={isRangeStart || isRangeEnd}
                   onClick={() => selectDay(date)}

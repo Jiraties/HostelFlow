@@ -14,6 +14,7 @@ export type actionType =
   | "POST_CLOSE_ADJUSTMENT"
   | "MANAGE_ROOM_STAYS"
   | "ADD_TRANSACTION"
+  | "CORRECT_TRANSACTION"
   | "ADD_STANDALONE_SALE"
   | "ADJUST_STANDALONE_SALE"
   | "CREATE_USER"
@@ -50,6 +51,7 @@ export type activity =
         | "POST_CLOSE_ADJUSTMENT"
         | "MANAGE_ROOM_STAYS"
         | "ADD_TRANSACTION"
+        | "CORRECT_TRANSACTION"
         | "ADD_STANDALONE_SALE"
         | "ADJUST_STANDALONE_SALE"
         | "CREATE_USER"
@@ -101,6 +103,7 @@ const activitySchema = new mongoose.Schema({
       "POST_CLOSE_ADJUSTMENT",
       "MANAGE_ROOM_STAYS",
       "ADD_TRANSACTION",
+      "CORRECT_TRANSACTION",
       "ADD_STANDALONE_SALE",
       "ADJUST_STANDALONE_SALE",
       "CREATE_USER",

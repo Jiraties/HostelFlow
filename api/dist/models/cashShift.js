@@ -22,6 +22,23 @@ const depositPreparationSchema = new mongoose_1.default.Schema({
     preparedAt: { type: Date, required: true },
     preparedBy: { type: String, required: true },
 }, { _id: false });
+const depositReturnReminderBookingSchema = new mongoose_1.default.Schema({
+    bookingId: { type: String, required: true },
+    guestName: { type: String, required: true },
+    roomIds: { type: [String], default: [] },
+    checkOut: { type: Date, required: true },
+    amount: { type: Number, required: true },
+}, { _id: false });
+const depositReturnReminderSchema = new mongoose_1.default.Schema({
+    targetBusinessDate: { type: String, required: true },
+    requiredAmount: { type: Number, required: true },
+    bookingCount: { type: Number, required: true },
+    bookings: { type: [depositReturnReminderBookingSchema], default: [] },
+    calculationToken: { type: String, required: true },
+    calculatedAt: { type: Date, required: true },
+    acknowledgedAt: { type: Date, required: true },
+    acknowledgedBy: { type: String, required: true },
+}, { _id: false });
 const cashShiftSchema = new mongoose_1.default.Schema({
     businessDate: { type: String, required: true },
     shiftNumber: { type: Number, required: true },
@@ -63,6 +80,7 @@ const cashShiftSchema = new mongoose_1.default.Schema({
     },
     isFinalDayClose: { type: Boolean, default: false },
     depositPreparation: { type: depositPreparationSchema },
+    depositReturnReminder: { type: depositReturnReminderSchema },
 });
 cashShiftSchema.index({ businessDate: 1, shiftNumber: 1 }, { unique: true });
 cashShiftSchema.index({ businessDate: 1, status: 1 });

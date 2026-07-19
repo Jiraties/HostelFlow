@@ -327,6 +327,9 @@
   .documents__export {
     padding: 1.25rem;
     gap: 1.25rem;
+    border: 0;
+    border-radius: var(--mobile-card-radius, 1.25rem);
+    box-shadow: var(--mobile-shadow, var(--main-shadow));
   }
 
   .documents__exportDescription {
@@ -340,6 +343,27 @@
 
   .documents__overview div {
     padding: 0.9rem 1rem;
+    border: 0;
+    border-radius: 1rem;
+    background-color: var(--background);
+    box-shadow: none;
+  }
+
+  .documents__actions > *,
+  .documents__action {
+    width: 100%;
+    min-height: var(--mobile-touch-target, 2.75rem);
+  }
+
+  .documents__exportHeader {
+    align-items: flex-start;
+  }
+
+  .documents__exportIcon {
+    flex-basis: 3rem;
+    width: 3rem;
+    height: 3rem;
+    border-radius: 0.9rem;
   }
 }
 

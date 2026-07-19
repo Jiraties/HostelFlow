@@ -422,9 +422,20 @@ const CheckIn = ({
               onChange={(option) => {
                 const nextNationality = option?.value || "";
                 const nextIsThai = nextNationality === "TH";
+                const nextPrefixOptions = nextIsThai
+                  ? thaiNamePrefixOptions
+                  : foreignNamePrefixOptions;
+
+                if (
+                  namePrefix &&
+                  !nextPrefixOptions.some(
+                    (prefixOption) => prefixOption.value === namePrefix,
+                  )
+                ) {
+                  setNamePrefix("");
+                }
 
                 if (nextIsThai !== isThaiGuest) {
-                  setNamePrefix("");
                   setPassportNo("");
                 }
                 setNationality(nextNationality);
@@ -495,17 +506,19 @@ const CheckIn = ({
             </div>
           )}
 
-          {/* Restored: Allows extra cash input regardless of payment method selected */}
           {roundingAdjustment && unpaidPaymentPaymentMethod === "Cash" && (
             <div>
               <p className="checkIn__label">รับเงินสดค่าห้องมา (บาท)</p>
               <input
                 className="boxInput"
                 type="number"
+                min={outstandingRoomChargeAmount}
+                step="0.01"
                 value={receivedCash}
                 placeholder="200"
                 onChange={(e) => {
                   setReceivedCash(e.target.value);
+                  setConfirmedPayment(false);
                 }}
               />
             </div>
@@ -607,7 +620,6 @@ const CheckIn = ({
       </div>
 
       <div className="checkIn__actions">
-        {/* Restored: Allows the button to be clicked for ANY payment method */}
         {hasOutstandingRoomCharge &&
           unpaidPaymentPaymentMethod === "Cash" && (
             <ActionButton

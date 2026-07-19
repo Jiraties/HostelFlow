@@ -30,7 +30,7 @@ const authMiddleware = async (req: Request, res: Response, next: NextFunction) =
     ) as MyJwtPayload;
 
     const user = await User.findById(decodedToken.userId)
-      .select("username admin active currentSessionId")
+      .select("username name admin active currentSessionId")
       .lean();
 
     if (!user || user.active === false) {
@@ -52,6 +52,7 @@ const authMiddleware = async (req: Request, res: Response, next: NextFunction) =
     req.user = {
       userId: String(user._id),
       username: user.username,
+      name: user.name,
       admin: Boolean(user.admin),
       sessionId: decodedToken.sessionId,
     };

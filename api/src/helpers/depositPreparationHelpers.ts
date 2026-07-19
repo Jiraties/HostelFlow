@@ -1,5 +1,6 @@
 import type { booking } from "../models/booking";
 import { bookingRemainingDepositAmount } from "./financeHelpers";
+import { projectEffectiveTransactions } from "../services/transactionCorrections";
 
 export type DepositRequirementBooking = {
   bookingId: string;
@@ -19,7 +20,10 @@ export type DepositRequirement = {
 
 export const buildDepositRequirement = (
   businessDate: string,
-  bookings: Array<Pick<booking, "bookingId" | "name" | "checkOut" | "transactions">>,
+  bookings: Array<
+    Pick<booking, "bookingId" | "name" | "checkOut" | "transactions"> &
+      Partial<Pick<booking, "transactionCorrections">>
+  >,
   calculatedAt = new Date(),
 ): DepositRequirement => {
   const refundBookings = bookings
@@ -27,7 +31,12 @@ export const buildDepositRequirement = (
       bookingId: currentBooking.bookingId,
       guestName: currentBooking.name,
       checkOut: currentBooking.checkOut,
-      amount: bookingRemainingDepositAmount(currentBooking.transactions || []),
+      amount: bookingRemainingDepositAmount(
+        projectEffectiveTransactions(
+          currentBooking.transactions || [],
+          currentBooking.transactionCorrections || [],
+        ),
+      ),
     }))
     .filter((currentBooking) => currentBooking.amount > 0);
 

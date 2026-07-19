@@ -27,6 +27,7 @@
     "ag-grid-react": "^35.1.0",
     "axios": "^1.13.6",
     "boxicons": "^2.1.4",
+    "canvas-confetti": "^1.9.4",
     "dayjs": "^1.11.20",
     "i18n-iso-countries": "^7.14.0",
     "moment": "^2.30.1",

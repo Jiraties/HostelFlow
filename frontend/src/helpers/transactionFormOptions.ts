@@ -23,7 +23,6 @@ export const transactionTypeOptions: OptionType[] = [
   { value: "passwordLock", label: "Password Lock", color: "#8b5cf6" },
   { value: "car", label: "Car", color: "#64748b" },
   { value: "cooking", label: "Cooking", color: "#f97316" },
-  { value: "adjustment", label: "ปรับราคา", color: "#a78bfa" },
 ];
 
 export const standaloneTransactionTypeOptions = transactionTypeOptions.filter(

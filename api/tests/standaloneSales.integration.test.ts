@@ -7,6 +7,7 @@ import Activity from "../src/models/activity";
 import CashShift from "../src/models/cashShift";
 import MutationIdempotencyKey from "../src/models/mutationIdempotencyKey";
 import StandaloneSale from "../src/models/standaloneSale";
+import User from "../src/models/user";
 import {
   adjustStandaloneSale,
   createStandaloneSale,
@@ -45,7 +46,7 @@ before(async () => {
   replicaSet = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   await mongoose.connect(replicaSet.getUri(), { dbName: "standalone_sales" });
   await Promise.all([
-    Activity.syncIndexes(), CashShift.syncIndexes(), MutationIdempotencyKey.syncIndexes(), StandaloneSale.syncIndexes(),
+    Activity.syncIndexes(), CashShift.syncIndexes(), MutationIdempotencyKey.syncIndexes(), StandaloneSale.syncIndexes(), User.syncIndexes(),
   ]);
 });
 after(async () => { await mongoose.disconnect(); await replicaSet.stop(); });
@@ -54,6 +55,11 @@ beforeEach(async () => {
 });
 
 test("cash standalone sale joins the open shift and finance views", async () => {
+  await User.create({
+    username: "staff",
+    name: "Front Desk",
+    profilePictureUrl: "/uploads/staff.jpg",
+  });
   const shift = await CashShift.create({
     businessDate: businessDate(), shiftNumber: 1, staffUsername: "staff", status: "open",
     openingMode: "counted", operatingOpeningCash: 100, operatingExpectedCash: 100, createdBy: "staff",
@@ -77,6 +83,11 @@ test("cash standalone sale joins the open shift and finance views", async () => 
   const detail = breakdown.body.categories.flatMap((category: any) => category.transactions).find((item: any) => item.saleId === sale?.saleId);
   assert.equal(detail.guestName, "Visitor");
   assert.equal(detail.sourceType, "standaloneSale");
+  assert.deepEqual(detail.staff, {
+    username: "staff",
+    name: "Front Desk",
+    profilePictureUrl: "/uploads/staff.jpg",
+  });
 });
 
 test("card standalone sale adds the three percent surcharge without a shift", async () => {

@@ -25,7 +25,7 @@
   font-size: 0.9rem;
 }
 
-.manageRoomStays__boundaryDate:disabled {
+.manageRoomStays__boundaryDate.preferredDateInput--disabled {
   color: #666;
   background-color: #f6f6f6;
   border: 1px dashed #d6d6d6;

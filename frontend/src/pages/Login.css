@@ -72,7 +72,7 @@
   }
 
   .login__left {
-    min-height: 100vh;
+    min-height: 100dvh;
   }
 
   .login__form {
@@ -86,11 +86,17 @@
 
 @media (max-width: 520px) {
   .login__left {
-    padding: 1.25rem;
+    min-height: 100dvh;
+    padding: max(1rem, env(safe-area-inset-top)) 1rem
+      max(1rem, env(safe-area-inset-bottom));
   }
 
   .login__form {
     width: 100%;
+    padding: 1.1rem;
+    border-radius: var(--mobile-card-radius, 1.25rem);
+    background-color: var(--background);
+    box-shadow: var(--mobile-shadow, var(--main-shadow));
   }
 }
 

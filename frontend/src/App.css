@@ -38,6 +38,164 @@
     grid-row: 1;
     height: auto;
     min-height: 0;
-    padding-bottom: 1.25rem;
+    padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .home__modalCenter {
+    align-items: flex-end;
+    padding: 0.5rem;
+  }
+
+  :is(
+      .addBooking__wrapper,
+      .viewBooking__wrapper,
+      .checkIn__wrapper,
+      .cancellation__wrapper,
+      .extendBooking__wrapper,
+      .manageUser__wrapper,
+      .financialBreakdown,
+      .depositReminder,
+      .confirmationModal
+    ) {
+    width: 100% !important;
+    max-width: none !important;
+    max-height: calc(100dvh - 1rem - env(safe-area-inset-top)) !important;
+    margin: 0;
+    padding: 1.1rem !important;
+    padding-bottom: calc(1.1rem + env(safe-area-inset-bottom)) !important;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 0;
+    border-radius: var(--mobile-sheet-radius, 1.5rem) !important;
+    background-color: var(--background);
+    box-shadow: var(--mobile-shadow-strong, var(--main-shadow));
+    scrollbar-width: none;
+  }
+
+  :is(
+      .addBooking__wrapper,
+      .viewBooking__wrapper,
+      .checkIn__wrapper,
+      .cancellation__wrapper,
+      .extendBooking__wrapper,
+      .manageUser__wrapper,
+      .financialBreakdown,
+      .depositReminder,
+      .confirmationModal
+    )::-webkit-scrollbar {
+    display: none;
+  }
+
+  :is(
+      .addBooking__wrapper,
+      .viewBooking__wrapper,
+      .checkIn__wrapper,
+      .cancellation__wrapper,
+      .extendBooking__wrapper,
+      .manageUser__wrapper,
+      .financialBreakdown,
+      .depositReminder
+    ) > :first-child:not(.modalCloseButton) {
+    padding-right: 2.8rem;
+  }
+
+  :is(
+      .addTransaction__actions,
+      .checkIn__actions,
+      .checkOut__actions,
+      .cancellation__actions,
+      .extendBooking__actions,
+      .resolveBooking__actions,
+      .manageUserModal__actions,
+      .financialBreakdown__actions,
+      .depositReminder__actions,
+      .confirmationModal__actions
+    ) {
+    position: sticky;
+    bottom: calc(-1.1rem - env(safe-area-inset-bottom));
+    z-index: 4;
+    margin-right: -1.1rem;
+    margin-bottom: calc(-1.1rem - env(safe-area-inset-bottom));
+    margin-left: -1.1rem;
+    padding: 0.9rem 1.1rem calc(0.9rem + env(safe-area-inset-bottom));
+    background-color: var(--background);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .addBooking__submit {
+    width: 100%;
+    min-height: var(--mobile-touch-target, 2.75rem);
+  }
+
+  :is(
+      .addTransaction__actions,
+      .checkIn__actions,
+      .checkOut__actions,
+      .cancellation__actions,
+      .extendBooking__actions,
+      .resolveBooking__actions,
+      .manageUserModal__actions,
+      .financialBreakdown__actions,
+      .depositReminder__actions,
+      .confirmationModal__actions
+    ) button,
+  :is(
+      .addTransaction__actions,
+      .checkIn__actions,
+      .checkOut__actions,
+      .cancellation__actions,
+      .extendBooking__actions,
+      .resolveBooking__actions,
+      .manageUserModal__actions,
+      .financialBreakdown__actions,
+      .depositReminder__actions,
+      .confirmationModal__actions
+    ) .home__action {
+    min-height: var(--mobile-touch-target, 2.75rem);
+  }
+
+  :is(
+      .addBooking__wrapper,
+      .viewBooking__wrapper,
+      .checkIn__wrapper,
+      .cancellation__wrapper,
+      .extendBooking__wrapper,
+      .manageUser__wrapper,
+      .financialBreakdown,
+      .depositReminder,
+      .confirmationModal
+    ) :is(input, textarea, select, button) {
+    border-width: 0;
+  }
+
+  .cancellation__segment {
+    border: 0 !important;
+  }
+
+  .viewBooking__moreActionsMenu,
+  .financialBreakdown__transactions {
+    border: 0;
+    background-color: var(--background);
+    box-shadow: none;
+  }
+
+  :is(
+      .addTransaction__cardPreview,
+      .checkIn__totalsBreakdown,
+      .cancellation__totalsBreakdown
+    ) {
+    border: 0;
+    background-color: var(--background);
+    box-shadow: none;
+  }
+
+}
+
+@media (max-width: 760px) and (hover: none) {
+  :is(.home__action, .sidebar__navItem, .documents__action):hover {
+    transform: none;
   }
 }

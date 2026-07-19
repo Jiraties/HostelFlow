@@ -65,13 +65,13 @@
   gap: 0.3rem;
 }
 
-.financialBreakdown__datePicker span {
+.financialBreakdown__dateLabel {
   color: #666666;
   font-size: 0.75rem;
   font-weight: 500;
 }
 
-.financialBreakdown__datePicker input {
+.financialBreakdown__dateInput {
   min-height: 2.35rem;
   padding: 0.35rem 0.65rem;
   border: 0;
@@ -85,7 +85,7 @@
   font-weight: 500;
 }
 
-.financialBreakdown__datePicker input:focus-visible {
+.financialBreakdown__dateInput:focus-within {
   box-shadow: 0 0 0 0.15rem
     color-mix(in srgb, var(--primary-color) 35%, transparent);
 }
@@ -382,6 +382,17 @@
   box-shadow: none;
 }
 
+.financialBreakdown__transaction--booking {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.financialBreakdown__transaction--booking:hover,
+.financialBreakdown__transaction--booking:focus-visible {
+  background-color: #00000004;
+  outline: none;
+}
+
 .financialBreakdown__transactionMain,
 .financialBreakdown__transactionSide {
   display: flex;
@@ -395,22 +406,65 @@
   text-align: right;
 }
 
-.financialBreakdown__transactionMain strong,
-.financialBreakdown__transactionMain span {
+.financialBreakdown__transactionMain > strong,
+.financialBreakdown__transactionMetaText {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.financialBreakdown__transactionMain strong {
+.financialBreakdown__transactionMain > strong {
   display: flex;
   align-items: center;
   gap: 0.45rem;
   font-weight: 400;
 }
 
-.financialBreakdown__transactionMain span {
+.financialBreakdown__transactionMeta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.financialBreakdown__transactionMetaText {
+  min-width: 0;
   color: #666666;
+  font-size: 0.9rem;
+}
+
+.financialBreakdown__staffTooltip {
+  flex: 0 0 auto;
+  border-radius: 50%;
+}
+
+.financialBreakdown__staffAvatar {
+  display: block;
+  width: 1.2rem;
+  height: 1.2rem;
+  border-radius: 50%;
+  object-fit: cover;
+  opacity: 0.82;
+  transition: opacity 0.15s ease;
+}
+
+.financialBreakdown__staffTooltip:hover .financialBreakdown__staffAvatar,
+.financialBreakdown__staffTooltip:focus .financialBreakdown__staffAvatar {
+  opacity: 1;
+}
+
+.financialBreakdown__transactionStaffNameBadge {
+  display: flex;
+  gap: 0.4rem;
+  background-color: #00000005;
+  border-radius: 100rem;
+  align-items: center;
+  padding-right: 0.5rem;
+}
+
+.financialBreakdown__transactionStaffNameBadge p {
+  color: #4c4c4c;
+  padding: 0.2rem 0 0.2rem 0.5rem;
   font-size: 0.9rem;
 }
 
@@ -476,7 +530,7 @@
     align-items: stretch;
   }
 
-  .financialBreakdown__datePicker input {
+  .financialBreakdown__dateInput {
     width: 100%;
   }
 

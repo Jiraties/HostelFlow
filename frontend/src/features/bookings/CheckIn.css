@@ -128,11 +128,14 @@
 }
 
 .box {
+  display: inline-grid;
+  flex: 0 0 20px;
+  place-items: center;
   width: 20px;
   height: 20px;
   border: 2px solid #d1d5db;
   border-radius: 6px;
-  display: inline-block;
+  box-sizing: border-box;
   position: relative;
   transition: all 0.2s ease;
 }
@@ -144,22 +147,16 @@
 
 .box::after {
   content: "";
-  position: absolute;
   display: none;
+  width: 4px;
+  height: 8px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
 }
 
 .checkbox input:checked + .box::after {
   display: block;
-}
-
-.box::after {
-  left: 6px;
-  top: 2px;
-  width: 5px;
-  height: 10px;
-  border: solid white;
-  border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
 }
 
 .checkIn__confirmAction {

@@ -45,8 +45,9 @@
 }
 
 .home__actionDisabled {
-  background-color: #dcdcdc;
-  color: #696969;
+  background-color: #f5f6f7;
+  color: #a7abb0;
+  box-shadow: none;
 }
 
 .home__action:disabled {
@@ -54,7 +55,11 @@
 }
 
 .home__actionDisabled i {
-  color: #696969;
+  color: #b7bbc0;
+}
+
+.home__action:disabled:hover {
+  transform: none;
 }
 
 @media (max-width: 520px) {

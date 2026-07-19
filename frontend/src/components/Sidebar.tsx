@@ -1,65 +1,51 @@
 import { Link, useLocation } from "react-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Logo from "./Logo";
 import "./Sidebar.css";
 import { useAuth } from "../context/AuthContext";
+import { mobilePrimaryLinks, navigationItems } from "./navigationItems";
 
 const Sidebar = () => {
   const location = useLocation();
   const { user } = useAuth();
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const moreSheetRef = useRef<HTMLElement>(null);
+  const sidebarItems = navigationItems.filter(
+    (item) => !item.adminOnly || user?.admin,
+  );
+  const primaryItems = sidebarItems.filter((item) =>
+    mobilePrimaryLinks.has(item.link),
+  );
+  const moreItems = sidebarItems.filter(
+    (item) => !mobilePrimaryLinks.has(item.link),
+  );
+  const moreIsActive = moreItems.some((item) => item.link === location.pathname);
 
-  const sidebarItems = user?.admin
-    ? [
-        { id: 1, label: "หน้าแรก", link: "/", icon: "bx-home" },
-        {
-          id: 2,
-          label: "Arrivals",
-          link: "/arrivals",
-          icon: "bx-arrow-to-left",
-        },
-        {
-          id: 3,
-          label: "Departures",
-          link: "/departures",
-          icon: "bx-arrow-from-left",
-        },
-        { id: 5, label: "ปฏิทิน", link: "/calendar", icon: "bx-calendar" },
-        { id: 4, label: "รายการทั้งหมด", link: "/master", icon: "bx-table" },
-        { id: 6, label: "เอกสาร", link: "/documents", icon: "bx-article" },
-        { id: 99, label: "จัดการ", link: "/manage", icon: "bx-group" },
-        {
-          id: 8,
-          label: "ตั้งค่า และ ประวัติ",
-          link: "/settings",
-          icon: "bx-cog",
-        },
-      ]
-    : [
-        { id: 1, label: "หน้าแรก", link: "/", icon: "bx-home" },
-        {
-          id: 2,
-          label: "Arrivals",
-          link: "/arrivals",
-          icon: "bx-arrow-to-left",
-        },
-        {
-          id: 3,
-          label: "Departures",
-          link: "/departures",
-          icon: "bx-arrow-from-left",
-        },
-        { id: 5, label: "ปฏิทิน", link: "/calendar", icon: "bx-calendar" },
+  useEffect(() => {
+    if (!isMoreOpen) return;
 
-        { id: 4, label: "รายการทั้งหมด", link: "/master", icon: "bx-table" },
-        { id: 6, label: "เอกสาร", link: "/documents", icon: "bx-article" },
-        {
-          id: 8,
-          label: "ตั้งค่า และ ประวัติ",
-          link: "/settings",
-          icon: "bx-cog",
-        },
-      ];
+    const previousOverflow = document.body.style.overflow;
+    const desktopQuery = window.matchMedia("(min-width: 761px)");
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsMoreOpen(false);
+    };
+    const closeOnDesktop = (event: MediaQueryListEvent) => {
+      if (event.matches) setIsMoreOpen(false);
+    };
+
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", closeOnEscape);
+    desktopQuery.addEventListener("change", closeOnDesktop);
+    closeButtonRef.current?.focus();
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", closeOnEscape);
+      desktopQuery.removeEventListener("change", closeOnDesktop);
+    };
+  }, [isMoreOpen]);
 
   return (
     <div className={isCollapsed ? "sidebar sidebar--collapsed" : "sidebar"}>
@@ -79,10 +65,13 @@ const Sidebar = () => {
         </button>
       </div>
 
-      <ul className="sidebar__navList">
+      <ul className="sidebar__navList sidebar__navList--desktop">
         {sidebarItems.map((item) => (
-          <Link key={item.id} to={item.link} title={item.label}>
-            <div
+          <li key={item.id}>
+            <Link
+              to={item.link}
+              title={item.label}
+              aria-current={location.pathname === item.link ? "page" : undefined}
               className={
                 location.pathname === item.link
                   ? "sidebar__navItem sidebar__navItem--active"
@@ -91,10 +80,112 @@ const Sidebar = () => {
             >
               <i className={`bx ${item.icon}`} />
               <span className="sidebar__navLabel">{item.label}</span>
-            </div>
-          </Link>
+            </Link>
+          </li>
         ))}
       </ul>
+
+      <nav className="mobileNav" aria-label="เมนูหลัก">
+        {primaryItems.map((item) => (
+          <Link
+            key={item.id}
+            to={item.link}
+            aria-current={location.pathname === item.link ? "page" : undefined}
+            className={
+              location.pathname === item.link
+                ? "mobileNav__item mobileNav__item--active"
+                : "mobileNav__item"
+            }
+            onClick={() => setIsMoreOpen(false)}
+          >
+            <i className={`bx ${item.icon}`} aria-hidden="true" />
+            <span>{item.label}</span>
+          </Link>
+        ))}
+        <button
+          className={
+            moreIsActive || isMoreOpen
+              ? "mobileNav__item mobileNav__item--active"
+              : "mobileNav__item"
+          }
+          type="button"
+          aria-haspopup="dialog"
+          aria-expanded={isMoreOpen}
+          onClick={() => setIsMoreOpen(true)}
+        >
+          <i className="bx bx-dots-horizontal-rounded" aria-hidden="true" />
+          <span>เพิ่มเติม</span>
+        </button>
+      </nav>
+
+      {isMoreOpen && (
+        <div
+          className="mobileMore"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setIsMoreOpen(false);
+          }}
+        >
+          <section
+            ref={moreSheetRef}
+            className="mobileMore__sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="mobile-more-title"
+            onKeyDown={(event) => {
+              if (event.key !== "Tab") return;
+
+              const focusable = moreSheetRef.current?.querySelectorAll<HTMLElement>(
+                'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+              );
+              if (!focusable?.length) return;
+
+              const first = focusable[0];
+              const last = focusable[focusable.length - 1];
+              if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+              } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+              }
+            }}
+          >
+            <div className="mobileMore__handle" aria-hidden="true" />
+            <div className="mobileMore__header">
+              <h2 id="mobile-more-title">เมนูเพิ่มเติม</h2>
+              <button
+                ref={closeButtonRef}
+                type="button"
+                aria-label="ปิดเมนูเพิ่มเติม"
+                onClick={() => setIsMoreOpen(false)}
+              >
+                <i className="bx bx-x" aria-hidden="true" />
+              </button>
+            </div>
+            <div className="mobileMore__grid">
+              {moreItems.map((item) => (
+                <Link
+                  key={item.id}
+                  to={item.link}
+                  aria-current={
+                    location.pathname === item.link ? "page" : undefined
+                  }
+                  className={
+                    location.pathname === item.link
+                      ? "mobileMore__item mobileMore__item--active"
+                      : "mobileMore__item"
+                  }
+                  onClick={() => setIsMoreOpen(false)}
+                >
+                  <i className={`bx ${item.icon}`} aria-hidden="true" />
+                  <span>{item.label}</span>
+                </Link>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 };

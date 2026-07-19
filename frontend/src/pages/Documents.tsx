@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 import Select from "react-select";
 import ActionButton from "../components/ActionButton";
 import PageHeader from "../components/PageHeader";
+import { PreferredDateInput } from "../components/PreferredDateInput";
 
 import axios from "axios";
 import { useEffect, useState } from "react";
@@ -89,7 +90,7 @@ const Documents = () => {
   const [bookingExporting, setBookingExporting] = useState(false);
   const [immigrationExporting, setImmigrationExporting] = useState(false);
   const [hotelExporting, setHotelExporting] = useState(false);
-  const fullFormattedDate = formatHeaderDate(new Date());
+  const fullFormattedDate = formatHeaderDate(new Date(), dateFormat);
   const lastUpdated = new Date();
 
   const selectValue = (options: OptionType[], value: string) =>
@@ -483,8 +484,7 @@ const Documents = () => {
           <div className="documents__form">
             <div>
               <p className="documents__label">วันที่เข้าพัก</p>
-              <input
-                type="date"
+              <PreferredDateInput
                 value={filters.tm30Date}
                 onChange={(e) => updateFilter("tm30Date", e.target.value)}
                 className="boxInput"
@@ -517,8 +517,7 @@ const Documents = () => {
           <div className="documents__form">
             <div>
               <p className="documents__label">วันที่เข้าพัก</p>
-              <input
-                type="date"
+              <PreferredDateInput
                 value={filters.hotelDate}
                 onChange={(e) => updateFilter("hotelDate", e.target.value)}
                 className="boxInput"

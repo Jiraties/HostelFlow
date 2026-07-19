@@ -12,17 +12,20 @@ import CheckIn from "./CheckIn.tsx";
 import CheckOut from "./CheckOut.tsx";
 import ResolveBooking from "./ResolveBooking.tsx";
 import ExtendBooking from "./ExtendBooking.tsx";
+import CorrectTransaction from "./CorrectTransaction.tsx";
+import TransactionCorrectionHistory from "./TransactionCorrectionHistory.tsx";
 
 import { useCallback, useState, useEffect, useRef } from "react";
 import { API_URL } from "../../config/api.ts";
 import { platformMap } from "../../helpers/maps.ts";
 import {
   advanceRoomPaymentTransaction,
+  bookingFinancialPosition,
   formatBookingDates,
   isRoomChargeSettlementTransaction,
   isSameDay,
-  roomChargeDisplayPaymentMethod,
   roomChargeOutstandingAmount,
+  roomChargeSettlementTransactions,
   transactionRequiresReview,
 } from "../../helpers/bookingHelpers.ts";
 import { requestUnsavedModalClose } from "../../helpers/modalGuards.ts";
@@ -33,7 +36,10 @@ import {
 } from "../../helpers/roomStayHelpers.ts";
 import { Modal } from "@mui/material";
 import { useAuth } from "../../context/AuthContext.tsx";
-import { formatDisplayDate } from "../../helpers/displayDate.ts";
+import {
+  formatDisplayDate,
+  formatDisplayDateTime,
+} from "../../helpers/displayDate.ts";
 
 import type { booking, ResolutionOutcome } from "../../types/bookingTypes";
 
@@ -109,6 +115,35 @@ const transactionMap = {
   },
 };
 
+const correctableTransactionTypes = new Set<
+  booking["transactions"][number]["type"]
+>([
+  "roomCharge",
+  "deposit",
+  "depositRefund",
+  "cancellationRefund",
+  "roomRefund",
+  "settlementCharge",
+  "compensation",
+  "towel",
+  "motorbike",
+  "slowBoat",
+  "joinTour",
+  "extraBed",
+  "pickACraft",
+  "trek2D",
+  "setMenu",
+  "sleeperBus",
+  "onlyWalk",
+  "laundry",
+  "bicycle",
+  "car",
+  "misc",
+  "rainCoat",
+  "passwordLock",
+  "cooking",
+]);
+
 const ViewBooking = ({
   booking,
   bookingId,
@@ -122,18 +157,28 @@ const ViewBooking = ({
   onUpdated?: (booking: booking) => void;
   removeBookingHandler: (booking: booking) => void;
 }) => {
-  const [data, setData] = useState<booking | null>(booking || null);
+  const [data, setData] = useState<booking | null>(
+    booking ? formatBookingDates(booking) : null,
+  );
   const [loadError, setLoadError] = useState("");
   const [loadRetryKey, setLoadRetryKey] = useState(0);
   const [manageRoomStaysIsOpen, setManageRoomStaysIsOpen] = useState(false);
   const [editBookingIsOpen, setEditBookingIsOpen] = useState(false);
   const [addTransactionIsOpen, setAddTransactionIsOpen] = useState(false);
+  const [transactionEditMode, setTransactionEditMode] = useState(false);
   const [cancellationIsOpen, setCancellationIsOpen] = useState(false);
   const [checkInIsOpen, setCheckInIsOpen] = useState(false);
   const [adminHistoricalCheckIn, setAdminHistoricalCheckIn] = useState(false);
   const [checkOutIsOpen, setCheckOutIsOpen] = useState(false);
   const [resolveBookingIsOpen, setResolveBookingIsOpen] = useState(false);
   const [extendBookingIsOpen, setExtendBookingIsOpen] = useState(false);
+  const [transactionToCorrect, setTransactionToCorrect] = useState<
+    booking["transactions"][number] | null
+  >(null);
+  const [correctionHistoryTransactionId, setCorrectionHistoryTransactionId] =
+    useState<string | null>(null);
+  const [correctTransactionIsDirty, setCorrectTransactionIsDirty] =
+    useState(false);
   const [initialResolveOutcome, setInitialResolveOutcome] = useState<
     ResolutionOutcome | undefined
   >(undefined);
@@ -161,7 +206,7 @@ const ViewBooking = ({
     setTransactionOverflowAlertDismissed,
   ] = useState(false);
   const priceListRef = useRef<HTMLDivElement | null>(null);
-  const { user } = useAuth();
+  const { user, resolveStaffName } = useAuth();
   const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
 
   const updateTransactionOverflowAlert = useCallback(() => {
@@ -205,7 +250,7 @@ const ViewBooking = ({
   useEffect(() => {
     if (!booking) return;
 
-    setData(booking);
+    setData(formatBookingDates(booking));
     setLoadError("");
     setNoteDraft(booking.note || "");
     setNoteIsEditing(false);
@@ -476,7 +521,15 @@ const ViewBooking = ({
       ? `-${amountText} THB`
       : `${amountText} THB`;
   };
+  const roomChargePayments = roomChargeSettlementTransactions(data);
   const transactionName = (transaction: booking["transactions"][number]) => {
+    if (
+      transaction.type === "adjustment" &&
+      transaction.reasonOfAdjustment === "rounding"
+    ) {
+      return "ปัดเศษยอดเงินสด";
+    }
+
     const advancePayment = data.advancePayment;
     if (advancePayment && transaction._id === advancePayment.transactionId) {
       return advancePayment.calculationMode === "amount"
@@ -499,6 +552,18 @@ const ViewBooking = ({
       return `${platformLabel || "Unknown channel"} · ค่าเพิ่มคืน`;
     }
 
+    if (
+      transaction.type === "roomCharge" &&
+      transaction.sourceAction !== "EXTEND_BOOKING" &&
+      roomChargePayments.length > 0
+    ) {
+      return "ค่าห้องทั้งหมด";
+    }
+
+    if (isRoomChargeSettlementTransaction(data, transaction)) {
+      return "ชำระค่าห้องส่วนที่เหลือ";
+    }
+
     return transactionMap[transaction.type].name;
   };
 
@@ -511,8 +576,8 @@ const ViewBooking = ({
     (transaction.type === "adjustment" &&
       Boolean(transaction.relatedTransactionId));
 
-  const effectiveRoomChargePaymentMethod = roomChargeDisplayPaymentMethod(data);
   const outstandingRoomChargeAmount = roomChargeOutstandingAmount(data);
+  const financialPosition = bookingFinancialPosition(data);
   const advancePaymentTransaction = advanceRoomPaymentTransaction(data);
   let attachNextSettlementCardSurchargeToRoomCharge = false;
 
@@ -541,6 +606,20 @@ const ViewBooking = ({
     if (isRoomChargeSettlementTransaction(data, transaction)) {
       attachNextSettlementCardSurchargeToRoomCharge =
         transaction.paymentMethod === "Card";
+
+      const roomChargeGroup = groups.find(
+        (group) =>
+          group.transaction.type === "roomCharge" &&
+          group.transaction.sourceAction !== "EXTEND_BOOKING",
+      );
+
+      if (roomChargeGroup) {
+        roomChargeGroup.children.push(transaction);
+      } else {
+        // Legacy fallback: retain the payment as a visible main row when its
+        // original room charge is missing instead of silently dropping it.
+        groups.push({ transaction, children: [] });
+      }
       return groups;
     }
 
@@ -674,11 +753,35 @@ const ViewBooking = ({
       );
     }
 
-    const paymentMethod =
+    if (
       transaction.type === "roomCharge" &&
-      transaction.sourceAction !== "EXTEND_BOOKING"
-        ? effectiveRoomChargePaymentMethod
-        : transaction.paymentMethod;
+      transaction.sourceAction !== "EXTEND_BOOKING" &&
+      roomChargePayments.length > 0
+    ) {
+      const hasOutstandingBalance = outstandingRoomChargeAmount > 0;
+
+      return (
+        <div
+          className={
+            "viewBooking__paymentMethod" +
+            (compact ? " viewBooking__paymentMethod--compact" : "")
+          }
+        >
+          <p className={hasOutstandingBalance ? "viewBooking__unpaid" : ""}>
+            {hasOutstandingBalance ? "Unpaid" : "Paid"}
+          </p>
+          <i
+            className={
+              hasOutstandingBalance
+                ? "bx bx-alert-triangle viewBooking__unpaid"
+                : "bx bx-check-circle"
+            }
+          />
+        </div>
+      );
+    }
+
+    const paymentMethod = transaction.paymentMethod;
 
     return (
       <div
@@ -753,39 +856,170 @@ const ViewBooking = ({
     );
   };
 
+  const renderCorrectionActions = (
+    transaction: booking["transactions"][number],
+    compact = false,
+  ) => {
+    const transactionId =
+      transaction.originalTransactionId || transaction._id || "";
+    if (!transactionId) return null;
+    const hasHistory =
+      Boolean(transaction.corrected) ||
+      (data.transactionCorrections || []).some(
+        (correction) => correction.targetTransactionId === transactionId,
+      );
+    if (!hasHistory) return null;
+
+    return (
+      <div
+        className={
+          "viewBooking__correctionActions" +
+          (compact ? " viewBooking__correctionActions--compact" : "")
+        }
+      >
+        <button
+          type="button"
+          className="viewBooking__correctedBadge"
+          onClick={() => setCorrectionHistoryTransactionId(transactionId)}
+        >
+          <i className="bx bx-history" />
+          <p>มีการแก้ไข</p>
+        </button>
+      </div>
+    );
+  };
+
+  const renderTransactionEndActions = (
+    transaction: booking["transactions"][number],
+    compact = false,
+  ) => {
+    const canEditTransaction =
+      !data.voided && correctableTransactionTypes.has(transaction.type);
+
+    return (
+      <div
+        className={
+          "viewBooking__transactionEndActions" +
+          (compact ? " viewBooking__transactionEndActions--compact" : "") +
+          (canEditTransaction
+            ? " viewBooking__transactionEndActions--editable"
+            : "") +
+          (transactionEditMode
+            ? " viewBooking__transactionEndActions--editing"
+            : "")
+        }
+      >
+        {renderPaymentMethod(transaction, compact)}
+        {transactionEditMode && (
+          <div className="viewBooking__editRailCell">
+            {canEditTransaction && (
+              <button
+                type="button"
+                className="viewBooking__inlineEditButton"
+                aria-label={`แก้ไข ${transactionName(transaction)}`}
+                title={`แก้ไข ${transactionName(transaction)}`}
+                onClick={() => setTransactionToCorrect(transaction)}
+              >
+                <i className="bx bx-edit" />
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderChildTransaction = (
     transaction: booking["transactions"][number],
     index: number,
     siblings: booking["transactions"] = [],
-  ) => (
-    <div
-      className={
-        "viewBooking__priceChild" +
-        (index < siblings.length - 1
-          ? " viewBooking__priceChild--continues"
-          : "") +
-        (transaction.type === "roomCharge" &&
-        transaction.sourceAction === "EXTEND_BOOKING"
-          ? " viewBooking__priceChild--extension"
-          : "")
-      }
-      key={`${transaction.type}-${transaction.amount}-${index}`}
-    >
-      <div className="viewBooking__priceChildMain">
-        <span className="viewBooking__priceChildMarker" />
-        <div className="viewBooking__priceChildDetails">
-          <p className="viewBooking__priceChildText">
-            <span className="viewBooking__priceChildAmount">
-              {formatTransactionAmount(transaction)}
-            </span>
-            <span>{transactionName(transaction)}</span>
-          </p>
-          {renderReviewMeta(transaction)}
+  ) => {
+    const linkedTransaction = transaction.relatedTransactionId
+      ? data.transactions.find(
+          (existingTransaction) =>
+            existingTransaction._id === transaction.relatedTransactionId,
+        )
+      : null;
+    const needsReview = transactionRequiresReview(transaction);
+    const isReviewed = transaction.reviewStatus === "reviewed";
+    const infoItems = [
+      transaction.createdAt
+        ? `บันทึก: ${formatDisplayDateTime(transaction.createdAt, dateFormat)}`
+        : "",
+      transaction.createdBy
+        ? `โดย: ${resolveStaffName(transaction.createdBy)}`
+        : "",
+      transaction.note ? `หมายเหตุ: ${transaction.note}` : "",
+      transaction.reference ? `อ้างอิง: ${transaction.reference}` : "",
+      linkedTransaction
+        ? `เชื่อมกับ: ${transactionMap[linkedTransaction.type].name} · ${formatTransactionAmount(
+            linkedTransaction,
+          )}`
+        : "",
+      needsReview ? "สถานะ: รอตรวจสอบ" : "",
+      isReviewed
+        ? `สถานะ: อนุมัติแล้ว${
+            transaction.reviewedBy
+              ? ` โดย ${resolveStaffName(transaction.reviewedBy)}`
+              : ""
+          }${
+            transaction.reviewedAt
+              ? ` · ${formatDisplayDateTime(transaction.reviewedAt, dateFormat)}`
+              : ""
+          }`
+        : "",
+    ].filter(Boolean);
+
+    return (
+      <div
+        className={
+          "viewBooking__priceChild" +
+          (index < siblings.length - 1
+            ? " viewBooking__priceChild--continues"
+            : "") +
+          (transaction.type === "roomCharge" &&
+          transaction.sourceAction === "EXTEND_BOOKING"
+            ? " viewBooking__priceChild--extension"
+            : "")
+        }
+        key={
+          transaction._id ||
+          `${transaction.type}-${transaction.amount}-${index}`
+        }
+      >
+        <div className="viewBooking__priceChildMain">
+          <span className="viewBooking__priceChildMarker" />
+          <div className="viewBooking__priceChildDetails">
+            <div className="viewBooking__priceChildSummary">
+              <p className="viewBooking__priceChildText">
+                <span className="viewBooking__priceChildAmount">
+                  {formatTransactionAmount(transaction)}
+                </span>
+                <span>{transactionName(transaction)}</span>
+              </p>
+              {infoItems.length > 0 && (
+                <Tooltip
+                  className="viewBooking__priceChildInfo"
+                  ariaLabel="ข้อมูลเพิ่มเติมของรายการย่อย"
+                  content={
+                    <>
+                      {infoItems.map((item) => (
+                        <span key={item}>{item}</span>
+                      ))}
+                    </>
+                  }
+                >
+                  <i className="bx bx-info-circle" />
+                </Tooltip>
+              )}
+            </div>
+            {renderCorrectionActions(transaction, true)}
+          </div>
         </div>
+        {renderTransactionEndActions(transaction, true)}
       </div>
-      {renderPaymentMethod(transaction, true)}
-    </div>
-  );
+    );
+  };
 
   const updateBooking = (updatedBooking: booking) => {
     const formattedBooking = formatBookingDates(updatedBooking);
@@ -843,6 +1077,49 @@ const ViewBooking = ({
 
   return (
     <>
+      <Modal
+        open={Boolean(transactionToCorrect)}
+        className="home__modalCenter"
+        onClose={() =>
+          requestUnsavedModalClose(
+            correctTransactionIsDirty,
+            () => setTransactionToCorrect(null),
+            () =>
+              setPendingUnsavedClose(() => () => setTransactionToCorrect(null)),
+          )
+        }
+      >
+        {transactionToCorrect ? (
+          <CorrectTransaction
+            booking={data}
+            transaction={transactionToCorrect}
+            onDirtyChange={setCorrectTransactionIsDirty}
+            onClose={() => setTransactionToCorrect(null)}
+            onUpdated={(updatedBooking) => {
+              updateBooking(updatedBooking);
+              setTransactionToCorrect(null);
+              setTransactionEditMode(false);
+            }}
+          />
+        ) : (
+          <span />
+        )}
+      </Modal>
+      <Modal
+        open={Boolean(correctionHistoryTransactionId)}
+        className="home__modalCenter"
+        onClose={() => setCorrectionHistoryTransactionId(null)}
+      >
+        {correctionHistoryTransactionId ? (
+          <TransactionCorrectionHistory
+            booking={data}
+            transactionId={correctionHistoryTransactionId}
+            onClose={() => setCorrectionHistoryTransactionId(null)}
+          />
+        ) : (
+          <span />
+        )}
+      </Modal>
       <Modal
         open={extendBookingIsOpen}
         className="home__modalCenter"
@@ -1267,7 +1544,9 @@ const ViewBooking = ({
               <span className="viewBooking__label">
                 Staff ที่บันทึกรายการ:{" "}
               </span>
-              <p className="viewBooking__infoText">{data.staffUsername}</p>
+              <p className="viewBooking__infoText">
+                {resolveStaffName(data.staffUsername)}
+              </p>
             </div>
 
             {hasCheckedIn && <PassportView bookingId={data.bookingId} />}
@@ -1309,7 +1588,9 @@ const ViewBooking = ({
                         {data.status !== "cancelled" && (
                           <>
                             {" · เหลือ "}
-                            {outstandingRoomChargeAmount.toLocaleString("th-TH")}{" "}
+                            {outstandingRoomChargeAmount.toLocaleString(
+                              "th-TH",
+                            )}{" "}
                             THB
                           </>
                         )}
@@ -1317,8 +1598,26 @@ const ViewBooking = ({
                     </div>
                   </div>
                 )}
+                {financialPosition.guestCredit > 0 && (
+                  <div className="viewBooking__guestCredit">
+                    <i className="bx bx-info-circle" />
+                    <div>
+                      <strong>
+                        แขกมียอดเกิน/เครดิต{" "}
+                        {financialPosition.guestCredit.toLocaleString("th-TH")}{" "}
+                        THB
+                      </strong>
+                      <span>
+                        ระบบยังไม่ได้คืนเงิน
+                        กรุณาบันทึกการคืนเงินเมื่อมีเงินจริงออก
+                      </span>
+                    </div>
+                  </div>
+                )}
                 <div
-                  className="viewBooking__priceList"
+                  className={`viewBooking__priceList${
+                    transactionEditMode ? " viewBooking__priceList--editing" : ""
+                  }`}
                   ref={priceListRef}
                   onScroll={handleTransactionListScroll}
                 >
@@ -1331,7 +1630,10 @@ const ViewBooking = ({
                             ? {}
                             : { borderBottom: "1px solid #eee" }
                         }
-                        key={`${transaction.type}-${transaction.amount}-${index}`}
+                        key={
+                          transaction._id ||
+                          `${transaction.type}-${transaction.amount}-${index}`
+                        }
                       >
                         {isChildTransaction(transaction) ? (
                           renderChildTransaction(transaction, index)
@@ -1346,16 +1648,21 @@ const ViewBooking = ({
                                 }}
                               />
                               <div className="viewBooking__priceDetails">
-                                <p className="viewBooking__infoText viewBooking__priceAmount">
-                                  {formatTransactionAmount(transaction)}
-                                </p>
-                                <p className="viewBooking__transactionName">
-                                  {transactionName(transaction)}
-                                </p>
-                                {renderReviewMeta(transaction)}
+                                <div className="viewBooking__priceSummary">
+                                  <div className="viewBooking__priceSummaryText">
+                                    <p className="viewBooking__infoText viewBooking__priceAmount">
+                                      {formatTransactionAmount(transaction)}
+                                    </p>
+                                    <p className="viewBooking__transactionName">
+                                      {transactionName(transaction)}
+                                    </p>
+                                    {renderCorrectionActions(transaction)}
+                                  </div>
+                                  {renderReviewMeta(transaction)}
+                                </div>
                               </div>
                             </div>
-                            {renderPaymentMethod(transaction)}
+                            {renderTransactionEndActions(transaction)}
                           </div>
                         )}
                         {children.map(renderChildTransaction)}
@@ -1431,6 +1738,23 @@ const ViewBooking = ({
               />
               {moreActionsIsOpen && (
                 <div className="viewBooking__moreActionsMenu">
+                  <button
+                    type="button"
+                    className={
+                      transactionEditMode
+                        ? "viewBooking__moreActionsMenuToggle--active"
+                        : ""
+                    }
+                    onClick={() => {
+                      setTransactionEditMode((active) => !active);
+                      setMoreActionsIsOpen(false);
+                    }}
+                  >
+                    <i className="bx bx-edit-alt" />
+                    {transactionEditMode
+                      ? "ซ่อนปุ่มแก้ไขรายการ"
+                      : "แก้ไขรายการใช้จ่าย"}
+                  </button>
                   <button
                     type="button"
                     onClick={() => {

@@ -30,6 +30,17 @@ export interface DepositPreparation {
   preparedBy: string;
 }
 
+export interface DepositReturnReminderAcknowledgement {
+  targetBusinessDate: string;
+  requiredAmount: number;
+  bookingCount: number;
+  bookings: Array<DepositPreparationBooking & { roomIds: string[] }>;
+  calculationToken: string;
+  calculatedAt: Date;
+  acknowledgedAt: Date;
+  acknowledgedBy: string;
+}
+
 export interface cashShift extends Document {
   businessDate: string;
   shiftNumber: number;
@@ -59,6 +70,7 @@ export interface cashShift extends Document {
   auditResolution?: CashShiftAuditResolution;
   isFinalDayClose?: boolean;
   depositPreparation?: DepositPreparation;
+  depositReturnReminder?: DepositReturnReminderAcknowledgement;
 }
 
 const depositPreparationBookingSchema = new mongoose.Schema(
@@ -83,6 +95,31 @@ const depositPreparationSchema = new mongoose.Schema(
     calculatedAt: { type: Date, required: true },
     preparedAt: { type: Date, required: true },
     preparedBy: { type: String, required: true },
+  },
+  { _id: false },
+);
+
+const depositReturnReminderBookingSchema = new mongoose.Schema(
+  {
+    bookingId: { type: String, required: true },
+    guestName: { type: String, required: true },
+    roomIds: { type: [String], default: [] },
+    checkOut: { type: Date, required: true },
+    amount: { type: Number, required: true },
+  },
+  { _id: false },
+);
+
+const depositReturnReminderSchema = new mongoose.Schema(
+  {
+    targetBusinessDate: { type: String, required: true },
+    requiredAmount: { type: Number, required: true },
+    bookingCount: { type: Number, required: true },
+    bookings: { type: [depositReturnReminderBookingSchema], default: [] },
+    calculationToken: { type: String, required: true },
+    calculatedAt: { type: Date, required: true },
+    acknowledgedAt: { type: Date, required: true },
+    acknowledgedBy: { type: String, required: true },
   },
   { _id: false },
 );
@@ -128,6 +165,7 @@ const cashShiftSchema = new mongoose.Schema({
   },
   isFinalDayClose: { type: Boolean, default: false },
   depositPreparation: { type: depositPreparationSchema },
+  depositReturnReminder: { type: depositReturnReminderSchema },
 });
 
 cashShiftSchema.index({ businessDate: 1, shiftNumber: 1 }, { unique: true });

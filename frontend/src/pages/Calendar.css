@@ -379,8 +379,8 @@
 
 @media (max-width: 760px) {
   .calendar__main {
-    padding: 1rem;
-    gap: 1.25rem;
+    padding: var(--mobile-page-padding, 1rem);
+    gap: var(--mobile-section-gap, 1rem);
   }
 
   .calendar__monthSelector {
@@ -390,15 +390,31 @@
 
   .calendar__monthNavButton {
     border-radius: 0.85rem;
+    min-width: var(--mobile-touch-target, 2.75rem);
+    min-height: var(--mobile-touch-target, 2.75rem);
+    background-color: var(--background);
+    box-shadow: none;
+  }
+
+  .calendar__monthPickerTrigger,
+  .calendar__densitySelector {
+    min-height: var(--mobile-touch-target, 2.75rem);
   }
 
   .calendar__monthPickerPanel {
     left: 0;
+    max-width: calc(100vw - 2rem);
     transform: none;
+    box-shadow: var(--mobile-shadow-strong, var(--main-shadow));
   }
 
   .timeline__wrapper {
-    border-radius: 1.25rem;
+    position: relative;
+    border-radius: var(--mobile-card-radius, 1.25rem);
+    box-shadow: var(--mobile-shadow, var(--main-shadow));
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
   }
 
   .timeline {
@@ -411,6 +427,7 @@
 
   .timeline__roomIdItem {
     padding: 0.5rem 0.4rem;
+    background-color: var(--background);
   }
 
   .timeline__roomIdItem p,
@@ -421,6 +438,25 @@
 
   .timeline__dateItem {
     scroll-margin-left: 5.75rem;
+    background-color: var(--background);
+  }
+
+  .calendar__legend {
+    gap: 0.5rem;
+    overflow-x: auto;
+    padding: 0.2rem 0.1rem 0.45rem;
+    scrollbar-width: none;
+  }
+
+  .calendar__legend::-webkit-scrollbar {
+    display: none;
+  }
+
+  .calendar__legendItem {
+    flex: 0 0 auto;
+    padding: 0.35rem 0.55rem;
+    border-radius: 99rem;
+    background-color: var(--background);
   }
 
   .home__skeletonModal {

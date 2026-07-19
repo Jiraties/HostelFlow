@@ -1,5 +1,7 @@
 import "./ActionButton.css";
 
+import type { MouseEvent } from "react";
+
 const ActionButton = ({
   text,
   icon,
@@ -13,7 +15,7 @@ const ActionButton = ({
   text: string;
   icon: string;
   tooltip?: string;
-  onClick: () => void;
+  onClick: (event: MouseEvent<HTMLButtonElement>) => void;
   className?: string;
   highlight?: boolean;
   disabled?: boolean;

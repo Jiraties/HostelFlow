@@ -121,7 +121,11 @@
 
 .bookingDateRangePicker__day--adjacent {
   color: #c4c4c7;
-  cursor: default;
+}
+
+.bookingDateRangePicker__day--adjacent:hover,
+.bookingDateRangePicker__day--adjacent:focus-visible {
+  color: #8f8f94;
 }
 
 .bookingDateRangePicker__day--today {

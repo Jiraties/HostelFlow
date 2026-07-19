@@ -2,14 +2,17 @@ import "./FinancialBreakdown.css";
 
 import axios from "axios";
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router";
 
 import { API_URL } from "../../config/api";
 import Tooltip from "../../components/Tooltip";
+import { PreferredDateInput } from "../../components/PreferredDateInput";
 import { useAuth } from "../../context/AuthContext";
 import {
   formatDisplayDate,
   formatDisplayDateTime,
 } from "../../helpers/displayDate";
+import { profilePictureUrl } from "../../helpers/profilePictureUrl";
 import type { DateFormatPreference } from "../../types/userSettings";
 import type {
   PaymentMethod,
@@ -34,6 +37,11 @@ type ExpectedStayRevenueBreakdownTransaction = {
   direction?: TransactionDirection;
   createdAt?: string | Date;
   createdBy?: string;
+  staff?: {
+    username: string;
+    name?: string;
+    profilePictureUrl?: string;
+  };
   note?: string;
   reference?: string;
 };
@@ -164,9 +172,10 @@ const BreakdownSection = ({
   dateFormat: DateFormatPreference;
   negative?: boolean;
 }) => {
-  const [openGroupKey, setOpenGroupKey] = useState<
-    string | null | undefined
-  >(undefined);
+  const navigate = useNavigate();
+  const [openGroupKey, setOpenGroupKey] = useState<string | null | undefined>(
+    undefined,
+  );
   const activeOpenGroupKey =
     openGroupKey === null
       ? null
@@ -241,11 +250,41 @@ const BreakdownSection = ({
                   <div className="financialBreakdown__transactions">
                     {group.transactions.map((transaction, index) => (
                       <div
-                        className="financialBreakdown__transaction"
+                        className={
+                          transaction.bookingId
+                            ? "financialBreakdown__transaction financialBreakdown__transaction--booking"
+                            : "financialBreakdown__transaction"
+                        }
                         key={
                           transaction.transactionId ||
                           `${transaction.bookingId || transaction.saleId}-${group.key}-${index}`
                         }
+                        role={transaction.bookingId ? "link" : undefined}
+                        tabIndex={transaction.bookingId ? 0 : undefined}
+                        aria-label={
+                          transaction.bookingId
+                            ? `เปิด booking ${transaction.bookingId} ของ ${transaction.guestName} ในรายการทั้งหมด`
+                            : undefined
+                        }
+                        onClick={() => {
+                          if (!transaction.bookingId) return;
+                          navigate(
+                            `/master?bookingId=${encodeURIComponent(transaction.bookingId)}`,
+                          );
+                        }}
+                        onKeyDown={(event) => {
+                          if (
+                            !transaction.bookingId ||
+                            (event.key !== "Enter" && event.key !== " ")
+                          ) {
+                            return;
+                          }
+
+                          event.preventDefault();
+                          navigate(
+                            `/master?bookingId=${encodeURIComponent(transaction.bookingId)}`,
+                          );
+                        }}
                       >
                         <div className="financialBreakdown__transactionMain">
                           <strong>
@@ -254,10 +293,47 @@ const BreakdownSection = ({
                             )}
                             {transaction.guestName}
                           </strong>
-                          <span>
-                            {transaction.saleId || transaction.bookingId} · {transaction.label} ·{" "}
-                            {formatDateTime(transaction.createdAt, dateFormat)}
-                          </span>
+                          <div className="financialBreakdown__transactionMeta">
+                            <span className="financialBreakdown__transactionMetaText">
+                              {transaction.saleId || transaction.bookingId} ·{" "}
+                              {transaction.label} ·{" "}
+                              {formatDateTime(
+                                transaction.createdAt,
+                                dateFormat,
+                              )}
+                            </span>
+                            {transaction.staff && (
+                              // <Tooltip
+                              //   className="financialBreakdown__staffTooltip"
+                              //   ariaLabel={`บันทึกโดย ${transaction.staff.name || transaction.staff.username}`}
+                              //   content={
+                              //     <>
+                              //       <span>
+                              //         บันทึกโดย {transaction.staff.name || transaction.staff.username}
+                              //       </span>
+                              //       {transaction.staff.name &&
+                              //         transaction.staff.name !== transaction.staff.username && (
+                              //           <span>@{transaction.staff.username}</span>
+                              //         )}
+                              //     </>
+                              //   }
+                              // >
+                              <div className="financialBreakdown__transactionStaffNameBadge">
+                                <p>
+                                  {transaction.staff.name ||
+                                    "ไม่ทราบชื่อพนักงาน"}
+                                </p>
+                                <img
+                                  className="financialBreakdown__staffAvatar"
+                                  src={profilePictureUrl(
+                                    transaction.staff.profilePictureUrl,
+                                  )}
+                                  alt=""
+                                />
+                              </div>
+                              // </Tooltip>
+                            )}
+                          </div>
                         </div>
                         <div className="financialBreakdown__transactionSide">
                           <strong className="financialBreakdown__transactionAmount">
@@ -298,7 +374,8 @@ const FinancialBreakdown = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [breakdownMode, setBreakdownMode] = useState<BreakdownMode>("type");
-  const [selectedBusinessDate, setSelectedBusinessDate] = useState(localDateKey);
+  const [selectedBusinessDate, setSelectedBusinessDate] =
+    useState(localDateKey);
   const [selectedType, setSelectedType] = useState<TransactionType | null>(
     initialType,
   );
@@ -410,10 +487,10 @@ const FinancialBreakdown = ({
         </div>
         {mode === "today" ? (
           <label className="financialBreakdown__datePicker">
-            <span>วันที่รายได้</span>
-            <input
+            <span className="financialBreakdown__dateLabel">วันที่รายได้</span>
+            <PreferredDateInput
+              className="financialBreakdown__dateInput"
               aria-label="เลือกวันที่สำหรับรายได้"
-              type="date"
               value={selectedBusinessDate}
               onChange={(event) => {
                 if (event.target.value) {
@@ -448,7 +525,9 @@ const FinancialBreakdown = ({
         <>
           <section className="financialBreakdown__summary">
             <div className="financialBreakdown__summaryPrimary">
-              <p>{mode === "today" ? "Today’s Revenue" : "Expected Stay Revenue"}</p>
+              <p>
+                {mode === "today" ? "Today’s Revenue" : "Expected Stay Revenue"}
+              </p>
               <strong>
                 {formatMoney(breakdown.totals.expectedStayRevenue)} ฿
               </strong>

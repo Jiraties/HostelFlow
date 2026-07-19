@@ -6,6 +6,8 @@ import ActionButton from "../../components/ActionButton";
 import CashShiftNudge from "../../components/CashShiftNudge";
 import { formatDisplayDate } from "../../helpers/displayDate";
 import ModalCloseButton from "../../components/ModalCloseButton";
+import { PreferredDateInput } from "../../components/PreferredDateInput";
+import { useAuth } from "../../context/AuthContext";
 import { API_URL } from "../../config/api";
 import {
   formatBookingDates,
@@ -62,6 +64,8 @@ const ExtendBooking = ({
   onDirtyChange,
   onUpdated,
 }: ExtendBookingProps) => {
+  const { user } = useAuth();
+  const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
   const currentCheckOut = formatLocalDate(new Date(booking.checkOut));
   const currentCheckIn = formatLocalDate(new Date(booking.checkIn));
   const initialNewCheckOut = formatLocalDate(
@@ -313,15 +317,13 @@ const ExtendBooking = ({
                 <p className="addBooking__label">Check-Out ใหม่</p>
               </div>
               <div className="addBooking__dateInputs">
-                <input
+                <PreferredDateInput
                   className="boxInput addBooking__dateInput extendBooking__previousCheckOut"
-                  type="date"
                   value={currentCheckIn}
                   disabled
                 />
-                <input
+                <PreferredDateInput
                   className="boxInput addBooking__dateInput"
-                  type="date"
                   min={initialNewCheckOut}
                   value={newCheckOut}
                   disabled={submitting}
@@ -499,12 +501,12 @@ const ExtendBooking = ({
               <div className="extendBooking__summaryVisual">
                 <div className="viewBooking__roomStay--dates">
                   <p className="viewBooking__roomStay--from">
-                    {formatDisplayDate(currentCheckOut, "dd/MM/yyyy", {
+                    {formatDisplayDate(currentCheckOut, dateFormat, {
                       includeYear: false,
                     })}
                   </p>
                   <p className="viewBooking__roomStay--to">
-                    {formatDisplayDate(newCheckOut, "dd/MM/yyyy", {
+                    {formatDisplayDate(newCheckOut, dateFormat, {
                       includeYear: false,
                     })}
                   </p>

@@ -107,6 +107,29 @@ export const listUsers = async (req: Request, res: Response) => {
   }
 };
 
+export const getStaffDirectory = async (req: Request, res: Response) => {
+  try {
+    if (!req.user?.username) {
+      return res.status(401).json({ message: "กรุณาเข้าสู่ระบบใหม่" });
+    }
+
+    const staff = await User.find({})
+      .select("username name profilePictureUrl")
+      .sort({ name: 1, username: 1 })
+      .lean();
+
+    return res.status(200).json({
+      staff: staff.map((member) => ({
+        username: member.username,
+        name: member.name,
+        profilePictureUrl: member.profilePictureUrl,
+      })),
+    });
+  } catch (err) {
+    return res.status(500).json({ error: (err as Error).message });
+  }
+};
+
 export const adminCreateUser = async (req: Request, res: Response) => {
   try {
     if (!req.user?.admin) {

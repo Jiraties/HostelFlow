@@ -21,7 +21,6 @@ import {
   transactionDashboardCollectedRevenueAmount,
   transactionDashboardGrossRevenueAmount,
   transactionDirection,
-  transactionUnpaidAmount,
   type SourceAction,
 } from "../helpers/financeHelpers";
 import type {
@@ -86,10 +85,18 @@ import {
   extendBooking as performBookingExtension,
   type BookingExtensionInput,
 } from "../services/bookingExtension";
+import {
+  effectiveBookingTransactions,
+  roomChargeFinancialPosition,
+  summarizeBookingFinancialPosition,
+  withEffectiveTransactions,
+} from "../services/transactionCorrections";
 
 dotenv.config();
 
-const TOTAL_GUEST_CAPACITY = activeRoomInventory().reduce(
+const ACTIVE_ROOM_INVENTORY = activeRoomInventory();
+const ACTIVE_ROOM_IDS = new Set(ACTIVE_ROOM_INVENTORY.map((room) => room.id));
+const TOTAL_GUEST_CAPACITY = ACTIVE_ROOM_INVENTORY.reduce(
   (total, room) => total + room.capacity,
   0,
 );
@@ -354,27 +361,41 @@ const effectiveRoomStayEnd = (currentBooking: booking, roomStay: roomStay) => {
   return stayEnd;
 };
 
-const bookingOccupiedCapacityOnDate = (
+const bookingOccupiedRoomIdsOnDate = (
   currentBooking: booking,
   start: Date,
   end: Date,
 ) => {
-  if (!bookingKeepsRoomForOccupancy(currentBooking)) return 0;
+  if (!bookingKeepsRoomForOccupancy(currentBooking)) return [];
 
-  return (currentBooking.roomStays || []).reduce((total, roomStay) => {
+  return (currentBooking.roomStays || []).flatMap((roomStay) => {
     const stayStart = new Date(roomStay.from);
     const stayEnd = effectiveRoomStayEnd(currentBooking, roomStay);
 
-    if (stayStart >= end || stayEnd <= start) return total;
+    if (stayStart >= end || stayEnd <= start) return [];
 
-    return (
-      total +
-      getRoomStayRoomIds(roomStay).reduce(
-        (roomTotal, roomId) => roomTotal + getRoomGuestCapacity(roomId),
-        0,
-      )
-    );
-  }, 0);
+    return getRoomStayRoomIds(roomStay);
+  });
+};
+
+export const occupiedCapacityOnDate = (
+  bookings: booking[],
+  start: Date,
+  end: Date,
+) => {
+  const occupiedRoomIds = new Set(
+    bookings.flatMap((currentBooking) =>
+      bookingOccupiedRoomIdsOnDate(currentBooking, start, end),
+    ),
+  );
+
+  return Array.from(occupiedRoomIds).reduce(
+    (total, roomId) =>
+      ACTIVE_ROOM_IDS.has(roomId)
+        ? total + getRoomGuestCapacity(roomId)
+        : total,
+    0,
+  );
 };
 
 const getRoomGuestCapacity = roomGuestCapacity;
@@ -482,24 +503,7 @@ const getGuestsInHouse = async (date = new Date()) => {
     .select("roomStays")
     .lean();
 
-  return checkedInBookings.reduce(
-    (bookingTotal, booking) =>
-      bookingTotal +
-      booking.roomStays.reduce((roomTotal, roomStay) => {
-        const stayFrom = new Date(roomStay.from);
-        const stayTo = new Date(roomStay.to);
-        const stayIsActiveToday = stayFrom < end && stayTo > start;
-
-        return stayIsActiveToday
-          ? roomTotal +
-              getRoomStayRoomIds(roomStay).reduce(
-                (total, roomId) => total + getRoomGuestCapacity(roomId),
-                0,
-              )
-          : roomTotal;
-      }, 0),
-    0,
-  );
+  return occupiedCapacityOnDate(checkedInBookings as booking[], start, end);
 };
 
 const calculateCardSurcharge = (amount: number) =>
@@ -559,35 +563,8 @@ const formatLocalDateKey = (date: Date) => {
 const unpaidRoomChargeAmount = (booking: booking) =>
   booking.status === "cancelled"
     ? 0
-    : Math.max(
-        roundMoney(
-          booking.transactions.reduce((sum, transaction) => {
-            if (transaction.type === "roomCharge") {
-              return sum + transactionUnpaidAmount(transaction);
-            }
-
-            if (
-              ["settlementCharge", "paymentCorrection"].includes(
-                transaction.type,
-              ) &&
-              transaction.relatedTransactionType === "roomCharge" &&
-              transaction.paymentMethod !== "Unpaid"
-            ) {
-              return sum - Math.abs(transaction.amount || 0);
-            }
-
-            if (
-              transaction.type === "roomChargeWriteOff" &&
-              transaction.relatedTransactionType === "roomCharge"
-            ) {
-              return sum - Math.abs(transaction.amount || 0);
-            }
-
-            return sum;
-          }, 0),
-        ),
-        0,
-      );
+    : roomChargeFinancialPosition(effectiveBookingTransactions(booking))
+        .outstanding;
 
 const calculateNights = (checkIn: string, checkOut: string) => {
   const checkInDate = new Date(checkIn + "T00:00:00");
@@ -1469,12 +1446,17 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
         }),
         Booking.find({
           status: { $ne: "checkedOut" },
-          transactions: {
-            $elemMatch: {
-              type: "roomCharge",
-              paymentMethod: "Unpaid",
+          $or: [
+            {
+              transactions: {
+                $elemMatch: {
+                  type: "roomCharge",
+                  paymentMethod: "Unpaid",
+                },
+              },
             },
-          },
+            { "transactionCorrections.after.paymentMethod": "Unpaid" },
+          ],
         }),
         getGuestsInHouse(today),
       ]);
@@ -1488,8 +1470,11 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
       start: Date,
       end: Date,
     ) =>
-      bookings.flatMap((booking) =>
-        (booking.transactions || [])
+      bookings.flatMap((booking) => {
+        const bookingTransactions = "transactionCorrections" in booking
+          ? withEffectiveTransactions(booking as booking).transactions
+          : booking.transactions || [];
+        return bookingTransactions
           .filter((transaction) => {
             if (!transaction.createdAt) return false;
             const transactionDate = new Date(transaction.createdAt);
@@ -1497,10 +1482,10 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
           })
           .map((transaction) => ({
             transaction,
-            bookingTransactions: booking.transactions || [],
+            bookingTransactions,
             bookingId: booking.saleId || String(booking._id),
-          })),
-      );
+          }));
+      });
     const monthFinancialTransactions = transactionsInRange(
       [...monthFinancialBookings, ...monthStandaloneSales],
       startOfMonth,
@@ -1583,7 +1568,8 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
     }
 
     channelMixBookings.forEach((booking) => {
-      effectiveCommercialSegments(booking).forEach((segment) => {
+      const financialBooking = withEffectiveTransactions(booking.toObject());
+      effectiveCommercialSegments(financialBooking).forEach((segment) => {
         const segmentStart = new Date(segment.from);
         const segmentEnd = new Date(segment.to);
         if (segmentStart >= startOfNextMonth || segmentEnd <= startOfMonth) return;
@@ -1626,10 +1612,10 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
 
       while (date < bucket.end) {
         const dayEnd = new Date(date.getTime() + 86400000);
-        const occupiedCapacity = occupancyBookings.reduce(
-          (total, currentBooking) =>
-            total + bookingOccupiedCapacityOnDate(currentBooking, date, dayEnd),
-          0,
+        const occupiedCapacity = occupiedCapacityOnDate(
+          occupancyBookings,
+          date,
+          dayEnd,
         );
 
         occupiedCapacityTotal += occupiedCapacity;
@@ -2048,11 +2034,13 @@ export const checkIn = async (req: Request, res: Response) => {
       });
     }
 
+    const effectiveExistingTransactions =
+      effectiveBookingTransactions(existingBooking);
     const existingDepositAmount = bookingRemainingDepositAmount(
-      existingBooking.transactions,
+      effectiveExistingTransactions,
     );
 
-    const unpaidRoomCharge = existingBooking.transactions.find(
+    const unpaidRoomCharge = effectiveExistingTransactions.find(
       (transaction) =>
         transaction.type === "roomCharge" &&
         transaction.paymentMethod === "Unpaid",
@@ -2373,7 +2361,7 @@ export const checkOut = async (req: Request, res: Response) => {
     }
 
     const remainingDepositAmount = bookingRemainingDepositAmount(
-      existingBooking.transactions,
+      effectiveBookingTransactions(existingBooking),
     );
 
     if (remainingDepositAmount > 0 && depositReturned !== true) {
@@ -2669,11 +2657,12 @@ export const getMonthCalendar = async (req: Request, res: Response) => {
     }));
 
     monthOfBookings.forEach((booking) => {
-      const roomCharge = booking.transactions.find(
+      const effectiveTransactions = effectiveBookingTransactions(booking);
+      const roomCharge = effectiveTransactions.find(
         (transaction) => transaction.type === "roomCharge",
       );
       const hasRoomChargeSettlement = roomCharge
-        ? booking.transactions.some(
+        ? effectiveTransactions.some(
             (transaction) =>
               transaction.type === "settlementCharge" &&
               transaction.relatedTransactionType === "roomCharge" &&
@@ -2719,9 +2708,17 @@ export const getBookingById = async (req: Request, res: Response) => {
   try {
     const { bookingId } = req.params;
 
-    const booking = await Booking.findOne({ bookingId });
+    const booking = await Booking.findOne({ bookingId }).lean();
+    if (!booking) {
+      return res.status(404).json({ message: "ไม่พบ booking นี้" });
+    }
+    const effectiveTransactions = effectiveBookingTransactions(booking);
 
-    res.status(200).json(booking);
+    res.status(200).json({
+      ...booking,
+      effectiveTransactions,
+      financialSummary: summarizeBookingFinancialPosition(effectiveTransactions),
+    });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
   }
@@ -3115,7 +3112,10 @@ export const addTransaction = async (
     }
 
     baseTransaction = enforceAddTransactionPolicy({
-      booking,
+      booking: {
+        ...booking,
+        transactions: effectiveBookingTransactions(booking),
+      },
       transaction: baseTransaction,
       isAdmin: req.user?.admin === true,
     });
@@ -3322,7 +3322,7 @@ export const cancelBooking = async (req: Request, res: Response) => {
       });
 
     const paidByMethod = summarizeReceivedPaymentsByMethod(
-      existingBooking.transactions,
+      effectiveBookingTransactions(existingBooking),
     );
     const paidAmount = Array.from(paidByMethod.values()).reduce(
       (sum, amount) => sum + amount,
@@ -3654,7 +3654,7 @@ export const resolveBooking = async (
     }
 
     const remainingDepositAmount = bookingRemainingDepositAmount(
-      booking.transactions,
+      effectiveBookingTransactions(booking),
     );
     const mustReturnDeposit =
       !bookingIsClosed &&
@@ -3792,7 +3792,8 @@ export const resolveBooking = async (
       });
     }
     if (
-      depositRefundAmount > bookingRemainingDepositAmount(booking.transactions)
+      depositRefundAmount >
+      bookingRemainingDepositAmount(effectiveBookingTransactions(booking))
     ) {
       return res.status(409).json({
         error: "REFUND_EXCEEDS_AVAILABLE_BALANCE",

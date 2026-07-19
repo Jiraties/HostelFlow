@@ -6,6 +6,7 @@ import type { SingleValue } from "react-select";
 import ActionButton from "../components/ActionButton";
 import ModalCloseButton from "../components/ModalCloseButton";
 import PageHeader from "../components/PageHeader";
+import { PreferredDateInput } from "../components/PreferredDateInput";
 import Spreadsheet from "../features/dashboard/Spreadsheet";
 import AddBooking from "../features/bookings/AddBooking";
 import toast from "react-hot-toast";
@@ -27,6 +28,7 @@ import { API_URL } from "../config/api";
 import { requestUnsavedModalClose } from "../helpers/modalGuards";
 import usePageTitle from "../hooks/useTitle";
 import { formatHeaderDate } from "../helpers/displayDate";
+import { useAuth } from "../context/AuthContext";
 
 import type { booking } from "../types/bookingTypes";
 import type { OptionType } from "../helpers/selectStyling";
@@ -126,6 +128,8 @@ const Home = ({ status }: { status: HomeStatus }) => {
           : "รายการจองทั้งหมด"
     }`,
   );
+  const { user, resolveStaffName } = useAuth();
+  const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const isMaster = status === "master";
@@ -177,7 +181,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
     );
   }, [bookingIdQuery, isMaster]);
 
-  const fullFormattedDate = formatHeaderDate(new Date());
+  const fullFormattedDate = formatHeaderDate(new Date(), dateFormat);
   const today = new Date();
   const bookingCheckInIsToday = (booking: booking) =>
     booking.checkIn.toDateString() === today.toDateString();
@@ -243,7 +247,9 @@ const Home = ({ status }: { status: HomeStatus }) => {
     operatingStash: cashPosition?.current.operatingCash || 0,
   };
   const cashShiftHelperText = cashPosition?.activeShift
-    ? `Shift ${cashPosition.activeShift.shiftNumber} · ${cashPosition.activeShift.staffUsername}`
+    ? `Shift ${cashPosition.activeShift.shiftNumber} · ${
+        resolveStaffName(cashPosition.activeShift.staffUsername)
+      }`
     : "ยังไม่เปิดกะเงินสด";
 
   const statCards = isMaster
@@ -461,14 +467,12 @@ const Home = ({ status }: { status: HomeStatus }) => {
           <p className="home__filterLabel">ถึงวันที่</p>
         </div>
         <div className="home__dateInputs">
-          <input
-            type="date"
+          <PreferredDateInput
             value={masterFilters.from}
             onChange={(e) => updateMasterFilter("from", e.target.value)}
             className="boxInput home__dateInput"
           />
-          <input
-            type="date"
+          <PreferredDateInput
             value={masterFilters.to}
             onChange={(e) => updateMasterFilter("to", e.target.value)}
             className="boxInput home__dateInput"

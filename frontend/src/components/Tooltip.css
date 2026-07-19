@@ -22,7 +22,8 @@
   font-size: 0.78rem;
   line-height: 1.4;
   overflow-wrap: anywhere;
-  pointer-events: none;
+  pointer-events: auto;
+  user-select: text;
 }
 
 .appTooltip::after {

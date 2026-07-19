@@ -14,6 +14,27 @@ export type LegacyDepositAudit = {
   };
 };
 
+export type DepositReturnReminderBooking = {
+  bookingId: string;
+  guestName: string;
+  roomIds: string[];
+  checkOut: string | Date;
+  amount: number;
+};
+
+export type DepositReturnReminder = {
+  businessDate: string;
+  targetBusinessDate: string;
+  requiredAmount: number;
+  bookingCount: number;
+  bookings: DepositReturnReminderBooking[];
+  overdueAmount: number;
+  overdueBookingCount: number;
+  overdueBookings: DepositReturnReminderBooking[];
+  calculationToken: string;
+  calculatedAt: string | Date;
+};
+
 export type CashShift = {
   _id: string;
   businessDate: string;
@@ -42,6 +63,16 @@ export type CashShift = {
     profilePictureUrl?: string;
   };
   isFinalDayClose?: boolean;
+  depositReturnReminder?: {
+    targetBusinessDate: string;
+    requiredAmount: number;
+    bookingCount: number;
+    bookings: DepositReturnReminderBooking[];
+    calculationToken: string;
+    calculatedAt: string | Date;
+    acknowledgedAt: string | Date;
+    acknowledgedBy: string;
+  };
   legacyDeposit?: LegacyDepositAudit;
 };
 

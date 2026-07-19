@@ -27,7 +27,26 @@ export const effectiveCommercialSegments = (
   );
 
   if (storedSegments.some((segment) => segment.kind === "original")) {
-    return storedSegments;
+    return storedSegments.map((segment) => {
+      const plainSegment =
+        typeof (
+          segment as commercialSegment & {
+            toObject?: () => commercialSegment;
+          }
+        ).toObject === "function"
+          ? (
+              segment as commercialSegment & {
+                toObject: () => commercialSegment;
+              }
+            ).toObject()
+          : segment;
+      const linkedTransaction = (currentBooking.transactions || []).find(
+        (transaction) => String(transaction._id) === segment.transactionId,
+      );
+      return linkedTransaction
+        ? { ...plainSegment, amount: Math.abs(linkedTransaction.amount || 0) }
+        : plainSegment;
+    });
   }
 
   const firstExtension = storedSegments.find(

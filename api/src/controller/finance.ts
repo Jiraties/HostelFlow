@@ -27,6 +27,11 @@ import {
   transactionFallsOnBusinessDate,
   transactionRequiresReview,
 } from "../helpers/financeHelpers";
+import {
+  buildDepositReturnReminder,
+  type DepositReturnReminder,
+} from "../helpers/depositReturnReminderHelpers";
+import { nextBusinessDateKey } from "../helpers/depositPreparationHelpers";
 import { transactionPlatformId } from "../helpers/commercialSegmentHelpers";
 import {
   IdempotencyConflictError,
@@ -37,6 +42,7 @@ import {
   withCashShiftMutationLock,
 } from "../services/cashShiftMutationLock";
 import { CashShiftLedgerConflictError } from "../services/cashLedgerTransaction";
+import { withEffectiveTransactions } from "../services/transactionCorrections";
 
 const sendDuplicateMutationResponse = (res: Response) =>
   res.status(409).json({
@@ -122,12 +128,15 @@ const expectedStayRevenueReductionTypes = new Set<TransactionType>([
   "compensation",
 ]);
 
-const paymentMethodMeta: Record<PaymentMethod, { label: string; icon: string }> = {
+const paymentMethodMeta: Record<
+  PaymentMethod,
+  { label: string; icon: string }
+> = {
   OTA: { label: "OTA", icon: "bx-bank" },
   Cash: { label: "Cash", icon: "bx-currency-notes" },
   Card: { label: "Card", icon: "bx-credit-card-alt" },
   Transfer: { label: "Transfer", icon: "bx-arrow-right-left" },
-  Unpaid: { label: "Unpaid", icon: "bx-error" },
+  Unpaid: { label: "Unpaid", icon: "bx-alert-triangle" },
 };
 
 type ExpectedStayRevenueBreakdownTransaction = {
@@ -146,6 +155,11 @@ type ExpectedStayRevenueBreakdownTransaction = {
   direction?: transcation["direction"];
   createdAt?: Date;
   createdBy?: string;
+  staff?: {
+    username: string;
+    name?: string;
+    profilePictureUrl?: string;
+  };
   note?: string;
   reference?: string;
 };
@@ -243,10 +257,7 @@ const getBusinessMonthBounds = (date = new Date()) => {
   return { start, end };
 };
 
-const getExpectedStayRevenueBounds = (
-  startDate?: string,
-  endDate?: string,
-) => {
+const getExpectedStayRevenueBounds = (startDate?: string, endDate?: string) => {
   if (!startDate && !endDate) return getBusinessMonthBounds();
 
   const start = parseBusinessDateKey(startDate);
@@ -278,6 +289,47 @@ const getBusinessDayBoundsFromKey = (dateKey?: string) => {
   };
 };
 
+const getDepositReturnReminderForDate = async (
+  businessDate?: string,
+  session?: ClientSession,
+) => {
+  const bounds = getBusinessDayBoundsFromKey(businessDate);
+  if (!bounds) return null;
+
+  const targetBusinessDate = nextBusinessDateKey(bounds.businessDate);
+  const targetBounds = getBusinessDayBoundsFromKey(targetBusinessDate);
+  if (!targetBounds) return null;
+
+  const query = Booking.find({
+    status: "checkedIn",
+    voided: { $ne: true },
+    checkOut: { $lt: targetBounds.end },
+  }).select(
+    "bookingId name roomStays checkOut transactions transactionCorrections",
+  );
+  if (session) query.session(session);
+
+  const bookings = await query.lean<booking[]>();
+  const tomorrowBookings = bookings.filter((currentBooking) => {
+    const checkOut = new Date(currentBooking.checkOut).getTime();
+    return (
+      checkOut >= targetBounds.start.getTime() &&
+      checkOut < targetBounds.end.getTime()
+    );
+  });
+  const overdueBookings = bookings.filter(
+    (currentBooking) =>
+      new Date(currentBooking.checkOut).getTime() <
+      targetBounds.start.getTime(),
+  );
+
+  return buildDepositReturnReminder(
+    bounds.businessDate,
+    tomorrowBookings,
+    overdueBookings,
+  );
+};
+
 const getTransactionsForBusinessDate = async (
   businessDate?: string,
   staffUsername?: string,
@@ -285,20 +337,23 @@ const getTransactionsForBusinessDate = async (
   const bounds = getBusinessDayBoundsFromKey(businessDate);
   if (!bounds) return null;
 
-  const [bookings, standaloneSales] = await Promise.all([Booking.find({
-    $or: [
-      { "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end } },
-      { checkIn: { $gte: bounds.start, $lt: bounds.end } },
-      { checkOut: { $gte: bounds.start, $lt: bounds.end } },
-      { "cancellation.cancelledAt": { $gte: bounds.start, $lt: bounds.end } },
-      { "checkout.checkedOutAt": { $gte: bounds.start, $lt: bounds.end } },
-    ],
-  }).lean<booking[]>(), StandaloneSale.find({
-    "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end },
-  }).lean()]);
+  const [bookings, standaloneSales] = await Promise.all([
+    Booking.find({
+      $or: [
+        { "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end } },
+        { checkIn: { $gte: bounds.start, $lt: bounds.end } },
+        { checkOut: { $gte: bounds.start, $lt: bounds.end } },
+        { "cancellation.cancelledAt": { $gte: bounds.start, $lt: bounds.end } },
+        { "checkout.checkedOutAt": { $gte: bounds.start, $lt: bounds.end } },
+      ],
+    }).lean<booking[]>(),
+    StandaloneSale.find({
+      "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end },
+    }).lean(),
+  ]);
 
   const transactions = [
-    ...bookings,
+    ...bookings.map((booking) => withEffectiveTransactions(booking)),
     ...standaloneSales.map(standaloneSaleBookingView),
   ].flatMap((booking) =>
     (booking.transactions || [])
@@ -312,7 +367,9 @@ const getTransactionsForBusinessDate = async (
       )
       .filter((transaction) => {
         if (!staffUsername) return true;
-        return (transaction.createdBy || booking.staffUsername) === staffUsername;
+        return (
+          (transaction.createdBy || booking.staffUsername) === staffUsername
+        );
       })
       .map((transaction) => ({
         ...transaction,
@@ -377,11 +434,23 @@ const getShiftTransactions = async (
 ) => {
   const shiftId = String(shift._id);
   const [bookings, standaloneSales] = await Promise.all([
-    Booking.find({ "transactions.cashShiftId": shiftId }).session(session || null).lean<booking[]>(),
-    StandaloneSale.find({ "transactions.cashShiftId": shiftId }).session(session || null).lean(),
+    Booking.find({
+      $or: [
+        { "transactions.cashShiftId": shiftId },
+        { "transactionCorrections.after.cashShiftId": shiftId },
+      ],
+    })
+      .session(session || null)
+      .lean<booking[]>(),
+    StandaloneSale.find({ "transactions.cashShiftId": shiftId })
+      .session(session || null)
+      .lean(),
   ]);
 
-  return [...bookings, ...standaloneSales.map(standaloneSaleBookingView)].flatMap((booking) =>
+  return [
+    ...bookings.map((booking) => withEffectiveTransactions(booking)),
+    ...standaloneSales.map(standaloneSaleBookingView),
+  ].flatMap((booking) =>
     (booking.transactions || [])
       .filter((transaction) => transaction.cashShiftId === shiftId)
       .map((transaction) => ({
@@ -394,13 +463,19 @@ const getShiftTransactions = async (
 };
 
 const getUnassignedCashTransactionsBetween = async (start: Date, end: Date) => {
-  const [bookings, standaloneSales] = await Promise.all([Booking.find({
-    "transactions.createdAt": { $gte: start, $lt: end },
-  }).lean<booking[]>(), StandaloneSale.find({
-    "transactions.createdAt": { $gte: start, $lt: end },
-  }).lean()]);
+  const [bookings, standaloneSales] = await Promise.all([
+    Booking.find({
+      "transactions.createdAt": { $gte: start, $lt: end },
+    }).lean<booking[]>(),
+    StandaloneSale.find({
+      "transactions.createdAt": { $gte: start, $lt: end },
+    }).lean(),
+  ]);
 
-  return [...bookings, ...standaloneSales.map(standaloneSaleBookingView)].flatMap((booking) =>
+  return [
+    ...bookings.map((booking) => withEffectiveTransactions(booking)),
+    ...standaloneSales.map(standaloneSaleBookingView),
+  ].flatMap((booking) =>
     (booking.transactions || [])
       .filter((transaction) => {
         if (transaction.cashShiftId) return false;
@@ -416,9 +491,7 @@ const getUnassignedCashTransactionsBetween = async (start: Date, end: Date) => {
   );
 };
 
-const enrichCashShift = async <
-  T extends { _id?: unknown; toObject?: () => T },
->(
+const enrichCashShift = async <T extends { _id?: unknown; toObject?: () => T }>(
   cashShift: T,
 ) => {
   const shiftObject =
@@ -483,7 +556,9 @@ const cashShiftAuditView = (shift: any) => {
   };
 };
 
-const attachCashShiftStaffProfiles = async <T extends { staffUsername?: string }>(
+const attachCashShiftStaffProfiles = async <
+  T extends { staffUsername?: string },
+>(
   cashShifts: T[],
 ) => {
   const usernames = [
@@ -517,7 +592,9 @@ const getCashPositionForDate = async (businessDate?: string) => {
   const bounds = getBusinessDayBoundsFromKey(businessDate);
   if (!bounds) return null;
 
-  const shifts = await CashShift.find({ businessDate: bounds.businessDate }).sort({
+  const shifts = await CashShift.find({
+    businessDate: bounds.businessDate,
+  }).sort({
     shiftNumber: 1,
   });
   const activeShift = shifts.find((shift) => shift.status === "open");
@@ -593,9 +670,9 @@ const hasCashMovement = (movements: ReturnType<typeof summarizeCashStashes>) =>
   Math.abs(movements.operatingCashIn) > 0 ||
   Math.abs(movements.operatingCashOut) > 0;
 
-const cashMovementTotal = (movements: ReturnType<typeof summarizeCashStashes>) =>
-  movements.operatingCashIn -
-  movements.operatingCashOut;
+const cashMovementTotal = (
+  movements: ReturnType<typeof summarizeCashStashes>,
+) => movements.operatingCashIn - movements.operatingCashOut;
 
 type OperatingCashMovements = Pick<
   ReturnType<typeof summarizeCashStashes>,
@@ -609,7 +686,9 @@ const getCashShiftAuditForDate = async (businessDate?: string) => {
   const bounds = getBusinessDayBoundsFromKey(businessDate);
   if (!bounds) return null;
 
-  const shifts = await CashShift.find({ businessDate: bounds.businessDate }).sort({
+  const shifts = await CashShift.find({
+    businessDate: bounds.businessDate,
+  }).sort({
     shiftNumber: 1,
   });
   const enrichedShifts = await attachCashShiftStaffProfiles(
@@ -660,7 +739,9 @@ const getCashShiftAuditForDate = async (businessDate?: string) => {
 
   const auditShifts = await Promise.all(
     enrichedShifts.map(async (shift, index) => {
-      const shiftTransactions = await getShiftTransactions(shift as { _id?: unknown; startedAt: Date; endedAt?: Date });
+      const shiftTransactions = await getShiftTransactions(
+        shift as { _id?: unknown; startedAt: Date; endedAt?: Date },
+      );
       const flaggedTransactions = shiftTransactions.filter(
         transactionRequiresReview,
       );
@@ -705,7 +786,8 @@ const getCashShiftAuditForDate = async (businessDate?: string) => {
           handoffMovements.operatingCashIn,
           handoffMovements.operatingCashOut,
         );
-        const operatingDifference = Number(shift.operatingOpeningCash) - expectedOperatingOpening;
+        const operatingDifference =
+          Number(shift.operatingOpeningCash) - expectedOperatingOpening;
         const mismatch =
           shift.openingMode === "counted" &&
           Math.abs(operatingDifference) > CASH_VARIANCE_THRESHOLD;
@@ -796,7 +878,7 @@ const addBreakdownTransaction = (
     paymentMethod: transaction.paymentMethod,
     direction,
     createdAt: transaction.createdAt,
-    createdBy: transaction.createdBy,
+    createdBy: transaction.createdBy || booking.staffUsername,
     note: transaction.note,
     reference: transaction.reference,
   });
@@ -812,7 +894,9 @@ const addPaymentMethodBreakdownTransaction = (
   direction: NonNullable<transcation["direction"]>,
 ) => {
   const methodMeta = paymentMethodMeta[transaction.paymentMethod];
-  const transactionMeta = expectedStayRevenueTransactionMeta[transaction.type] || {
+  const transactionMeta = expectedStayRevenueTransactionMeta[
+    transaction.type
+  ] || {
     label: transaction.type,
     color: "#94a3b8",
     icon: "bx-receipt",
@@ -844,7 +928,7 @@ const addPaymentMethodBreakdownTransaction = (
     paymentMethod: transaction.paymentMethod,
     direction,
     createdAt: transaction.createdAt,
-    createdBy: transaction.createdBy,
+    createdBy: transaction.createdBy || booking.staffUsername,
     note: transaction.note,
     reference: transaction.reference,
   });
@@ -882,7 +966,9 @@ const finalizeBreakdownCategories = (
           ? 0
           : Number(((category.total / expectedStayRevenue) * 100).toFixed(2)),
       transactions: category.transactions.sort((first, second) => {
-        const firstTime = first.createdAt ? new Date(first.createdAt).getTime() : 0;
+        const firstTime = first.createdAt
+          ? new Date(first.createdAt).getTime()
+          : 0;
         const secondTime = second.createdAt
           ? new Date(second.createdAt).getTime()
           : 0;
@@ -906,7 +992,9 @@ const finalizePaymentMethodBreakdowns = (
               ((paymentMethod.total / expectedStayRevenue) * 100).toFixed(2),
             ),
       transactions: paymentMethod.transactions.sort((first, second) => {
-        const firstTime = first.createdAt ? new Date(first.createdAt).getTime() : 0;
+        const firstTime = first.createdAt
+          ? new Date(first.createdAt).getTime()
+          : 0;
         const secondTime = second.createdAt
           ? new Date(second.createdAt).getTime()
           : 0;
@@ -914,6 +1002,57 @@ const finalizePaymentMethodBreakdowns = (
       }),
     }))
     .sort((first, second) => second.total - first.total);
+
+type RevenueBreakdownGroup = {
+  transactions: ExpectedStayRevenueBreakdownTransaction[];
+};
+
+type RevenueBreakdownStaffProfile = {
+  username: string;
+  name?: string;
+  profilePictureUrl?: string;
+};
+
+const loadRevenueBreakdownStaffProfiles = async (
+  ...groupSets: RevenueBreakdownGroup[][]
+) => {
+  const usernames = [
+    ...new Set(
+      groupSets.flatMap((groups) =>
+        groups.flatMap((group) =>
+          group.transactions.map((transaction) => transaction.createdBy),
+        ),
+      ),
+    ),
+  ].filter((username): username is string => Boolean(username));
+
+  const users = await User.find({ username: { $in: usernames } })
+    .select("username name profilePictureUrl")
+    .lean<RevenueBreakdownStaffProfile[]>();
+
+  return new Map(users.map((user) => [user.username, user]));
+};
+
+const attachRevenueBreakdownStaffProfiles = <T extends RevenueBreakdownGroup>(
+  groups: T[],
+  usersByUsername: Map<string, RevenueBreakdownStaffProfile>,
+) =>
+  groups.map((group) => ({
+    ...group,
+    transactions: group.transactions.map((transaction) => {
+      if (!transaction.createdBy) return transaction;
+
+      const user = usersByUsername.get(transaction.createdBy);
+      return {
+        ...transaction,
+        staff: {
+          username: transaction.createdBy,
+          name: user?.name,
+          profilePictureUrl: user?.profilePictureUrl,
+        },
+      };
+    }),
+  }));
 
 export const getExpectedStayRevenueBreakdown = async (
   req: Request,
@@ -946,7 +1085,7 @@ export const getExpectedStayRevenueBreakdown = async (
       }).lean(),
     ]);
     const bookings = [
-      ...bookingRecords,
+      ...bookingRecords.map((booking) => withEffectiveTransactions(booking)),
       ...standaloneSales.map(standaloneSaleBookingView),
     ];
     const categories = new Map<
@@ -1030,6 +1169,11 @@ export const getExpectedStayRevenueBreakdown = async (
       paymentMethods,
       grossStayCharges,
     );
+    const usersByUsername = await loadRevenueBreakdownStaffProfiles(
+      finalizedCategories,
+      finalizedReductions,
+      finalizedPaymentMethods,
+    );
 
     res.status(200).json({
       period: {
@@ -1052,9 +1196,18 @@ export const getExpectedStayRevenueBreakdown = async (
             0,
           ),
       },
-      categories: finalizedCategories,
-      reductions: finalizedReductions,
-      paymentMethods: finalizedPaymentMethods,
+      categories: attachRevenueBreakdownStaffProfiles(
+        finalizedCategories,
+        usersByUsername,
+      ),
+      reductions: attachRevenueBreakdownStaffProfiles(
+        finalizedReductions,
+        usersByUsername,
+      ),
+      paymentMethods: attachRevenueBreakdownStaffProfiles(
+        finalizedPaymentMethods,
+        usersByUsername,
+      ),
     });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
@@ -1090,7 +1243,7 @@ export const getTodayRevenueBreakdown = async (req: Request, res: Response) => {
       }).lean(),
     ]);
     const bookings = [
-      ...bookingRecords,
+      ...bookingRecords.map((booking) => withEffectiveTransactions(booking)),
       ...standaloneSales.map(standaloneSaleBookingView),
     ];
     const todaySummary = calculateTodayRevenueSummary(
@@ -1211,6 +1364,11 @@ export const getTodayRevenueBreakdown = async (req: Request, res: Response) => {
       paymentMethods,
       grossStayCharges,
     );
+    const usersByUsername = await loadRevenueBreakdownStaffProfiles(
+      finalizedCategories,
+      finalizedReductions,
+      finalizedPaymentMethods,
+    );
 
     res.status(200).json({
       period: {
@@ -1233,9 +1391,18 @@ export const getTodayRevenueBreakdown = async (req: Request, res: Response) => {
             0,
           ),
       },
-      categories: finalizedCategories,
-      reductions: finalizedReductions,
-      paymentMethods: finalizedPaymentMethods,
+      categories: attachRevenueBreakdownStaffProfiles(
+        finalizedCategories,
+        usersByUsername,
+      ),
+      reductions: attachRevenueBreakdownStaffProfiles(
+        finalizedReductions,
+        usersByUsername,
+      ),
+      paymentMethods: attachRevenueBreakdownStaffProfiles(
+        finalizedPaymentMethods,
+        usersByUsername,
+      ),
     });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
@@ -1269,13 +1436,13 @@ export const getTodayRevenueSummary = async (req: Request, res: Response) => {
       }).lean(),
     ]);
     const bookings = [
-      ...bookingRecords,
+      ...bookingRecords.map((booking) => withEffectiveTransactions(booking)),
       ...standaloneSales.map(standaloneSaleBookingView),
     ];
 
-    res.status(200).json(
-      calculateTodayRevenueSummary(bookings, bounds.start, bounds.end),
-    );
+    res
+      .status(200)
+      .json(calculateTodayRevenueSummary(bookings, bounds.start, bounds.end));
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
@@ -1303,7 +1470,9 @@ export const getReconciliation = async (req: Request, res: Response) => {
     }).sort({ createdAt: -1, staffUsername: 1 });
     const dailyClosesWithStaff =
       await attachDailyCloseStaffProfiles(dailyCloses);
-    const cashPosition = await getCashPositionForDate(reconciliation.businessDate);
+    const cashPosition = await getCashPositionForDate(
+      reconciliation.businessDate,
+    );
 
     res.status(200).json({
       businessDate: reconciliation.businessDate,
@@ -1332,6 +1501,25 @@ export const getCashPosition = async (req: Request, res: Response) => {
     res.status(200).json(cashPosition);
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
+  }
+};
+
+export const getDepositReturnReminder = async (req: Request, res: Response) => {
+  try {
+    if (!req.user?.username) {
+      return res.status(401).json({ message: "กรุณาเข้าสู่ระบบใหม่" });
+    }
+
+    const reminder = await getDepositReturnReminderForDate(
+      req.query.businessDate as string | undefined,
+    );
+    if (!reminder) {
+      return res.status(400).json({ message: "Invalid date format" });
+    }
+
+    return res.status(200).json({ reminder });
+  } catch (err) {
+    return res.status(500).json({ error: (err as Error).message });
   }
 };
 
@@ -1404,7 +1592,9 @@ export const resolveCashShiftAudit = async (req: Request, res: Response) => {
       },
     });
 
-    res.status(200).json({ cashShift: cashShiftAuditView(cashShift.toObject()) });
+    res
+      .status(200)
+      .json({ cashShift: cashShiftAuditView(cashShift.toObject()) });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
@@ -1422,103 +1612,105 @@ export const startCashShift = async (req: Request, res: Response) => {
     }
 
     return await withCashShiftMutationLock(bounds.businessDate, async () => {
-    const finalizedDay = await CashShift.findOne({
-      businessDate: bounds.businessDate,
-      isFinalDayClose: true,
-    }).select("_id");
-    if (finalizedDay) {
-      return res.status(409).json({
-        message: "วันนี้ปิดยอดสุดท้ายแล้ว ไม่สามารถเปิดกะเพิ่มได้",
-      });
-    }
-
-    const existingOpenShift = await CashShift.findOne({
-      businessDate: bounds.businessDate,
-      status: "open",
-    });
-
-    if (existingOpenShift) {
-      return res.status(409).json({
-        message: "มีกะเงินสดที่เปิดอยู่แล้ว กรุณาปิดกะเดิมก่อน",
-      });
-    }
-
-    const previousShift = await CashShift.findOne({
-      businessDate: bounds.businessDate,
-      status: "closed",
-    }).sort({ shiftNumber: -1 });
-    const handoffMovements = summarizeCashStashes(
-      await getUnassignedCashTransactionsBetween(
-        previousShift?.endedAt || bounds.start,
-        new Date(),
-      ),
-    );
-    const openingMode =
-      req.body.openingMode === "accepted_handoff"
-        ? "accepted_handoff"
-        : "counted";
-
-    if (openingMode === "accepted_handoff" && !previousShift) {
-      return res.status(400).json({
-        message: "ยังไม่มีกะก่อนหน้าให้รับส่งเงิน",
-      });
-    }
-
-    const expectedOperatingOpening = cashBalanceAfterMovements(
-      previousShift?.operatingActualCash || 0,
-      handoffMovements.operatingCashIn,
-      handoffMovements.operatingCashOut,
-    );
-    const operatingOpeningCash =
-      openingMode === "accepted_handoff"
-        ? expectedOperatingOpening
-        : Number(req.body.operatingOpeningCash || 0);
-
-    if (!isValidCashCount(operatingOpeningCash)) {
-      return res.status(400).json({ message: "ยอดเงินสดไม่ถูกต้อง" });
-    }
-
-    const openingNoteRequired =
-      Math.abs(operatingOpeningCash - expectedOperatingOpening) >
-      CASH_VARIANCE_THRESHOLD;
-    if (openingNoteRequired && !String(req.body.note || "").trim()) {
-      return res.status(400).json({
-        message: "กรุณาระบุหมายเหตุเมื่อยอดรับส่งเงินไม่ตรงกัน",
-      });
-    }
-
-    const shiftNumber = (previousShift?.shiftNumber || 0) + 1;
-    const cashShift = await withMutationIdempotency(req, () =>
-      CashShift.create({
+      const finalizedDay = await CashShift.findOne({
         businessDate: bounds.businessDate,
-        shiftNumber,
-        staffUsername: req.user?.username,
+        isFinalDayClose: true,
+      }).select("_id");
+      if (finalizedDay) {
+        return res.status(409).json({
+          message: "วันนี้ปิดยอดสุดท้ายแล้ว ไม่สามารถเปิดกะเพิ่มได้",
+        });
+      }
+
+      const existingOpenShift = await CashShift.findOne({
+        businessDate: bounds.businessDate,
         status: "open",
-        openingMode,
-        handoffFromShiftId: previousShift ? String(previousShift._id) : undefined,
-        operatingOpeningCash,
-        operatingExpectedCash: operatingOpeningCash,
-        note: String(req.body.note || "").trim(),
-        startedAt: new Date(),
-        createdBy: req.user?.username,
-      }),
-    );
+      });
 
-    await logActivity(req.user!.username, "DAILY_CLOSE", {
-      summary: {
-        action: "START_CASH_SHIFT",
+      if (existingOpenShift) {
+        return res.status(409).json({
+          message: "มีกะเงินสดที่เปิดอยู่แล้ว กรุณาปิดกะเดิมก่อน",
+        });
+      }
+
+      const previousShift = await CashShift.findOne({
         businessDate: bounds.businessDate,
-        shiftNumber,
-        openingMode,
-        operatingOpeningCash,
-        expectedOperatingOpening,
-        note: String(req.body.note || "").trim(),
-      },
-    }).catch((err) => {
-      console.error("Failed to log cash shift start", err);
-    });
+        status: "closed",
+      }).sort({ shiftNumber: -1 });
+      const handoffMovements = summarizeCashStashes(
+        await getUnassignedCashTransactionsBetween(
+          previousShift?.endedAt || bounds.start,
+          new Date(),
+        ),
+      );
+      const openingMode =
+        req.body.openingMode === "accepted_handoff"
+          ? "accepted_handoff"
+          : "counted";
 
-    return res.status(201).json({ cashShift });
+      if (openingMode === "accepted_handoff" && !previousShift) {
+        return res.status(400).json({
+          message: "ยังไม่มีกะก่อนหน้าให้รับส่งเงิน",
+        });
+      }
+
+      const expectedOperatingOpening = cashBalanceAfterMovements(
+        previousShift?.operatingActualCash || 0,
+        handoffMovements.operatingCashIn,
+        handoffMovements.operatingCashOut,
+      );
+      const operatingOpeningCash =
+        openingMode === "accepted_handoff"
+          ? expectedOperatingOpening
+          : Number(req.body.operatingOpeningCash || 0);
+
+      if (!isValidCashCount(operatingOpeningCash)) {
+        return res.status(400).json({ message: "ยอดเงินสดไม่ถูกต้อง" });
+      }
+
+      const openingNoteRequired =
+        Math.abs(operatingOpeningCash - expectedOperatingOpening) >
+        CASH_VARIANCE_THRESHOLD;
+      if (openingNoteRequired && !String(req.body.note || "").trim()) {
+        return res.status(400).json({
+          message: "กรุณาระบุหมายเหตุเมื่อยอดรับส่งเงินไม่ตรงกัน",
+        });
+      }
+
+      const shiftNumber = (previousShift?.shiftNumber || 0) + 1;
+      const cashShift = await withMutationIdempotency(req, () =>
+        CashShift.create({
+          businessDate: bounds.businessDate,
+          shiftNumber,
+          staffUsername: req.user?.username,
+          status: "open",
+          openingMode,
+          handoffFromShiftId: previousShift
+            ? String(previousShift._id)
+            : undefined,
+          operatingOpeningCash,
+          operatingExpectedCash: operatingOpeningCash,
+          note: String(req.body.note || "").trim(),
+          startedAt: new Date(),
+          createdBy: req.user?.username,
+        }),
+      );
+
+      await logActivity(req.user!.username, "DAILY_CLOSE", {
+        summary: {
+          action: "START_CASH_SHIFT",
+          businessDate: bounds.businessDate,
+          shiftNumber,
+          openingMode,
+          operatingOpeningCash,
+          expectedOperatingOpening,
+          note: String(req.body.note || "").trim(),
+        },
+      }).catch((err) => {
+        console.error("Failed to log cash shift start", err);
+      });
+
+      return res.status(201).json({ cashShift });
     });
   } catch (err) {
     if (err instanceof CashShiftMutationConflictError) {
@@ -1538,6 +1730,8 @@ class CashShiftCloseValidationError extends Error {
   constructor(
     readonly status: 400 | 409,
     message: string,
+    readonly code?: string,
+    readonly reminder?: DepositReturnReminder,
   ) {
     super(message);
     this.name = "CashShiftCloseValidationError";
@@ -1557,10 +1751,7 @@ export const closeCashShift = async (req: Request, res: Response) => {
     if (requestedShift.status !== "open") {
       return res.status(409).json({ message: "กะเงินสดนี้ปิดไปแล้ว" });
     }
-    if (
-      !req.user.admin &&
-      requestedShift.staffUsername !== req.user.username
-    ) {
+    if (!req.user.admin && requestedShift.staffUsername !== req.user.username) {
       return res.status(403).json({
         message: "เฉพาะผู้รับผิดชอบกะหรือผู้ดูแลระบบเท่านั้นที่ปิดกะได้",
       });
@@ -1579,107 +1770,180 @@ export const closeCashShift = async (req: Request, res: Response) => {
         withMutationIdempotency(req, async () => {
           const session = await mongoose.startSession();
           try {
-            const transactionResult = await session.withTransaction(async () => {
-              const cashShift = await CashShift.findOne({
-                _id: requestedShift._id,
-                status: "open",
-              }).session(session);
-              if (!cashShift) throw new CashShiftLedgerConflictError();
-
-              const currentLedgerRevision = cashShift.ledgerRevision || 0;
-              const guardUpdate = await CashShift.updateOne(
-                {
-                  _id: cashShift._id,
+            const transactionResult = await session.withTransaction(
+              async () => {
+                const cashShift = await CashShift.findOne({
+                  _id: requestedShift._id,
                   status: "open",
-                  $or: [
-                    { ledgerRevision: currentLedgerRevision },
-                    { ledgerRevision: { $exists: false } },
-                  ],
-                },
-                { $inc: { ledgerRevision: 1 } },
-                { session },
-              );
-              if (guardUpdate.modifiedCount !== 1) {
-                throw new CashShiftLedgerConflictError();
-              }
-              const guardedLedgerRevision = currentLedgerRevision + 1;
+                }).session(session);
+                if (!cashShift) throw new CashShiftLedgerConflictError();
 
-              if (closeDay) {
-                const existingFinalClose = await CashShift.findOne({
-                  businessDate: cashShift.businessDate,
-                  isFinalDayClose: true,
-                  _id: { $ne: cashShift._id },
-                })
-                  .select("_id")
-                  .session(session);
-                if (existingFinalClose) {
+                const currentLedgerRevision = cashShift.ledgerRevision || 0;
+                const guardUpdate = await CashShift.updateOne(
+                  {
+                    _id: cashShift._id,
+                    status: "open",
+                    $or: [
+                      { ledgerRevision: currentLedgerRevision },
+                      { ledgerRevision: { $exists: false } },
+                    ],
+                  },
+                  { $inc: { ledgerRevision: 1 } },
+                  { session },
+                );
+                if (guardUpdate.modifiedCount !== 1) {
+                  throw new CashShiftLedgerConflictError();
+                }
+                const guardedLedgerRevision = currentLedgerRevision + 1;
+
+                if (closeDay) {
+                  const existingFinalClose = await CashShift.findOne({
+                    businessDate: cashShift.businessDate,
+                    isFinalDayClose: true,
+                    _id: { $ne: cashShift._id },
+                  })
+                    .select("_id")
+                    .session(session);
+                  if (existingFinalClose) {
+                    throw new CashShiftCloseValidationError(
+                      409,
+                      "วันนี้ปิดยอดสุดท้ายแล้ว",
+                    );
+                  }
+                }
+
+                let depositReturnReminder: DepositReturnReminder | undefined;
+                if (closeDay) {
+                  depositReturnReminder =
+                    (await getDepositReturnReminderForDate(
+                      cashShift.businessDate,
+                      session,
+                    )) || undefined;
+                  if (!depositReturnReminder) {
+                    throw new CashShiftCloseValidationError(
+                      400,
+                      "ไม่สามารถคำนวณรายการมัดจำของวันพรุ่งนี้ได้",
+                      "DEPOSIT_REMINDER_UNAVAILABLE",
+                    );
+                  }
+                  const submittedToken = String(
+                    req.body.depositReminderToken || "",
+                  );
+                  if (!submittedToken) {
+                    throw new CashShiftCloseValidationError(
+                      400,
+                      "กรุณาตรวจสอบรายการมัดจำก่อนปิดยอดวันนี้",
+                      "DEPOSIT_REMINDER_REQUIRED",
+                      depositReturnReminder,
+                    );
+                  }
+                  if (
+                    submittedToken !== depositReturnReminder.calculationToken
+                  ) {
+                    throw new CashShiftCloseValidationError(
+                      409,
+                      "รายการมัดจำมีการเปลี่ยนแปลง กรุณาตรวจสอบยอดใหม่อีกครั้ง",
+                      "DEPOSIT_REMINDER_CHANGED",
+                      depositReturnReminder,
+                    );
+                  }
+                }
+
+                const movements = summarizeCashStashes(
+                  await getShiftTransactions(cashShift, session),
+                );
+                const operatingExpectedCash =
+                  cashShift.operatingOpeningCash +
+                  movements.operatingCashIn -
+                  movements.operatingCashOut;
+                const operatingVariance =
+                  operatingActualCash - operatingExpectedCash;
+
+                if (
+                  Math.abs(operatingVariance) > CASH_VARIANCE_THRESHOLD &&
+                  !String(req.body.note || "").trim()
+                ) {
                   throw new CashShiftCloseValidationError(
-                    409,
-                    "วันนี้ปิดยอดสุดท้ายแล้ว",
+                    400,
+                    "กรุณาระบุหมายเหตุเมื่อยอดเงินสดไม่ตรงกัน",
                   );
                 }
-              }
 
-              const movements = summarizeCashStashes(
-                await getShiftTransactions(cashShift, session),
-              );
-              const operatingExpectedCash =
-                cashShift.operatingOpeningCash +
-                movements.operatingCashIn -
-                movements.operatingCashOut;
-              const operatingVariance = operatingActualCash - operatingExpectedCash;
-
-              if (
-                Math.abs(operatingVariance) > CASH_VARIANCE_THRESHOLD &&
-                !String(req.body.note || "").trim()
-              ) {
-                throw new CashShiftCloseValidationError(
-                  400,
-                  "กรุณาระบุหมายเหตุเมื่อยอดเงินสดไม่ตรงกัน",
+                const closedAt = new Date();
+                const closedShift = await CashShift.findOneAndUpdate(
+                  {
+                    _id: cashShift._id,
+                    status: "open",
+                    ledgerRevision: guardedLedgerRevision,
+                  },
+                  {
+                    $set: {
+                      status: "closed",
+                      operatingCashIn: movements.operatingCashIn,
+                      operatingCashOut: movements.operatingCashOut,
+                      operatingExpectedCash,
+                      operatingActualCash,
+                      operatingVariance,
+                      isFinalDayClose: closeDay,
+                      ...(closeDay && depositReturnReminder
+                        ? {
+                            depositReturnReminder: {
+                              targetBusinessDate:
+                                depositReturnReminder.targetBusinessDate,
+                              requiredAmount:
+                                depositReturnReminder.requiredAmount,
+                              bookingCount: depositReturnReminder.bookingCount,
+                              bookings: depositReturnReminder.bookings,
+                              calculationToken:
+                                depositReturnReminder.calculationToken,
+                              calculatedAt: depositReturnReminder.calculatedAt,
+                              acknowledgedAt: closedAt,
+                              acknowledgedBy: closingUsername,
+                            },
+                          }
+                        : {}),
+                      note: String(
+                        req.body.note || cashShift.note || "",
+                      ).trim(),
+                      endedAt: closedAt,
+                      closedBy: closingUsername,
+                    },
+                  },
+                  { returnDocument: "after", session, runValidators: true },
                 );
-              }
+                if (!closedShift) throw new CashShiftLedgerConflictError();
 
-              const closedAt = new Date();
-              const closedShift = await CashShift.findOneAndUpdate(
-                {
-                  _id: cashShift._id,
-                  status: "open",
-                  ledgerRevision: guardedLedgerRevision,
-                },
-                {
-                  $set: {
-                    status: "closed",
-                    operatingCashIn: movements.operatingCashIn,
-                    operatingCashOut: movements.operatingCashOut,
+                return {
+                  closedShift,
+                  auditSummary: {
+                    action: "CLOSE_CASH_SHIFT",
+                    businessDate: cashShift.businessDate,
+                    shiftNumber: cashShift.shiftNumber,
+                    closeDay,
                     operatingExpectedCash,
                     operatingActualCash,
                     operatingVariance,
-                    isFinalDayClose: closeDay,
+                    operatingCashIn: movements.operatingCashIn,
+                    operatingCashOut: movements.operatingCashOut,
                     note: String(req.body.note || cashShift.note || "").trim(),
-                    endedAt: closedAt,
-                    closedBy: closingUsername,
+                    ...(depositReturnReminder
+                      ? {
+                          depositReturnReminder: {
+                            targetBusinessDate:
+                              depositReturnReminder.targetBusinessDate,
+                            requiredAmount:
+                              depositReturnReminder.requiredAmount,
+                            bookingCount: depositReturnReminder.bookingCount,
+                            bookings: depositReturnReminder.bookings,
+                            acknowledgedAt: closedAt,
+                            acknowledgedBy: closingUsername,
+                          },
+                        }
+                      : {}),
                   },
-                },
-                { returnDocument: "after", session, runValidators: true },
-              );
-              if (!closedShift) throw new CashShiftLedgerConflictError();
-
-              return {
-                closedShift,
-                auditSummary: {
-                  action: "CLOSE_CASH_SHIFT",
-                  businessDate: cashShift.businessDate,
-                  shiftNumber: cashShift.shiftNumber,
-                  closeDay,
-                  operatingExpectedCash,
-                  operatingActualCash,
-                  operatingVariance,
-                  operatingCashIn: movements.operatingCashIn,
-                  operatingCashOut: movements.operatingCashOut,
-                  note: String(req.body.note || cashShift.note || "").trim(),
-                },
-              };
-            });
+                };
+              },
+            );
             if (!transactionResult) throw new CashShiftLedgerConflictError();
             return transactionResult;
           } finally {
@@ -1697,7 +1961,11 @@ export const closeCashShift = async (req: Request, res: Response) => {
     return res.status(200).json({ cashShift: result.closedShift });
   } catch (err) {
     if (err instanceof CashShiftCloseValidationError) {
-      return res.status(err.status).json({ message: err.message });
+      return res.status(err.status).json({
+        error: err.code,
+        message: err.message,
+        ...(err.reminder ? { reminder: err.reminder } : {}),
+      });
     }
     if (
       err instanceof CashShiftMutationConflictError ||
@@ -1758,7 +2026,9 @@ export const upsertDailyClose = async (req: Request, res: Response) => {
     }
 
     const expectedCash =
-      openingCash + reconciliation.summary.cashIn - reconciliation.summary.cashOut;
+      openingCash +
+      reconciliation.summary.cashIn -
+      reconciliation.summary.cashOut;
     const variance = actualCash - expectedCash;
 
     if (
@@ -1864,7 +2134,10 @@ export const upsertDailyClose = async (req: Request, res: Response) => {
 
     res.status(200).json({ dailyClose });
   } catch (err) {
-    if (err instanceof DailyCloseRevisionConflictError || (err as any)?.code === 11000) {
+    if (
+      err instanceof DailyCloseRevisionConflictError ||
+      (err as any)?.code === 11000
+    ) {
       const staffUsername =
         req.user?.admin && typeof req.body.staffUsername === "string"
           ? req.body.staffUsername
@@ -1936,7 +2209,8 @@ export const approveReviewEvent = async (req: Request, res: Response) => {
     }
 
     const transaction = booking.transactions.find(
-      (existingTransaction) => String(existingTransaction._id) === transactionId,
+      (existingTransaction) =>
+        String(existingTransaction._id) === transactionId,
     );
 
     if (!transaction) {
@@ -2008,13 +2282,16 @@ export const approveStandaloneReviewEvent = async (
     const transaction = sale.transactions.find(
       (item) => String(item._id) === String(req.params.transactionId),
     );
-    if (!transaction) return res.status(404).json({ message: "ไม่พบรายการธุรกรรม" });
+    if (!transaction)
+      return res.status(404).json({ message: "ไม่พบรายการธุรกรรม" });
     if (transaction.reviewStatus !== "reviewed") {
       if (
         transaction.reviewStatus !== "needs_review" &&
         !(transaction.reviewFlags || []).length
       ) {
-        return res.status(400).json({ message: "รายการนี้ไม่จำเป็นต้องตรวจสอบ" });
+        return res
+          .status(400)
+          .json({ message: "รายการนี้ไม่จำเป็นต้องตรวจสอบ" });
       }
       transaction.reviewStatus = "reviewed";
       transaction.reviewedBy = req.user.username;

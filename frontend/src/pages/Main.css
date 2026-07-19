@@ -286,6 +286,7 @@
   flex-direction: column;
   gap: 0.3rem;
   min-width: 0;
+  margin-bottom: 1rem;
 }
 
 .main__cashCloseNote {
@@ -294,13 +295,9 @@
 
 .main__cashCloseActions {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.75fr);
+  grid-template-columns: 2fr 1fr;
   gap: 0.75rem;
   grid-column: 1 / -1;
-}
-
-.main__cashCloseActions .home__action {
-  grid-column: auto;
 }
 
 .main__cashCloseToggle {
@@ -337,8 +334,20 @@
   box-shadow: var(--light-shadow);
 }
 
+.main__cashCloseActions .home__action {
+  grid-column: auto;
+}
+
 .main__cashCloseForm .home__action:hover {
   transform: scale(1.02);
+}
+
+.main__cashCloseForm .home__action:disabled {
+  box-shadow: none;
+}
+
+.main__cashCloseForm .home__action:disabled:hover {
+  transform: none;
 }
 
 .main__cashCloseForm .home__action p {
@@ -1162,8 +1171,13 @@
 }
 
 @media (max-width: 720px) {
+  .main {
+    gap: var(--mobile-section-gap, 1rem);
+  }
+
   .main__statsGrid {
     grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
   }
 
   .main__adminSection,
@@ -1171,7 +1185,9 @@
   .main__cashCloseSection,
   .main__statCard,
   .main__todaySection {
-    border-radius: 1.35rem;
+    border-radius: var(--mobile-card-radius, 1.25rem);
+    border: 0;
+    box-shadow: var(--mobile-shadow, var(--main-shadow));
   }
 
   .main__adminSection,
@@ -1182,6 +1198,30 @@
   .main__cashCloseActionPanel,
   .main__todaySection {
     padding: 1rem;
+  }
+
+  .main__todayFinanceSection,
+  .main__adminPanel,
+  .main__cashCloseOverview,
+  .main__cashCloseActionPanel {
+    border: 0;
+  }
+
+  .main__adminPanel,
+  .main__cashCloseOverview,
+  .main__cashCloseActionPanel {
+    border-radius: 1rem;
+    background-color: var(--background);
+    box-shadow: none;
+  }
+
+  .main__statCard {
+    min-height: 5.6rem;
+  }
+
+  .main__statCard .statLabel {
+    white-space: normal;
+    line-height: 1.25;
   }
 
   .main__cashCloseGrid {
@@ -1225,6 +1265,7 @@
   .main__actions .home__action {
     justify-content: center;
     flex: 1 1 12rem;
+    min-height: var(--mobile-touch-target, 2.75rem);
   }
 
   .main__bookingItem {
@@ -1253,7 +1294,7 @@
 
 @media (max-width: 520px) {
   .main {
-    gap: 1.25rem;
+    gap: var(--mobile-section-gap, 1rem);
   }
 
   .main__lastUpdated {
@@ -1287,6 +1328,7 @@
 
   .main__todayRevenueBreakdown {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.65rem;
   }
 
   .main__todayServiceStrip {
@@ -1323,5 +1365,27 @@
     grid-column: 1 / -1;
     justify-self: start;
     justify-content: flex-start;
+  }
+
+  .main__chartControls {
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .main__chartMetricControl,
+  .main__chartRangeControl {
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .main__chartMetricControl::-webkit-scrollbar,
+  .main__chartRangeControl::-webkit-scrollbar {
+    display: none;
+  }
+
+  .main__cashCloseExpandButton,
+  .main__cashCloseActions button {
+    min-height: var(--mobile-touch-target, 2.75rem);
   }
 }

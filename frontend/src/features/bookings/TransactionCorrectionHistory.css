@@ -1,0 +1,126 @@
+.correctionHistory__wrapper {
+  width: min(50rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+}
+
+.correctionHistory__wrapper :is(strong, b) {
+  font-weight: 500;
+}
+
+.correctionHistory__list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.correctionHistory__item {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.2rem;
+  border-radius: 1.5rem;
+  box-shadow: var(--light-shadow);
+}
+
+.correctionHistory__itemHeader,
+.correctionHistory__itemHeader > div,
+.correctionHistory__comparison,
+.correctionHistory__comparison > div,
+.correctionHistory__meta,
+.correctionHistory__meta > div {
+  display: flex;
+}
+
+.correctionHistory__itemHeader {
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.correctionHistory__itemHeader > div,
+.correctionHistory__comparison > div,
+.correctionHistory__meta > div {
+  flex-direction: column;
+}
+
+.correctionHistory__itemHeader span,
+.correctionHistory__comparison span,
+.correctionHistory__comparison small,
+.correctionHistory__meta dt {
+  color: #777777;
+}
+
+.correctionHistory__badge {
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--primary-color) 14%, #fff);
+  color: var(--text) !important;
+  padding: 0.2rem 0.65rem;
+  white-space: nowrap;
+}
+
+.correctionHistory__comparison {
+  align-items: center;
+  gap: 1rem;
+  padding: 0.9rem;
+  border-radius: 0.5rem;
+  box-shadow: var(--light-shadow);
+}
+
+.correctionHistory__comparison > div {
+  flex: 1;
+}
+
+.correctionHistory__comparison > i {
+  color: var(--primary-color);
+  font-size: 1.5rem;
+}
+
+.correctionHistory__meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem 1rem;
+}
+
+.correctionHistory__meta dt {
+  font-size: 0.85rem;
+}
+
+.correctionHistory__note {
+  border-top: 1px solid #eeeeee;
+  padding-top: 0.8rem;
+  line-height: 1.5;
+}
+
+.correctionHistory__empty {
+  display: grid;
+  place-items: center;
+  gap: 0.5rem;
+  min-height: 12rem;
+  color: #777777;
+}
+
+.correctionHistory__empty i {
+  font-size: 2rem;
+}
+
+@media (max-width: 760px) {
+  .correctionHistory__wrapper {
+    width: calc(100vw - 1.5rem);
+    max-height: calc(100vh - 1.5rem);
+    padding: 1.25rem;
+  }
+
+  .correctionHistory__comparison {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .correctionHistory__comparison > i {
+    align-self: center;
+    transform: rotate(90deg);
+  }
+
+  .correctionHistory__meta {
+    grid-template-columns: 1fr;
+  }
+}

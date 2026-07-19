@@ -2,13 +2,14 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.nextBusinessDateKey = exports.depositPreparationAdjustment = exports.buildDepositRequirement = void 0;
 const financeHelpers_1 = require("./financeHelpers");
+const transactionCorrections_1 = require("../services/transactionCorrections");
 const buildDepositRequirement = (businessDate, bookings, calculatedAt = new Date()) => {
     const refundBookings = bookings
         .map((currentBooking) => ({
         bookingId: currentBooking.bookingId,
         guestName: currentBooking.name,
         checkOut: currentBooking.checkOut,
-        amount: (0, financeHelpers_1.bookingRemainingDepositAmount)(currentBooking.transactions || []),
+        amount: (0, financeHelpers_1.bookingRemainingDepositAmount)((0, transactionCorrections_1.projectEffectiveTransactions)(currentBooking.transactions || [], currentBooking.transactionCorrections || [])),
     }))
         .filter((currentBooking) => currentBooking.amount > 0);
     return {

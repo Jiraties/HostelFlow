@@ -2,6 +2,163 @@ import type { booking } from "../types/bookingTypes";
 
 type Transaction = booking["transactions"][number];
 
+export const effectiveTransactions = (currentBooking: booking): Transaction[] => {
+  if (currentBooking.effectiveTransactions?.length) {
+    return currentBooking.effectiveTransactions;
+  }
+
+  const histories = new Map<string, NonNullable<booking["transactionCorrections"]>>();
+  (currentBooking.transactionCorrections || []).forEach((correction) => {
+    const existing = histories.get(correction.targetTransactionId) || [];
+    existing.push(correction);
+    histories.set(correction.targetTransactionId, existing);
+  });
+
+  const workingTransactions = (currentBooking.transactions || []).map(
+    (transaction) => ({ ...transaction }),
+  );
+  const legacyIds = new Set<string>();
+  const legacyCountByTarget = new Map<string, number>();
+  workingTransactions.forEach((transaction) => {
+    if (transaction.type !== "adjustment" || !transaction.relatedTransactionId) {
+      return;
+    }
+    const target = workingTransactions.find(
+      (candidate) => candidate._id === transaction.relatedTransactionId,
+    );
+    if (!target) return;
+    const delta =
+      transaction.direction === "out"
+        ? -Math.abs(transaction.amount || 0)
+        : Math.abs(transaction.amount || 0);
+    target.amount = Math.max(Number((target.amount + delta).toFixed(2)), 0);
+    legacyIds.add(String(transaction._id || ""));
+    legacyCountByTarget.set(
+      transaction.relatedTransactionId,
+      (legacyCountByTarget.get(transaction.relatedTransactionId) || 0) + 1,
+    );
+  });
+
+  return workingTransactions
+    .filter((transaction) => !legacyIds.has(String(transaction._id || "")))
+    .map((transaction) => {
+    const transactionId = String(transaction.originalTransactionId || transaction._id || "");
+    const history = (histories.get(transactionId) || []).sort(
+      (first, second) =>
+        new Date(first.correctedAt).getTime() -
+        new Date(second.correctedAt).getTime(),
+    );
+    const latest = history[history.length - 1];
+    const legacyAdjustmentCount = legacyCountByTarget.get(transactionId) || 0;
+    const projectedTransaction: Transaction = {
+      ...transaction,
+      ...(latest?.after || {}),
+      _id: transaction._id,
+      originalTransactionId: transactionId,
+      corrected: history.length > 0 || legacyAdjustmentCount > 0,
+      correctionCount: history.length + legacyAdjustmentCount,
+      latestCorrectionId: latest?._id,
+      legacyAdjustmentCount,
+    };
+    if (latest && !latest.after.cashShiftId) {
+      delete projectedTransaction.cashShiftId;
+    }
+    return projectedTransaction;
+  });
+};
+
+const correctionChargeTypes = new Set<Transaction["type"]>([
+  "roomCharge",
+  "towel",
+  "motorbike",
+  "slowBoat",
+  "joinTour",
+  "extraBed",
+  "pickACraft",
+  "trek2D",
+  "setMenu",
+  "sleeperBus",
+  "onlyWalk",
+  "laundry",
+  "bicycle",
+  "car",
+  "misc",
+  "rainCoat",
+  "passwordLock",
+  "cooking",
+  "cardSurcharge",
+]);
+
+const signedTransactionAmount = (transaction: Transaction) => {
+  if (transaction.direction === "out") return -Math.abs(transaction.amount || 0);
+  if (transaction.paymentMethod === "Unpaid" || transaction.direction === "neutral") {
+    return 0;
+  }
+  return Math.abs(transaction.amount || 0);
+};
+
+export const bookingFinancialPosition = (
+  currentBooking: booking,
+  suppliedTransactions = effectiveTransactions(currentBooking),
+) => {
+  const chargeIds = new Set(
+    suppliedTransactions
+      .filter((transaction) => correctionChargeTypes.has(transaction.type))
+      .map((transaction) => transaction._id)
+      .filter((id): id is string => Boolean(id)),
+  );
+  let bookingTotal = 0;
+  let amountReceived = 0;
+
+  suppliedTransactions.forEach((transaction) => {
+    const amount = Math.abs(transaction.amount || 0);
+    const direction = transaction.direction === "out" ? -1 : 1;
+    if (correctionChargeTypes.has(transaction.type)) {
+      bookingTotal += direction * amount;
+      if (transaction.paymentMethod !== "Unpaid") {
+        amountReceived += signedTransactionAmount(transaction);
+      }
+      return;
+    }
+    if (transaction.type === "adjustment") {
+      const isCashRounding = transaction.reasonOfAdjustment === "rounding";
+      if (
+        isCashRounding ||
+        (transaction.relatedTransactionId &&
+          chargeIds.has(transaction.relatedTransactionId))
+      ) {
+        bookingTotal += direction * amount;
+      }
+      if (transaction.paymentMethod !== "Unpaid") {
+        amountReceived += signedTransactionAmount(transaction);
+      }
+      return;
+    }
+    if (["settlementCharge", "paymentCorrection"].includes(transaction.type)) {
+      amountReceived += signedTransactionAmount(transaction);
+      return;
+    }
+    if (transaction.type === "roomChargeWriteOff") {
+      bookingTotal -= amount;
+      return;
+    }
+    if (["cancellationRefund", "roomRefund", "compensation"].includes(transaction.type)) {
+      bookingTotal -= amount;
+      amountReceived -= amount;
+    }
+  });
+
+  bookingTotal = Math.max(Number(bookingTotal.toFixed(2)), 0);
+  amountReceived = Math.max(Number(amountReceived.toFixed(2)), 0);
+  const difference = Number((bookingTotal - amountReceived).toFixed(2));
+  return {
+    bookingTotal,
+    amountReceived,
+    outstandingBalance: Math.max(difference, 0),
+    guestCredit: Math.max(-difference, 0),
+  };
+};
+
 const ROUNDING_ADJUSTMENT_REVIEW_THRESHOLD = 1;
 
 export const transactionRequiresReview = (transaction: Transaction) => {
@@ -234,6 +391,16 @@ export const formatBookingDates = (booking: booking) => ({
   ...booking,
   checkIn: new Date(booking.checkIn),
   checkOut: new Date(booking.checkOut),
+  transactions: effectiveTransactions(booking).filter(
+    (transaction) =>
+      transaction.type !== "cardSurcharge" || transaction.amount > 0,
+  ),
+  legacyTransactionAdjustments:
+    booking.legacyTransactionAdjustments ||
+    (booking.transactions || []).filter(
+      (transaction) =>
+        transaction.type === "adjustment" && transaction.relatedTransactionId,
+    ),
 });
 
 export function truncateDecimal(number: number, digits: number) {

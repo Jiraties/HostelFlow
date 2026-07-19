@@ -459,6 +459,34 @@ test("inactive users get generic failure and weak passwords are rejected", async
   assert.equal(weakCreate.body.error, "WEAK_PASSWORD");
 });
 
+test("authenticated staff directory returns display names without login secrets", async () => {
+  await User.create({
+    username: "frontdesk-login",
+    password: "stored-login-secret",
+    name: "Front Desk Display Name",
+    admin: false,
+    active: true,
+  });
+
+  const directoryResponse = response();
+  await authController.getStaffDirectory(
+    {
+      user: { userId: "staff-id", username: "staff", admin: false },
+    } as any,
+    directoryResponse as any,
+  );
+
+  assert.equal(directoryResponse.statusCode, 200);
+  assert.deepEqual(directoryResponse.body.staff, [
+    {
+      username: "frontdesk-login",
+      name: "Front Desk Display Name",
+      profilePictureUrl: "/uploads/default.jpg",
+    },
+  ]);
+  assert.equal(JSON.stringify(directoryResponse.body).includes("stored-login-secret"), false);
+});
+
 test("production web security requires exact HTTPS origins and proxy hops", () => {
   assert.throws(
     () => validateProductionWebSecurity({ NODE_ENV: "production" }),

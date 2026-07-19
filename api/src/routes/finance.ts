@@ -5,6 +5,7 @@ import {
   closeCashShift,
   getCashShiftAudit,
   getCashPosition,
+  getDepositReturnReminder,
   getExpectedStayRevenueBreakdown,
   getTodayRevenueBreakdown,
   getTodayRevenueSummary,
@@ -28,6 +29,7 @@ financeRouter.post("/standalone-sales/:saleId/adjustments", adjustStandaloneSale
 financeRouter.get("/reconciliation", getReconciliation);
 financeRouter.get("/cash-shift-audit", getCashShiftAudit);
 financeRouter.get("/cash-position", getCashPosition);
+financeRouter.get("/deposit-return-reminder", getDepositReturnReminder);
 financeRouter.get(
   "/expected-stay-revenue-breakdown",
   getExpectedStayRevenueBreakdown,

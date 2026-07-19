@@ -688,6 +688,63 @@ test("Thai check-in requires a Thai title, Thai name and 13-digit national ID", 
   assert.equal(stored?.passport?.nationality, "TH");
 });
 
+test("cash check-in records a small rounding difference without changing the room charge", async () => {
+  const booking = await bookingFixture("CASH-ROUNDING");
+  booking.transactions[0].amount = 449.8;
+  await booking.save();
+  await CashShift.create({
+    businessDate: businessDateKey(),
+    shiftNumber: 1,
+    staffUsername: "staff",
+    status: "open",
+    openingMode: "counted",
+    depositOpeningCash: 0,
+    operatingOpeningCash: 0,
+    depositExpectedCash: 0,
+    operatingExpectedCash: 0,
+    createdBy: "staff",
+  });
+
+  const checkInResponse = response();
+  await controller.checkIn(
+    request({
+      body: {
+        expectedRevision: 0,
+        deposit: 200,
+        unpaidPayment: {
+          paymentMethod: "Cash",
+          roundingAdjustment: 0.2,
+        },
+        passportData: {
+          namePrefix: "Ms",
+          passportNo: "CASH-ROUNDING-PASSPORT",
+          passportName: "Synthetic Guest",
+          nationality: "US",
+          nextDestinationCountry: "THA",
+        },
+      },
+      params: { bookingId: "CASH-ROUNDING" },
+      method: "PUT",
+      url: "/bookings/checkIn/CASH-ROUNDING",
+      key: "cash-rounding-checkin",
+      admin: false,
+    }),
+    checkInResponse as any,
+  );
+
+  assert.equal(checkInResponse.statusCode, 200, JSON.stringify(checkInResponse.body));
+  const stored = await Booking.findOne({ bookingId: "CASH-ROUNDING" }).lean();
+  assert.equal(stored?.transactions[0].amount, 449.8);
+  const rounding = stored?.transactions.find(
+    (transaction) => transaction.reasonOfAdjustment === "rounding",
+  );
+  assert.equal(rounding?.type, "adjustment");
+  assert.equal(rounding?.amount, 0.2);
+  assert.equal(rounding?.paymentMethod, "Cash");
+  assert.equal(rounding?.sourceAction, "CHECK_IN");
+  assert.ok(rounding?.cashShiftId);
+});
+
 test("only admin can historically onboard an expired stay without touching today's cash shift", async () => {
   const historicalBooking = await bookingFixture("HISTORICAL-CHECKIN");
   historicalBooking.checkIn = new Date(`${localDate(-3)}T00:00:00`);

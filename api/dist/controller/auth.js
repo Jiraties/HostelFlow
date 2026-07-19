@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getProfilePicture = exports.setProfilePicture = exports.logout = exports.me = exports.login = exports.updateMySettings = exports.updateUser = exports.resetUserPassword = exports.adminCreateUser = exports.listUsers = exports.getAuthCookieOptions = void 0;
+exports.getProfilePicture = exports.setProfilePicture = exports.logout = exports.me = exports.login = exports.updateMySettings = exports.updateUser = exports.resetUserPassword = exports.adminCreateUser = exports.getStaffDirectory = exports.listUsers = exports.getAuthCookieOptions = void 0;
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const user_1 = __importDefault(require("../models/user"));
 const user_2 = require("../models/user");
@@ -81,6 +81,28 @@ const listUsers = async (req, res) => {
     }
 };
 exports.listUsers = listUsers;
+const getStaffDirectory = async (req, res) => {
+    try {
+        if (!req.user?.username) {
+            return res.status(401).json({ message: "กรุณาเข้าสู่ระบบใหม่" });
+        }
+        const staff = await user_1.default.find({})
+            .select("username name profilePictureUrl")
+            .sort({ name: 1, username: 1 })
+            .lean();
+        return res.status(200).json({
+            staff: staff.map((member) => ({
+                username: member.username,
+                name: member.name,
+                profilePictureUrl: member.profilePictureUrl,
+            })),
+        });
+    }
+    catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+};
+exports.getStaffDirectory = getStaffDirectory;
 const adminCreateUser = async (req, res) => {
     try {
         if (!req.user?.admin) {

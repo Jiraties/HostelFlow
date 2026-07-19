@@ -24,6 +24,7 @@ const activitySchema = new mongoose_1.default.Schema({
             "POST_CLOSE_ADJUSTMENT",
             "MANAGE_ROOM_STAYS",
             "ADD_TRANSACTION",
+            "CORRECT_TRANSACTION",
             "ADD_STANDALONE_SALE",
             "ADJUST_STANDALONE_SALE",
             "CREATE_USER",

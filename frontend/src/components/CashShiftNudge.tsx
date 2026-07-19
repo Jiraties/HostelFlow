@@ -7,7 +7,7 @@ import type { CashPositionData } from "../types/cashShiftTypes";
 import "./CashShiftNudge.css";
 
 const CashShiftNudge = () => {
-  const { user } = useAuth();
+  const { user, resolveStaffName } = useAuth();
   const navigate = useNavigate();
   const [cashPosition, setCashPosition] = useState<CashPositionData | null>(
     null,
@@ -35,7 +35,8 @@ const CashShiftNudge = () => {
   const activeShift = cashPosition.activeShift;
   if (activeShift?.staffUsername === user?.username) return null;
 
-  const staffName = activeShift?.staff?.name || activeShift?.staffUsername;
+  const staffName =
+    activeShift?.staff?.name || resolveStaffName(activeShift?.staffUsername);
   const message = activeShift
     ? `กะเงินสดของ ${staffName} เปิดอยู่ หากรับเงินแทนกัน ควรจัดการรับส่งเงินก่อน`
     : "ยังไม่ได้เปิดกะเงินสดวันนี้ รายการนี้จะไม่ถูกผูกกับกะเงินสด";

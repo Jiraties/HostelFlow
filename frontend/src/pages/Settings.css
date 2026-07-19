@@ -306,14 +306,27 @@
 
 @media (max-width: 640px) {
   .settings {
-    height: 100dvh;
-    padding: 1rem;
-    gap: 1.25rem;
+    height: auto;
+    min-height: 100%;
+    overflow: visible;
+    padding: var(--mobile-page-padding, 1rem);
+    gap: var(--mobile-section-gap, 1rem);
+  }
+
+  .settings__grid {
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+    gap: 1rem;
   }
 
   .settings__list,
   .settings__activities {
     padding: 1rem;
+    overflow: visible;
+    border: 0;
+    border-radius: var(--mobile-card-radius, 1.25rem);
+    box-shadow: var(--mobile-shadow, var(--main-shadow));
   }
 
   .settings__item {
@@ -338,9 +351,45 @@
 
   .settings__item .home__action {
     justify-content: center;
+    width: 100%;
+    min-height: var(--mobile-touch-target, 2.75rem);
   }
 
   .settings__activityDetails {
     grid-template-columns: 1fr;
+  }
+
+  .settings__profile {
+    align-items: center;
+    text-align: center;
+  }
+
+  .settings__activities {
+    gap: 0.85rem;
+  }
+
+  .settings__section,
+  .settings__item,
+  .settings__activity {
+    border: 0;
+  }
+
+  .settings__activity {
+    padding: 1rem;
+    border-radius: 1rem;
+    background-color: var(--background);
+  }
+
+  .settings__activityDetails {
+    border: 0;
+    background-color: var(--background);
+    box-shadow: none;
+  }
+
+  .settings__separator {
+    height: 0.2rem;
+    border: 0;
+    border-radius: 99rem;
+    background-color: transparent;
   }
 }

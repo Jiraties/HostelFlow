@@ -20,6 +20,7 @@ const upload = (0, multer_1.default)({
     fileFilter: imageOnlyFilter,
 });
 authRouter.get("/users", authMiddleware_1.default, auth_1.listUsers);
+authRouter.get("/staff-directory", authMiddleware_1.default, auth_1.getStaffDirectory);
 authRouter.get("/users/:userId/profile-picture", auth_1.getProfilePicture);
 authRouter.post("/admin/createUser", authMiddleware_1.default, auth_1.adminCreateUser);
 authRouter.patch("/users/:userId", authMiddleware_1.default, auth_1.updateUser);

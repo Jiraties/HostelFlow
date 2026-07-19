@@ -106,6 +106,16 @@ body {
 }
 
 @media (max-width: 640px) {
+  :root {
+    --mobile-page-padding: 1rem;
+    --mobile-section-gap: 1rem;
+    --mobile-card-radius: 1.25rem;
+    --mobile-sheet-radius: 1.5rem;
+    --mobile-touch-target: 2.75rem;
+    --mobile-shadow: rgba(149, 157, 165, 0.16) 0 0.4rem 1.1rem;
+    --mobile-shadow-strong: rgba(96, 105, 112, 0.2) 0 0.7rem 1.7rem;
+  }
+
   h1 {
     font-size: 1.55rem;
     line-height: 1.25;
@@ -118,6 +128,26 @@ body {
   .boxInput,
   .boxButton {
     padding: 0.85rem;
+    min-height: var(--mobile-touch-target);
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font-size: 1rem;
+  }
+
+  button,
+  a {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+}
+
+@media (max-width: 640px) and (hover: none) {
+  .boxButton:hover {
+    transform: none;
   }
 }
 @keyframes boxicon-spin {

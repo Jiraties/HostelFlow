@@ -41,6 +41,10 @@ const actionMap = {
     icon: "bx-dollar",
     text: "เพิ่มรายการใช้จ่าย",
   },
+  CORRECT_TRANSACTION: {
+    icon: "bx-edit",
+    text: "แก้ไขรายการ",
+  },
   CREATE_USER: {
     icon: "bx-user-plus",
     text: "สร้างผู้ใช้",
@@ -264,6 +268,7 @@ const formatGenericValue = (
   key: string,
   value: unknown,
   dateFormat: "dd/MM/yyyy" | "d MMM yyyy",
+  resolveStaffName: (username?: string | null) => string,
 ): ReactNode => {
   if (!hasValue(value)) return null;
   if (typeof value === "boolean") return value ? "ใช่" : "ไม่ใช่";
@@ -275,6 +280,13 @@ const formatGenericValue = (
   if (Array.isArray(value)) return value.map(String).join(", ");
   if (value instanceof Date) return formatActivityDate(value, dateFormat);
   if (typeof value === "object") return null;
+
+  if (
+    typeof value === "string" &&
+    (/(?:staffUsername)$/i.test(key) || /By$/i.test(key))
+  ) {
+    return resolveStaffName(value);
+  }
 
   if (
     typeof value === "string" &&
@@ -321,9 +333,11 @@ const formatGenericValue = (
 const BookingSnapshotDetails = ({
   item,
   dateFormat,
+  resolveStaffName,
 }: {
   item: activity;
   dateFormat: "dd/MM/yyyy" | "d MMM yyyy";
+  resolveStaffName: (username?: string | null) => string;
 }) => {
   const snapshot = item.details.snapshot;
   const roomIds =
@@ -366,7 +380,12 @@ const BookingSnapshotDetails = ({
           <DetailRow
             key={key}
             label={detailLabels[key] || key}
-            value={formatGenericValue(key, value, dateFormat)}
+            value={formatGenericValue(
+              key,
+              value,
+              dateFormat,
+              resolveStaffName,
+            )}
           />
         ))}
     </>
@@ -391,17 +410,29 @@ const TransactionDetails = ({ item }: { item: activity }) => {
 const GenericChanges = ({
   item,
   dateFormat,
+  resolveStaffName,
 }: {
   item: activity;
   dateFormat: "dd/MM/yyyy" | "d MMM yyyy";
+  resolveStaffName: (username?: string | null) => string;
 }) => (
   <>
     {Object.entries(item.details.changes || {})
       .filter(([key]) => key !== "transactions" && key !== "roomStays")
       .map(([key, change]) => {
         if (!change || typeof change !== "object") return null;
-        const before = formatGenericValue(key, change.before, dateFormat);
-        const after = formatGenericValue(key, change.after, dateFormat);
+        const before = formatGenericValue(
+          key,
+          change.before,
+          dateFormat,
+          resolveStaffName,
+        );
+        const after = formatGenericValue(
+          key,
+          change.after,
+          dateFormat,
+          resolveStaffName,
+        );
         if (!hasValue(before) && !hasValue(after)) return null;
         return (
           <DetailRow
@@ -421,9 +452,11 @@ const GenericChanges = ({
 const ActivityDetails = ({
   item,
   dateFormat,
+  resolveStaffName,
 }: {
   item: activity;
   dateFormat: "dd/MM/yyyy" | "d MMM yyyy";
+  resolveStaffName: (username?: string | null) => string;
 }) => {
   const summary = item.details.summary || {};
 
@@ -463,7 +496,11 @@ const ActivityDetails = ({
     const disposition = summary.depositDisposition === "returned" ? "คืนมัดจำ" : summary.depositDisposition === "kept" ? "เก็บมัดจำเป็นรายได้" : null;
     return (
       <div className="settings__activityDetails">
-        <BookingSnapshotDetails item={item} dateFormat={dateFormat} />
+        <BookingSnapshotDetails
+          item={item}
+          dateFormat={dateFormat}
+          resolveStaffName={resolveStaffName}
+        />
         <DetailRow label="การจัดการมัดจำ" value={disposition} />
         <DetailRow label="ยอดคืนมัดจำ" value={typeof summary.depositRefundAmount === "number" ? `${formatCurrency(summary.depositRefundAmount)} บาท` : null} />
         <DetailRow label="ยอดมัดจำที่เก็บไว้" value={typeof summary.depositKeptAmount === "number" ? `${formatCurrency(summary.depositKeptAmount)} บาท` : null} />
@@ -479,7 +516,11 @@ const ActivityDetails = ({
     const cancellationLabels: Record<string, string> = { refundable: "คืนเงิน", non_refundable: "ไม่คืนเงิน", no_payment_received: "ยังไม่ได้รับชำระ" };
     return (
       <div className="settings__activityDetails">
-        <BookingSnapshotDetails item={item} dateFormat={dateFormat} />
+        <BookingSnapshotDetails
+          item={item}
+          dateFormat={dateFormat}
+          resolveStaffName={resolveStaffName}
+        />
         <DetailRow label="ประเภทการยกเลิก" value={typeof summary.cancellationType === "string" ? cancellationLabels[summary.cancellationType] || summary.cancellationType : null} />
         <DetailRow label="ยอดคืน" value={typeof summary.refundAmount === "number" ? `${formatCurrency(summary.refundAmount)} บาท` : null} />
         <DetailRow label="ยอดที่เก็บไว้" value={typeof summary.keptAmount === "number" ? `${formatCurrency(summary.keptAmount)} บาท` : null} />
@@ -505,7 +546,7 @@ const ActivityDetails = ({
     return (
       <div className="settings__activityDetails">
         {cashFields.map(([key, label, currency]) => (
-          <DetailRow key={key} label={label} value={typeof summary[key] === "number" && currency ? `${formatCurrency(summary[key] as number)} บาท` : formatGenericValue(key, summary[key], dateFormat)} />
+          <DetailRow key={key} label={label} value={typeof summary[key] === "number" && currency ? `${formatCurrency(summary[key] as number)} บาท` : formatGenericValue(key, summary[key], dateFormat, resolveStaffName)} />
         ))}
         <DetailRow label="ปิดยอดสุดท้ายของวัน" value={typeof summary.closeDay === "boolean" ? (summary.closeDay ? "ใช่" : "ไม่ใช่") : null} />
         <DetailRow label="รหัสคำเตือน" value={Array.isArray(summary.warningCodes) ? summary.warningCodes.join(", ") : null} />
@@ -517,15 +558,23 @@ const ActivityDetails = ({
   const ignoredSummaryKeys = new Set(["addedTransactions", "beforeRoomStays", "afterRoomStays"]);
   return (
     <div className="settings__activityDetails">
-      <BookingSnapshotDetails item={item} dateFormat={dateFormat} />
+      <BookingSnapshotDetails
+        item={item}
+        dateFormat={dateFormat}
+        resolveStaffName={resolveStaffName}
+      />
       {item.action === "LOGIN" || item.action === "LOGOUT" ? (
         <DetailRow label="ผลลัพธ์" value={item.details.success === false ? "ไม่สำเร็จ" : "สำเร็จ"} />
       ) : null}
-      <GenericChanges item={item} dateFormat={dateFormat} />
+      <GenericChanges
+        item={item}
+        dateFormat={dateFormat}
+        resolveStaffName={resolveStaffName}
+      />
       {Object.entries(summary)
-        .filter(([key, value]) => !ignoredSummaryKeys.has(key) && hasValue(formatGenericValue(key, value, dateFormat)))
+        .filter(([key, value]) => !ignoredSummaryKeys.has(key) && hasValue(formatGenericValue(key, value, dateFormat, resolveStaffName)))
         .map(([key, value]) => (
-          <DetailRow key={key} label={detailLabels[key] || key} value={formatGenericValue(key, value, dateFormat)} />
+          <DetailRow key={key} label={detailLabels[key] || key} value={formatGenericValue(key, value, dateFormat, resolveStaffName)} />
         ))}
       {showTransactions ? <TransactionDetails item={item} /> : null}
     </div>
@@ -554,7 +603,7 @@ const ActivityHeader = ({
 };
 
 const RecentActivities = ({ userId }: { userId?: string }) => {
-  const { user } = useAuth();
+  const { user, resolveStaffName } = useAuth();
   const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
   const [activities, setActivities] = useState<activity[]>([]);
   const [page, setPage] = useState(1);
@@ -672,7 +721,11 @@ const RecentActivities = ({ userId }: { userId?: string }) => {
           key={item._id || item.timestamp.toString()}
         >
           <ActivityHeader item={item} dateFormat={dateFormat} />
-          <ActivityDetails item={item} dateFormat={dateFormat} />
+          <ActivityDetails
+            item={item}
+            dateFormat={dateFormat}
+            resolveStaffName={resolveStaffName}
+          />
         </div>
       ))}
 

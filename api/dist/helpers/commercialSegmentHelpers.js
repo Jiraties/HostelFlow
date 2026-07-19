@@ -5,7 +5,15 @@ const roomStayHelpers_1 = require("./roomStayHelpers");
 const effectiveCommercialSegments = (currentBooking) => {
     const storedSegments = [...(currentBooking.commercialSegments || [])].sort((left, right) => new Date(left.from).getTime() - new Date(right.from).getTime());
     if (storedSegments.some((segment) => segment.kind === "original")) {
-        return storedSegments;
+        return storedSegments.map((segment) => {
+            const plainSegment = typeof segment.toObject === "function"
+                ? segment.toObject()
+                : segment;
+            const linkedTransaction = (currentBooking.transactions || []).find((transaction) => String(transaction._id) === segment.transactionId);
+            return linkedTransaction
+                ? { ...plainSegment, amount: Math.abs(linkedTransaction.amount || 0) }
+                : plainSegment;
+        });
     }
     const firstExtension = storedSegments.find((segment) => segment.kind === "extension");
     const originalTransaction = (currentBooking.transactions || []).find((transaction) => transaction.type === "roomCharge" &&

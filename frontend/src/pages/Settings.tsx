@@ -28,8 +28,8 @@ const settingsSelectOptions = {
     { value: "spacious", label: "กว้าง" },
   ],
   dateFormat: [
-    { value: "dd/MM/yyyy", label: "DD/MM/YYYY" },
-    { value: "d MMM yyyy", label: "D MMM YYYY" },
+    { value: "dd/MM/yyyy", label: "dd/mm/yyyy" },
+    { value: "d MMM yyyy", label: "d mmm yyyy" },
   ],
 };
 

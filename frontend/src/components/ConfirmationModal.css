@@ -29,6 +29,22 @@
   font: inherit;
 }
 
+@media (max-width: 760px) {
+  .confirmationModal {
+    gap: 1.25rem;
+  }
+
+  .confirmationModal__reason {
+    border: 0;
+    box-shadow: var(--light-shadow);
+  }
+
+  .confirmationModal__actions,
+  .confirmationModal__button {
+    width: 100%;
+  }
+}
+
 .confirmationModal__headerText {
   font-weight: 500;
 }

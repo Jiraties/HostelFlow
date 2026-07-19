@@ -1,0 +1,373 @@
+.depositReminder {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--background);
+  border-radius: 1rem;
+  width: min(50rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  padding: 2rem;
+  gap: 2rem;
+}
+
+.depositReminder__header {
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+  padding-right: 2.5rem;
+}
+
+.depositReminder__headerIcon {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  flex: 0 0 auto;
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--primary-color) 13%, #fff);
+  color: var(--primary-color);
+  font-size: 1.45rem;
+}
+
+.depositReminder__header p,
+.depositReminder__header h1,
+.depositReminder__header span,
+.depositReminder__header small {
+  margin: 0;
+}
+
+.depositReminder__header p {
+  color: #777;
+  font-size: 0.88rem;
+}
+
+.depositReminder__header h1 {
+  margin-top: 0.15rem;
+  color: var(--text);
+  font-size: 1.35rem;
+  font-weight: 500;
+}
+
+.depositReminder__closingCash {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.8rem;
+  align-items: center;
+  padding: 0.9rem 1rem;
+  border-radius: 1.1rem;
+  background: color-mix(in srgb, var(--primary-color) 7%, #fff);
+  box-shadow: var(--light-shadow);
+}
+
+.depositReminder__closingCashIcon {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: var(--background);
+  color: var(--primary-color);
+  box-shadow: var(--light-shadow);
+  font-size: 1.15rem;
+}
+
+.depositReminder__closingCash div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.depositReminder__closingCash div span {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.depositReminder__closingCash small {
+  overflow: hidden;
+  color: #777;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.depositReminder__closingCash strong {
+  color: var(--text);
+  font-size: 1.3rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.depositReminder__summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  border-radius: 1.2rem;
+  box-shadow: var(--light-shadow);
+}
+
+.depositReminder__summary div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.depositReminder__summary span,
+.depositReminder__summary small {
+  color: #777;
+}
+
+.depositReminder__summary strong {
+  color: var(--text);
+  font-size: 1.8rem;
+  font-weight: 500;
+}
+
+.depositReminder__summary > i {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--primary-color) 12%, #fff);
+  color: var(--primary-color);
+  font-size: 1.4rem;
+}
+
+.depositReminder__guestList {
+  display: flex;
+  flex-direction: column;
+  max-height: min(16rem, 35vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 0.25rem 1rem 1rem;
+  border-radius: 1.1rem;
+  background: #fff;
+  box-shadow:
+    inset 0 0.35rem 0.65rem rgba(0, 0, 0, 0.03),
+    var(--light-shadow);
+}
+
+.depositReminder__guest {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1.5rem;
+  align-items: start;
+  min-width: 0;
+  padding: 1rem 0;
+  box-shadow: inset 0 -0.1rem 0 rgba(0, 0, 0, 0.05);
+}
+
+.depositReminder__guest:last-child {
+  padding-bottom: 0;
+  box-shadow: none;
+}
+
+.depositReminder__guestDetails,
+.depositReminder__guestSide {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.depositReminder__guestSide {
+  align-items: flex-end;
+  min-width: 8.5rem;
+  text-align: right;
+}
+
+.depositReminder__guestDetails span,
+.depositReminder__guestDetails small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.depositReminder__guestDetails span {
+  color: var(--text);
+  font-weight: 400;
+}
+
+.depositReminder__guestDetails small {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.depositReminder__guestAmount {
+  color: var(--text);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.depositReminder__guestMethod {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  color: #666;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.depositReminder__guestMethod i {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.depositReminder__empty,
+.depositReminder__state,
+.depositReminder__error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  min-height: 4rem;
+  padding: 0.8rem;
+  border-radius: 1rem;
+  background: var(--light-background);
+  color: #777;
+  text-align: center;
+}
+
+.depositReminder__empty i {
+  color: var(--green);
+  font-size: 1.25rem;
+}
+
+.depositReminder__warningCategory {
+  overflow: hidden;
+  border-radius: 1.5rem;
+  background: var(--background);
+  box-shadow: var(--light-shadow);
+}
+
+.depositReminder__warningHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1.25rem;
+  width: 100%;
+  padding: 1.15rem 1.25rem;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text);
+  font-family: "IBM Plex Sans Thai", sans-serif;
+  text-align: left;
+}
+
+.depositReminder__warningCategory--open .depositReminder__warningHeader {
+  background: color-mix(in srgb, var(--red) 5%, #fff);
+}
+
+.depositReminder__warningIdentity {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.depositReminder__warningIdentity h3,
+.depositReminder__warningIdentity p {
+  margin: 0;
+}
+
+.depositReminder__warningIdentity h3 {
+  overflow: hidden;
+  font-size: 1rem;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.depositReminder__warningIdentity p {
+  margin-top: 0.2rem;
+  color: #777;
+  font-size: 0.9rem;
+}
+
+.depositReminder__warningDot {
+  width: 0.75rem;
+  height: 0.75rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--red);
+}
+
+.depositReminder__warningTotal {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex: 0 0 auto;
+}
+
+.depositReminder__warningTotal strong {
+  font-size: 1.05rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.depositReminder__warningTotal i {
+  color: #777;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.depositReminder__warningCategory .depositReminder__guestList {
+  border-radius: 0;
+  box-shadow: inset 0 0.35rem 0.65rem rgba(0, 0, 0, 0.03);
+}
+
+.depositReminder__error {
+  justify-content: flex-start;
+  min-height: auto;
+  background: #fff4f1;
+  color: #ba4b36;
+  text-align: left;
+}
+
+.depositReminder__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.7rem;
+}
+
+@media (max-width: 760px) {
+  .depositReminder {
+    width: calc(100vw - 1.5rem);
+    max-height: calc(100vh - 1.5rem);
+    padding: 1.25rem;
+  }
+
+  .depositReminder__guest {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.35rem;
+  }
+
+  .depositReminder__closingCash {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .depositReminder__closingCash strong {
+    grid-column: 2;
+  }
+
+  .depositReminder__guestSide {
+    align-items: flex-start;
+    min-width: 0;
+    text-align: left;
+  }
+
+  .depositReminder__actions,
+  .depositReminder__actions .home__action {
+    width: 100%;
+  }
+
+  .depositReminder__actions {
+    flex-direction: column;
+  }
+}

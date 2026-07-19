@@ -20,6 +20,7 @@ import UnsavedChangesModal from "../components/UnsavedChangesModal";
 import usePageTitle from "../hooks/useTitle";
 import { formatDisplayDateTime } from "../helpers/displayDate";
 import type { DateFormatPreference } from "../types/userSettings";
+import { PreferredDateInput } from "../components/PreferredDateInput";
 import type { LegacyDepositAudit } from "../types/cashShiftTypes";
 
 type StaffUser = ManagedStaffUser;
@@ -130,6 +131,7 @@ const actionMap = {
   },
   MANAGE_ROOM_STAYS: { icon: "bx-calendar-cog", text: "แก้ช่วงการเข้าพัก" },
   ADD_TRANSACTION: { icon: "bx-dollar", text: "เพิ่มรายการใช้จ่าย" },
+  CORRECT_TRANSACTION: { icon: "bx-edit", text: "แก้ไขรายการ" },
   ADD_STANDALONE_SALE: { icon: "bx-receipt", text: "เพิ่มรายการใช้จ่ายแขกนอก" },
   ADJUST_STANDALONE_SALE: { icon: "bx-edit-alt", text: "ปรับรายการแขกนอก" },
   CREATE_USER: { icon: "bx-user-plus", text: "สร้างผู้ใช้" },
@@ -267,6 +269,7 @@ const CashCloseAudit = ({
   loading: boolean;
   dateFormat: DateFormatPreference;
 }) => {
+  const { resolveStaffName } = useAuth();
   const [expandedShiftId, setExpandedShiftId] = useState<string | null>(null);
   const [resolutionNotes, setResolutionNotes] = useState<
     Record<string, string>
@@ -355,9 +358,8 @@ const CashCloseAudit = ({
                   ? "เรียบร้อย"
                   : "ไม่มีข้อมูล"}
           </strong>
-          <input
+          <PreferredDateInput
             className="boxInput manage__dateInput"
-            type="date"
             value={financeDate}
             onChange={(event) => onDateChange(event.target.value)}
           />
@@ -437,8 +439,7 @@ const CashCloseAudit = ({
                   <div>
                     <strong>
                       {shift.staff?.name ||
-                        shift.staff?.username ||
-                        "ไม่ทราบผู้รับผิดชอบ"}
+                        resolveStaffName(shift.staff?.username)}
                     </strong>
                     <small>
                       {shift.endedAt
@@ -568,7 +569,8 @@ const CashCloseAudit = ({
                     )}
                     {shift.auditResolution ? (
                       <p className="manage__auditResolved">
-                        รับทราบโดย {shift.auditResolution.reviewedBy}:{" "}
+                        รับทราบโดย{" "}
+                        {resolveStaffName(shift.auditResolution.reviewedBy)}:{" "}
                         {shift.auditResolution.note}
                       </p>
                     ) : shift.warnings.length > 0 ? (
@@ -678,7 +680,9 @@ const CashCloseAudit = ({
                   <p>
                     {transactionLabel(transaction.type)} ·{" "}
                     {transaction.paymentMethod} ·{" "}
-                    {transaction.staffUsername || "-"}
+                    {transaction.staffUsername
+                      ? resolveStaffName(transaction.staffUsername)
+                      : "-"}
                   </p>
                   <div className="manage__reviewMeta">
                     {transaction.bookingId && (
@@ -733,7 +737,7 @@ const CashCloseAudit = ({
 
 const Manage = () => {
   usePageTitle("HostelFlow · จัดการระบบ");
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, resolveStaffName } = useAuth();
   const dateFormat = currentUser?.settings.dateFormat || "dd/MM/yyyy";
   const [users, setUsers] = useState<StaffUser[]>([]);
   const [activities, setActivities] = useState<activity[]>([]);
@@ -849,7 +853,9 @@ const Manage = () => {
       { label: "จำนวน Staff", value: users.length },
       {
         label: "Staff ที่ใช้งานมากสุด",
-        value: mostActiveStaff?.staffUsername || "-",
+        value: mostActiveStaff?.staffUsername
+          ? resolveStaffName(mostActiveStaff.staffUsername)
+          : "-",
       },
       {
         label: "Action ที่พบบ่อยสุด",
@@ -858,7 +864,13 @@ const Manage = () => {
           : "-",
       },
     ],
-    [mostActiveStaff, mostCommonAction, stats?.totalActions, users.length],
+    [
+      mostActiveStaff,
+      mostCommonAction,
+      resolveStaffName,
+      stats?.totalActions,
+      users.length,
+    ],
   );
 
   const updateNewUserForm = (
