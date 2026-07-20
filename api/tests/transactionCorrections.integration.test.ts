@@ -300,6 +300,76 @@ test("financial correction after daily close is rejected but metadata-only corre
   assert.equal(metadata.body.correction.financialChange, false);
 });
 
+test("staff can correct an active deposit after daily close without changing operating cash", async () => {
+  await DailyClose.create({
+    businessDate: businessDateKey(),
+    staffUsername: "staff",
+    openingCash: 0,
+    expectedCash: 0,
+    actualCash: 0,
+    variance: 0,
+    cashIn: 0,
+    cashOut: 0,
+    createdBy: "admin",
+  });
+  const booking = await Booking.create({
+    revision: 0,
+    name: "Deposit Correction Guest",
+    bookingId: "DEPOSIT-AFTER-CLOSE",
+    status: "checkedIn",
+    staffUsername: "staff",
+    checkIn: new Date(),
+    checkOut: new Date(Date.now() + 86400000),
+    transactions: [
+      {
+        type: "deposit",
+        paymentMethod: "Cash",
+        amount: 200,
+        direction: "in",
+        createdBy: "staff",
+        createdAt: new Date(),
+      },
+    ],
+  });
+  const transactionId = String(booking.transactions[0]._id);
+  const paymentMethodChange = await callCorrection({
+    bookingId: "DEPOSIT-AFTER-CLOSE",
+    transactionId,
+    admin: false,
+    overrides: {
+      correctedAmount: 250,
+      correctedPaymentMethod: "Transfer",
+      correctedCategory: "deposit",
+      correctedNote: "Incorrect payment method change",
+    },
+  });
+  assert.equal(paymentMethodChange.statusCode, 400);
+  assert.equal(
+    paymentMethodChange.body.error,
+    "DEPOSIT_PAYMENT_METHOD_IMMUTABLE",
+  );
+
+  const result = await callCorrection({
+    bookingId: "DEPOSIT-AFTER-CLOSE",
+    transactionId,
+    admin: false,
+    overrides: {
+      correctedAmount: 250,
+      correctedPaymentMethod: "Cash",
+      correctedCategory: "deposit",
+      correctedNote: "Correct deposit amount",
+    },
+  });
+
+  assert.equal(result.statusCode, 200, JSON.stringify(result.body));
+  assert.equal(result.body.effectiveTransaction.amount, 250);
+  assert.equal(result.body.effectiveTransaction.cashShiftId, undefined);
+  const stored = await Booking.findById(booking._id).lean();
+  assert.equal(stored?.transactions[0].amount, 200);
+  assert.equal(stored?.transactionCorrections[0].after.amount, 250);
+  assert.equal(stored?.transactionCorrections[0].affectedCashShiftId, undefined);
+});
+
 test("charge changes require admin permission", async () => {
   const booking = await createBooking();
   const result = await callCorrection({

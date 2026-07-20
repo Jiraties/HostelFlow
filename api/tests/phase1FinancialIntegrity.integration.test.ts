@@ -294,7 +294,7 @@ test("cash position is operating-only while audit preserves legacy deposit figur
   assert.equal("depositActualCash" in auditResponse.body.shifts[0], false);
 });
 
-test("general transaction API rejects manual deposit collection and refunds", async () => {
+test("general transaction API rejects deposits before check-in and manual refunds", async () => {
   const booking = await Booking.create({
     name: "Synthetic Refund Guest",
     bookingId: "REFUND-1",
@@ -330,8 +330,8 @@ test("general transaction API rejects manual deposit collection and refunds", as
     },
     "manual-deposit",
   );
-  assert.equal(manualDeposit.statusCode, 400);
-  assert.equal(manualDeposit.body.error, "INVALID_TRANSACTION_TYPE");
+  assert.equal(manualDeposit.statusCode, 409);
+  assert.equal(manualDeposit.body.error, "DEPOSIT_REQUIRES_CHECK_IN");
 
   const manualRefund = await invoke(
     {

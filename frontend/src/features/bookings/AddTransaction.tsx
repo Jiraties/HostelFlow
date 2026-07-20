@@ -143,7 +143,9 @@ const AddTransaction = ({
       type,
       ...(preset
         ? {
-            amount: String(preset.amount),
+            ...(preset.amount != null
+              ? { amount: String(preset.amount) }
+              : {}),
             paymentMethod: preset.paymentMethod || "",
           }
         : {}),
@@ -195,7 +197,10 @@ const AddTransaction = ({
   const needsNote =
     formData.type === "adjustment" || formData.type === "depositRefund";
   const canAttachTransaction = formData.type === "adjustment";
-  const hasCashMovement = formData.paymentMethod === "Cash" && validAmount > 0;
+  const hasCashMovement =
+    formData.paymentMethod === "Cash" &&
+    formData.type !== "deposit" &&
+    validAmount > 0;
   const attachmentTransactionLabel = (transaction: Transaction) => {
     if (
       transaction.type === "roomCharge" &&
@@ -230,6 +235,12 @@ const AddTransaction = ({
   const availableTransactionTypeOptions = prioritizedTransactionTypeOptions.filter(
     (option) => option.value !== "deposit" || bookingStatus === "checkedIn",
   );
+  const availablePaymentMethodOptions =
+    formData.type === "deposit"
+      ? addTransactionPaymentMethodOptions.filter(
+          (option) => option.value === "Cash",
+        )
+      : addTransactionPaymentMethodOptions;
 
   const submitHandler = async () => {
     if (submitting) return;
@@ -404,13 +415,13 @@ const AddTransaction = ({
           <Select<OptionType>
             styles={customStyles<OptionType>()}
             classNamePrefix="rs"
-            options={addTransactionPaymentMethodOptions}
+            options={availablePaymentMethodOptions}
             placeholder="เลือกช่องทางการชำระเงิน"
             formatOptionLabel={formatPaymentMethodLabel}
             menuPortalTarget={document.body}
             menuPosition="fixed"
             value={
-              addTransactionPaymentMethodOptions.find(
+              availablePaymentMethodOptions.find(
                 (option) => option.value === formData.paymentMethod,
               ) || null
             }

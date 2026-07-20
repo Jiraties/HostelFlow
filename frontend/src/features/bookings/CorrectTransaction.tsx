@@ -147,9 +147,10 @@ const CorrectTransaction = ({
     label: transactionLabels[type],
     color: transactionColorByType.get(type),
   }));
-  const correctionPaymentMethodOptions = paymentMethodOptions.filter(
-    (option) =>
-      transaction.paymentMethod === "Unpaid" || option.value !== "Unpaid",
+  const correctionPaymentMethodOptions = paymentMethodOptions.filter((option) =>
+    transaction.type === "deposit"
+      ? option.value === transaction.paymentMethod
+      : transaction.paymentMethod === "Unpaid" || option.value !== "Unpaid",
   );
   const activeReasonOptions = reasonOptions[correctionType];
   const financialChanged =
@@ -315,7 +316,7 @@ const CorrectTransaction = ({
               value={correctionPaymentMethodOptions.find(
                 (item) => item.value === correctedPaymentMethod,
               )}
-              isDisabled={submitting}
+              isDisabled={transaction.type === "deposit" || submitting}
               menuPortalTarget={document.body}
               menuPosition="fixed"
               onChange={(option: SingleValue<OptionType>) =>

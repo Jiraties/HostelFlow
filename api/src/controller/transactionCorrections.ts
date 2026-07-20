@@ -277,6 +277,15 @@ export const correctTransaction = async (
       });
     }
     if (
+      current.type === "deposit" &&
+      correctedPaymentMethod !== current.paymentMethod
+    ) {
+      return res.status(400).json({
+        error: "DEPOSIT_PAYMENT_METHOD_IMMUTABLE",
+        message: "แก้ไขมัดจำได้เฉพาะจำนวนเงิน ช่องทางรับมัดจำต้องคงเดิม",
+      });
+    }
+    if (
       correctionType === "charge_change" &&
       !transactionIsCharge(current.type)
     ) {
@@ -326,21 +335,25 @@ export const correctTransaction = async (
     );
 
     if (financialChange) {
-      const [cashShift, dailyClose, finalDayClose] = await Promise.all([
-        before.cashShiftId ? CashShift.findById(before.cashShiftId).lean() : null,
-        DailyClose.findOne({ businessDate: originalBusinessDate }).lean(),
-        CashShift.findOne({
-          businessDate: originalBusinessDate,
-          isFinalDayClose: true,
-        }).lean(),
-      ]);
+      if (current.type !== "deposit") {
+        const [cashShift, dailyClose, finalDayClose] = await Promise.all([
+          before.cashShiftId
+            ? CashShift.findById(before.cashShiftId).lean()
+            : null,
+          DailyClose.findOne({ businessDate: originalBusinessDate }).lean(),
+          CashShift.findOne({
+            businessDate: originalBusinessDate,
+            isFinalDayClose: true,
+          }).lean(),
+        ]);
 
-      if (cashShift?.status === "closed" || dailyClose || finalDayClose) {
-        return res.status(409).json({
-          error: "FINANCIAL_PERIOD_CLOSED",
-          message:
-            "รอบการเงินของรายการนี้ปิดแล้ว ระบบจึงไม่แก้ยอดย้อนหลัง กรุณาติดต่อ Admin เพื่อบันทึกรายการแก้ไขในรอบปัจจุบัน",
-        });
+        if (cashShift?.status === "closed" || dailyClose || finalDayClose) {
+          return res.status(409).json({
+            error: "FINANCIAL_PERIOD_CLOSED",
+            message:
+              "รอบการเงินของรายการนี้ปิดแล้ว ระบบจึงไม่แก้ยอดย้อนหลัง กรุณาติดต่อ Admin เพื่อบันทึกรายการแก้ไขในรอบปัจจุบัน",
+          });
+        }
       }
       if (
         ["checkedOut", "cancelled", "noShow"].includes(booking.status) &&

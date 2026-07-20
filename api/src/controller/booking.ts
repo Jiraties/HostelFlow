@@ -103,6 +103,7 @@ const TOTAL_GUEST_CAPACITY = ACTIVE_ROOM_INVENTORY.reduce(
 const CARD_SURCHARGE_RATE = 0.03;
 const ADD_TRANSACTION_TYPES: TransactionType[] = [
   "adjustment",
+  "deposit",
   "towel",
   "motorbike",
   "slowBoat",
@@ -3058,6 +3059,16 @@ export const addTransaction = async (
       return res.status(409).json({
         error: "DEPOSIT_REQUIRES_CHECK_IN",
         message: "รับมัดจำได้หลังจาก check-in แล้วเท่านั้น",
+      });
+    }
+
+    if (
+      transaction.type === "deposit" &&
+      transaction.paymentMethod !== "Cash"
+    ) {
+      return res.status(400).json({
+        error: "DEPOSIT_REQUIRES_CASH",
+        message: "รับมัดจำเพิ่มได้ด้วยเงินสดเท่านั้น",
       });
     }
 

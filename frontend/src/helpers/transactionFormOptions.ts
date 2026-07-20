@@ -6,6 +6,7 @@ import { paymentMethodOptions } from "./options";
 import type { OptionType } from "./selectStyling";
 
 export const transactionTypeOptions: OptionType[] = [
+  { value: "deposit", label: "รับมัดจำเพิ่ม", color: "#facc15" },
   { value: "slowBoat", label: "Slow Boat", color: "#2dd4bf" },
   { value: "sleeperBus", label: "Sleeper Bus", color: "#6366f1" },
   { value: "motorbike", label: "Motorbike", color: "#fb923c" },
@@ -26,7 +27,7 @@ export const transactionTypeOptions: OptionType[] = [
 ];
 
 export const standaloneTransactionTypeOptions = transactionTypeOptions.filter(
-  (option) => option.value !== "adjustment",
+  (option) => option.value !== "adjustment" && option.value !== "deposit",
 );
 
 export const addTransactionPaymentMethodOptions = paymentMethodOptions.filter(
@@ -34,8 +35,9 @@ export const addTransactionPaymentMethodOptions = paymentMethodOptions.filter(
 );
 
 export const transactionPresets: Partial<
-  Record<TransactionType, { amount: number; paymentMethod?: PaymentMethod }>
+  Record<TransactionType, { amount?: number; paymentMethod?: PaymentMethod }>
 > = {
+  deposit: { paymentMethod: "Cash" },
   towel: { amount: 30, paymentMethod: "Cash" },
   laundry: { amount: 60, paymentMethod: "Cash" },
   slowBoat: { amount: 250 },

@@ -410,7 +410,7 @@ test("check-in reuses a deposit recorded on a legacy booked stay", async () => {
   );
 });
 
-test("add transaction cannot create deposits outside check-in", async () => {
+test("add transaction rejects deposits before check-in", async () => {
   await bookingFixture("EARLY-DEPOSIT");
   const addDepositResponse = response();
 
@@ -430,9 +430,41 @@ test("add transaction cannot create deposits outside check-in", async () => {
     addDepositResponse as any,
   );
 
-  assert.equal(addDepositResponse.statusCode, 400);
-  assert.equal(addDepositResponse.body.error, "INVALID_TRANSACTION_TYPE");
+  assert.equal(addDepositResponse.statusCode, 409);
+  assert.equal(addDepositResponse.body.error, "DEPOSIT_REQUIRES_CHECK_IN");
   const stored = await Booking.findOne({ bookingId: "EARLY-DEPOSIT" }).lean();
+  assert.equal(
+    stored?.transactions.some((transaction) => transaction.type === "deposit"),
+    false,
+  );
+});
+
+test("an additional deposit must be paid in Cash", async () => {
+  const booking = await bookingFixture("NON-CASH-DEPOSIT");
+  booking.status = "checkedIn";
+  await booking.save();
+
+  const addDepositResponse = response();
+  await controller.addTransaction(
+    request({
+      body: {
+        transaction: {
+          type: "deposit",
+          paymentMethod: "Transfer",
+          amount: 200,
+        },
+      },
+      params: { bookingId: "NON-CASH-DEPOSIT" },
+      method: "POST",
+      url: "/bookings/addTransaction/NON-CASH-DEPOSIT",
+      admin: false,
+    }),
+    addDepositResponse as any,
+  );
+
+  assert.equal(addDepositResponse.statusCode, 400);
+  assert.equal(addDepositResponse.body.error, "DEPOSIT_REQUIRES_CASH");
+  const stored = await Booking.findOne({ bookingId: "NON-CASH-DEPOSIT" }).lean();
   assert.equal(
     stored?.transactions.some((transaction) => transaction.type === "deposit"),
     false,
@@ -488,10 +520,34 @@ test("checkout requires full deposit return confirmation and bypasses cash shift
   });
   await booking.save();
 
+  const additionalDeposit = response();
+  await controller.addTransaction(
+    request({
+      body: {
+        transaction: {
+          type: "deposit",
+          paymentMethod: "Cash",
+          amount: 150,
+        },
+      },
+      params: { bookingId: "STRICT-DEPOSIT-CHECKOUT" },
+      method: "POST",
+      url: "/bookings/addTransaction/STRICT-DEPOSIT-CHECKOUT",
+      key: "strict-additional-deposit",
+      admin: false,
+    }),
+    additionalDeposit as any,
+  );
+  assert.equal(
+    additionalDeposit.statusCode,
+    200,
+    JSON.stringify(additionalDeposit.body),
+  );
+
   const missingConfirmation = response();
   await controller.checkOut(
     request({
-      body: { expectedRevision: 0, releaseRemainingNights: true },
+      body: { expectedRevision: 1, releaseRemainingNights: true },
       params: { bookingId: "STRICT-DEPOSIT-CHECKOUT" },
     }),
     missingConfirmation as any,
@@ -506,7 +562,7 @@ test("checkout requires full deposit return confirmation and bypasses cash shift
   await controller.checkOut(
     request({
       body: {
-        expectedRevision: 0,
+        expectedRevision: 1,
         depositReturned: true,
         releaseRemainingNights: true,
       },
@@ -520,7 +576,12 @@ test("checkout requires full deposit return confirmation and bypasses cash shift
   const refund = stored?.transactions.find(
     (transaction) => transaction.type === "depositRefund",
   );
-  assert.equal(refund?.amount, 200);
+  assert.equal(
+    stored?.transactions.filter((transaction) => transaction.type === "deposit")
+      .length,
+    2,
+  );
+  assert.equal(refund?.amount, 350);
   assert.equal(refund?.cashShiftId, undefined);
 });
 

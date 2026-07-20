@@ -524,6 +524,13 @@ const ViewBooking = ({
   const roomChargePayments = roomChargeSettlementTransactions(data);
   const transactionName = (transaction: booking["transactions"][number]) => {
     if (
+      transaction.type === "deposit" &&
+      transaction.sourceAction === "ADD_TRANSACTION"
+    ) {
+      return "รับมัดจำเพิ่ม";
+    }
+
+    if (
       transaction.type === "adjustment" &&
       transaction.reasonOfAdjustment === "rounding"
     ) {
@@ -700,6 +707,22 @@ const ViewBooking = ({
     }
 
     attachNextSettlementCardSurchargeToRoomCharge = false;
+
+    if (
+      transaction.type === "deposit" &&
+      transaction.sourceAction === "ADD_TRANSACTION"
+    ) {
+      const originalDepositGroup = groups.find(
+        (group) => group.transaction.type === "deposit",
+      );
+
+      if (originalDepositGroup) {
+        originalDepositGroup.children.push(transaction);
+      } else {
+        groups.push({ transaction, children: [] });
+      }
+      return groups;
+    }
 
     if (transaction.type === "depositRefund") {
       const depositGroup = [...groups]
