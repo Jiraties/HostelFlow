@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import Select, { type MultiValue, type SingleValue } from "react-select";
 import toast from "react-hot-toast";
@@ -20,6 +20,7 @@ import {
 } from "../../helpers/options";
 import { getRoomStayRoomIds } from "../../helpers/roomStayHelpers";
 import { customStyles, type OptionType } from "../../helpers/selectStyling";
+import { generateWalkInBookingId } from "../../helpers/walkInBookingId";
 import type {
   booking,
   PaymentMethod,
@@ -93,7 +94,11 @@ const ExtendBooking = ({
   const [assignmentMode, setAssignmentMode] = useState<AssignmentMode>("same");
   const [roomIds, setRoomIds] = useState<string[]>(currentRoomIds);
   const [platformId, setPlatformId] = useState<PlatformId>("WALK");
-  const [channelBookingId, setChannelBookingId] = useState("");
+  const [initialWalkInBookingId] = useState(() => generateWalkInBookingId());
+  const [channelBookingId, setChannelBookingId] = useState(
+    initialWalkInBookingId,
+  );
+  const generatedWalkInBookingIdRef = useRef(initialWalkInBookingId);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | "">("");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
@@ -176,12 +181,42 @@ const ExtendBooking = ({
     );
   };
 
+  const platformChangeHandler = (nextPlatformId: PlatformId) => {
+    let replacementBookingId: string | undefined;
+    if (
+      nextPlatformId === "WALK" &&
+      (!channelBookingId.trim() ||
+        channelBookingId === generatedWalkInBookingIdRef.current)
+    ) {
+      replacementBookingId = generateWalkInBookingId();
+      generatedWalkInBookingIdRef.current = replacementBookingId;
+    } else if (
+      nextPlatformId !== "WALK" &&
+      channelBookingId === generatedWalkInBookingIdRef.current
+    ) {
+      replacementBookingId = "";
+      generatedWalkInBookingIdRef.current = "";
+    }
+
+    setPlatformId(nextPlatformId);
+    if (replacementBookingId !== undefined) {
+      setChannelBookingId(replacementBookingId);
+    }
+  };
+
+  const channelBookingIdChangeHandler = (value: string) => {
+    if (value !== generatedWalkInBookingIdRef.current) {
+      generatedWalkInBookingIdRef.current = "";
+    }
+    setChannelBookingId(value);
+  };
+
   useEffect(() => {
     onDirtyChange?.(
       newCheckOut !== initialNewCheckOut ||
         assignmentMode !== "same" ||
         platformId !== "WALK" ||
-        channelBookingId !== "" ||
+        channelBookingId !== initialWalkInBookingId ||
         paymentMethod !== "" ||
         amount !== "" ||
         note !== "",
@@ -192,6 +227,7 @@ const ExtendBooking = ({
     assignmentMode,
     channelBookingId,
     initialNewCheckOut,
+    initialWalkInBookingId,
     newCheckOut,
     note,
     onDirtyChange,
@@ -437,7 +473,7 @@ const ExtendBooking = ({
               )}
               formatOptionLabel={formatPlatformOptionLabel}
               onChange={(option: SingleValue<OptionType>) =>
-                option && setPlatformId(option.value as PlatformId)
+                option && platformChangeHandler(option.value as PlatformId)
               }
             />
           </label>
@@ -448,9 +484,16 @@ const ExtendBooking = ({
               className="boxInput"
               value={channelBookingId}
               maxLength={100}
-              placeholder="เช่น HW-12345678 / WALK-0716"
+              inputMode={platformId === "WALK" ? "numeric" : undefined}
+              placeholder={
+                platformId === "WALK"
+                  ? "เช่น 170720261819"
+                  : "เช่น 4012345678"
+              }
               disabled={submitting}
-              onChange={(event) => setChannelBookingId(event.target.value)}
+              onChange={(event) =>
+                channelBookingIdChangeHandler(event.target.value)
+              }
             />
           </label>
 

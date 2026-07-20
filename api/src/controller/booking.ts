@@ -67,11 +67,6 @@ import {
   roomGuestCapacity,
 } from "../config/roomInventory";
 import {
-  formatDestinationCountryForReport,
-  isThaiNationality,
-  splitPassportName,
-} from "../helpers/passportHelpers";
-import {
   commercialRoomSlices,
   effectiveCommercialSegments,
 } from "../helpers/commercialSegmentHelpers";
@@ -91,6 +86,11 @@ import {
   summarizeBookingFinancialPosition,
   withEffectiveTransactions,
 } from "../services/transactionCorrections";
+import {
+  PassportDataError,
+  validateAndEncryptPassportData,
+  validatePassportData,
+} from "../services/passportData";
 
 dotenv.config();
 
@@ -145,14 +145,6 @@ const NEW_BOOKING_PAYMENT_METHODS: PaymentMethod[] = [
   "Unpaid",
 ];
 const CHECK_IN_PAYMENT_METHODS: PaymentMethod[] = ["Cash", "Card", "Transfer"];
-const FOREIGN_NAME_PREFIXES: NamePrefix[] = ["Mr", "Mrs", "Ms", "Miss", "Dr"];
-const THAI_NAME_PREFIXES: NamePrefix[] = [
-  "นาย",
-  "นาง",
-  "นางสาว",
-  "เด็กชาย",
-  "เด็กหญิง",
-];
 const PLATFORM_IDS: PlatformId[] = ["BOOK", "HOST", "TRAV", "AGOD", "WALK"];
 const RESOLUTION_OUTCOMES: ResolutionOutcome[] = [
   "normal_checkout",
@@ -1931,48 +1923,7 @@ export const checkIn = async (req: Request, res: Response) => {
       });
     }
 
-    const thaiGuest = isThaiNationality(
-      checkInData.passportData.nationality,
-    );
-    const allowedNamePrefixes = thaiGuest
-      ? THAI_NAME_PREFIXES
-      : FOREIGN_NAME_PREFIXES;
-
-    if (!allowedNamePrefixes.includes(checkInData.passportData.namePrefix)) {
-      return res.status(400).json({
-        message: thaiGuest
-          ? "กรุณาเลือกคำนำหน้าชื่อภาษาไทย"
-          : "กรุณาเลือกคำนำหน้าชื่อภาษาอังกฤษ",
-      });
-    }
-
-    if (thaiGuest) {
-      const thaiName = splitPassportName(
-        checkInData.passportData.passportName,
-      );
-
-      if (!thaiName.firstName || !thaiName.lastName) {
-        return res.status(400).json({
-          message: "กรุณากรอกชื่อและนามสกุลภาษาไทย",
-        });
-      }
-
-      if (!/^\d{13}$/.test(checkInData.passportData.passportNo)) {
-        return res.status(400).json({
-          message: "เลขประจำตัวประชาชนต้องเป็นตัวเลข 13 หลัก",
-        });
-      }
-    }
-
-    const nextDestinationCountry = formatDestinationCountryForReport(
-      checkInData.passportData.nextDestinationCountry,
-    );
-
-    if (!nextDestinationCountry) {
-      return res.status(400).json({
-        message: "ประเทศปลายทางถัดไปไม่รองรับในรายงาน รร.",
-      });
-    }
+    validatePassportData(checkInData.passportData);
 
     const depositAmount = Number(checkInData.deposit);
 
@@ -2072,39 +2023,9 @@ export const checkIn = async (req: Request, res: Response) => {
       });
     }
 
-    const hashPassport = (passportNo: string) => {
-      return crypto.createHash("sha256").update(passportNo).digest("hex");
-    };
-
-    const encrypt = (text: string) => {
-      if (!process.env.CRYPTO_SECRET) throw new Error("CRYPTO_SECRET Missing");
-
-      const key = Buffer.from(process.env.CRYPTO_SECRET, "hex");
-      const iv = crypto.randomBytes(12);
-
-      const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
-
-      let cipherText = cipher.update(text, "utf8", "hex");
-      cipherText += cipher.final("hex");
-
-      const authTag = cipher.getAuthTag();
-
-      return {
-        iv: iv.toString("hex"),
-        cipherText,
-        authTag: authTag.toString("hex"),
-      };
-    };
-
-    const encryptedPassportData = {
-      passportHash: hashPassport(checkInData.passportData.passportNo),
-      namePrefix: checkInData.passportData.namePrefix,
-      nationality: checkInData.passportData.nationality,
-      nextDestinationCountry: nextDestinationCountry.value,
-      passportNo: encrypt(checkInData.passportData.passportNo),
-      passportName: encrypt(checkInData.passportData.passportName),
-    };
-
+    const encryptedPassportData = validateAndEncryptPassportData(
+      checkInData.passportData,
+    );
     const newTransactions: transcation[] = [];
 
     // A few legacy bookings received their deposit through Add Transaction
@@ -2299,6 +2220,9 @@ export const checkIn = async (req: Request, res: Response) => {
       String(bookingId),
     );
   } catch (err) {
+    if (err instanceof PassportDataError) {
+      return res.status(err.status).json({ message: err.message });
+    }
     if (err instanceof CashShiftLedgerConflictError) {
       return res.status(409).json({ error: err.code, message: err.message });
     }

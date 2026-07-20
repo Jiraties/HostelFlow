@@ -1,6 +1,7 @@
 import axios from "axios";
 
 import { useEffect, useState } from "react";
+import Tooltip from "../../components/Tooltip";
 import { API_URL } from "../../config/api.ts";
 
 import "./PassportView.css";
@@ -14,9 +15,17 @@ type PassportData = {
 
 type PassportViewProps = {
   bookingId: string;
+  correctionDisabled?: boolean;
+  correctionDisabledReason?: string;
+  onCorrectPassport: () => void;
 };
 
-const PassportView = ({ bookingId }: PassportViewProps) => {
+const PassportView = ({
+  bookingId,
+  correctionDisabled = false,
+  correctionDisabledReason,
+  onCorrectPassport,
+}: PassportViewProps) => {
   const [isHidden, setIsHidden] = useState(true);
   const [passportData, setPassportData] = useState<PassportData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -57,6 +66,22 @@ const PassportView = ({ bookingId }: PassportViewProps) => {
       setIsLoading(false);
     }
   };
+
+  const correctionButton = (
+    <button
+      type="button"
+      className="passportView__hideButton passportView__correctButton"
+      onClick={onCorrectPassport}
+      disabled={correctionDisabled}
+    >
+      <i
+        className={`bx bx-edit${
+          correctionDisabled ? "" : " passportView__temporaryEditIcon"
+        }`}
+      />
+      แก้ข้อมูล Passport
+    </button>
+  );
 
   return (
     <div className="viewBooking__item">
@@ -100,14 +125,29 @@ const PassportView = ({ bookingId }: PassportViewProps) => {
                 <span>สัญชาติ</span>
                 <p>{passportData.nationality}</p>
               </div>
-              <button
-                type="button"
-                className="passportView__hideButton"
-                onClick={hidePassportData}
-              >
-                <i className="bx bx-eye-slash" />
-                ซ่อนข้อมูล Passport
-              </button>
+              <div className="passportView__actions">
+                {correctionDisabled ? (
+                  <Tooltip
+                    content={
+                      correctionDisabledReason ||
+                      "รายการนี้ต้องให้ Admin ดำเนินการ"
+                    }
+                    ariaLabel="เหตุผลที่ไม่สามารถแก้ข้อมูล Passport ได้"
+                  >
+                    {correctionButton}
+                  </Tooltip>
+                ) : (
+                  correctionButton
+                )}
+                <button
+                  type="button"
+                  className="passportView__hideButton"
+                  onClick={hidePassportData}
+                >
+                  <i className="bx bx-eye-slash" />
+                  ซ่อนข้อมูล Passport
+                </button>
+              </div>
             </div>
           </div>
         )

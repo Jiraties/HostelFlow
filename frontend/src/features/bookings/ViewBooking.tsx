@@ -14,6 +14,7 @@ import ResolveBooking from "./ResolveBooking.tsx";
 import ExtendBooking from "./ExtendBooking.tsx";
 import CorrectTransaction from "./CorrectTransaction.tsx";
 import TransactionCorrectionHistory from "./TransactionCorrectionHistory.tsx";
+import CorrectCheckIn from "./CorrectCheckIn.tsx";
 
 import { useCallback, useState, useEffect, useRef } from "react";
 import { API_URL } from "../../config/api.ts";
@@ -144,6 +145,24 @@ const correctableTransactionTypes = new Set<
   "cooking",
 ]);
 
+type CheckInCorrectionMode = "replace_passport" | "undo_check_in";
+type CheckInCorrectionEligibility = {
+  allowed: boolean;
+  message: string | null;
+  requiresAdmin: boolean;
+  withinStaffShift: boolean;
+  staffShiftId: string | null;
+};
+
+const fetchCheckInCorrectionEligibility = (
+  bookingId: string,
+  signal?: AbortSignal,
+) =>
+  axios.get<CheckInCorrectionEligibility>(
+    `${API_URL}/bookings/${bookingId}/check-in-corrections/eligibility`,
+    { withCredentials: true, signal },
+  );
+
 const ViewBooking = ({
   booking,
   bookingId,
@@ -170,6 +189,15 @@ const ViewBooking = ({
   const [checkInIsOpen, setCheckInIsOpen] = useState(false);
   const [adminHistoricalCheckIn, setAdminHistoricalCheckIn] = useState(false);
   const [checkOutIsOpen, setCheckOutIsOpen] = useState(false);
+  const [correctCheckInIsOpen, setCorrectCheckInIsOpen] = useState(false);
+  const [checkInCorrectionMode, setCheckInCorrectionMode] =
+    useState<CheckInCorrectionMode>("undo_check_in");
+  const [checkInCorrectionEligibility, setCheckInCorrectionEligibility] =
+    useState<{
+      loading: boolean;
+      allowed: boolean;
+      message: string | null;
+    }>({ loading: false, allowed: false, message: null });
   const [resolveBookingIsOpen, setResolveBookingIsOpen] = useState(false);
   const [extendBookingIsOpen, setExtendBookingIsOpen] = useState(false);
   const [transactionToCorrect, setTransactionToCorrect] = useState<
@@ -188,6 +216,7 @@ const ViewBooking = ({
   const [cancellationIsDirty, setCancellationIsDirty] = useState(false);
   const [checkInIsDirty, setCheckInIsDirty] = useState(false);
   const [checkOutIsDirty, setCheckOutIsDirty] = useState(false);
+  const [correctCheckInIsDirty, setCorrectCheckInIsDirty] = useState(false);
   const [resolveBookingIsDirty, setResolveBookingIsDirty] = useState(false);
   const [extendBookingIsDirty, setExtendBookingIsDirty] = useState(false);
   const [noteIsEditing, setNoteIsEditing] = useState(false);
@@ -257,6 +286,84 @@ const ViewBooking = ({
     setLoading(false);
     setMoreActionsIsOpen(false);
   }, [booking]);
+
+  const correctionEligibilityBookingId =
+    data?.status === "checkedIn" ? data.bookingId : null;
+  const correctionEligibilityRevision = data?.revision;
+
+  useEffect(() => {
+    if (!correctionEligibilityBookingId) return;
+
+    const controller = new AbortController();
+    let deadlineTimer: number | undefined;
+
+    const loadEligibility = async () => {
+      setCheckInCorrectionEligibility((current) => ({
+        ...current,
+        loading: true,
+      }));
+      try {
+        const response = await fetchCheckInCorrectionEligibility(
+          correctionEligibilityBookingId,
+          controller.signal,
+        );
+        const eligibility = response.data;
+        setCheckInCorrectionEligibility({
+          loading: false,
+          allowed: eligibility.allowed,
+          message: eligibility.message,
+        });
+
+        if (eligibility.withinStaffShift) {
+          deadlineTimer = window.setTimeout(loadEligibility, 15_000);
+        }
+      } catch (error) {
+        if (axios.isCancel(error)) return;
+        setCheckInCorrectionEligibility({
+          loading: false,
+          allowed: false,
+          message: "ไม่สามารถตรวจสอบสิทธิ์แก้ไข Check-In ได้",
+        });
+      }
+    };
+
+    void loadEligibility();
+    return () => {
+      controller.abort();
+      if (deadlineTimer !== undefined) window.clearTimeout(deadlineTimer);
+    };
+  }, [correctionEligibilityBookingId, correctionEligibilityRevision]);
+
+  const openCheckInCorrection = async (mode: CheckInCorrectionMode) => {
+    if (!correctionEligibilityBookingId) return;
+
+    setCheckInCorrectionEligibility((current) => ({
+      ...current,
+      loading: true,
+    }));
+    try {
+      const response = await fetchCheckInCorrectionEligibility(
+        correctionEligibilityBookingId,
+      );
+      const eligibility = response.data;
+      setCheckInCorrectionEligibility({
+        loading: false,
+        allowed: eligibility.allowed,
+        message: eligibility.message,
+      });
+      if (!eligibility.allowed) return;
+
+      setCheckInCorrectionMode(mode);
+      setCorrectCheckInIsOpen(true);
+      setMoreActionsIsOpen(false);
+    } catch {
+      setCheckInCorrectionEligibility({
+        loading: false,
+        allowed: false,
+        message: "ไม่สามารถตรวจสอบสิทธิ์แก้ไข Check-In ได้",
+      });
+    }
+  };
 
   useEffect(() => {
     if (data) return;
@@ -1223,6 +1330,31 @@ const ViewBooking = ({
         />
       </Modal>
       <Modal
+        open={correctCheckInIsOpen}
+        className="home__modalCenter"
+        onClose={() =>
+          requestUnsavedModalClose(
+            correctCheckInIsDirty,
+            () => setCorrectCheckInIsOpen(false),
+            () =>
+              setPendingUnsavedClose(
+                () => () => setCorrectCheckInIsOpen(false),
+              ),
+          )
+        }
+      >
+        <CorrectCheckIn
+          booking={data}
+          mode={checkInCorrectionMode}
+          onClose={() => setCorrectCheckInIsOpen(false)}
+          onDirtyChange={setCorrectCheckInIsDirty}
+          onUpdated={(updatedBooking) => {
+            updateBooking(updatedBooking);
+            setCorrectCheckInIsOpen(false);
+          }}
+        />
+      </Modal>
+      <Modal
         open={checkOutIsOpen}
         className="home__modalCenter"
         onClose={() =>
@@ -1572,7 +1704,24 @@ const ViewBooking = ({
               </p>
             </div>
 
-            {hasCheckedIn && <PassportView bookingId={data.bookingId} />}
+            {hasCheckedIn && (
+              <PassportView
+                key={`${data.bookingId}-${data.revision}`}
+                bookingId={data.bookingId}
+                correctionDisabled={
+                  checkInCorrectionEligibility.loading ||
+                  !checkInCorrectionEligibility.allowed
+                }
+                correctionDisabledReason={
+                  checkInCorrectionEligibility.loading
+                    ? "กำลังตรวจสอบสิทธิ์..."
+                    : checkInCorrectionEligibility.message || undefined
+                }
+                onCorrectPassport={() => {
+                  void openCheckInCorrection("replace_passport");
+                }}
+              />
+            )}
           </div>
           <div className="viewBooking__mainRight">
             {/* <p>ค่าใช้จ่าย</p> */}
@@ -1639,7 +1788,9 @@ const ViewBooking = ({
                 )}
                 <div
                   className={`viewBooking__priceList${
-                    transactionEditMode ? " viewBooking__priceList--editing" : ""
+                    transactionEditMode
+                      ? " viewBooking__priceList--editing"
+                      : ""
                   }`}
                   ref={priceListRef}
                   onScroll={handleTransactionListScroll}
@@ -1763,6 +1914,16 @@ const ViewBooking = ({
                 <div className="viewBooking__moreActionsMenu">
                   <button
                     type="button"
+                    onClick={() => {
+                      setEditBookingIsOpen(true);
+                      setMoreActionsIsOpen(false);
+                    }}
+                  >
+                    <i className="bx bx-edit" />
+                    แก้ไข
+                  </button>
+                  <button
+                    type="button"
                     className={
                       transactionEditMode
                         ? "viewBooking__moreActionsMenuToggle--active"
@@ -1778,54 +1939,35 @@ const ViewBooking = ({
                       ? "ซ่อนปุ่มแก้ไขรายการ"
                       : "แก้ไขรายการใช้จ่าย"}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditBookingIsOpen(true);
-                      setMoreActionsIsOpen(false);
-                    }}
-                  >
-                    <i className="bx bx-edit" />
-                    แก้ไข
-                  </button>
-                  {user?.admin &&
-                    data.status === "booked" &&
-                    checkInIsBeforeToday && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAdminHistoricalCheckIn(true);
-                          setCheckInIsOpen(true);
-                          setMoreActionsIsOpen(false);
-                        }}
-                      >
-                        <i className="bx bx-history" />
-                        <span>Onboard Existing Stay</span>
+                  {data.status === "checkedIn" && (
+                    <button
+                      type="button"
+                      disabled={
+                        checkInCorrectionEligibility.loading ||
+                        !checkInCorrectionEligibility.allowed
+                      }
+                      title={
+                        checkInCorrectionEligibility.loading
+                          ? "กำลังตรวจสอบสิทธิ์..."
+                          : checkInCorrectionEligibility.message || undefined
+                      }
+                      onClick={() => {
+                        void openCheckInCorrection("undo_check_in");
+                      }}
+                    >
+                      <i
+                        className={`bx bx-undo${
+                          checkInCorrectionEligibility.allowed
+                            ? " viewBooking__temporaryActionIcon"
+                            : ""
+                        }`}
+                      />
+                      <span>Undo Check-In</span>
+                      {!checkInCorrectionEligibility.allowed ? (
                         <span className="viewBooking__adminTag">Admin</span>
-                      </button>
-                    )}
-                  {user?.admin && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        removeBookingHandler(data);
-                        setMoreActionsIsOpen(false);
-                      }}
-                    >
-                      <i className="bx bx-trash" />
-                      ลบ
-                    </button>
-                  )}
-                  {data.status === "booked" && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCancellationIsOpen(true);
-                        setMoreActionsIsOpen(false);
-                      }}
-                    >
-                      <i className="bx bx-calendar-x" />
-                      ยกเลิก
+                      ) : (
+                        <i className="viewBooking__beforeCashCloseTag bx-clock-dashed-half" />
+                      )}
                     </button>
                   )}
                   <button
@@ -1858,6 +2000,49 @@ const ViewBooking = ({
                       ? "แก้ไขหลังปิด"
                       : "Resolve"}
                   </button>
+                  {user?.admin &&
+                    data.status === "booked" &&
+                    checkInIsBeforeToday && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAdminHistoricalCheckIn(true);
+                          setCheckInIsOpen(true);
+                          setMoreActionsIsOpen(false);
+                        }}
+                      >
+                        <i className="bx bx-history" />
+                        <span>Onboard Existing Stay</span>
+                        <span className="viewBooking__adminTag">Admin</span>
+                      </button>
+                    )}
+                  {data.status === "booked" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCancellationIsOpen(true);
+                        setMoreActionsIsOpen(false);
+                      }}
+                    >
+                      <i className="bx bx-calendar-x" />
+                      ยกเลิก
+                    </button>
+                  )}
+                  {user?.admin && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        removeBookingHandler(data);
+                        setMoreActionsIsOpen(false);
+                      }}
+                    >
+                      <i
+                        className="bx bx-trash"
+                        style={{ color: "var(--red)" }}
+                      />
+                      ลบ
+                    </button>
+                  )}
                 </div>
               )}
             </div>

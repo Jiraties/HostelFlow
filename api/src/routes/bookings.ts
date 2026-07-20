@@ -24,6 +24,11 @@ import {
 } from "../controller/booking";
 import { requirePassportAccess } from "../middleware/passportAuthorization";
 import { correctTransaction } from "../controller/transactionCorrections";
+import {
+  correctCheckIn,
+  getCheckInCorrectionEligibility,
+  previewCheckInCorrection,
+} from "../controller/checkInCorrections";
 
 const bookingsRouter = express.Router();
 
@@ -44,6 +49,21 @@ bookingsRouter.get("/getMasterBookings", getMasterBookings);
 bookingsRouter.get("/getRoomAvailability", getRoomAvailability);
 bookingsRouter.delete("/removeBooking/:bookingId", removeBooking);
 bookingsRouter.put("/checkIn/:bookingId", checkIn);
+bookingsRouter.get(
+  "/:bookingId/check-in-corrections/eligibility",
+  requirePassportAccess,
+  getCheckInCorrectionEligibility,
+);
+bookingsRouter.post(
+  "/:bookingId/check-in-corrections/preview",
+  requirePassportAccess,
+  previewCheckInCorrection,
+);
+bookingsRouter.post(
+  "/:bookingId/check-in-corrections",
+  requirePassportAccess,
+  correctCheckIn,
+);
 bookingsRouter.patch("/checkOut/:bookingId", checkOut);
 bookingsRouter.patch("/:bookingId/deposit", correctDeposit);
 bookingsRouter.patch("/manageRoomStays/:bookingId", manageRoomStays);

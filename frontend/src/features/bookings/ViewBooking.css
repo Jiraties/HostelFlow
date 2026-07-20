@@ -1090,12 +1090,26 @@
   font-size: 1.25rem;
 }
 
+.viewBooking__moreActionsMenu i.viewBooking__temporaryActionIcon {
+  color: #ffbf00;
+}
+
 .viewBooking__adminTag {
   margin-left: auto;
   border-radius: 10rem;
   background-color: #51d1dc20;
   padding: 0.25rem 0.55rem;
   color: var(--primary-color);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.viewBooking__beforeCashCloseTag {
+  margin-left: auto;
+  border-radius: 10rem;
+  background-color: #ffbf0020;
+  padding: 0.25rem 0.55rem;
+  color: #ffbf00 !important;
   font-size: 0.7rem;
   font-weight: 600;
 }
@@ -1239,6 +1253,11 @@
 
 .viewBookng__bookingNo:hover .viewBooking__copyIcon {
   opacity: 1;
+}
+
+.contactAdminBadge {
+  padding: 0.5rem;
+  border-radius: 1rem;
 }
 
 @media (max-width: 760px) {

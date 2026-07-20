@@ -192,10 +192,16 @@ const hotelAccommodationDateQuery = (date) => {
         ],
     };
 };
+const encryptedFieldIsComplete = (field) => typeof field?.cipherText === "string" &&
+    field.cipherText.length > 0 &&
+    typeof field.iv === "string" &&
+    field.iv.length > 0 &&
+    typeof field.authTag === "string" &&
+    field.authTag.length > 0;
 const passportInfoIsComplete = (passport) => !!passport?.namePrefix &&
     !!passport.nationality &&
-    !!passport.passportName &&
-    !!passport.passportNo;
+    encryptedFieldIsComplete(passport.passportName) &&
+    encryptedFieldIsComplete(passport.passportNo);
 const hotelPassportInfoIssue = (passport) => {
     if (!passport?.namePrefix)
         return "ขาดคำนำหน้าชื่อ";
@@ -203,11 +209,11 @@ const hotelPassportInfoIssue = (passport) => {
         return "ขาดสัญชาติ";
     if (!passport.nextDestinationCountry)
         return "ขาดประเทศปลายทางถัดไป";
-    if (!passport.passportName)
+    if (!encryptedFieldIsComplete(passport.passportName))
         return (0, passportHelpers_1.isThaiNationality)(passport.nationality)
             ? "ขาดชื่อ-นามสกุลภาษาไทย"
             : "ขาดชื่อบน Passport";
-    if (!passport.passportNo)
+    if (!encryptedFieldIsComplete(passport.passportNo))
         return (0, passportHelpers_1.isThaiNationality)(passport.nationality)
             ? "ขาดเลขประจำตัวประชาชน"
             : "ขาดเลข Passport";
@@ -245,8 +251,10 @@ const formatPassport = (rawPassport, nationalitySheet, options = {}) => {
                     ? (0, passportHelpers_1.formatNationalityToIcao)(rawPassport.nationality, nationalitySheet)
                     : ""
             : "",
-        passportNo: rawPassport.passportNo ? decrypt(rawPassport.passportNo) : "",
-        passportName: rawPassport.passportName
+        passportNo: encryptedFieldIsComplete(rawPassport.passportNo)
+            ? decrypt(rawPassport.passportNo)
+            : "",
+        passportName: encryptedFieldIsComplete(rawPassport.passportName)
             ? decrypt(rawPassport.passportName)
             : "",
     };
@@ -654,7 +662,17 @@ const getHotelAccomodationReport = async (req, res) => {
             const thaiGuest = (0, passportHelpers_1.isThaiNationality)(booking.passport?.nationality || "");
             const destination = (0, passportHelpers_1.formatDestinationCountryForReport)(booking.passport?.nextDestinationCountry || "");
             const indexCell = row.getCell(1);
-            indexCell.value = index + 1;
+            const missingPassportInfo = hotelPassportInfoIssue(booking.passport);
+            if (missingPassportInfo) {
+                indexCell.value = `MISSING ${booking.name} ${booking.bookingId}`;
+                indexCell.font = {
+                    ...indexCell.font,
+                    color: { argb: "FFFF0000" },
+                };
+            }
+            else {
+                indexCell.value = index + 1;
+            }
             row.getCell(2).value = (0, dateHelpers_1.formatDateAD)(booking.checkIn);
             row.getCell(3).value = formatReportTime(booking.checkedInAt || booking.checkIn);
             row.getCell(4).value = (0, passportHelpers_1.formatRoomIdToReportNumber)((0, roomStayHelpers_1.getPrimaryRoomId)(booking.roomStays[0] || {}));

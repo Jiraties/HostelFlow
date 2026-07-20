@@ -51,11 +51,11 @@ const mutationIdempotency_1 = require("../services/mutationIdempotency");
 const cashLedgerTransaction_1 = require("../services/cashLedgerTransaction");
 const financialTransactionPolicy_1 = require("../services/financialTransactionPolicy");
 const roomInventory_1 = require("../config/roomInventory");
-const passportHelpers_1 = require("../helpers/passportHelpers");
 const commercialSegmentHelpers_1 = require("../helpers/commercialSegmentHelpers");
 const bookingConcurrency_1 = require("../services/bookingConcurrency");
 const bookingExtension_1 = require("../services/bookingExtension");
 const transactionCorrections_1 = require("../services/transactionCorrections");
+const passportData_1 = require("../services/passportData");
 dotenv_1.default.config();
 const ACTIVE_ROOM_INVENTORY = (0, roomInventory_1.activeRoomInventory)();
 const ACTIVE_ROOM_IDS = new Set(ACTIVE_ROOM_INVENTORY.map((room) => room.id));
@@ -105,14 +105,6 @@ const NEW_BOOKING_PAYMENT_METHODS = [
     "Unpaid",
 ];
 const CHECK_IN_PAYMENT_METHODS = ["Cash", "Card", "Transfer"];
-const FOREIGN_NAME_PREFIXES = ["Mr", "Mrs", "Ms", "Miss", "Dr"];
-const THAI_NAME_PREFIXES = [
-    "นาย",
-    "นาง",
-    "นางสาว",
-    "เด็กชาย",
-    "เด็กหญิง",
-];
 const PLATFORM_IDS = ["BOOK", "HOST", "TRAV", "AGOD", "WALK"];
 const RESOLUTION_OUTCOMES = [
     "normal_checkout",
@@ -1372,36 +1364,7 @@ const checkIn = async (req, res) => {
                 message: "กรุณากรอกข้อมูลให้ครบทุกช่อง",
             });
         }
-        const thaiGuest = (0, passportHelpers_1.isThaiNationality)(checkInData.passportData.nationality);
-        const allowedNamePrefixes = thaiGuest
-            ? THAI_NAME_PREFIXES
-            : FOREIGN_NAME_PREFIXES;
-        if (!allowedNamePrefixes.includes(checkInData.passportData.namePrefix)) {
-            return res.status(400).json({
-                message: thaiGuest
-                    ? "กรุณาเลือกคำนำหน้าชื่อภาษาไทย"
-                    : "กรุณาเลือกคำนำหน้าชื่อภาษาอังกฤษ",
-            });
-        }
-        if (thaiGuest) {
-            const thaiName = (0, passportHelpers_1.splitPassportName)(checkInData.passportData.passportName);
-            if (!thaiName.firstName || !thaiName.lastName) {
-                return res.status(400).json({
-                    message: "กรุณากรอกชื่อและนามสกุลภาษาไทย",
-                });
-            }
-            if (!/^\d{13}$/.test(checkInData.passportData.passportNo)) {
-                return res.status(400).json({
-                    message: "เลขประจำตัวประชาชนต้องเป็นตัวเลข 13 หลัก",
-                });
-            }
-        }
-        const nextDestinationCountry = (0, passportHelpers_1.formatDestinationCountryForReport)(checkInData.passportData.nextDestinationCountry);
-        if (!nextDestinationCountry) {
-            return res.status(400).json({
-                message: "ประเทศปลายทางถัดไปไม่รองรับในรายงาน รร.",
-            });
-        }
+        (0, passportData_1.validatePassportData)(checkInData.passportData);
         const depositAmount = Number(checkInData.deposit);
         if (!Number.isFinite(depositAmount) || depositAmount < 0) {
             return res.status(400).json({
@@ -1470,32 +1433,7 @@ const checkIn = async (req, res) => {
                 message: "booking นี้ไม่มีค่าห้องค้างชำระ",
             });
         }
-        const hashPassport = (passportNo) => {
-            return crypto_1.default.createHash("sha256").update(passportNo).digest("hex");
-        };
-        const encrypt = (text) => {
-            if (!process.env.CRYPTO_SECRET)
-                throw new Error("CRYPTO_SECRET Missing");
-            const key = Buffer.from(process.env.CRYPTO_SECRET, "hex");
-            const iv = crypto_1.default.randomBytes(12);
-            const cipher = crypto_1.default.createCipheriv("aes-256-gcm", key, iv);
-            let cipherText = cipher.update(text, "utf8", "hex");
-            cipherText += cipher.final("hex");
-            const authTag = cipher.getAuthTag();
-            return {
-                iv: iv.toString("hex"),
-                cipherText,
-                authTag: authTag.toString("hex"),
-            };
-        };
-        const encryptedPassportData = {
-            passportHash: hashPassport(checkInData.passportData.passportNo),
-            namePrefix: checkInData.passportData.namePrefix,
-            nationality: checkInData.passportData.nationality,
-            nextDestinationCountry: nextDestinationCountry.value,
-            passportNo: encrypt(checkInData.passportData.passportNo),
-            passportName: encrypt(checkInData.passportData.passportName),
-        };
+        const encryptedPassportData = (0, passportData_1.validateAndEncryptPassportData)(checkInData.passportData);
         const newTransactions = [];
         // A few legacy bookings received their deposit through Add Transaction
         // before check-in. Reuse that outstanding liability instead of blocking the
@@ -1637,6 +1575,9 @@ const checkIn = async (req, res) => {
         }, String(bookingId));
     }
     catch (err) {
+        if (err instanceof passportData_1.PassportDataError) {
+            return res.status(err.status).json({ message: err.message });
+        }
         if (err instanceof cashLedgerTransaction_1.CashShiftLedgerConflictError) {
             return res.status(409).json({ error: err.code, message: err.message });
         }

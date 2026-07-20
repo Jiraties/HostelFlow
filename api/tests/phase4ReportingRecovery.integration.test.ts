@@ -273,6 +273,81 @@ test("hotel export leaves missing destination blank and rejects report-time over
   assert.equal(override.body.code, "DESTINATION_OVERRIDE_NOT_ALLOWED");
 });
 
+test("passport reports handle a partially missing encrypted field without returning 500", async () => {
+  await Booking.create(
+    reportBooking("PASSPORT-PARTIAL", "Partial Passport", "LAO"),
+  );
+  await Booking.updateOne(
+    { bookingId: "PASSPORT-PARTIAL" },
+    { $unset: { "passport.passportNo.authTag": 1 } },
+  );
+
+  const immigrationStatus = jsonResponse();
+  await documents.getImmigrationReportStatus(
+    { query: { date: "2026-07-14" }, user: { username: "admin" } } as any,
+    immigrationStatus,
+  );
+  assert.equal(immigrationStatus.statusCode, 200);
+  assert.equal(immigrationStatus.body.missing, 1);
+
+  const immigrationReport = binaryResponse();
+  const immigrationChunks: Buffer[] = [];
+  immigrationReport.on("data", (chunk) =>
+    immigrationChunks.push(Buffer.from(chunk)),
+  );
+  await documents.getImmigrationReport(
+    { query: { date: "2026-07-14" }, user: { username: "admin" } } as any,
+    immigrationReport as any,
+  );
+  assert.equal(
+    immigrationReport.statusCode,
+    200,
+    JSON.stringify(immigrationReport.body),
+  );
+  const immigrationWorkbook = new ExcelJs.Workbook();
+  await immigrationWorkbook.xlsx.load(Buffer.concat(immigrationChunks) as any);
+  const immigrationSheet = immigrationWorkbook.getWorksheet(
+    "แบบแจ้งที่พัก Inform Accom",
+  );
+  assert.ok(immigrationSheet);
+  assert.equal(
+    immigrationSheet.getRow(2).getCell(1).value,
+    "MISSING Partial Passport PASSPORT-PARTIAL",
+  );
+  assert.equal(immigrationSheet.getRow(2).getCell(5).value, "");
+
+  const hotelStatus = jsonResponse();
+  await documents.getHotelAccomodationReportStatus(
+    { query: { date: "2026-07-14" }, user: { username: "admin" } } as any,
+    hotelStatus,
+  );
+  assert.equal(hotelStatus.statusCode, 200);
+  assert.equal(hotelStatus.body.missing, 1);
+  assert.equal(hotelStatus.body.missingBookings[0].reason, "ขาดเลข Passport");
+
+  const hotelReport = binaryResponse();
+  const hotelChunks: Buffer[] = [];
+  hotelReport.on("data", (chunk) => hotelChunks.push(Buffer.from(chunk)));
+  await documents.getHotelAccomodationReport(
+    { query: { date: "2026-07-14" }, user: { username: "admin" } } as any,
+    hotelReport as any,
+  );
+  assert.equal(hotelReport.statusCode, 200, JSON.stringify(hotelReport.body));
+  const hotelWorkbook = new ExcelJs.Workbook();
+  await hotelWorkbook.xlsx.load(Buffer.concat(hotelChunks) as any);
+  const hotelSheet =
+    hotelWorkbook.getWorksheet("Sheet1") || hotelWorkbook.worksheets[0];
+  assert.equal(
+    hotelSheet.getRow(5).getCell(1).value,
+    "MISSING Partial Passport PASSPORT-PARTIAL",
+  );
+  assert.equal(
+    hotelSheet.getRow(5).getCell(1).font.color?.argb,
+    "FFFF0000",
+  );
+  assert.equal(hotelSheet.getRow(5).getCell(15).value, "");
+});
+
 test("synthetic isolated-restore consistency verification detects corruption", async () => {
   await User.create({
     username: "restore-admin",

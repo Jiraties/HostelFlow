@@ -26,6 +26,7 @@ const actionMap = {
   REMOVE_BOOKING: { icon: "bx-trash", text: "ลบ Booking" },
   EDIT_BOOKING: { icon: "bx-edit", text: "แก้ไข Booking" },
   CHECK_IN: { icon: "bx-check-circle", text: "Check-In" },
+  CORRECT_CHECK_IN: { icon: "bx-undo", text: "แก้ไข Check-In" },
   CHECK_OUT: { icon: "bx-door-open", text: "Check-Out" },
   CANCEL_BOOKING: { icon: "bx-calendar-x", text: "ยกเลิก Booking" },
   RESOLVE_STAY: { icon: "bx-receipt", text: "เคลียร์การเข้าพัก" },

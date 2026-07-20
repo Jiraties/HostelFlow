@@ -9,7 +9,6 @@
 }
 
 .passportView__hideButton {
-  align-self: flex-end;
   border: 0;
   border-radius: 0.5rem;
   background-color: #f9f9f9;
@@ -19,6 +18,28 @@
   padding: 0.55rem 0.8rem;
   font-family: inherit;
   cursor: pointer;
+}
+
+.passportView__actions {
+  align-self: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+.passportView__correctButton {
+  color: var(--text);
+}
+
+.passportView__temporaryEditIcon {
+  color: #ffbf00;
+}
+
+.passportView__hideButton:disabled {
+  color: #aaa;
+  cursor: not-allowed;
 }
 
 .passportView__hidden {
