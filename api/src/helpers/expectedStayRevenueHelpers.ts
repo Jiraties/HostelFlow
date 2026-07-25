@@ -22,6 +22,28 @@ const ESR_PAYMENT_TYPES = new Set<TransactionType>([
   "settlementCharge",
   "paymentCorrection",
 ]);
+export const EXPECTED_STAY_REVENUE_SERVICE_TYPES: TransactionType[] = [
+  "towel",
+  "motorbike",
+  "slowBoat",
+  "joinTour",
+  "extraBed",
+  "pickACraft",
+  "trek2D",
+  "setMenu",
+  "sleeperBus",
+  "onlyWalk",
+  "laundry",
+  "bicycle",
+  "car",
+  "misc",
+  "rainCoat",
+  "passwordLock",
+  "cooking",
+];
+const ESR_SERVICE_TYPES = new Set<TransactionType>(
+  EXPECTED_STAY_REVENUE_SERVICE_TYPES,
+);
 const PAID_METHODS: PaymentMethod[] = ["OTA", "Cash", "Card", "Transfer"];
 
 const roundMoney = (value: number) => Number(value.toFixed(2));
@@ -78,9 +100,23 @@ export type ExpectedStayRevenueEntry = {
   paymentAmounts: Record<PaymentMethod, number>;
 };
 
+export type ExpectedStayRevenueServiceEntry = {
+  booking: booking;
+  transaction: transcation;
+  start: Date;
+  grossRevenue: number;
+  expectedRevenue: number;
+  collectedRevenue: number;
+  unpaidRevenue: number;
+  paymentAmounts: Record<PaymentMethod, number>;
+};
+
 export type ExpectedStayRevenueSummary = {
   entries: ExpectedStayRevenueEntry[];
+  serviceEntries: ExpectedStayRevenueServiceEntry[];
   grossStayCharges: number;
+  grossRoomCharges: number;
+  grossServiceRevenue: number;
   reductions: number;
   expectedStayRevenue: number;
   collectedRevenue: number;
@@ -373,46 +409,171 @@ export const buildExpectedStayRevenueEntries = (
     });
   });
 
+export const buildExpectedStayRevenueServiceEntries = (
+  records: booking[],
+  start: Date,
+  end: Date,
+): ExpectedStayRevenueServiceEntry[] =>
+  records.flatMap((record) => {
+    const sourceBooking = plainBooking(record);
+    if (sourceBooking.voided) return [];
+
+    const currentBooking = {
+      ...sourceBooking,
+      transactions: projectEffectiveTransactions(
+        (sourceBooking.transactions || []).map(plainTransaction),
+        sourceBooking.transactionCorrections || [],
+      ),
+    } as booking;
+    const transactions = currentBooking.transactions || [];
+    const services = transactions.filter((transaction) => {
+      if (
+        !ESR_SERVICE_TYPES.has(transaction.type) ||
+        !transaction.createdAt
+      ) {
+        return false;
+      }
+      const transactionDate = new Date(transaction.createdAt);
+      return transactionDate >= start && transactionDate < end;
+    });
+
+    return services.map((transaction) => {
+      const serviceTransactionId = transactionId(transaction);
+      const sameTypeServices = services.filter(
+        (candidate) => candidate.type === transaction.type,
+      );
+      const rawPaymentAmounts = emptyPaymentAmounts();
+      const grossRevenue = roundMoney(Math.abs(transaction.amount || 0));
+
+      if (transaction.paymentMethod !== "Unpaid") {
+        rawPaymentAmounts[transaction.paymentMethod] = grossRevenue;
+      }
+
+      transactions.forEach((payment) => {
+        if (
+          !ESR_PAYMENT_TYPES.has(payment.type) ||
+          payment.paymentMethod === "Unpaid"
+        ) {
+          return;
+        }
+
+        const linkedById =
+          Boolean(serviceTransactionId) &&
+          payment.relatedTransactionId === serviceTransactionId;
+        const unambiguousLegacyLink =
+          !payment.relatedTransactionId &&
+          payment.relatedTransactionType === transaction.type &&
+          sameTypeServices.length === 1;
+        if (!linkedById && !unambiguousLegacyLink) return;
+
+        rawPaymentAmounts[payment.paymentMethod] = roundMoney(
+          rawPaymentAmounts[payment.paymentMethod] +
+            transactionSignedAmount(payment),
+        );
+      });
+
+      const paymentAmounts = normalizedPaidAmounts(
+        rawPaymentAmounts,
+        grossRevenue,
+      );
+      const collectedRevenue = PAID_METHODS.reduce(
+        (total, paymentMethod) => total + paymentAmounts[paymentMethod],
+        0,
+      );
+
+      return {
+        booking: currentBooking,
+        transaction,
+        start: new Date(transaction.createdAt as Date),
+        grossRevenue,
+        expectedRevenue: grossRevenue,
+        collectedRevenue: roundMoney(collectedRevenue),
+        unpaidRevenue: paymentAmounts.Unpaid,
+        paymentAmounts,
+      };
+    });
+  });
+
 export const summarizeExpectedStayRevenue = (
   records: booking[],
   start: Date,
   end: Date,
 ): ExpectedStayRevenueSummary => {
   const entries = buildExpectedStayRevenueEntries(records, start, end);
+  const serviceEntries = buildExpectedStayRevenueServiceEntries(
+    records,
+    start,
+    end,
+  );
+  const grossRoomCharges = roundMoney(
+    entries.reduce((total, entry) => total + entry.grossRevenue, 0),
+  );
+  const grossServiceRevenue = roundMoney(
+    serviceEntries.reduce((total, entry) => total + entry.grossRevenue, 0),
+  );
 
   return {
     entries,
-    grossStayCharges: roundMoney(
-      entries.reduce((total, entry) => total + entry.grossRevenue, 0),
-    ),
+    serviceEntries,
+    grossStayCharges: roundMoney(grossRoomCharges + grossServiceRevenue),
+    grossRoomCharges,
+    grossServiceRevenue,
     reductions: roundMoney(
       entries.reduce((total, entry) => total + entry.reductionTotal, 0),
     ),
     expectedStayRevenue: roundMoney(
-      entries.reduce((total, entry) => total + entry.expectedRevenue, 0),
+      entries.reduce((total, entry) => total + entry.expectedRevenue, 0) +
+        serviceEntries.reduce(
+          (total, entry) => total + entry.expectedRevenue,
+          0,
+        ),
     ),
     collectedRevenue: roundMoney(
-      entries.reduce((total, entry) => total + entry.collectedRevenue, 0),
+      entries.reduce((total, entry) => total + entry.collectedRevenue, 0) +
+        serviceEntries.reduce(
+          (total, entry) => total + entry.collectedRevenue,
+          0,
+        ),
     ),
     unpaidRevenue: roundMoney(
-      entries.reduce((total, entry) => total + entry.unpaidRevenue, 0),
+      entries.reduce((total, entry) => total + entry.unpaidRevenue, 0) +
+        serviceEntries.reduce(
+          (total, entry) => total + entry.unpaidRevenue,
+          0,
+        ),
     ),
   };
 };
 
 export const expectedStayRevenueBookingQuery = (start: Date, end: Date) => ({
   voided: { $ne: true },
-  status: { $nin: ["cancelled", "noShow"] },
   $or: [
     {
-      commercialSegments: {
-        $elemMatch: {
-          from: { $gte: start, $lt: end },
+      $and: [
+        { status: { $nin: ["cancelled", "noShow"] } },
+        {
+          $or: [
+            {
+              commercialSegments: {
+                $elemMatch: {
+                  from: { $gte: start, $lt: end },
+                },
+              },
+            },
+            {
+              checkIn: { $gte: start, $lt: end },
+            },
+          ],
         },
-      },
+      ],
     },
     {
-      checkIn: { $gte: start, $lt: end },
+      transactions: {
+        $elemMatch: {
+          type: { $in: EXPECTED_STAY_REVENUE_SERVICE_TYPES },
+          createdAt: { $gte: start, $lt: end },
+        },
+      },
     },
   ],
 });

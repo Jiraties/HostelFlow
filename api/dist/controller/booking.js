@@ -1070,7 +1070,21 @@ const getAdminDashboardStats = async (req, res) => {
             }));
         });
         const monthFinancialTransactions = transactionsInRange([...monthFinancialBookings, ...monthStandaloneSales], startOfMonth, startOfNextMonth);
-        const esrSummary = (0, expectedStayRevenueHelpers_1.summarizeExpectedStayRevenue)(esrBookings, startOfMonth, startOfNextMonth);
+        const esrSummary = (0, expectedStayRevenueHelpers_1.summarizeExpectedStayRevenue)([
+            ...esrBookings,
+            ...monthStandaloneSales.map((sale) => ({
+                bookingId: sale.saleId,
+                name: sale.customerName || "ลูกค้าทั่วไป",
+                platformId: "WALK",
+                checkIn: new Date(0),
+                checkOut: new Date(0),
+                status: "checkedOut",
+                transactions: sale.transactions || [],
+                staffUsername: sale.createdBy,
+                sourceType: "standaloneSale",
+                saleId: sale.saleId,
+            })),
+        ], startOfMonth, startOfNextMonth);
         const monthlyGrossRevenue = esrSummary.expectedStayRevenue;
         const monthlyCollectedRevenue = esrSummary.collectedRevenue;
         const unpaidAmount = unpaidBookings.reduce((sum, booking) => sum + unpaidRoomChargeAmount(booking), 0);
@@ -1087,6 +1101,14 @@ const getAdminDashboardStats = async (req, res) => {
             });
         }
         esrSummary.entries.forEach((entry) => {
+            const dateKey = formatLocalDateKey(entry.start);
+            const current = esrByDate.get(dateKey);
+            if (!current)
+                return;
+            current.grossRevenue += entry.expectedRevenue;
+            current.collectedRevenue += entry.collectedRevenue;
+        });
+        esrSummary.serviceEntries.forEach((entry) => {
             const dateKey = formatLocalDateKey(entry.start);
             const current = esrByDate.get(dateKey);
             if (!current)

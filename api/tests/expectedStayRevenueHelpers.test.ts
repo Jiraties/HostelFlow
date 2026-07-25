@@ -231,7 +231,7 @@ test("ESR excludes cancelled, no-show, and voided bookings but preserves lifecyc
   assert.equal(summary.expectedStayRevenue, 3000);
 });
 
-test("ESR excludes extras, deposits, card surcharge, and rounding adjustments", () => {
+test("ESR includes services but excludes deposits, card surcharge, and rounding adjustments", () => {
   const checkIn = new Date("2026-07-10T07:00:00.000Z");
   const currentBooking = esrBooking({
     bookingId: "ROOM-ONLY",
@@ -274,10 +274,13 @@ test("ESR excludes extras, deposits, card surcharge, and rounding adjustments", 
     augustStart,
   );
 
-  assert.equal(summary.grossStayCharges, 1000);
-  assert.equal(summary.expectedStayRevenue, 1000);
-  assert.equal(summary.collectedRevenue, 1000);
+  assert.equal(summary.grossStayCharges, 1100);
+  assert.equal(summary.grossRoomCharges, 1000);
+  assert.equal(summary.grossServiceRevenue, 100);
+  assert.equal(summary.expectedStayRevenue, 1100);
+  assert.equal(summary.collectedRevenue, 1100);
   assert.equal(summary.entries[0].paymentAmounts.Card, 1000);
+  assert.equal(summary.serviceEntries[0].paymentAmounts.Cash, 100);
 });
 
 test("linked non-rounding room adjustments follow their segment while rounding stays excluded", () => {
@@ -490,4 +493,125 @@ test("ESR accepts Mongoose-style documents without losing booking fields", () =>
   assert.equal(summary.entries[0].booking.bookingId, "DOCUMENT");
   assert.equal(summary.expectedStayRevenue, 750);
   assert.equal(summary.collectedRevenue, 750);
+});
+
+test("ESR includes booking services on their transaction date", () => {
+  const currentBooking = esrBooking({
+    bookingId: "JUNE-STAY-JULY-SERVICE",
+    checkIn: new Date("2026-06-25T07:00:00.000Z"),
+    checkOut: new Date("2026-06-28T05:00:00.000Z"),
+    amount: 900,
+    transactions: [
+      {
+        _id: "towel-service",
+        type: "towel",
+        paymentMethod: "Cash",
+        amount: 120,
+        createdAt: new Date("2026-07-10T05:00:00.000Z"),
+      },
+      {
+        _id: "outside-service",
+        type: "laundry",
+        paymentMethod: "Transfer",
+        amount: 80,
+        createdAt: new Date("2026-08-02T05:00:00.000Z"),
+      },
+    ],
+  });
+
+  const summary = summarizeExpectedStayRevenue(
+    [currentBooking],
+    julyStart,
+    augustStart,
+  );
+
+  assert.equal(summary.entries.length, 0);
+  assert.equal(summary.serviceEntries.length, 1);
+  assert.equal(summary.serviceEntries[0].transaction.type, "towel");
+  assert.equal(summary.grossRoomCharges, 0);
+  assert.equal(summary.grossServiceRevenue, 120);
+  assert.equal(summary.expectedStayRevenue, 120);
+  assert.equal(summary.collectedRevenue, 120);
+});
+
+test("ESR includes standalone services but excludes non-service transactions", () => {
+  const standaloneSale = {
+    bookingId: "SALE-1",
+    name: "Walk-in customer",
+    platformId: "WALK",
+    staffUsername: "tester",
+    checkIn: new Date(0),
+    checkOut: new Date(0),
+    status: "checkedOut",
+    transactions: [
+      {
+        _id: "laundry-service",
+        type: "laundry",
+        paymentMethod: "Transfer",
+        amount: 200,
+        createdAt: new Date("2026-07-11T05:00:00.000Z"),
+      },
+      {
+        _id: "service-card-surcharge",
+        type: "cardSurcharge",
+        paymentMethod: "Card",
+        amount: 6,
+        createdAt: new Date("2026-07-11T05:00:00.000Z"),
+      },
+      {
+        _id: "service-deposit",
+        type: "deposit",
+        paymentMethod: "Cash",
+        amount: 100,
+        createdAt: new Date("2026-07-11T05:00:00.000Z"),
+      },
+    ],
+  } as booking;
+
+  const summary = summarizeExpectedStayRevenue(
+    [standaloneSale],
+    julyStart,
+    augustStart,
+  );
+
+  assert.equal(summary.serviceEntries.length, 1);
+  assert.equal(summary.expectedStayRevenue, 200);
+  assert.equal(summary.collectedRevenue, 200);
+});
+
+test("unpaid services and linked settlements reconcile in ESR", () => {
+  const currentBooking = esrBooking({
+    bookingId: "SERVICE-SETTLEMENT",
+    checkIn: new Date("2026-06-25T07:00:00.000Z"),
+    checkOut: new Date("2026-06-28T05:00:00.000Z"),
+    transactions: [
+      {
+        _id: "unpaid-service",
+        type: "motorbike",
+        paymentMethod: "Unpaid",
+        amount: 300,
+        createdAt: new Date("2026-07-12T05:00:00.000Z"),
+      },
+      {
+        type: "settlementCharge",
+        paymentMethod: "Card",
+        relatedTransactionType: "motorbike",
+        relatedTransactionId: "unpaid-service",
+        amount: 125,
+        createdAt: new Date("2026-07-13T05:00:00.000Z"),
+      },
+    ],
+  });
+
+  const summary = summarizeExpectedStayRevenue(
+    [currentBooking],
+    julyStart,
+    augustStart,
+  );
+
+  assert.equal(summary.expectedStayRevenue, 300);
+  assert.equal(summary.collectedRevenue, 125);
+  assert.equal(summary.unpaidRevenue, 175);
+  assert.equal(summary.serviceEntries[0].paymentAmounts.Card, 125);
+  assert.equal(summary.serviceEntries[0].paymentAmounts.Unpaid, 175);
 });

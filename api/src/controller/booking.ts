@@ -1511,7 +1511,24 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
       startOfNextMonth,
     );
     const esrSummary = summarizeExpectedStayRevenue(
-      esrBookings as booking[],
+      [
+        ...(esrBookings as booking[]),
+        ...monthStandaloneSales.map(
+          (sale) =>
+            ({
+              bookingId: sale.saleId,
+              name: sale.customerName || "ลูกค้าทั่วไป",
+              platformId: "WALK",
+              checkIn: new Date(0),
+              checkOut: new Date(0),
+              status: "checkedOut",
+              transactions: sale.transactions || [],
+              staffUsername: sale.createdBy,
+              sourceType: "standaloneSale",
+              saleId: sale.saleId,
+            }) as unknown as booking,
+        ),
+      ],
       startOfMonth,
       startOfNextMonth,
     );
@@ -1558,6 +1575,14 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
     }
 
     esrSummary.entries.forEach((entry) => {
+      const dateKey = formatLocalDateKey(entry.start);
+      const current = esrByDate.get(dateKey);
+      if (!current) return;
+
+      current.grossRevenue += entry.expectedRevenue;
+      current.collectedRevenue += entry.collectedRevenue;
+    });
+    esrSummary.serviceEntries.forEach((entry) => {
       const dateKey = formatLocalDateKey(entry.start);
       const current = esrByDate.get(dateKey);
       if (!current) return;

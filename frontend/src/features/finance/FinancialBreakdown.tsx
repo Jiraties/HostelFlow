@@ -72,10 +72,15 @@ type ExpectedStayRevenueBreakdownResponse = {
   period: {
     startDate: string;
     endDate: string;
-    basis: "bookingOrExtensionStart" | "checkInAndTransactionCreatedAt";
+    basis:
+      | "bookingOrExtensionStart"
+      | "bookingOrExtensionStartAndServiceCreatedAt"
+      | "checkInAndTransactionCreatedAt";
   };
   totals: {
     grossStayCharges: number;
+    grossRoomCharges?: number;
+    grossServiceRevenue?: number;
     expectedStayRevenue: number;
     collectedRevenue?: number;
     unpaidRevenue?: number;
@@ -488,7 +493,7 @@ const FinancialBreakdown = ({
           <p>
             {mode === "today"
               ? "มูลค่าการจองที่เช็คอินวันนี้ รวมบริการเสริมวันนี้ หลังหักรายการลดรายได้"
-              : "รายได้ค่าที่พักของการจองและรายการต่อคืนที่เริ่มในช่วงนี้ นับเต็มยอดในวันที่เริ่มและไม่แบ่งข้ามเดือน"}
+              : "ค่าที่พักนับตามวันที่เริ่มการจองหรือรายการต่อคืน และบริการเสริมนับตามวันที่บันทึกรายการ"}
           </p>
         </div>
         {mode === "today" ? (
@@ -541,7 +546,7 @@ const FinancialBreakdown = ({
             <div className="financialBreakdown__summaryMeta">
               <span>
                 <small>
-                  {mode === "today" ? "ก่อนหักรายการลด" : "Gross Stay Charges"}
+                  {mode === "today" ? "ก่อนหักรายการลด" : "Gross Revenue"}
                 </small>
                 <strong>
                   {formatMoney(breakdown.totals.grossStayCharges)} ฿

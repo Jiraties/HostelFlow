@@ -743,8 +743,21 @@ const getExpectedStayRevenueBreakdown = async (req, res) => {
                 message: "Invalid date range. Use startDate and endDate as YYYY-MM-DD.",
             });
         }
-        const bookingRecords = await booking_1.default.find((0, expectedStayRevenueHelpers_1.expectedStayRevenueBookingQuery)(bounds.start, bounds.end)).lean();
-        const summary = (0, expectedStayRevenueHelpers_1.summarizeExpectedStayRevenue)(bookingRecords, bounds.start, bounds.end);
+        const [bookingRecords, standaloneSales] = await Promise.all([
+            booking_1.default.find((0, expectedStayRevenueHelpers_1.expectedStayRevenueBookingQuery)(bounds.start, bounds.end)).lean(),
+            standaloneSale_1.default.find({
+                transactions: {
+                    $elemMatch: {
+                        type: { $in: expectedStayRevenueHelpers_1.EXPECTED_STAY_REVENUE_SERVICE_TYPES },
+                        createdAt: { $gte: bounds.start, $lt: bounds.end },
+                    },
+                },
+            }).lean(),
+        ]);
+        const summary = (0, expectedStayRevenueHelpers_1.summarizeExpectedStayRevenue)([
+            ...bookingRecords,
+            ...standaloneSales.map(standaloneSaleBookingView),
+        ], bounds.start, bounds.end);
         const categories = new Map();
         const reductions = new Map();
         const paymentMethods = new Map();
@@ -768,6 +781,20 @@ const getExpectedStayRevenueBreakdown = async (req, res) => {
                 }, entry.booking, amount, paymentMethod === "Unpaid" ? "neutral" : "in");
             });
         });
+        summary.serviceEntries.forEach((entry) => {
+            addBreakdownTransaction(categories, entry.transaction, entry.booking, entry.grossRevenue, "in");
+            Object.entries(entry.paymentAmounts).forEach(([paymentMethod, amount]) => {
+                if (amount <= 0)
+                    return;
+                addPaymentMethodBreakdownTransaction(paymentMethods, {
+                    ...entry.transaction,
+                    paymentMethod,
+                    amount,
+                    direction: paymentMethod === "Unpaid" ? "neutral" : "in",
+                    createdAt: entry.start,
+                }, entry.booking, amount, paymentMethod === "Unpaid" ? "neutral" : "in");
+            });
+        });
         const finalizedCategories = finalizeBreakdownCategories(categories, summary.grossStayCharges);
         const finalizedReductions = finalizeBreakdownCategories(reductions, summary.grossStayCharges);
         const finalizedPaymentMethods = finalizePaymentMethodBreakdowns(paymentMethods, summary.expectedStayRevenue);
@@ -776,10 +803,12 @@ const getExpectedStayRevenueBreakdown = async (req, res) => {
             period: {
                 startDate: formatBusinessDateKey(bounds.start),
                 endDate: formatBusinessDateKey(bounds.end),
-                basis: "bookingOrExtensionStart",
+                basis: "bookingOrExtensionStartAndServiceCreatedAt",
             },
             totals: {
                 grossStayCharges: summary.grossStayCharges,
+                grossRoomCharges: summary.grossRoomCharges,
+                grossServiceRevenue: summary.grossServiceRevenue,
                 expectedStayRevenue: summary.expectedStayRevenue,
                 collectedRevenue: summary.collectedRevenue,
                 unpaidRevenue: summary.unpaidRevenue,
