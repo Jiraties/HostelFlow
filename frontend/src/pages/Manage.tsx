@@ -1006,7 +1006,15 @@ const Manage = () => {
         className="home__modalCenter"
         onClose={() => setUser(null)}
       >
-        <>{user && <ViewActivities userId={user.userId} name={user.name} />}</>
+        <>
+          {user && (
+            <ViewActivities
+              userId={user.userId}
+              name={user.name}
+              onClose={() => setUser(null)}
+            />
+          )}
+        </>
       </Modal>
       <Modal
         open={!!managedUser}

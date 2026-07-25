@@ -251,6 +251,49 @@ test("master booking search matches extension channel booking IDs", async () => 
   );
 });
 
+test("master bookings pagination returns stable non-overlapping pages", async () => {
+  await Promise.all([
+    bookingFixture("MASTER-PAGE-1"),
+    bookingFixture("MASTER-PAGE-2"),
+    bookingFixture("MASTER-PAGE-3"),
+  ]);
+
+  const fetchPage = async (page: number) => {
+    const pageResponse = response();
+    await controller.getMasterBookings(
+      request({
+        method: "GET",
+        query: {
+          from: localDate(-1),
+          to: localDate(2),
+          page,
+          limit: 2,
+        },
+        url: "/bookings/getMasterBookings",
+      }),
+      pageResponse as any,
+    );
+    return pageResponse;
+  };
+
+  const firstPage = await fetchPage(1);
+  const secondPage = await fetchPage(2);
+  const firstPageIds = firstPage.body.bookings.map(
+    (booking: { bookingId: string }) => booking.bookingId,
+  );
+  const secondPageIds = secondPage.body.bookings.map(
+    (booking: { bookingId: string }) => booking.bookingId,
+  );
+
+  assert.equal(firstPage.statusCode, 200);
+  assert.equal(secondPage.statusCode, 200);
+  assert.equal(firstPageIds.length, 2);
+  assert.equal(secondPageIds.length, 1);
+  assert.equal(firstPage.body.pagination.hasMore, true);
+  assert.equal(secondPage.body.pagination.hasMore, false);
+  assert.equal(new Set([...firstPageIds, ...secondPageIds]).size, 3);
+});
+
 test("stale edit cannot overwrite check-in or cancellation", async () => {
   await bookingFixture("CHECKIN-EDIT");
   await CashShift.create({
@@ -806,6 +849,110 @@ test("cash check-in records a small rounding difference without changing the roo
   assert.ok(rounding?.cashShiftId);
 });
 
+test("card and transfer check-in adjustments use the selected payment method", async () => {
+  const cardBooking = await bookingFixture("CARD-ROUNDING");
+  cardBooking.transactions[0].amount = 449.8;
+  await cardBooking.save();
+
+  const cardResponse = response();
+  await controller.checkIn(
+    request({
+      body: {
+        expectedRevision: 0,
+        deposit: 200,
+        unpaidPayment: {
+          paymentMethod: "Card",
+          roundingAdjustment: 0.2,
+        },
+        passportData: {
+          namePrefix: "Ms",
+          passportNo: "CARD-ROUNDING-PASSPORT",
+          passportName: "Card Guest",
+          nationality: "US",
+          nextDestinationCountry: "THA",
+        },
+      },
+      params: { bookingId: "CARD-ROUNDING" },
+      method: "PUT",
+      url: "/bookings/checkIn/CARD-ROUNDING",
+      key: "card-rounding-checkin",
+      admin: false,
+    }),
+    cardResponse as any,
+  );
+
+  assert.equal(cardResponse.statusCode, 200, JSON.stringify(cardResponse.body));
+  const storedCardBooking = await Booking.findOne({
+    bookingId: "CARD-ROUNDING",
+  }).lean();
+  const cardAdjustment = storedCardBooking?.transactions.find(
+    (transaction) => transaction.reasonOfAdjustment === "rounding",
+  );
+  const cardSurcharges =
+    storedCardBooking?.transactions.filter(
+      (transaction) => transaction.type === "cardSurcharge",
+    ) || [];
+
+  assert.equal(cardAdjustment?.amount, 0.2);
+  assert.equal(cardAdjustment?.paymentMethod, "Card");
+  assert.equal(cardAdjustment?.cashShiftId, undefined);
+  assert.equal(cardSurcharges.length, 1);
+  assert.equal(cardSurcharges[0].amount, 13.5);
+
+  const transferBooking = await bookingFixture("TRANSFER-ROUNDING");
+  transferBooking.transactions[0].amount = 499.4;
+  await transferBooking.save();
+
+  const transferResponse = response();
+  await controller.checkIn(
+    request({
+      body: {
+        expectedRevision: 0,
+        deposit: 200,
+        unpaidPayment: {
+          paymentMethod: "Transfer",
+          roundingAdjustment: 0.6,
+        },
+        passportData: {
+          namePrefix: "Mr",
+          passportNo: "TRANSFER-ROUNDING-PASSPORT",
+          passportName: "Transfer Guest",
+          nationality: "US",
+          nextDestinationCountry: "THA",
+        },
+      },
+      params: { bookingId: "TRANSFER-ROUNDING" },
+      method: "PUT",
+      url: "/bookings/checkIn/TRANSFER-ROUNDING",
+      key: "transfer-rounding-checkin",
+      admin: false,
+    }),
+    transferResponse as any,
+  );
+
+  assert.equal(
+    transferResponse.statusCode,
+    200,
+    JSON.stringify(transferResponse.body),
+  );
+  const storedTransferBooking = await Booking.findOne({
+    bookingId: "TRANSFER-ROUNDING",
+  }).lean();
+  const transferAdjustment = storedTransferBooking?.transactions.find(
+    (transaction) => transaction.reasonOfAdjustment === "rounding",
+  );
+
+  assert.equal(transferAdjustment?.amount, 0.6);
+  assert.equal(transferAdjustment?.paymentMethod, "Transfer");
+  assert.equal(transferAdjustment?.cashShiftId, undefined);
+  assert.equal(
+    storedTransferBooking?.transactions.some(
+      (transaction) => transaction.type === "cardSurcharge",
+    ),
+    false,
+  );
+});
+
 test("only admin can historically onboard an expired stay without touching today's cash shift", async () => {
   const historicalBooking = await bookingFixture("HISTORICAL-CHECKIN");
   historicalBooking.checkIn = new Date(`${localDate(-3)}T00:00:00`);
@@ -915,6 +1062,69 @@ test("only admin can historically onboard an expired stay without touching today
   );
   assert.equal(checkout.statusCode, 200, JSON.stringify(checkout.body));
   assert.equal(checkout.body.booking.status, "checkedOut");
+});
+
+test("staff can late check in on checkout day and check out immediately", async () => {
+  const lateBooking = await bookingFixture("CHECKOUT-DAY-CHECKIN");
+  lateBooking.checkIn = new Date(`${localDate(-1)}T00:00:00`);
+  lateBooking.checkOut = new Date(`${localDate()}T00:00:00`);
+  lateBooking.roomStays[0].from = lateBooking.checkIn;
+  lateBooking.roomStays[0].to = lateBooking.checkOut;
+  lateBooking.transactions[0].paymentMethod = "Transfer";
+  await lateBooking.save();
+
+  const checkInResponse = response();
+  await controller.checkIn(
+    request({
+      body: {
+        expectedRevision: 0,
+        deposit: 0,
+        passportData: {
+          namePrefix: "Mr",
+          passportNo: "LATE-CHECKIN-PASSPORT",
+          passportName: "Late Check In Guest",
+          nationality: "US",
+          nextDestinationCountry: "THA",
+        },
+      },
+      params: { bookingId: "CHECKOUT-DAY-CHECKIN" },
+      method: "PUT",
+      url: "/bookings/checkIn/CHECKOUT-DAY-CHECKIN",
+      key: "checkout-day-checkin",
+      admin: false,
+    }),
+    checkInResponse as any,
+  );
+
+  assert.equal(
+    checkInResponse.statusCode,
+    200,
+    JSON.stringify(checkInResponse.body),
+  );
+  assert.equal(checkInResponse.body.status, "checkedIn");
+
+  const checkOutResponse = response();
+  await controller.checkOut(
+    request({
+      body: {
+        expectedRevision: 1,
+        releaseRemainingNights: true,
+      },
+      params: { bookingId: "CHECKOUT-DAY-CHECKIN" },
+      method: "PATCH",
+      url: "/bookings/checkOut/CHECKOUT-DAY-CHECKIN",
+      key: "checkout-day-checkout",
+      admin: false,
+    }),
+    checkOutResponse as any,
+  );
+
+  assert.equal(
+    checkOutResponse.statusCode,
+    200,
+    JSON.stringify(checkOutResponse.body),
+  );
+  assert.equal(checkOutResponse.body.booking.status, "checkedOut");
 });
 
 test("room move increments revision and blocks a stale general edit", async () => {

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AllCommunityModule } from "ag-grid-community";
 import { themeQuartz } from "ag-grid-community";
 import type {
+  BodyScrollEndEvent,
   CellClassParams,
   ColDef,
   GridReadyEvent,
@@ -195,12 +196,18 @@ const Spreadsheet = ({
   bookings,
   setViewBookingBooking,
   loading,
+  loadingMore,
+  hasMore,
+  onLoadMore,
   status,
   masterRange,
 }: {
   bookings: booking[];
   setViewBookingBooking: (booking: booking) => void;
   loading: boolean;
+  loadingMore?: boolean;
+  hasMore?: boolean;
+  onLoadMore?: () => void;
   status: SpreadsheetStatus;
   masterRange?: {
     from: string;
@@ -544,6 +551,44 @@ const Spreadsheet = ({
     [isMaster],
   );
 
+  const handleBodyScrollEnd = useCallback(
+    (event: BodyScrollEndEvent<SpreadsheetRow>) => {
+      if (
+        event.direction !== "vertical" ||
+        !isMaster ||
+        loading ||
+        loadingMore ||
+        !hasMore ||
+        !onLoadMore
+      ) {
+        return;
+      }
+
+      const displayedRowCount = event.api.getDisplayedRowCount();
+      const lastDisplayedRow =
+        event.api.getDisplayedRowAtIndex(displayedRowCount - 1);
+      if (!lastDisplayedRow) return;
+
+      const viewport = event.api.getVerticalPixelRange();
+      const contentBottom =
+        (lastDisplayedRow.rowTop || 0) +
+        (lastDisplayedRow.rowHeight || rowHeight || 42);
+      const loadThreshold = Math.max(180, (rowHeight || 42) * 4);
+
+      if (contentBottom - viewport.bottom <= loadThreshold) {
+        onLoadMore();
+      }
+    },
+    [
+      hasMore,
+      isMaster,
+      loading,
+      loadingMore,
+      onLoadMore,
+      rowHeight,
+    ],
+  );
+
   return (
     <AgGridProvider modules={modules}>
       <div
@@ -572,6 +617,7 @@ const Spreadsheet = ({
           headerHeight={headerHeight}
           onGridReady={onGridReady}
           postSortRows={postSortRows}
+          onBodyScrollEnd={handleBodyScrollEnd}
           rowClassRules={{
             spreadsheet__pinnedRow: (params) =>
               !isSeparatorRow(params.data) && Boolean(params.data?.pinned),
@@ -606,6 +652,16 @@ const Spreadsheet = ({
               : undefined
           }
         />
+        {isMaster && loadingMore && (
+          <div
+            className="spreadsheet__infiniteLoading"
+            role="status"
+            aria-live="polite"
+          >
+            <span aria-hidden="true" />
+            กำลังโหลดรายการเพิ่มเติม...
+          </div>
+        )}
       </div>
     </AgGridProvider>
   );

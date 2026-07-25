@@ -296,6 +296,21 @@ export const transactionTodayReductionAmount = (transaction: transcation) => {
   return amount < 0 ? Math.abs(amount) : 0;
 };
 
+export const bookingTransactionTodayReductionAmount = (
+  booking: Pick<booking, "checkIn">,
+  transaction: transcation,
+  periodEnd: Date,
+) => {
+  const amount = transactionTodayReductionAmount(transaction);
+  if (amount === 0) return 0;
+
+  const isFutureCancellationReduction =
+    transaction.sourceAction === "CANCEL_BOOKING" &&
+    new Date(booking.checkIn) >= periodEnd;
+
+  return isFutureCancellationReduction ? 0 : amount;
+};
+
 type TodayArrivalRevenueBooking = {
   status: "booked" | "checkedIn" | "checkedOut" | "cancelled" | "noShow";
   transactions: transcation[];
@@ -422,7 +437,8 @@ export const calculateTodayRevenueSummary = (
         );
       return alreadyNetted
         ? sum
-        : sum + transactionTodayReductionAmount(transaction);
+        : sum +
+            bookingTransactionTodayReductionAmount(booking, transaction, end);
     },
     0,
   );

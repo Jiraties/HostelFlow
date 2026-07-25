@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import Logo from "./Logo";
 import "./Sidebar.css";
 import { useAuth } from "../context/AuthContext";
-import { mobilePrimaryLinks, navigationItems } from "./navigationItems";
+import { navigationItems } from "./navigationItems";
 
 const Sidebar = () => {
   const location = useLocation();
@@ -15,11 +15,18 @@ const Sidebar = () => {
   const sidebarItems = navigationItems.filter(
     (item) => !item.adminOnly || user?.admin,
   );
-  const primaryItems = sidebarItems.filter((item) =>
-    mobilePrimaryLinks.has(item.link),
+  const sidebarItemByLink = new Map(
+    sidebarItems.map((item) => [item.link, item]),
   );
+  const mobileItems = [
+    sidebarItemByLink.get("/"),
+    sidebarItemByLink.get("/master"),
+    sidebarItemByLink.get(user?.admin ? "/manage" : "/documents"),
+    sidebarItemByLink.get("/calendar"),
+  ].filter((item) => item !== undefined);
+  const mobileItemLinks = new Set(mobileItems.map((item) => item.link));
   const moreItems = sidebarItems.filter(
-    (item) => !mobilePrimaryLinks.has(item.link),
+    (item) => !mobileItemLinks.has(item.link),
   );
   const moreIsActive = moreItems.some((item) => item.link === location.pathname);
 
@@ -86,7 +93,7 @@ const Sidebar = () => {
       </ul>
 
       <nav className="mobileNav" aria-label="เมนูหลัก">
-        {primaryItems.map((item) => (
+        {mobileItems.map((item) => (
           <Link
             key={item.id}
             to={item.link}
@@ -135,9 +142,10 @@ const Sidebar = () => {
             onKeyDown={(event) => {
               if (event.key !== "Tab") return;
 
-              const focusable = moreSheetRef.current?.querySelectorAll<HTMLElement>(
-                'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
-              );
+              const focusable =
+                moreSheetRef.current?.querySelectorAll<HTMLElement>(
+                  'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+                );
               if (!focusable?.length) return;
 
               const first = focusable[0];

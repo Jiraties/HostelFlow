@@ -3,6 +3,38 @@ export type RoomStayLike = {
   roomIds?: string[] | null;
 };
 
+export type WholeRoomGroup = {
+  value: string;
+  label: string;
+  roomIds: string[];
+};
+
+const numberedRoomIds = (prefix: string, count: number) =>
+  Array.from({ length: count }, (_, index) => `${prefix} ${index + 1}`);
+
+export const wholeRoomGroups: WholeRoomGroup[] = [
+  {
+    value: "__whole_room_homespan__",
+    label: "Grand Family",
+    roomIds: numberedRoomIds("Homespan", 8),
+  },
+  {
+    value: "__whole_room_wicker__",
+    label: "Deluxe Family",
+    roomIds: numberedRoomIds("Wicker", 6),
+  },
+  {
+    value: "__whole_room_siesta__",
+    label: "Siesta",
+    roomIds: numberedRoomIds("Siesta", 14),
+  },
+  {
+    value: "__whole_room_marquisette__",
+    label: "Marquisette",
+    roomIds: numberedRoomIds("Marquisette", 8),
+  },
+];
+
 export const getRoomStayRoomIds = (roomStay: RoomStayLike) => {
   const roomIds = Array.isArray(roomStay.roomIds)
     ? roomStay.roomIds
@@ -78,22 +110,40 @@ const formatNumberRanges = (numbers: number[]) => {
 };
 
 export const formatCompactRoomNames = (roomIds: string[]) => {
+  const normalizedRoomIds = Array.from(
+    new Set(
+      roomIds
+        .map((roomId) => roomId.trim().replace(/\s+/g, " "))
+        .filter(Boolean),
+    ),
+  );
+  const remainingRoomIds = new Set(normalizedRoomIds);
+  const wholeRoomLabels = wholeRoomGroups.flatMap((group) => {
+    if (!group.roomIds.every((roomId) => remainingRoomIds.has(roomId))) {
+      return [];
+    }
+
+    group.roomIds.forEach((roomId) => remainingRoomIds.delete(roomId));
+    return [group.label];
+  });
   const parsedGroups = new Map<string, ParsedNumberedRoom[]>();
   const unparsedRoomIds: string[] = [];
 
-  roomIds.forEach((roomId) => {
-    const parsedRoom = parseNumberedRoom(roomId);
+  normalizedRoomIds
+    .filter((roomId) => remainingRoomIds.has(roomId))
+    .forEach((roomId) => {
+      const parsedRoom = parseNumberedRoom(roomId);
 
-    if (!parsedRoom) {
-      unparsedRoomIds.push(roomId);
-      return;
-    }
+      if (!parsedRoom) {
+        unparsedRoomIds.push(roomId);
+        return;
+      }
 
-    parsedGroups.set(parsedRoom.prefix, [
-      ...(parsedGroups.get(parsedRoom.prefix) || []),
-      parsedRoom,
-    ]);
-  });
+      parsedGroups.set(parsedRoom.prefix, [
+        ...(parsedGroups.get(parsedRoom.prefix) || []),
+        parsedRoom,
+      ]);
+    });
 
   const compactNumberedRooms = Array.from(parsedGroups.entries()).map(
     ([prefix, rooms]) =>
@@ -103,6 +153,7 @@ export const formatCompactRoomNames = (roomIds: string[]) => {
   );
 
   return [
+    ...wholeRoomLabels,
     ...unparsedRoomIds.map(formatShortRoomName),
     ...compactNumberedRooms,
   ].join(", ");

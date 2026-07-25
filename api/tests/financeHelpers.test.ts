@@ -492,6 +492,45 @@ test("today revenue summary excludes future arrivals while including today's ext
   });
 });
 
+test("today revenue does not deduct a future OTA cancellation refund", () => {
+  const start = new Date("2026-07-11T17:00:00.000Z");
+  const end = new Date("2026-07-12T17:00:00.000Z");
+  const bookings = [
+    {
+      checkIn: new Date("2026-08-12T00:00:00.000Z"),
+      status: "cancelled",
+      cancellation: {
+        keptAmount: 0,
+      },
+      transactions: [
+        {
+          type: "roomCharge",
+          paymentMethod: "OTA",
+          amount: 3000,
+          createdAt: new Date("2026-07-01T00:00:00.000Z"),
+        },
+        {
+          type: "cancellationRefund",
+          paymentMethod: "OTA",
+          direction: "out",
+          sourceAction: "CANCEL_BOOKING",
+          amount: 3000,
+          createdAt: new Date("2026-07-12T03:00:00.000Z"),
+        },
+      ],
+    },
+  ] as unknown as booking[];
+
+  assert.deepEqual(calculateTodayRevenueSummary(bookings, start, end), {
+    todayRevenue: 0,
+    todayArrivalRevenue: 0,
+    todayExtrasRevenue: 0,
+    todayReductions: 0,
+    todayCollectedRevenue: 0,
+    todayServiceHighlights: [],
+  });
+});
+
 test("transactionFallsOnBusinessDate honors explicit Bangkok business-day UTC bounds", () => {
   const businessDateStart = new Date("2026-06-30T17:00:00.000Z");
   const businessDateEnd = new Date("2026-07-01T17:00:00.000Z");

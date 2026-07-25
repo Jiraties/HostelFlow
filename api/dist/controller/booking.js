@@ -36,7 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getNeedsReviewBookings = exports.resolveBooking = exports.cancelBooking = exports.getPassportData = exports.addTransaction = exports.extendBooking = exports.manageRoomStays = exports.getBookingById = exports.getMonthCalendar = exports.correctDeposit = exports.checkOut = exports.checkIn = exports.removeBooking = exports.getMasterBookings = exports.getAdminDashboardStats = exports.getTodayBookings = exports.pinBooking = exports.updateBookingNote = exports.editBooking = exports.getRoomAvailability = exports.newBooking = exports.occupiedCapacityOnDate = void 0;
+exports.getNeedsReviewBookings = exports.resolveBooking = exports.cancelBooking = exports.getPassportData = exports.addTransaction = exports.extendBooking = exports.manageRoomStays = exports.getBookingById = exports.getMonthCalendar = exports.correctDeposit = exports.checkOut = exports.checkIn = exports.removeBooking = exports.getMasterBookings = exports.getAdminDashboardStats = exports.getTodayBookings = exports.pinBooking = exports.updateBookingNote = exports.editBooking = exports.getRoomAvailability = exports.newBooking = exports.occupancySummaryForRange = exports.occupiedCapacityOnDate = void 0;
 const booking_1 = __importStar(require("../models/booking"));
 const standaloneSale_1 = __importDefault(require("../models/standaloneSale"));
 const dotenv_1 = __importDefault(require("dotenv"));
@@ -56,6 +56,7 @@ const bookingConcurrency_1 = require("../services/bookingConcurrency");
 const bookingExtension_1 = require("../services/bookingExtension");
 const transactionCorrections_1 = require("../services/transactionCorrections");
 const passportData_1 = require("../services/passportData");
+const expectedStayRevenueHelpers_1 = require("../helpers/expectedStayRevenueHelpers");
 dotenv_1.default.config();
 const ACTIVE_ROOM_INVENTORY = (0, roomInventory_1.activeRoomInventory)();
 const ACTIVE_ROOM_IDS = new Set(ACTIVE_ROOM_INVENTORY.map((room) => room.id));
@@ -242,16 +243,13 @@ const nextRevenueBucketStart = (date, bucketSize) => {
     return new Date(date.getTime() + 86400000);
 };
 const bookingKeepsRoomForOccupancy = (booking) => {
-    if (booking.status !== "cancelled" && booking.status !== "noShow") {
-        return true;
-    }
-    return (booking.cancellation?.roomReleaseStatus === "blocked" ||
-        booking.resolution?.roomReleaseStatus === "blocked");
+    return (!booking.voided &&
+        booking.status !== "cancelled" &&
+        booking.status !== "noShow");
 };
 const effectiveRoomStayEnd = (currentBooking, roomStay) => {
     const stayEnd = new Date(roomStay.to);
     if (currentBooking.checkout?.earlyCheckOut &&
-        currentBooking.checkout.roomReleaseStatus === "released" &&
         currentBooking.checkout.checkedOutAt) {
         const checkoutStart = getBookingBusinessDateStart(new Date(currentBooking.checkout.checkedOutAt));
         return checkoutStart < stayEnd ? checkoutStart : stayEnd;
@@ -276,6 +274,26 @@ const occupiedCapacityOnDate = (bookings, start, end) => {
         : total, 0);
 };
 exports.occupiedCapacityOnDate = occupiedCapacityOnDate;
+const occupancySummaryForRange = (bookings, start, end) => {
+    let date = new Date(start);
+    let occupiedBedNights = 0;
+    let dayCount = 0;
+    while (date < end) {
+        const dayEnd = new Date(Math.min(date.getTime() + 86400000, end.getTime()));
+        occupiedBedNights += (0, exports.occupiedCapacityOnDate)(bookings, date, dayEnd);
+        dayCount += 1;
+        date = dayEnd;
+    }
+    const availableBedNights = TOTAL_GUEST_CAPACITY * dayCount;
+    const averageOccupiedCapacity = dayCount === 0 ? 0 : occupiedBedNights / dayCount;
+    return {
+        occupiedBedNights,
+        availableBedNights,
+        averageOccupiedCapacity,
+        occupancyRate: availableBedNights === 0 ? 0 : occupiedBedNights / availableBedNights,
+    };
+};
+exports.occupancySummaryForRange = occupancySummaryForRange;
 const getRoomGuestCapacity = roomInventory_1.roomGuestCapacity;
 const getRequestedRoomIds = (booking) => (0, roomStayHelpers_1.getRoomStayRoomIds)({
     roomIds: booking.roomIds,
@@ -354,9 +372,11 @@ const getGuestsInHouse = async (date = new Date()) => {
 const calculateCardSurcharge = (amount) => Number((amount * CARD_SURCHARGE_RATE).toFixed(2));
 const roundMoney = (amount) => Number(amount.toFixed(2));
 const buildTransactionsWithCardSurcharge = (transaction, options) => {
-    const transactions = [(0, financeHelpers_1.normalizeTransaction)(transaction, options)];
+    const { cardSurchargeBaseAmount, ...transactionOptions } = options;
+    const transactions = [(0, financeHelpers_1.normalizeTransaction)(transaction, transactionOptions)];
+    const surchargeBaseAmount = cardSurchargeBaseAmount ?? transaction.amount;
     if (transaction.paymentMethod === "Card" &&
-        transaction.amount > 0 &&
+        surchargeBaseAmount > 0 &&
         (0, financeHelpers_1.transactionDirection)(transaction) === "in" &&
         transaction.type !== "depositRefund" &&
         transaction.type !== "cardSurcharge") {
@@ -367,10 +387,10 @@ const buildTransactionsWithCardSurcharge = (transaction, options) => {
             relatedTransactionId: transaction._id
                 ? String(transaction._id)
                 : undefined,
-            amount: calculateCardSurcharge(transaction.amount),
+            amount: calculateCardSurcharge(surchargeBaseAmount),
             platformId: transaction.platformId,
             commercialSegmentId: transaction.commercialSegmentId,
-        }, options));
+        }, transactionOptions));
     }
     return transactions;
 };
@@ -994,19 +1014,14 @@ const getAdminDashboardStats = async (req, res) => {
     const revenueRange = normalizeRevenueChartRange(req.query.revenueRange);
     const { start: chartStart, end: chartEnd } = getRevenueChartBounds(today, revenueRange, startOfMonth, startOfTomorrow);
     try {
-        const [monthFinancialBookings, chartFinancialBookings, monthStandaloneSales, chartStandaloneSales, occupancyBookings, monthBookings, channelMixBookings, unpaidBookings, occupancy,] = await Promise.all([
+        const [monthFinancialBookings, monthStandaloneSales, esrBookings, occupancyBookings, monthBookings, channelMixBookings, unpaidBookings,] = await Promise.all([
             booking_1.default.find({
                 "transactions.createdAt": { $gte: startOfMonth, $lt: startOfNextMonth },
-            }),
-            booking_1.default.find({
-                "transactions.createdAt": { $gte: chartStart, $lt: chartEnd },
             }),
             standaloneSale_1.default.find({
                 "transactions.createdAt": { $gte: startOfMonth, $lt: startOfNextMonth },
             }),
-            standaloneSale_1.default.find({
-                "transactions.createdAt": { $gte: chartStart, $lt: chartEnd },
-            }),
+            booking_1.default.find((0, expectedStayRevenueHelpers_1.expectedStayRevenueBookingQuery)(startOfMonth, startOfNextMonth)).lean(),
             booking_1.default.find({
                 roomStays: {
                     $elemMatch: {
@@ -1036,7 +1051,6 @@ const getAdminDashboardStats = async (req, res) => {
                     { "transactionCorrections.after.paymentMethod": "Unpaid" },
                 ],
             }),
-            getGuestsInHouse(today),
         ]);
         const transactionsInRange = (bookings, start, end) => bookings.flatMap((booking) => {
             const bookingTransactions = "transactionCorrections" in booking
@@ -1056,18 +1070,30 @@ const getAdminDashboardStats = async (req, res) => {
             }));
         });
         const monthFinancialTransactions = transactionsInRange([...monthFinancialBookings, ...monthStandaloneSales], startOfMonth, startOfNextMonth);
-        const chartFinancialTransactions = transactionsInRange([...chartFinancialBookings, ...chartStandaloneSales], chartStart, chartEnd);
-        const calculateGrossRevenue = (transactions) => transactions.reduce((sum, { transaction }) => sum + (0, financeHelpers_1.transactionDashboardGrossRevenueAmount)(transaction), 0);
-        const calculateCollectedRevenue = (transactions) => transactions.reduce((sum, { transaction, bookingTransactions }) => sum +
-            (0, financeHelpers_1.transactionDashboardCollectedRevenueAmount)(transaction, bookingTransactions), 0);
-        const monthlyGrossRevenue = calculateGrossRevenue(monthFinancialTransactions);
-        const monthlyCollectedRevenue = calculateCollectedRevenue(monthFinancialTransactions);
+        const esrSummary = (0, expectedStayRevenueHelpers_1.summarizeExpectedStayRevenue)(esrBookings, startOfMonth, startOfNextMonth);
+        const monthlyGrossRevenue = esrSummary.expectedStayRevenue;
+        const monthlyCollectedRevenue = esrSummary.collectedRevenue;
         const unpaidAmount = unpaidBookings.reduce((sum, booking) => sum + unpaidRoomChargeAmount(booking), 0);
         const channelCounts = new Map();
         const revenueByDate = new Map();
         const revenueBucketSize = getRevenueChartBucketSize(revenueRange);
         const revenueBuckets = [];
         const monthFinancialSummary = (0, financeHelpers_1.summarizeTransactions)(monthFinancialTransactions.map(({ transaction }) => transaction));
+        const esrByDate = new Map();
+        for (let date = startOfMonth; date < startOfNextMonth; date = new Date(date.getTime() + 86400000)) {
+            esrByDate.set(formatLocalDateKey(date), {
+                grossRevenue: 0,
+                collectedRevenue: 0,
+            });
+        }
+        esrSummary.entries.forEach((entry) => {
+            const dateKey = formatLocalDateKey(entry.start);
+            const current = esrByDate.get(dateKey);
+            if (!current)
+                return;
+            current.grossRevenue += entry.expectedRevenue;
+            current.collectedRevenue += entry.collectedRevenue;
+        });
         for (let date = getRevenueBucketStart(chartStart, revenueBucketSize); date <= startOfToday; date = nextRevenueBucketStart(date, revenueBucketSize)) {
             const nextBucketStart = nextRevenueBucketStart(date, revenueBucketSize);
             const key = formatLocalDateKey(date);
@@ -1099,31 +1125,16 @@ const getAdminDashboardStats = async (req, res) => {
                 channelCounts.set(segment.platformId, current);
             });
         });
-        chartFinancialTransactions.forEach(({ transaction, bookingTransactions }) => {
-            const bucketKey = formatLocalDateKey(getRevenueBucketStart(new Date(transaction.createdAt || 0), revenueBucketSize));
-            const bucketRevenue = revenueByDate.get(bucketKey);
-            if (!bucketRevenue)
-                return;
-            bucketRevenue.grossRevenue += (0, financeHelpers_1.transactionDashboardGrossRevenueAmount)(transaction);
-            bucketRevenue.collectedRevenue += (0, financeHelpers_1.transactionDashboardCollectedRevenueAmount)(transaction, bookingTransactions);
-        });
+        const monthToDateOccupancy = (0, exports.occupancySummaryForRange)(occupancyBookings, startOfMonth, startOfTomorrow);
+        const selectedRangeOccupancy = (0, exports.occupancySummaryForRange)(occupancyBookings, chartStart, chartEnd);
         revenueBuckets.forEach((bucket) => {
             const bucketRevenue = revenueByDate.get(bucket.key);
             if (!bucketRevenue)
                 return;
-            let date = bucket.start < chartStart ? chartStart : bucket.start;
-            let dayCount = 0;
-            let occupiedCapacityTotal = 0;
-            while (date < bucket.end) {
-                const dayEnd = new Date(date.getTime() + 86400000);
-                const occupiedCapacity = (0, exports.occupiedCapacityOnDate)(occupancyBookings, date, dayEnd);
-                occupiedCapacityTotal += occupiedCapacity;
-                dayCount += 1;
-                date = dayEnd;
-            }
-            const averageOccupiedCapacity = dayCount === 0 ? 0 : occupiedCapacityTotal / dayCount;
-            bucketRevenue.occupiedCapacity = averageOccupiedCapacity;
-            bucketRevenue.occupancyRate = averageOccupiedCapacity / TOTAL_GUEST_CAPACITY;
+            const bucketOccupancy = (0, exports.occupancySummaryForRange)(occupancyBookings, bucket.start < chartStart ? chartStart : bucket.start, bucket.end);
+            bucketRevenue.occupiedCapacity =
+                bucketOccupancy.averageOccupiedCapacity;
+            bucketRevenue.occupancyRate = bucketOccupancy.occupancyRate;
         });
         const channelMix = Array.from(channelCounts.entries()).map(([platformId, summary]) => ({
             platformId,
@@ -1137,6 +1148,11 @@ const getAdminDashboardStats = async (req, res) => {
             occupancyRate: revenue.occupancyRate,
             occupiedCapacity: revenue.occupiedCapacity,
         }));
+        const esrSeries = Array.from(esrByDate.entries()).map(([date, revenue]) => ({
+            date,
+            grossRevenue: Number(revenue.grossRevenue.toFixed(2)),
+            collectedRevenue: Number(revenue.collectedRevenue.toFixed(2)),
+        }));
         res.status(200).json({
             monthlyGrossRevenue,
             monthlyCollectedRevenue,
@@ -1144,20 +1160,25 @@ const getAdminDashboardStats = async (req, res) => {
             monthBookings: monthBookings.length,
             unpaidAmount,
             financialSummary: monthFinancialSummary,
-            occupancyRate: occupancy / TOTAL_GUEST_CAPACITY,
+            occupancyRate: monthToDateOccupancy.occupancyRate,
+            rangeOccupancyRate: selectedRangeOccupancy.occupancyRate,
             channelMix,
             revenueRange,
             revenueSeries,
+            esrSeries,
         });
     }
     catch (err) {
+        console.error("Failed to fetch admin dashboard stats", err);
         res.status(500).json({ error: "Failed to fetch admin dashboard stats" });
     }
 };
 exports.getAdminDashboardStats = getAdminDashboardStats;
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const DEFAULT_MASTER_BOOKINGS_PAGE_SIZE = 75;
+const MAX_MASTER_BOOKINGS_PAGE_SIZE = 200;
 const getMasterBookings = async (req, res) => {
-    const { from, to, name, bookingId, room, channel, status } = req.query;
+    const { from, to, name, bookingId, room, channel, status, page, limit } = req.query;
     if (!from || !to) {
         return res.status(400).json({
             message: "Please specify from and to dates",
@@ -1177,6 +1198,12 @@ const getMasterBookings = async (req, res) => {
     }
     const endOfToDate = new Date(toDate);
     endOfToDate.setDate(endOfToDate.getDate() + 1);
+    const parsedPage = Number(page);
+    const parsedLimit = Number(limit);
+    const currentPage = Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+    const pageSize = Number.isInteger(parsedLimit) && parsedLimit > 0
+        ? Math.min(parsedLimit, MAX_MASTER_BOOKINGS_PAGE_SIZE)
+        : DEFAULT_MASTER_BOOKINGS_PAGE_SIZE;
     try {
         const query = {
             checkIn: { $lt: endOfToDate },
@@ -1221,13 +1248,29 @@ const getMasterBookings = async (req, res) => {
         }
         if (andFilters.length > 0)
             query.$and = andFilters;
-        const bookings = await booking_1.default.find(query).sort({
-            checkIn: 1,
-            checkOut: 1,
-            name: 1,
+        const [bookingPage, occupancy] = await Promise.all([
+            booking_1.default.find(query)
+                .sort({
+                checkIn: 1,
+                checkOut: 1,
+                name: 1,
+                _id: 1,
+            })
+                .skip((currentPage - 1) * pageSize)
+                .limit(pageSize + 1),
+            getGuestsInHouse(),
+        ]);
+        const hasMore = bookingPage.length > pageSize;
+        const bookings = hasMore ? bookingPage.slice(0, pageSize) : bookingPage;
+        res.status(200).json({
+            bookings,
+            occupancy,
+            pagination: {
+                page: currentPage,
+                pageSize,
+                hasMore,
+            },
         });
-        const occupancy = await getGuestsInHouse();
-        res.status(200).json({ bookings, occupancy });
     }
     catch (err) {
         res.status(500).json({ error: "Failed to fetch bookings" });
@@ -1406,7 +1449,7 @@ const checkIn = async (req, res) => {
                 message: "ยังไม่ถึงวันเช็คอินของ booking นี้",
             });
         }
-        if (!adminHistoricalCheckIn && todayStart >= checkOutDateStart) {
+        if (!adminHistoricalCheckIn && todayStart > checkOutDateStart) {
             return res.status(409).json({
                 message: "booking นี้เลยวันเช็คเอาท์แล้ว กรุณาแก้ไขวันที่หรือยกเลิกก่อน check-in",
             });
@@ -1457,7 +1500,7 @@ const checkIn = async (req, res) => {
         if (roundingAdjustment)
             newTransactions.push((0, financeHelpers_1.normalizeTransaction)({
                 type: "adjustment",
-                paymentMethod: "Cash",
+                paymentMethod: checkInData.unpaidPayment.paymentMethod,
                 amount: roundingAdjustment,
                 reasonOfAdjustment: "rounding",
             }, {
@@ -1478,6 +1521,7 @@ const checkIn = async (req, res) => {
                 createdBy: req.user?.username,
                 sourceAction: "CHECK_IN",
                 note: "Unpaid room charge settled at check-in",
+                cardSurchargeBaseAmount: outstandingRoomChargeAmount + roundingAdjustment,
             }));
         }
         if (adminHistoricalCheckIn) {

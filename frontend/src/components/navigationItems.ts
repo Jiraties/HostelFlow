@@ -26,10 +26,3 @@ export const navigationItems: NavigationItem[] = [
     icon: "bx-cog",
   },
 ];
-
-export const mobilePrimaryLinks = new Set([
-  "/",
-  "/arrivals",
-  "/departures",
-  "/calendar",
-]);

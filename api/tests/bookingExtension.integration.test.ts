@@ -660,7 +660,7 @@ test("financial breakdown attributes original and extension revenue to their own
   await getExpectedStayRevenueBreakdown(
     {
       user: { userId: "admin-id", username: "admin", admin: true },
-      query: { startDate: localDate(), endDate: localDate(1) },
+      query: { startDate: localDate(), endDate: localDate(2) },
     } as any,
     reportResponse as any,
   );
@@ -675,4 +675,29 @@ test("financial breakdown attributes original and extension revenue to their own
     ["BOOK", "WALK"],
   );
   assert.equal(roomChargeCategory.total, 800);
+});
+
+test("admin dashboard calculates ESR from MongoDB booking documents", async () => {
+  await bookingFixture({ bookingId: "DASHBOARD-ESR" });
+
+  const dashboardResponse = response();
+  await controller.getAdminDashboardStats(
+    {
+      user: { userId: "admin-id", username: "admin", admin: true },
+      query: { revenueRange: "MTD" },
+    } as any,
+    dashboardResponse as any,
+  );
+
+  assert.equal(dashboardResponse.statusCode, 200);
+  assert.equal(dashboardResponse.body.monthlyGrossRevenue, 500);
+  assert.equal(dashboardResponse.body.monthlyCollectedRevenue, 500);
+  assert.equal(
+    dashboardResponse.body.esrSeries.reduce(
+      (total: number, point: { grossRevenue: number }) =>
+        total + point.grossRevenue,
+      0,
+    ),
+    500,
+  );
 });

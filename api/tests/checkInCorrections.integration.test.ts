@@ -183,7 +183,7 @@ test("preview reports eligibility and the deposit effect", async () => {
 test("eligibility lasts for the whole cash shift and keeps admin access after close", async () => {
   await Booking.updateOne(
     { bookingId: "RECOVERY-1" },
-    { $set: { checkedInAt: new Date(Date.now() - 30 * 60_000) } },
+    { $set: { checkedInAt: new Date() } },
   );
   const currentStaff = response();
   await getCheckInCorrectionEligibility(request({}), currentStaff);

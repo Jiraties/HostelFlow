@@ -15,6 +15,7 @@ import type {
 import { logActivity } from "../services/activityServices";
 import {
   CASH_VARIANCE_THRESHOLD,
+  bookingTransactionTodayReductionAmount,
   bookingTodayArrivalRevenueAmount,
   calculateTodayRevenueSummary,
   cashBalanceAfterMovements,
@@ -22,7 +23,6 @@ import {
   summarizeTransactions,
   summarizeCashStashes,
   transactionTodayExtrasRevenueAmount,
-  transactionTodayReductionAmount,
   transactionDirection,
   transactionFallsOnBusinessDate,
   transactionRequiresReview,
@@ -43,6 +43,10 @@ import {
 } from "../services/cashShiftMutationLock";
 import { CashShiftLedgerConflictError } from "../services/cashLedgerTransaction";
 import { withEffectiveTransactions } from "../services/transactionCorrections";
+import {
+  expectedStayRevenueBookingQuery,
+  summarizeExpectedStayRevenue,
+} from "../helpers/expectedStayRevenueHelpers";
 
 const sendDuplicateMutationResponse = (res: Response) =>
   res.status(409).json({
@@ -1076,18 +1080,14 @@ export const getExpectedStayRevenueBreakdown = async (
       });
     }
 
-    const [bookingRecords, standaloneSales] = await Promise.all([
-      Booking.find({
-        "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end },
-      }).lean<booking[]>(),
-      StandaloneSale.find({
-        "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end },
-      }).lean(),
-    ]);
-    const bookings = [
-      ...bookingRecords.map((booking) => withEffectiveTransactions(booking)),
-      ...standaloneSales.map(standaloneSaleBookingView),
-    ];
+    const bookingRecords = await Booking.find(
+      expectedStayRevenueBookingQuery(bounds.start, bounds.end),
+    ).lean<booking[]>();
+    const summary = summarizeExpectedStayRevenue(
+      bookingRecords,
+      bounds.start,
+      bounds.end,
+    );
     const categories = new Map<
       TransactionType,
       ExpectedStayRevenueBreakdownCategory
@@ -1101,73 +1101,67 @@ export const getExpectedStayRevenueBreakdown = async (
       ExpectedStayRevenuePaymentMethodBreakdown
     >();
 
-    bookings.forEach((booking) => {
-      (booking.transactions || []).forEach((transaction) => {
-        if (!transaction.createdAt) return;
+    summary.entries.forEach((entry) => {
+      addBreakdownTransaction(
+        categories,
+        entry.roomCharge,
+        entry.booking,
+        Math.abs(entry.roomCharge.amount || entry.segment.amount || 0),
+        "in",
+      );
 
-        const createdAt = new Date(transaction.createdAt);
-        if (createdAt < bounds.start || createdAt >= bounds.end) return;
+      entry.chargeAdjustments.forEach(({ transaction, amount }) => {
+        addBreakdownTransaction(
+          categories,
+          transaction,
+          entry.booking,
+          amount,
+          "in",
+        );
+      });
 
-        const direction = transactionDirection(transaction);
-        const amount = Math.abs(transaction.amount || 0);
-        if (amount === 0) return;
+      entry.reductions.forEach(({ transaction, amount }) => {
+        addBreakdownTransaction(
+          reductions,
+          transaction,
+          entry.booking,
+          amount,
+          "out",
+        );
+      });
 
-        if (
-          expectedStayRevenueTypes.has(transaction.type) ||
-          (transaction.type === "adjustment" && direction === "in")
-        ) {
-          addBreakdownTransaction(
-            categories,
-            transaction,
-            booking,
+      (Object.entries(entry.paymentAmounts) as Array<
+        [PaymentMethod, number]
+      >).forEach(([paymentMethod, amount]) => {
+        if (amount <= 0) return;
+
+        addPaymentMethodBreakdownTransaction(
+          paymentMethods,
+          {
+            ...entry.roomCharge,
+            paymentMethod,
             amount,
-            direction,
-          );
-          addPaymentMethodBreakdownTransaction(
-            paymentMethods,
-            transaction,
-            booking,
-            amount,
-            direction,
-          );
-          return;
-        }
-
-        if (
-          expectedStayRevenueReductionTypes.has(transaction.type) ||
-          (transaction.type === "adjustment" && direction === "out")
-        ) {
-          addBreakdownTransaction(
-            reductions,
-            transaction,
-            booking,
-            amount,
-            direction,
-          );
-        }
+            direction: paymentMethod === "Unpaid" ? "neutral" : "in",
+            createdAt: entry.segment.from,
+          },
+          entry.booking,
+          amount,
+          paymentMethod === "Unpaid" ? "neutral" : "in",
+        );
       });
     });
 
-    const grossStayCharges = Array.from(categories.values()).reduce(
-      (sum, category) => sum + category.total,
-      0,
-    );
-    const reductionTotal = Array.from(reductions.values()).reduce(
-      (sum, category) => sum + category.total,
-      0,
-    );
-    const expectedStayRevenue = grossStayCharges - reductionTotal;
     const finalizedCategories = finalizeBreakdownCategories(
       categories,
-      grossStayCharges,
+      summary.grossStayCharges,
     );
     const finalizedReductions = finalizeBreakdownCategories(
       reductions,
-      grossStayCharges,
+      summary.grossStayCharges,
     );
     const finalizedPaymentMethods = finalizePaymentMethodBreakdowns(
       paymentMethods,
-      grossStayCharges,
+      summary.expectedStayRevenue,
     );
     const usersByUsername = await loadRevenueBreakdownStaffProfiles(
       finalizedCategories,
@@ -1179,13 +1173,15 @@ export const getExpectedStayRevenueBreakdown = async (
       period: {
         startDate: formatBusinessDateKey(bounds.start),
         endDate: formatBusinessDateKey(bounds.end),
-        basis: "transactionCreatedAt",
+        basis: "bookingOrExtensionStart",
       },
       totals: {
-        grossStayCharges: Number(grossStayCharges.toFixed(2)),
-        expectedStayRevenue: Number(expectedStayRevenue.toFixed(2)),
-        reductions: Number(reductionTotal.toFixed(2)),
-        netAfterReductions: Number(expectedStayRevenue.toFixed(2)),
+        grossStayCharges: summary.grossStayCharges,
+        expectedStayRevenue: summary.expectedStayRevenue,
+        collectedRevenue: summary.collectedRevenue,
+        unpaidRevenue: summary.unpaidRevenue,
+        reductions: summary.reductions,
+        netAfterReductions: summary.expectedStayRevenue,
         transactionCount:
           finalizedCategories.reduce(
             (sum, category) => sum + category.transactionCount,
@@ -1210,6 +1206,7 @@ export const getExpectedStayRevenueBreakdown = async (
       ),
     });
   } catch (err) {
+    console.error("Failed to fetch expected stay revenue breakdown", err);
     res.status(500).json({ error: (err as Error).message });
   }
 };
@@ -1324,7 +1321,11 @@ export const getTodayRevenueBreakdown = async (req: Request, res: Response) => {
           );
         }
 
-        const reductionAmount = transactionTodayReductionAmount(transaction);
+        const reductionAmount = bookingTransactionTodayReductionAmount(
+          booking,
+          transaction,
+          bounds.end,
+        );
         const arrivalReductionAlreadyNetted =
           isTodayArrival &&
           ["cancelled", "noShow"].includes(booking.status) &&

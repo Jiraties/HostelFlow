@@ -57,6 +57,8 @@ type CashPositionData = {
   };
 };
 
+const MASTER_BOOKINGS_PAGE_SIZE = 75;
+
 const formatInputDate = (date: Date) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -145,6 +147,8 @@ const Home = ({ status }: { status: HomeStatus }) => {
   const [bookings, setBookings] = useState<booking[]>([]);
   const [occupancy, setOccupancy] = useState<number>(0);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMoreBookings, setHasMoreBookings] = useState(true);
   const [filtersModalIsOpen, setFiltersModalIsOpen] = useState(false);
   const [confirmationModalIsOpen, setConfirmationModalIsOpen] = useState<{
     isOpen: boolean;
@@ -161,6 +165,9 @@ const Home = ({ status }: { status: HomeStatus }) => {
     getDefaultMasterFilters,
   );
   const masterFiltersRef = useRef(masterFilters);
+  const masterPageRef = useRef(0);
+  const masterRequestIdRef = useRef(0);
+  const masterLoadingMoreRef = useRef(false);
   const openedBookingIdFromQueryRef = useRef("");
 
   useEffect(() => {
@@ -280,7 +287,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
           },
           {
             id: "guestsInHouse",
-            label: "แขกที่พักอยู่ตอนนี้",
+            label: "เตียงที่เช็คอินอยู่ตอนนี้",
             value: stats.guestsInHouse,
           },
         ]
@@ -304,7 +311,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
           // },
           {
             id: "guestsInHouse",
-            label: "แขกที่พักอยู่ตอนนี้",
+            label: "เตียงที่เช็คอินอยู่ตอนนี้",
             value: stats.guestsInHouse,
           },
         ];
@@ -352,23 +359,80 @@ const Home = ({ status }: { status: HomeStatus }) => {
   };
 
   const fetchBookingsWithFilters = useCallback(
-    async (filters: MasterFilters) => {
-      setLoading(true);
+    async (
+      filters: MasterFilters,
+      options: { append?: boolean } = {},
+    ) => {
+      const append = options.append === true;
+      if (append && masterLoadingMoreRef.current) return;
+
+      const requestId = append
+        ? masterRequestIdRef.current
+        : masterRequestIdRef.current + 1;
+      const requestedPage = append ? masterPageRef.current + 1 : 1;
+
+      if (append) {
+        masterLoadingMoreRef.current = true;
+        setLoadingMore(true);
+      } else {
+        masterRequestIdRef.current = requestId;
+        masterPageRef.current = 0;
+        masterLoadingMoreRef.current = false;
+        setLoadingMore(false);
+        setHasMoreBookings(true);
+        setLoading(true);
+      }
+
       try {
         const response = await axios.get(
           `${API_URL}/bookings/getMasterBookings`,
           {
             withCredentials: true,
-            params: filters,
+            params: {
+              ...filters,
+              page: requestedPage,
+              limit: MASTER_BOOKINGS_PAGE_SIZE,
+            },
           },
         );
 
-        const bookingsData = response.data.bookings;
+        if (requestId !== masterRequestIdRef.current) return;
+
+        const bookingsData = formatBookingsDates(response.data.bookings);
+        const hasMore = response.data.pagination?.hasMore === true;
         setLastUpdated(new Date());
         setOccupancy(response.data.occupancy);
-        setBookings(formatBookingsDates(bookingsData));
+        setBookings((currentBookings) => {
+          if (!append) return bookingsData;
+
+          const existingBookingIds = new Set(
+            currentBookings.map((currentBooking) => currentBooking.bookingId),
+          );
+          return [
+            ...currentBookings,
+            ...bookingsData.filter(
+              (currentBooking) =>
+                !existingBookingIds.has(currentBooking.bookingId),
+            ),
+          ];
+        });
+        masterPageRef.current =
+          response.data.pagination?.page || requestedPage;
+        setHasMoreBookings(hasMore);
+      } catch (err) {
+        if (requestId === masterRequestIdRef.current) {
+          if (!append) setHasMoreBookings(false);
+          throw err;
+        }
       } finally {
-        setLoading(false);
+        if (append) masterLoadingMoreRef.current = false;
+        if (requestId === masterRequestIdRef.current) {
+          if (append) {
+            setLoadingMore(false);
+          } else {
+            setLoading(false);
+          }
+        }
       }
     },
     [],
@@ -400,6 +464,28 @@ const Home = ({ status }: { status: HomeStatus }) => {
       setLoading(false);
     }
   }, [fetchBookingsWithFilters, isMaster, status]);
+
+  const loadMoreMasterBookings = useCallback(() => {
+    if (
+      !isMaster ||
+      loading ||
+      loadingMore ||
+      !hasMoreBookings ||
+      masterLoadingMoreRef.current
+    ) {
+      return;
+    }
+
+    fetchBookingsWithFilters(masterFiltersRef.current, { append: true }).catch(
+      (err) => toast.error(getFetchErrorMessage(err)),
+    );
+  }, [
+    fetchBookingsWithFilters,
+    hasMoreBookings,
+    isMaster,
+    loading,
+    loadingMore,
+  ]);
 
   const updateMasterFilter = (key: keyof MasterFilters, value: string) => {
     setMasterFilters((prev) => ({ ...prev, [key]: value }));
@@ -459,7 +545,11 @@ const Home = ({ status }: { status: HomeStatus }) => {
     setViewBookingBooking(bookingToOpen);
   }, [bookingIdQuery, bookings, loading]);
 
-  const renderMasterFilterFields = () => (
+  const renderMasterFilterFields = ({
+    includeName = true,
+  }: {
+    includeName?: boolean;
+  } = {}) => (
     <div className="home__masterFiltersInner">
       <div className="home__dateFilter">
         <div className="home__filterLabels">
@@ -479,16 +569,18 @@ const Home = ({ status }: { status: HomeStatus }) => {
           />
         </div>
       </div>
-      <div className="home__filterField">
-        <p className="home__filterLabel">ชื่อ</p>
-        <input
-          className="boxInput home__filterInput"
-          type="text"
-          value={masterFilters.name}
-          placeholder="ค้นหาชื่อแขก"
-          onChange={(e) => updateMasterFilter("name", e.target.value)}
-        />
-      </div>
+      {includeName && (
+        <div className="home__filterField">
+          <p className="home__filterLabel">ชื่อ</p>
+          <input
+            className="boxInput home__filterInput"
+            type="text"
+            value={masterFilters.name}
+            placeholder="ค้นหาชื่อแขก"
+            onChange={(e) => updateMasterFilter("name", e.target.value)}
+          />
+        </div>
+      )}
       <div className="home__filterField">
         <p className="home__filterLabel">Booking ID</p>
         <input
@@ -634,7 +726,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
             />
           </div>
           <div className="home__mobileFilters">
-            {renderMasterFilterFields()}
+            {renderMasterFilterFields({ includeName: false })}
           </div>
         </div>
       </Modal>
@@ -649,6 +741,19 @@ const Home = ({ status }: { status: HomeStatus }) => {
             {renderMasterFilterFields()}
           </div>
           <div className="home__masterActions">
+            <label className="home__mobileNameSearch">
+              <i className="bx bx-search" aria-hidden="true" />
+              <input
+                type="search"
+                value={masterFilters.name}
+                placeholder="ค้นหาชื่อแขก"
+                aria-label="ค้นหาด้วยชื่อแขก"
+                autoComplete="off"
+                onChange={(event) =>
+                  updateMasterFilter("name", event.target.value)
+                }
+              />
+            </label>
             <ActionButton
               text="ตัวกรอง"
               icon="bx-filter"
@@ -696,6 +801,9 @@ const Home = ({ status }: { status: HomeStatus }) => {
         <Spreadsheet
           bookings={bookings}
           loading={loading}
+          loadingMore={loadingMore}
+          hasMore={hasMoreBookings}
+          onLoadMore={isMaster ? loadMoreMasterBookings : undefined}
           status={status}
           masterRange={
             isMaster

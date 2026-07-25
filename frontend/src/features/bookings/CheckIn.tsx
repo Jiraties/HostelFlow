@@ -149,7 +149,7 @@ const CheckIn = ({
   const [passportNo, setPassportNo] = useState<string>("");
   const [roundingAdjustment, setRoundingAdjustment] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [receivedCash, setReceivedCash] = useState<string>(
+  const [adjustedRoomChargeInput, setAdjustedRoomChargeInput] = useState<string>(
     String(outstandingRoomChargeAmount),
   );
   const isThaiGuest = nationality === "TH";
@@ -159,7 +159,7 @@ const CheckIn = ({
   const thaiNameParts = splitGuestName(passportName);
 
   useEffect(() => {
-    setReceivedCash(String(outstandingRoomChargeAmount));
+    setAdjustedRoomChargeInput(String(outstandingRoomChargeAmount));
   }, [outstandingRoomChargeAmount]);
 
   useEffect(() => {
@@ -174,7 +174,7 @@ const CheckIn = ({
         unpaidPaymentPaymentMethod !== "Cash" ||
         confirmedPayment ||
         roundingAdjustment ||
-        receivedCash !== String(outstandingRoomChargeAmount),
+        adjustedRoomChargeInput !== String(outstandingRoomChargeAmount),
       ),
     );
 
@@ -189,7 +189,7 @@ const CheckIn = ({
     onDirtyChange,
     passportName,
     passportNo,
-    receivedCash,
+    adjustedRoomChargeInput,
     outstandingRoomChargeAmount,
     roundingAdjustment,
     unpaidPaymentPaymentMethod,
@@ -203,23 +203,25 @@ const CheckIn = ({
       currency: "THB",
     }).format(num);
 
+  const parsedAdjustedRoomChargeAmount = Number(adjustedRoomChargeInput);
+  const adjustedRoomChargeAmount =
+    roundingAdjustment &&
+    Number.isFinite(parsedAdjustedRoomChargeAmount) &&
+    parsedAdjustedRoomChargeAmount >= outstandingRoomChargeAmount
+      ? parsedAdjustedRoomChargeAmount
+      : outstandingRoomChargeAmount;
   const cardSurcharge =
-    hasOutstandingRoomCharge &&
-    unpaidPaymentPaymentMethod === "Card"
-      ? Number((outstandingRoomChargeAmount * 0.03).toFixed(2))
+    hasOutstandingRoomCharge && unpaidPaymentPaymentMethod === "Card"
+      ? Number((adjustedRoomChargeAmount * 0.03).toFixed(2))
       : 0;
 
   // --- CLEAN MATH FOR THE UI TOTALS ---
   let cashTotal = hasExistingDeposit ? 0 : Number(deposit) || 0;
-  if (hasOutstandingRoomCharge) {
-    if (unpaidPaymentPaymentMethod === "Cash") {
-      cashTotal += roundingAdjustment
-        ? Number(receivedCash)
-        : outstandingRoomChargeAmount;
-    } else if (roundingAdjustment) {
-      // If paying by card/transfer, but they handed over extra cash for convenience
-      cashTotal += Number(receivedCash) - outstandingRoomChargeAmount;
-    }
+  if (
+    hasOutstandingRoomCharge &&
+    unpaidPaymentPaymentMethod === "Cash"
+  ) {
+    cashTotal += adjustedRoomChargeAmount;
   }
   const depositCash = hasExistingDeposit ? 0 : Number(deposit) || 0;
   const hasCashMovement = cashTotal - depositCash > 0;
@@ -248,19 +250,17 @@ const CheckIn = ({
       throw new Error(
         adminHistoricalCheckIn
           ? "กรุณายืนยันยอดเงินที่รับไว้ก่อนเริ่มใช้ระบบ"
-          : "กรุณายืนยันการรับเงินสดจากลูกค้า",
+          : "กรุณายืนยันยอดชำระจากลูกค้า",
       );
     }
-
-    const parsedReceivedCash = Number(receivedCash);
 
     if (
       hasOutstandingRoomCharge &&
       roundingAdjustment &&
-      (!Number.isFinite(parsedReceivedCash) ||
-        parsedReceivedCash < outstandingRoomChargeAmount)
+      (!Number.isFinite(parsedAdjustedRoomChargeAmount) ||
+        parsedAdjustedRoomChargeAmount < outstandingRoomChargeAmount)
     ) {
-      throw new Error("ยอดเงินสดค่าห้องต้องไม่ต่ำกว่าค่าห้อง");
+      throw new Error("ยอดชำระค่าห้องหลังปรับต้องไม่ต่ำกว่าค่าห้อง");
     }
 
     setSubmitting(true);
@@ -284,7 +284,7 @@ const CheckIn = ({
         payload.unpaidPayment = {
           paymentMethod: unpaidPaymentPaymentMethod,
           roundingAdjustment: roundingAdjustment
-            ? parsedReceivedCash - outstandingRoomChargeAmount
+            ? parsedAdjustedRoomChargeAmount - outstandingRoomChargeAmount
             : 0,
         };
       }
@@ -494,11 +494,6 @@ const CheckIn = ({
                   (option) => option.value === unpaidPaymentPaymentMethod,
                 )}
                 onChange={(option) => {
-                  if (option?.value !== "Cash") {
-                    setReceivedCash(String(outstandingRoomChargeAmount));
-                    setRoundingAdjustment(false);
-                  }
-
                   setConfirmedPayment(false);
                   setUnpaidPaymentPaymentMethod(option?.value || "");
                 }}
@@ -506,18 +501,20 @@ const CheckIn = ({
             </div>
           )}
 
-          {roundingAdjustment && unpaidPaymentPaymentMethod === "Cash" && (
+          {roundingAdjustment && hasOutstandingRoomCharge && (
             <div>
-              <p className="checkIn__label">รับเงินสดค่าห้องมา (บาท)</p>
+              <p className="checkIn__label">
+                ยอดชำระค่าห้องหลังปรับ (บาท)
+              </p>
               <input
                 className="boxInput"
                 type="number"
                 min={outstandingRoomChargeAmount}
                 step="0.01"
-                value={receivedCash}
+                value={adjustedRoomChargeInput}
                 placeholder="200"
                 onChange={(e) => {
-                  setReceivedCash(e.target.value);
+                  setAdjustedRoomChargeInput(e.target.value);
                   setConfirmedPayment(false);
                 }}
               />
@@ -559,7 +556,7 @@ const CheckIn = ({
                       {formatCurrency(outstandingRoomChargeAmount)}
                       {roundingAdjustment && (
                         <span className="checkIn__extraAmountReceived">
-                          {` + เกิน ${formatCurrency(Number(receivedCash) - outstandingRoomChargeAmount)}`}
+                          {` + เกิน ${formatCurrency(adjustedRoomChargeAmount - outstandingRoomChargeAmount)}`}
                         </span>
                       )}
                     </p>
@@ -593,7 +590,7 @@ const CheckIn = ({
                         <p>ยอด {unpaidPaymentPaymentMethod}:</p>
                         <p className="checkIn__paymentConfirmationTotalText">
                           {formatCurrency(
-                            outstandingRoomChargeAmount + cardSurcharge,
+                            adjustedRoomChargeAmount + cardSurcharge,
                           )}
                         </p>
                       </div>
@@ -620,18 +617,21 @@ const CheckIn = ({
       </div>
 
       <div className="checkIn__actions">
-        {hasOutstandingRoomCharge &&
-          unpaidPaymentPaymentMethod === "Cash" && (
-            <ActionButton
-              text="รับเงินสดไม่ตรงค่าห้อง"
-              onClick={() => {
-                setRoundingAdjustment(!roundingAdjustment);
-                setConfirmedPayment(false);
-              }}
-              icon={roundingAdjustment ? "bx-check" : "bx-currency-notes"}
-              highlight={roundingAdjustment}
-            />
-          )}
+        {hasOutstandingRoomCharge && (
+          <ActionButton
+            text={
+              unpaidPaymentPaymentMethod === "Cash"
+                ? "รับเงินสดไม่ตรงค่าห้อง"
+                : "รับยอดไม่ตรงค่าห้อง"
+            }
+            onClick={() => {
+              setRoundingAdjustment(!roundingAdjustment);
+              setConfirmedPayment(false);
+            }}
+            icon={roundingAdjustment ? "bx-check" : "bx-currency-notes"}
+            highlight={roundingAdjustment}
+          />
+        )}
         <ActionButton
           text={adminHistoricalCheckIn ? "Onboard Existing Stay" : "Check In"}
           disabled={submitting}

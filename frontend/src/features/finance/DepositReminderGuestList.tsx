@@ -1,4 +1,5 @@
 import { formatDisplayDate } from "../../helpers/displayDate";
+import { formatCompactRoomNames } from "../../helpers/roomStayHelpers";
 import type { DepositReturnReminderBooking } from "../../types/cashShiftTypes";
 import type { DateFormatPreference } from "../../types/userSettings";
 
@@ -11,7 +12,9 @@ const formatMoney = (amount: number) =>
   new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(amount);
 
 const guestRoomLabel = (booking: DepositReturnReminderBooking) =>
-  booking.roomIds.length > 0 ? booking.roomIds.join(", ") : "ไม่ระบุห้อง";
+  booking.roomIds.length > 0
+    ? formatCompactRoomNames(booking.roomIds)
+    : "ไม่ระบุห้อง";
 
 export function DepositReminderGuestList({
   bookings,

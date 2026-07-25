@@ -21,7 +21,10 @@ import { formatBookingDates } from "../helpers/bookingHelpers";
 import { API_URL } from "../config/api.ts";
 import { requestUnsavedModalClose } from "../helpers/modalGuards";
 import { formatLocalDate, isSameDay } from "../helpers/bookingHelpers";
-import { getRoomStayRoomIds } from "../helpers/roomStayHelpers";
+import {
+  formatShortRoomName,
+  getRoomStayRoomIds,
+} from "../helpers/roomStayHelpers";
 import usePageTitle from "../hooks/useTitle";
 import { useAuth } from "../context/AuthContext";
 import { platformOptions } from "../helpers/options";
@@ -73,6 +76,32 @@ const statusColorMap: Record<booking["status"], string> = {
   cancelled: "var(--red)",
   noShow: "#6b7280",
 };
+
+const roomTypeColorMap: Record<string, string> = {
+  balcony: "#f29393",
+  window: "#91cfa5",
+  "pottery 1": "#eed58a",
+  "pottery 2": "#add8e6",
+  siesta: "#91b9df",
+  marquisette: "#a8ddc3",
+  homespan: "#c4c9cf",
+  veranda: "#ebb6c8",
+  wicker: "#e8cf82",
+};
+
+const getRoomTypeColor = (roomId: string) => {
+  const normalizedRoomId = roomId.trim().toLowerCase();
+  const roomType = normalizedRoomId.replace(/\s+\d+$/, "");
+
+  return (
+    roomTypeColorMap[normalizedRoomId] ??
+    roomTypeColorMap[roomType] ??
+    "#d2ccc3"
+  );
+};
+
+const getRoomTypeTint = (roomId: string) =>
+  `color-mix(in srgb, ${getRoomTypeColor(roomId)} 10%, white)`;
 
 type CalendarLegendItem = {
   label: string;
@@ -252,10 +281,26 @@ const Calendar = () => {
     roomRow.push(
       <div
         className="timeline__item timeline__roomIdItem"
-        style={{ gridColumn: "1", gridRow }}
+        style={{
+          gridColumn: "1",
+          gridRow,
+          backgroundColor: getRoomTypeTint(room.roomId),
+        }}
         key={room.roomId}
       >
-        <p>{room.roomId}</p>
+        <span
+          aria-hidden="true"
+          className="timeline__roomColorTab"
+          style={{ backgroundColor: getRoomTypeColor(room.roomId) }}
+        />
+        <p aria-label={room.roomId}>
+          <span className="timeline__roomNameFull" aria-hidden="true">
+            {room.roomId}
+          </span>
+          <span className="timeline__roomNameShort" aria-hidden="true">
+            {formatShortRoomName(room.roomId)}
+          </span>
+        </p>
       </div>,
     );
 

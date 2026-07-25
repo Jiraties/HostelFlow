@@ -133,6 +133,7 @@ type AdminDashboardStats = {
   monthBookings: number;
   unpaidAmount: number;
   occupancyRate: number;
+  rangeOccupancyRate: number;
   channelMix: Array<{
     platformId: PlatformId;
     count: number;
@@ -144,6 +145,11 @@ type AdminDashboardStats = {
     collectedRevenue: number;
     occupancyRate: number;
     occupiedCapacity: number;
+  }>;
+  esrSeries: Array<{
+    date: string;
+    grossRevenue: number;
+    collectedRevenue: number;
   }>;
 };
 
@@ -171,15 +177,19 @@ const chartMetricOptions: Array<{ value: ChartMetric; label: string }> = [
 
 const dashboardHelpText = {
   bookedRevenue:
-    "รายได้จากการเข้าพักที่คาดไว้หลังหักรายการลด เช่น คืนเงิน ชดเชย และปรับลบ โดยไม่รวมมัดจำ และบางยอดอาจยังไม่ได้รับเงินจริง",
-  collectedRevenue: "เงินที่รับแล้วจริง เช่น เงินสด โอน บัตร หรือ OTA จ่ายแล้ว",
+    "รายได้ค่าที่พักของการจองที่เริ่มเข้าพักเดือนนี้ และรายการต่อคืนที่เริ่มเดือนนี้ หลังหักรายการลด โดยนับเต็มยอดในเดือนที่เริ่มและไม่แบ่งข้ามเดือน",
+  collectedRevenue:
+    "ส่วนของ ESR เดือนนี้ที่รับเงินแล้วจริง ไม่รวมยอดค้างชำระและค่าธรรมเนียมบัตร",
   todayCollectedRevenue:
     "เงินที่รับแล้วสำหรับการจองที่เช็คอินวันนี้เท่านั้น ไม่ว่าจะรับชำระวันไหน",
   todayRevenue:
     "มูลค่าการเข้าพักทั้งหมดของผู้ที่เช็คอินวันนี้ รวมบริการเสริมที่ขายวันนี้ หลังหักรายการคืนเงินและรายการลดวันนี้",
   unpaid: "ยอดจองที่ยังไม่ได้รับเงินจากลูกค้า",
   cashToday: "เงินสดรับ ลบ เงินสดจ่าย สำหรับวันที่เลือก",
-  occupancy: "จำนวนแขกที่เข้าพักจริงเทียบกับจำนวนเตียงทั้งหมด",
+  occupancy:
+    "เปอร์เซ็นต์เตียงที่ถูกจองเทียบกับเตียงที่เปิดขาย โดยห้องส่วนตัวที่ถูกจองจะนับเต็มความจุของห้อง",
+  checkedInBeds:
+    "จำนวนเตียงที่เช็คอินอยู่ตอนนี้ โดยห้องส่วนตัวจะนับเต็มความจุของห้อง",
 };
 
 const ExpectedStayRevenueInfo = () => (
@@ -230,7 +240,7 @@ const formatMoney = (value: number) =>
   });
 
 const toCumulativeRevenueSeries = (
-  series: AdminDashboardStats["revenueSeries"],
+  series: AdminDashboardStats["esrSeries"],
 ) => {
   let cumulativeRevenue = 0;
 
@@ -250,7 +260,9 @@ const TrendLineChart = ({
   series,
   metric,
 }: {
-  series: AdminDashboardStats["revenueSeries"];
+  series:
+    | AdminDashboardStats["revenueSeries"]
+    | AdminDashboardStats["esrSeries"];
   metric: ChartMetric;
 }) => (
   <div className="main__chartWrapper">
@@ -261,7 +273,8 @@ const TrendLineChart = ({
 
           return {
             ...point,
-            occupancyPercent: point.occupancyRate * 100,
+            occupancyPercent:
+              ("occupancyRate" in point ? point.occupancyRate : 0) * 100,
             label: new Intl.DateTimeFormat("en-GB", {
               day: "numeric",
               month: "short",
@@ -834,9 +847,9 @@ const Main = () => {
       value: departures.length,
     },
     {
-      label: "แขกที่พักอยู่ตอนนี้",
+      label: "เตียงที่เช็คอินอยู่ตอนนี้",
       value: occupancy,
-      helperText: dashboardHelpText.occupancy,
+      helperText: dashboardHelpText.checkedInBeds,
     },
     {
       label: "ค้างชำระ",
@@ -853,7 +866,7 @@ const Main = () => {
     },
   ];
   const revenueChartSeries = adminStats
-    ? toCumulativeRevenueSeries(adminStats.revenueSeries)
+    ? toCumulativeRevenueSeries(adminStats.esrSeries)
     : [];
   const chartRevenueTotal =
     revenueChartSeries[revenueChartSeries.length - 1]?.grossRevenue || 0;
@@ -876,13 +889,6 @@ const Main = () => {
     })
     .slice(0, 6);
   const occupancyFillPercent = Math.min(Math.max(occupancyRatePercent, 0), 100);
-  const chartAverageOccupancy =
-    adminStats && adminStats.revenueSeries.length > 0
-      ? adminStats.revenueSeries.reduce(
-          (total, point) => total + point.occupancyRate,
-          0,
-        ) / adminStats.revenueSeries.length
-      : 0;
   const thisMonthLabel = currentEnglishMonthLabel();
   const chartTitle =
     chartMetric === "revenue"
@@ -891,7 +897,7 @@ const Main = () => {
   const chartSummary =
     chartMetric === "revenue"
       ? `${chartRevenueTotal.toLocaleString()} ฿`
-      : `${formatMoney(chartAverageOccupancy * 100)}%`;
+      : `${formatMoney((adminStats?.rangeOccupancyRate || 0) * 100)}%`;
 
   const appendToBookings = () => {
     setAddBookingIsOpen(false);
@@ -986,6 +992,10 @@ const Main = () => {
           key={`${financialBreakdownMode}-${financialBreakdownType || "all"}`}
           mode={financialBreakdownMode || "monthly"}
           initialType={financialBreakdownType}
+          onClose={() => {
+            setFinancialBreakdownMode(null);
+            setFinancialBreakdownType(null);
+          }}
         />
       </Modal>
       <PageHeader
@@ -1248,7 +1258,7 @@ const Main = () => {
                     <span>Occupancy</span>
                     <h3 title={dashboardHelpText.occupancy}>การเข้าพัก</h3>
                   </div>
-                  <p>เดือนนี้</p>
+                  <p>เดือนนี้ถึงวันนี้</p>
                 </div>
                 <div className="main__sideMetric main__sideMetric--large">
                   <p title={dashboardHelpText.occupancy}>อัตราเข้าพัก</p>

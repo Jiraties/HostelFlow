@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { API_URL } from "../../config/api";
+import ModalCloseButton from "../../components/ModalCloseButton";
 import Tooltip from "../../components/Tooltip";
 import { PreferredDateInput } from "../../components/PreferredDateInput";
 import { useAuth } from "../../context/AuthContext";
@@ -71,11 +72,13 @@ type ExpectedStayRevenueBreakdownResponse = {
   period: {
     startDate: string;
     endDate: string;
-    basis: "transactionCreatedAt" | "checkInAndTransactionCreatedAt";
+    basis: "bookingOrExtensionStart" | "checkInAndTransactionCreatedAt";
   };
   totals: {
     grossStayCharges: number;
     expectedStayRevenue: number;
+    collectedRevenue?: number;
+    unpaidRevenue?: number;
     reductions: number;
     netAfterReductions: number;
     transactionCount: number;
@@ -363,9 +366,11 @@ const BreakdownSection = ({
 const FinancialBreakdown = ({
   mode = "monthly",
   initialType = null,
+  onClose,
 }: {
   mode?: "monthly" | "today";
   initialType?: TransactionType | null;
+  onClose: () => void;
 }) => {
   const { user } = useAuth();
   const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
@@ -474,6 +479,7 @@ const FinancialBreakdown = ({
 
   return (
     <div className="viewBooking__wrapper">
+      <ModalCloseButton onClick={onClose} />
       <div className="financialBreakdown__header">
         <div>
           <h1 className="viewBooking__name">
@@ -482,7 +488,7 @@ const FinancialBreakdown = ({
           <p>
             {mode === "today"
               ? "มูลค่าการจองที่เช็คอินวันนี้ รวมบริการเสริมวันนี้ หลังหักรายการลดรายได้"
-              : "รายได้จากการเข้าพักหลังหักรายการลดรายได้ ไม่รวมมัดจำและรายการรับเงินจริง"}
+              : "รายได้ค่าที่พักของการจองและรายการต่อคืนที่เริ่มในช่วงนี้ นับเต็มยอดในวันที่เริ่มและไม่แบ่งข้ามเดือน"}
           </p>
         </div>
         {mode === "today" ? (
@@ -541,14 +547,35 @@ const FinancialBreakdown = ({
                   {formatMoney(breakdown.totals.grossStayCharges)} ฿
                 </strong>
               </span>
-              <span>
-                <small>รายการหักลด</small>
-                <strong>{formatMoney(breakdown.totals.reductions)} ฿</strong>
-              </span>
-              <span>
-                <small>รายการ</small>
-                <strong>{breakdown.totals.transactionCount}</strong>
-              </span>
+              {mode === "monthly" ? (
+                <>
+                  <span>
+                    <small>รับแล้ว</small>
+                    <strong>
+                      {formatMoney(breakdown.totals.collectedRevenue || 0)} ฿
+                    </strong>
+                  </span>
+                  <span>
+                    <small>Unpaid</small>
+                    <strong>
+                      {formatMoney(breakdown.totals.unpaidRevenue || 0)} ฿
+                    </strong>
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span>
+                    <small>รายการหักลด</small>
+                    <strong>
+                      {formatMoney(breakdown.totals.reductions)} ฿
+                    </strong>
+                  </span>
+                  <span>
+                    <small>รายการ</small>
+                    <strong>{breakdown.totals.transactionCount}</strong>
+                  </span>
+                </>
+              )}
             </div>
           </section>
 

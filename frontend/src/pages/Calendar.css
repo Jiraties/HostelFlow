@@ -70,6 +70,18 @@
   background: white;
 }
 
+.timeline__roomColorTab {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0.38rem;
+}
+
+.timeline__roomNameShort {
+  display: none;
+}
+
 .timeline__dateItem {
   position: sticky;
   top: 0;
@@ -427,6 +439,7 @@
 
   .timeline__roomIdItem {
     padding: 0.5rem 0.4rem;
+    width: 5rem;
     background-color: var(--background);
   }
 
@@ -436,16 +449,29 @@
     line-height: 1.1;
   }
 
+  .timeline__roomColorTab {
+    width: 0.3rem;
+  }
+
+  .timeline__roomNameFull {
+    display: none;
+  }
+
+  .timeline__roomNameShort {
+    display: inline;
+  }
+
   .timeline__dateItem {
     scroll-margin-left: 5.75rem;
     background-color: var(--background);
   }
 
   .calendar__legend {
-    gap: 0.5rem;
+    display: none;
+    /* gap: 0.5rem;
     overflow-x: auto;
     padding: 0.2rem 0.1rem 0.45rem;
-    scrollbar-width: none;
+    scrollbar-width: none; */
   }
 
   .calendar__legend::-webkit-scrollbar {

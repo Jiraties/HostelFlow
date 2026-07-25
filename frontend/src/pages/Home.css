@@ -62,6 +62,10 @@
   display: none;
 }
 
+.home__mobileNameSearch {
+  display: none;
+}
+
 .home__dateFilter,
 .home__filterField {
   flex: 0 0 13rem;
@@ -276,12 +280,53 @@
   .home__masterActions {
     display: flex;
     gap: 1rem;
+    width: 100%;
+    align-items: center;
     padding-bottom: 0.5rem;
   }
 
   .home__masterActions .home__action {
     flex: 1 1 0;
     justify-content: center;
+  }
+
+  .home__mobileNameSearch {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    min-height: var(--mobile-touch-target, 2.75rem);
+    padding: 0.85rem 1rem;
+    box-sizing: border-box;
+    border-radius: 2rem;
+    background-color: var(--background);
+    box-shadow: var(--main-shadow);
+  }
+
+  .home__mobileNameSearch i {
+    flex: 0 0 auto;
+    color: var(--primary-color);
+    font-size: 1.35rem;
+  }
+
+  .home__mobileNameSearch input {
+    width: 100%;
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    padding: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+  }
+
+  .home__mobileNameSearch input::placeholder {
+    color: #8b9198;
+  }
+
+  .home__masterActions .home__mobileFilterAction {
+    flex: 0 0 auto;
   }
 
   .home__mobileFilterAction {

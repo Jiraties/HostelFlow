@@ -21,7 +21,10 @@ import {
   roomIdOptions,
   paymentMethodOptions,
 } from "../../helpers/options";
-import { getRoomStayRoomIds } from "../../helpers/roomStayHelpers";
+import {
+  getRoomStayRoomIds,
+  wholeRoomGroups,
+} from "../../helpers/roomStayHelpers";
 import { generateWalkInBookingId } from "../../helpers/walkInBookingId";
 
 interface BookingFormData {
@@ -45,7 +48,10 @@ type BookingFormErrors = Partial<
     string
   >
 >;
-type RoomOptionWithReason = OptionType & { disabledReason?: string };
+type RoomOptionWithReason = OptionType & {
+  disabledReason?: string;
+  expandedRoomIds?: string[];
+};
 type AvailabilityStatus = "idle" | "loading" | "ready" | "error";
 type AdvancePaymentCalculationMode = "percentage" | "amount";
 const advancePaymentMethodOptions = paymentMethodOptions.filter((option) =>
@@ -107,6 +113,8 @@ const AddBooking = ({
   const [occupiedRoomIds, setOccupiedRoomIds] = useState<string[]>([]);
   const [availabilityStatus, setAvailabilityStatus] =
     useState<AvailabilityStatus>("idle");
+  const [availabilityRangeKey, setAvailabilityRangeKey] = useState("");
+  const availabilityRequestIdRef = useRef(0);
   const [formErrors, setFormErrors] = useState<BookingFormErrors>({});
   const [reminderIsOpen, setReminderIsOpen] = useState(
     mode === "edit" && editModeBooking && editModeBooking?.roomStays.length > 1,
@@ -208,33 +216,94 @@ const AddBooking = ({
     !isEditMode &&
     Boolean(formData.checkIn && formData.checkOut) &&
     new Date(formData.checkIn) < new Date(formData.checkOut);
+  const selectedAvailabilityRangeKey = roomAvailabilityReady
+    ? `${formData.checkIn}|${formData.checkOut}`
+    : "";
+  const currentAvailabilityStatus =
+    availabilityRangeKey === selectedAvailabilityRangeKey
+      ? availabilityStatus
+      : roomAvailabilityReady
+        ? "loading"
+        : "idle";
 
   const roomOptions = useMemo<RoomOptionWithReason[]>(
-    () =>
-      roomIdOptions.map((option) => ({
-        ...option,
-        isDisabled: occupiedRoomIds.includes(option.value),
-        disabledReason: occupiedRoomIds.includes(option.value)
-          ? "ไม่ว่างในช่วงวันที่เลือก"
-          : undefined,
-      })),
+    () => {
+      const wholeRoomGroupByFirstUnit = new Map(
+        wholeRoomGroups.map((group) => [group.roomIds[0], group]),
+      );
+
+      return roomIdOptions.flatMap((option) => {
+        const group = wholeRoomGroupByFirstUnit.get(option.value);
+        const individualOption: RoomOptionWithReason = {
+          ...option,
+          isDisabled: occupiedRoomIds.includes(option.value),
+          disabledReason: occupiedRoomIds.includes(option.value)
+            ? "ไม่ว่างในช่วงวันที่เลือก"
+            : undefined,
+        };
+
+        if (!group) return [individualOption];
+
+        const hasOccupiedUnit = group.roomIds.some((roomId) =>
+          occupiedRoomIds.includes(roomId),
+        );
+        const wholeRoomOption: RoomOptionWithReason = {
+          value: group.value,
+          label: group.label,
+          expandedRoomIds: group.roomIds,
+          isDisabled: hasOccupiedUnit,
+          disabledReason: hasOccupiedUnit
+            ? "มีบางเตียงไม่ว่างในช่วงวันที่เลือก"
+            : undefined,
+        };
+
+        return [wholeRoomOption, individualOption];
+      });
+    },
     [occupiedRoomIds],
   );
+  const selectedRoomOptions = useMemo<RoomOptionWithReason[]>(() => {
+    const selectedRoomIds = new Set(formData.roomIds);
+    const representedRoomIds = new Set<string>();
+    const selectedWholeRoomValues = new Set<string>();
+
+    wholeRoomGroups.forEach((group) => {
+      if (!group.roomIds.every((roomId) => selectedRoomIds.has(roomId))) {
+        return;
+      }
+
+      selectedWholeRoomValues.add(group.value);
+      group.roomIds.forEach((roomId) => representedRoomIds.add(roomId));
+    });
+
+    return roomOptions.filter((option) =>
+      option.expandedRoomIds
+        ? selectedWholeRoomValues.has(option.value)
+        : selectedRoomIds.has(option.value) &&
+          !representedRoomIds.has(option.value),
+    );
+  }, [formData.roomIds, roomOptions]);
 
   useEffect(() => {
+    const requestId = ++availabilityRequestIdRef.current;
+
     if (isEditMode || !formData.checkIn || !formData.checkOut) {
       setOccupiedRoomIds([]);
       setAvailabilityStatus("idle");
+      setAvailabilityRangeKey("");
       return;
     }
 
     if (new Date(formData.checkIn) >= new Date(formData.checkOut)) {
       setOccupiedRoomIds([]);
       setAvailabilityStatus("idle");
+      setAvailabilityRangeKey("");
       return;
     }
 
     const controller = new AbortController();
+    const requestRangeKey = `${formData.checkIn}|${formData.checkOut}`;
+    setAvailabilityRangeKey(requestRangeKey);
     setAvailabilityStatus("loading");
 
     axios
@@ -247,6 +316,8 @@ const AddBooking = ({
         withCredentials: true,
       })
       .then((response) => {
+        if (requestId !== availabilityRequestIdRef.current) return;
+
         const nextOccupiedRoomIds = Array.isArray(
           response.data?.occupiedRoomIds,
         )
@@ -264,7 +335,13 @@ const AddBooking = ({
         }));
       })
       .catch((err) => {
-        if (axios.isCancel(err) || err.name === "CanceledError") return;
+        if (
+          requestId !== availabilityRequestIdRef.current ||
+          axios.isCancel(err) ||
+          err.name === "CanceledError"
+        ) {
+          return;
+        }
         setOccupiedRoomIds([]);
         setAvailabilityStatus("error");
         setFormErrors((prev) => ({
@@ -558,9 +635,9 @@ const AddBooking = ({
     }
 
     if (!isEditMode) {
-      if (roomAvailabilityReady && availabilityStatus !== "ready") {
+      if (roomAvailabilityReady && currentAvailabilityStatus !== "ready") {
         nextErrors.roomIds =
-          availabilityStatus === "loading"
+          currentAvailabilityStatus === "loading"
             ? "กำลังตรวจสอบห้องว่าง กรุณารอสักครู่"
             : "ตรวจสอบห้องว่างไม่สำเร็จ กรุณาลองเลือกวันที่อีกครั้งก่อนบันทึก";
       } else if (formData.roomIds.length === 0) {
@@ -816,20 +893,28 @@ const AddBooking = ({
               classNamePrefix="rs"
               placeholder="เช่น Veranda 1"
               options={roomOptions}
+              isOptionDisabled={(option) => option.isDisabled === true}
               isDisabled={
                 !roomAvailabilityReady ||
-                availabilityStatus !== "ready" ||
+                currentAvailabilityStatus !== "ready" ||
                 submitting
               }
-              isLoading={availabilityStatus === "loading"}
+              isLoading={currentAvailabilityStatus === "loading"}
               formatOptionLabel={formatRoomOptionLabel}
-              value={roomOptions.filter((option) =>
-                formData.roomIds.includes(option.value),
-              )}
-              onChange={(options: MultiValue<OptionType>) =>
+              value={selectedRoomOptions}
+              onChange={(options: MultiValue<RoomOptionWithReason>) =>
                 formDataChangeHandler(
                   "roomIds",
-                  options.map((option) => option.value),
+                  Array.from(
+                    new Set(
+                      options
+                        .filter((option) => option.isDisabled !== true)
+                        .flatMap(
+                          (option) =>
+                            option.expandedRoomIds || [option.value],
+                        ),
+                    ),
+                  ),
                 )
               }
             />
@@ -842,7 +927,7 @@ const AddBooking = ({
             >
               {formErrors.roomIds ||
                 (roomAvailabilityReady
-                  ? availabilityStatus === "loading"
+                  ? currentAvailabilityStatus === "loading"
                     ? "กำลังตรวจสอบห้อง/เตียงที่ว่าง..."
                     : occupiedRoomIds.length > 0
                       ? "ห้อง/เตียงที่ถูกจองแล้วจะแสดงเป็นตัวเลือกสีเทา"

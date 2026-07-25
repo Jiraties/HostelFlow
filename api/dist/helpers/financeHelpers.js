@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.transactionFallsOnBusinessDate = exports.summarizeTransactions = exports.normalizeTransaction = exports.transactionRequiresReview = exports.transactionNeedsReview = exports.transactionUnpaidAmount = exports.bookingRemainingDepositAmount = exports.transactionDepositLiabilityDelta = exports.transactionDashboardCollectedRevenueAmount = exports.calculateTodayRevenueSummary = exports.bookingTodayArrivalRevenueAmount = exports.transactionTodayReductionAmount = exports.transactionTodayExtrasRevenueAmount = exports.transactionDashboardGrossRevenueAmount = exports.transactionRefundAmount = exports.transactionRevenueAmount = exports.transactionIsRevenue = exports.summarizeCashStashes = exports.transactionCashStashImpact = exports.emptyCashStashSummary = exports.transactionCashImpact = exports.summarizeReceivedPaymentsByMethod = exports.transactionSignedAmount = exports.transactionDirection = exports.cashBalanceAfterMovements = exports.isValidCashCount = exports.ROUNDING_ADJUSTMENT_REVIEW_THRESHOLD = exports.LARGE_REFUND_THRESHOLD = exports.LARGE_CASH_TRANSACTION_THRESHOLD = exports.CASH_VARIANCE_THRESHOLD = void 0;
+exports.transactionFallsOnBusinessDate = exports.summarizeTransactions = exports.normalizeTransaction = exports.transactionRequiresReview = exports.transactionNeedsReview = exports.transactionUnpaidAmount = exports.bookingRemainingDepositAmount = exports.transactionDepositLiabilityDelta = exports.transactionDashboardCollectedRevenueAmount = exports.calculateTodayRevenueSummary = exports.bookingTodayArrivalRevenueAmount = exports.bookingTransactionTodayReductionAmount = exports.transactionTodayReductionAmount = exports.transactionTodayExtrasRevenueAmount = exports.transactionDashboardGrossRevenueAmount = exports.transactionRefundAmount = exports.transactionRevenueAmount = exports.transactionIsRevenue = exports.summarizeCashStashes = exports.transactionCashStashImpact = exports.emptyCashStashSummary = exports.transactionCashImpact = exports.summarizeReceivedPaymentsByMethod = exports.transactionSignedAmount = exports.transactionDirection = exports.cashBalanceAfterMovements = exports.isValidCashCount = exports.ROUNDING_ADJUSTMENT_REVIEW_THRESHOLD = exports.LARGE_REFUND_THRESHOLD = exports.LARGE_CASH_TRANSACTION_THRESHOLD = exports.CASH_VARIANCE_THRESHOLD = void 0;
 exports.CASH_VARIANCE_THRESHOLD = 20;
 exports.LARGE_CASH_TRANSACTION_THRESHOLD = 5000;
 exports.LARGE_REFUND_THRESHOLD = 2000;
@@ -214,6 +214,15 @@ const transactionTodayReductionAmount = (transaction) => {
     return amount < 0 ? Math.abs(amount) : 0;
 };
 exports.transactionTodayReductionAmount = transactionTodayReductionAmount;
+const bookingTransactionTodayReductionAmount = (booking, transaction, periodEnd) => {
+    const amount = (0, exports.transactionTodayReductionAmount)(transaction);
+    if (amount === 0)
+        return 0;
+    const isFutureCancellationReduction = transaction.sourceAction === "CANCEL_BOOKING" &&
+        new Date(booking.checkIn) >= periodEnd;
+    return isFutureCancellationReduction ? 0 : amount;
+};
+exports.bookingTransactionTodayReductionAmount = bookingTransactionTodayReductionAmount;
 const bookingTodayArrivalRevenueAmount = (booking) => {
     if (booking.status === "cancelled") {
         const roomChargeTotal = booking.transactions.reduce((total, transaction) => transaction.type === "roomCharge" &&
@@ -284,7 +293,8 @@ const calculateTodayRevenueSummary = (bookings, start, end) => {
             ["roomRefund", "roomChargeWriteOff", "cancellationRefund"].includes(transaction.type);
         return alreadyNetted
             ? sum
-            : sum + (0, exports.transactionTodayReductionAmount)(transaction);
+            : sum +
+                (0, exports.bookingTransactionTodayReductionAmount)(booking, transaction, end);
     }, 0);
     const todayCollectedRevenue = arrivals.reduce((sum, booking) => sum +
         (booking.transactions || []).reduce((bookingSum, transaction) => transaction.sourceAction === "EXTEND_BOOKING"
