@@ -1,11 +1,10 @@
 import dotenv from "dotenv";
 import mongoose from "mongoose";
 import { buildBookingSearchFields } from "../helpers/bookingSearchHelpers";
-import Booking from "../models/booking";
 
 dotenv.config();
 
-const BATCH_SIZE = 500;
+const BATCH_SIZE = 100;
 
 const main = async () => {
   if (!process.env.MONGO_URI) throw new Error("MONGO_URI is required");
@@ -17,17 +16,33 @@ const main = async () => {
 
   await mongoose.connect(process.env.MONGO_URI, { autoIndex: false });
 
-  const cursor = Booking.find({})
-    .select("bookingId name commercialSegments.channelBookingId")
-    .lean()
-    .cursor();
-  let operations: Parameters<typeof Booking.bulkWrite>[0] = [];
+  const bookings = mongoose.connection.collection("bookings");
+  const cursor = bookings
+    .find(
+      {},
+      {
+        projection: {
+          bookingId: 1,
+          name: 1,
+          "commercialSegments.channelBookingId": 1,
+        },
+      },
+    )
+    .batchSize(BATCH_SIZE);
+  let operations: {
+    updateOne: {
+      filter: { _id: mongoose.Types.ObjectId };
+      update: {
+        $set: ReturnType<typeof buildBookingSearchFields>;
+      };
+    };
+  }[] = [];
   let scanned = 0;
   let modified = 0;
 
   const flush = async () => {
     if (operations.length === 0) return;
-    const result = await Booking.bulkWrite(operations, { ordered: false });
+    const result = await bookings.bulkWrite(operations, { ordered: false });
     modified += result.modifiedCount;
     operations = [];
   };
@@ -52,19 +67,19 @@ const main = async () => {
   await flush();
 
   const indexNames = await Promise.all([
-    Booking.collection.createIndex(
+    bookings.createIndex(
       { searchBookingIds: 1 },
       { name: "master_search_booking_ids" },
     ),
-    Booking.collection.createIndex(
+    bookings.createIndex(
       { searchBookingIdPrefixes: 1 },
       { name: "master_search_booking_id_prefixes" },
     ),
-    Booking.collection.createIndex(
+    bookings.createIndex(
       { searchNamePrefixes: 1 },
       { name: "master_search_name_prefixes" },
     ),
-    Booking.collection.createIndex(
+    bookings.createIndex(
       { checkIn: 1, checkOut: 1 },
       { name: "master_browse_dates" },
     ),
@@ -91,4 +106,3 @@ main()
   .finally(async () => {
     await mongoose.disconnect();
   });
-

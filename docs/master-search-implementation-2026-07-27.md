@@ -16,13 +16,15 @@ before enabling the all-date UI in production:
 
 ```sh
 cd api
+npm run build
 RUN_MASTER_SEARCH_INDEX_MIGRATION=true npm run migrate:master-search-indexes
 ```
 
 The guarded migration:
 
 1. reads only Booking ID, guest name, and channel Booking IDs;
-2. writes normalized search arrays in batches of 500;
+2. writes normalized search arrays with the native MongoDB cursor in batches of
+   100;
 3. creates the three search indexes and the date-browsing index without using
    unique constraints;
 4. prints scanned and modified counts plus the resulting index names.
