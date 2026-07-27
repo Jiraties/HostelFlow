@@ -6,6 +6,8 @@ export type Density = "compact" | "comfortable" | "spacious";
 export type PlatformId = "BOOK" | "HOST" | "TRAV" | "AGOD" | "WALK";
 export type PaymentMethod = "OTA" | "Cash" | "Card" | "Transfer" | "Unpaid";
 export type DateFormat = "dd/MM/yyyy" | "d MMM yyyy";
+export type SpreadsheetView = "arrivals" | "departures" | "master";
+export type SpreadsheetColumnOrders = Partial<Record<SpreadsheetView, string[]>>;
 
 export interface UserSettings {
   calendarColorMode: CalendarColorMode;
@@ -14,6 +16,7 @@ export interface UserSettings {
   defaultPlatformId: PlatformId | "";
   defaultPaymentMethod: PaymentMethod | "";
   dateFormat: DateFormat;
+  spreadsheetColumnOrders: SpreadsheetColumnOrders;
 }
 
 export interface userType extends Document {
@@ -39,6 +42,7 @@ export const defaultUserSettings: UserSettings = {
   defaultPlatformId: "",
   defaultPaymentMethod: "",
   dateFormat: "dd/MM/yyyy",
+  spreadsheetColumnOrders: {},
 };
 
 const userSettingsSchema = new mongoose.Schema<UserSettings>(
@@ -72,6 +76,10 @@ const userSettingsSchema = new mongoose.Schema<UserSettings>(
       type: String,
       enum: ["dd/MM/yyyy", "d MMM yyyy"],
       default: defaultUserSettings.dateFormat,
+    },
+    spreadsheetColumnOrders: {
+      type: mongoose.Schema.Types.Mixed,
+      default: () => ({}),
     },
   },
   { _id: false },

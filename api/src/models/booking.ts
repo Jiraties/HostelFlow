@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { buildBookingSearchFields } from "../helpers/bookingSearchHelpers";
 
 export type PlatformId = "BOOK" | "HOST" | "TRAV" | "AGOD" | "WALK";
 export type PaymentMethod = "OTA" | "Cash" | "Card" | "Transfer" | "Unpaid";
@@ -262,6 +263,9 @@ export interface booking extends Document {
   platformId: PlatformId;
   status: Status;
   bookingId: string;
+  searchBookingIds?: string[];
+  searchBookingIdPrefixes?: string[];
+  searchNamePrefixes?: string[];
 
   transactions: transcation[];
   transactionCorrections: TransactionCorrection[];
@@ -590,6 +594,9 @@ const bookingSchema = new mongoose.Schema({
   pinned: { type: Boolean, default: false },
   staffUsername: { type: String },
   bookingId: { type: String, unique: true },
+  searchBookingIds: { type: [String], default: [], select: false },
+  searchBookingIdPrefixes: { type: [String], default: [], select: false },
+  searchNamePrefixes: { type: [String], default: [], select: false },
 
   status: {
     type: String,
@@ -655,6 +662,16 @@ const bookingSchema = new mongoose.Schema({
   voidReason: { type: String },
 });
 
+bookingSchema.pre("validate", function () {
+  const searchFields = buildBookingSearchFields({
+    bookingId: this.bookingId,
+    name: this.name,
+    commercialSegments: this.commercialSegments,
+  });
+
+  this.set(searchFields);
+});
+
 // Keep pins visible while deployments migrate records created under the old
 // field name. New application code and API responses use `pinned` only.
 const applyLegacyPinnedValue = (result: unknown) => {
@@ -693,6 +710,22 @@ bookingSchema.index(
       "commercialSegments.operationKeyHash": { $type: "string" },
     },
   },
+);
+bookingSchema.index(
+  { searchBookingIds: 1 },
+  { name: "master_search_booking_ids" },
+);
+bookingSchema.index(
+  { searchBookingIdPrefixes: 1 },
+  { name: "master_search_booking_id_prefixes" },
+);
+bookingSchema.index(
+  { searchNamePrefixes: 1 },
+  { name: "master_search_name_prefixes" },
+);
+bookingSchema.index(
+  { checkIn: 1, checkOut: 1 },
+  { name: "master_browse_dates" },
 );
 
 export default mongoose.model<booking>("Booking", bookingSchema);

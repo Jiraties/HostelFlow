@@ -163,6 +163,14 @@ const fetchCheckInCorrectionEligibility = (
     { withCredentials: true, signal },
   );
 
+const guestNameLines = (name: string) => {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+
+  if (parts.length <= 3) return parts;
+
+  return [...parts.slice(0, 2), parts.slice(2).join(" ")];
+};
+
 const ViewBooking = ({
   booking,
   bookingId,
@@ -1504,9 +1512,10 @@ const ViewBooking = ({
         {onClose && <ModalCloseButton onClick={onClose} />}
         <div className="viewBooking__top">
           <h1 className="viewBooking__name">
-            {data.name.split(" ").map((word) => (
-              <span key={word}>
-                {word} <br key={word} />
+            {guestNameLines(data.name).map((line, index) => (
+              <span key={`${line}-${index}`}>
+                {line}
+                {index < guestNameLines(data.name).length - 1 && <br />}
               </span>
             ))}
           </h1>
@@ -2080,13 +2089,6 @@ const ViewBooking = ({
             />
           </div>
           <div className="viewBooking__actionsRow">
-            {data.status === "checkedOut" && !data.voided && (
-              <ActionButton
-                text="เพิ่มรายการหลัง Check-Out"
-                onClick={() => setAddTransactionIsOpen(true)}
-                icon="bx-plus-circle"
-              />
-            )}
             {!data.voided &&
               (data.status === "booked" || data.status === "checkedIn") && (
                 <ActionButton

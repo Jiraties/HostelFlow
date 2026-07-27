@@ -246,6 +246,13 @@ const Settings = () => {
               </span>
             </label>
           ))}
+          <SettingsItem
+            label="รูปแบบคอลัมน์ตาราง"
+            buttonLabel="คืนค่าเริ่มต้น"
+            action={() => updateSetting("spreadsheetColumnOrders", {})}
+            icon="bx-reset"
+            buttonClassName="settings__resetLayout"
+          />
           {/* </div> */}
         </div>
         <RecentActivities />

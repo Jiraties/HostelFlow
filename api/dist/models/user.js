@@ -12,6 +12,7 @@ exports.defaultUserSettings = {
     defaultPlatformId: "",
     defaultPaymentMethod: "",
     dateFormat: "dd/MM/yyyy",
+    spreadsheetColumnOrders: {},
 };
 const userSettingsSchema = new mongoose_1.default.Schema({
     calendarColorMode: {
@@ -43,6 +44,10 @@ const userSettingsSchema = new mongoose_1.default.Schema({
         type: String,
         enum: ["dd/MM/yyyy", "d MMM yyyy"],
         default: exports.defaultUserSettings.dateFormat,
+    },
+    spreadsheetColumnOrders: {
+        type: mongoose_1.default.Schema.Types.Mixed,
+        default: () => ({}),
     },
 }, { _id: false });
 const userSchema = new mongoose_1.default.Schema({

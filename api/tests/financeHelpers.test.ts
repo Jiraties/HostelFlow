@@ -250,6 +250,20 @@ test("minor rounding adjustments stay below review noise while material or repea
   ]);
 });
 
+test("large refund review starts at THB 5,000", () => {
+  const refund: transcation = {
+    type: "cancellationRefund",
+    paymentMethod: "Transfer",
+    amount: 4999,
+  };
+
+  assert.deepEqual(transactionNeedsReview(refund), ["refund"]);
+  assert.deepEqual(
+    transactionNeedsReview({ ...refund, amount: 5000 }),
+    ["refund", "large_refund"],
+  );
+});
+
 test("the current review policy suppresses legacy minor-rounding flags", () => {
   assert.equal(
     transactionRequiresReview({

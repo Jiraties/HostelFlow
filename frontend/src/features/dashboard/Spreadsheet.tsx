@@ -6,6 +6,7 @@ import type {
   BodyScrollEndEvent,
   CellClassParams,
   ColDef,
+  ColumnMovedEvent,
   GridReadyEvent,
   ICellRendererParams,
   IsFullWidthRowParams,
@@ -23,6 +24,8 @@ import { roomChargeDisplayPaymentMethod } from "../../helpers/bookingHelpers.ts"
 import { formatRoomStayRooms } from "../../helpers/roomStayHelpers.ts";
 import { useAuth } from "../../context/AuthContext.tsx";
 import { formatDisplayDate } from "../../helpers/displayDate.ts";
+import { API_URL } from "../../config/api.ts";
+import axios from "axios";
 
 type SpreadsheetStatus = "arrivals" | "departures" | "master";
 
@@ -34,6 +37,7 @@ type SeparatorRow = {
 };
 
 type SpreadsheetRow = booking | SeparatorRow;
+const spreadsheetModules = [AllCommunityModule];
 
 const isSeparatorRow = (row: SpreadsheetRow | undefined): row is SeparatorRow =>
   !!row && "__separator" in row;
@@ -214,8 +218,7 @@ const Spreadsheet = ({
     to: string;
   };
 }) => {
-  const modules = [AllCommunityModule];
-  const { user, resolveStaffName } = useAuth();
+  const { user, login, resolveStaffName } = useAuth();
   const isMaster = status === "master";
   const tableDensity = user?.settings.tableDensity || "comfortable";
   const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
@@ -236,6 +239,8 @@ const Spreadsheet = ({
   const gridApiRef = useRef<GridApi<SpreadsheetRow> | null>(null);
   const hasScrolledToTodayRef = useRef(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [animationsEnabledForStatus, setAnimationsEnabledForStatus] =
+    useState<SpreadsheetStatus | null>(null);
   const todayKey = separatorDateKey(new Date());
 
   useEffect(() => {
@@ -373,6 +378,7 @@ const Spreadsheet = ({
   const colDefs = useMemo<ColDef<SpreadsheetRow>[]>(() => {
     const columns: ColDef<SpreadsheetRow>[] = [
       {
+        colId: "name",
         field: "name",
         headerName: "Name",
         flex: 1.3,
@@ -381,19 +387,28 @@ const Spreadsheet = ({
         cellRenderer: nameCell,
       },
       {
+        colId: "checkIn",
         field: "checkIn",
         width: 128,
         minWidth: 128,
         valueFormatter: dateValueFormater,
       },
       {
+        colId: "checkOut",
         field: "checkOut",
         width: 128,
         minWidth: 128,
         valueFormatter: dateValueFormater,
       },
-      { field: "nights", headerName: "Nights", width: 76, minWidth: 76 },
       {
+        colId: "nights",
+        field: "nights",
+        headerName: "Nights",
+        width: 76,
+        minWidth: 76,
+      },
+      {
+        colId: "rooms",
         valueGetter: (params: ValueGetterParams<SpreadsheetRow>) => {
           if (isSeparatorRow(params.data)) return "";
           return (
@@ -407,6 +422,7 @@ const Spreadsheet = ({
         cellClass: "spreadsheet__roomCell",
       },
       {
+        colId: "platformId",
         field: "platformId",
         headerName: "Channel",
         filter: true,
@@ -415,6 +431,7 @@ const Spreadsheet = ({
         cellRenderer: platformCell,
       },
       {
+        colId: "roomCharge",
         headerName: "Room Charge",
         width: 140,
         minWidth: 135,
@@ -429,6 +446,7 @@ const Spreadsheet = ({
         ) => thbValueFormatter(params.value),
       },
       {
+        colId: "paymentMethod",
         valueGetter: (params: ValueGetterParams<SpreadsheetRow>) => {
           if (isSeparatorRow(params.data)) return "";
           return params.data ? roomChargeDisplayPaymentMethod(params.data) : "";
@@ -445,6 +463,7 @@ const Spreadsheet = ({
       ...(status === "departures"
         ? [
             {
+              colId: "deposit",
               headerName: "Deposit",
               width: 125,
               minWidth: 120,
@@ -464,6 +483,7 @@ const Spreadsheet = ({
           ]
         : []),
       {
+        colId: "bookingId",
         field: "bookingId",
         headerName: "Booking ID",
         filter: true,
@@ -472,6 +492,7 @@ const Spreadsheet = ({
         sortable: false,
       },
       {
+        colId: "checkInByStaffUsername",
         field: "checkInByStaffUsername",
         headerName: "Checked-In By",
         width: 130,
@@ -479,8 +500,15 @@ const Spreadsheet = ({
         valueFormatter: (params) =>
           params.value ? resolveStaffName(String(params.value)) : "-",
       },
-      { field: "note", flex: 1.1, minWidth: 180, sortable: false },
       {
+        colId: "note",
+        field: "note",
+        flex: 1.1,
+        minWidth: 180,
+        sortable: false,
+      },
+      {
+        colId: "status",
         field: "status",
         headerName: isMobile ? "" : "สถานะ Check-In",
         pinned: "right",
@@ -532,9 +560,61 @@ const Spreadsheet = ({
     const api = params.api;
     gridApiRef.current = api;
 
+    const savedColumnOrder = user?.settings.spreadsheetColumnOrders[status];
+    if (savedColumnOrder?.length) {
+      api.applyColumnState({
+        state: savedColumnOrder.map((colId) => ({ colId })),
+        applyOrder: true,
+      });
+    }
+
     if (loading) api.showLoadingOverlay();
-    window.requestAnimationFrame(scrollToTodaySeparator);
+    window.requestAnimationFrame(() => {
+      setAnimationsEnabledForStatus(status);
+      scrollToTodaySeparator();
+    });
   };
+
+  const saveColumnOrder = useCallback(() => {
+    const api = gridApiRef.current;
+    if (!api || !user) return;
+
+    const columnOrder = api
+      .getAllDisplayedColumns()
+      .map((column) => column.getColId());
+    const spreadsheetColumnOrders = {
+      ...user.settings.spreadsheetColumnOrders,
+      [status]: columnOrder,
+    };
+
+    login({
+      ...user,
+      settings: { ...user.settings, spreadsheetColumnOrders },
+    });
+
+    axios
+      .patch(
+        `${API_URL}/auth/me/settings`,
+        { spreadsheetColumnOrders },
+        { withCredentials: true },
+      )
+      .catch((error: unknown) => {
+        console.error("Failed to save spreadsheet column order", error);
+      });
+  }, [login, status, user]);
+
+  const handleColumnMoved = useCallback((event: ColumnMovedEvent) => {
+    if (!event.finished) return;
+    saveColumnOrder();
+  }, [saveColumnOrder]);
+
+  const defaultColDef = useMemo<ColDef<SpreadsheetRow>>(
+    () => ({
+      resizable: true,
+      suppressMovable: false,
+    }),
+    [],
+  );
 
   const postSortRows = useCallback(
     (params: PostSortRowsParams<SpreadsheetRow>) => {
@@ -590,7 +670,7 @@ const Spreadsheet = ({
   );
 
   return (
-    <AgGridProvider modules={modules}>
+    <AgGridProvider modules={spreadsheetModules}>
       <div
         className={
           tableDensity === "spacious"
@@ -607,15 +687,15 @@ const Spreadsheet = ({
           key={status}
           rowData={rowData}
           columnDefs={colDefs}
-          defaultColDef={{
-            resizable: true,
-            suppressMovable: false,
-          }}
+          defaultColDef={defaultColDef}
+          maintainColumnOrder
+          suppressColumnMoveAnimation={animationsEnabledForStatus !== status}
           suppressDragLeaveHidesColumns
           theme={myTheme}
           rowHeight={rowHeight}
           headerHeight={headerHeight}
           onGridReady={onGridReady}
+          onColumnMoved={handleColumnMoved}
           postSortRows={postSortRows}
           onBodyScrollEnd={handleBodyScrollEnd}
           rowClassRules={{

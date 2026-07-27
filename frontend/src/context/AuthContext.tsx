@@ -93,7 +93,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
       return "ไม่ทราบชื่อพนักงาน";
     },
-    [staffNames, user],
+    [staffNames, user?.name, user?.username],
   );
 
   return (

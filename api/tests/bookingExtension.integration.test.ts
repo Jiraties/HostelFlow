@@ -634,6 +634,22 @@ test("calendar and daily revenue split the extension without a false arrival", a
   );
   assert.deepEqual(events.map((event: any) => event.platformId), ["BOOK", "WALK"]);
 
+  const searchResponse = response();
+  await controller.getMasterBookings(
+    {
+      query: { search: "ext-channel" },
+      user: { userId: "staff-id", username: "staff", admin: false },
+    } as any,
+    searchResponse as any,
+  );
+  assert.equal(searchResponse.statusCode, 200);
+  assert.deepEqual(
+    searchResponse.body.bookings.map(
+      (currentBooking: { bookingId: string }) => currentBooking.bookingId,
+    ),
+    ["EXT-REPORT"],
+  );
+
   const departuresResponse = response();
   await controller.getTodayBookings(
     { params: { type: "departures" } } as any,

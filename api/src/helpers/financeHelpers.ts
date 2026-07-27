@@ -28,7 +28,7 @@ export type SourceAction =
 
 export const CASH_VARIANCE_THRESHOLD = 20;
 export const LARGE_CASH_TRANSACTION_THRESHOLD = 5000;
-export const LARGE_REFUND_THRESHOLD = 2000;
+export const LARGE_REFUND_THRESHOLD = 5000;
 export const ROUNDING_ADJUSTMENT_REVIEW_THRESHOLD = 1;
 
 export const isValidCashCount = (value: number) =>

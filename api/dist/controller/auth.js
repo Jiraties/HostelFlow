@@ -28,6 +28,8 @@ const normalizeUserSettings = (settings) => ({
     defaultPlatformId: settings?.defaultPlatformId ?? user_2.defaultUserSettings.defaultPlatformId,
     defaultPaymentMethod: settings?.defaultPaymentMethod ?? user_2.defaultUserSettings.defaultPaymentMethod,
     dateFormat: settings?.dateFormat || user_2.defaultUserSettings.dateFormat,
+    spreadsheetColumnOrders: settings?.spreadsheetColumnOrders ||
+        user_2.defaultUserSettings.spreadsheetColumnOrders,
 });
 const sanitizeUser = (user) => {
     const settings = user.settings && typeof user.settings.toObject === "function"
@@ -51,6 +53,24 @@ const settingsOptions = {
     defaultPaymentMethod: ["", "OTA", "Cash", "Card", "Transfer", "Unpaid"],
     dateFormat: ["dd/MM/yyyy", "d MMM yyyy"],
 };
+const spreadsheetViews = ["arrivals", "departures", "master"];
+const normalizeSpreadsheetColumnOrders = (value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+        throw new Error("รูปแบบการจัดเรียงคอลัมน์ไม่ถูกต้อง");
+    }
+    const orders = {};
+    for (const view of spreadsheetViews) {
+        const order = value[view];
+        if (order === undefined)
+            continue;
+        if (!Array.isArray(order) ||
+            order.some((columnId) => typeof columnId !== "string" || !columnId)) {
+            throw new Error("รูปแบบการจัดเรียงคอลัมน์ไม่ถูกต้อง");
+        }
+        orders[view] = [...new Set(order)];
+    }
+    return orders;
+};
 const normalizeSettingsUpdate = (body) => {
     const updates = {};
     Object.keys(settingsOptions).forEach((key) => {
@@ -62,6 +82,9 @@ const normalizeSettingsUpdate = (body) => {
         }
         updates[key] = value;
     });
+    if (body.spreadsheetColumnOrders !== undefined) {
+        updates.spreadsheetColumnOrders = normalizeSpreadsheetColumnOrders(body.spreadsheetColumnOrders);
+    }
     return updates;
 };
 const listUsers = async (req, res) => {

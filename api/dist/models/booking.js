@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.transactionSchema = exports.PASSPORT_SENSITIVE_SELECT = void 0;
 const mongoose_1 = __importDefault(require("mongoose"));
+const bookingSearchHelpers_1 = require("../helpers/bookingSearchHelpers");
 exports.PASSPORT_SENSITIVE_SELECT = [
     "+passport.passportHash",
     "+passport.passportNo.cipherText",
@@ -293,6 +294,9 @@ const bookingSchema = new mongoose_1.default.Schema({
     pinned: { type: Boolean, default: false },
     staffUsername: { type: String },
     bookingId: { type: String, unique: true },
+    searchBookingIds: { type: [String], default: [], select: false },
+    searchBookingIdPrefixes: { type: [String], default: [], select: false },
+    searchNamePrefixes: { type: [String], default: [], select: false },
     status: {
         type: String,
         enum: ["booked", "checkedIn", "checkedOut", "cancelled", "noShow"],
@@ -348,6 +352,14 @@ const bookingSchema = new mongoose_1.default.Schema({
     voidedBy: { type: String },
     voidReason: { type: String },
 });
+bookingSchema.pre("validate", function () {
+    const searchFields = (0, bookingSearchHelpers_1.buildBookingSearchFields)({
+        bookingId: this.bookingId,
+        name: this.name,
+        commercialSegments: this.commercialSegments,
+    });
+    this.set(searchFields);
+});
 // Keep pins visible while deployments migrate records created under the old
 // field name. New application code and API responses use `pinned` only.
 const applyLegacyPinnedValue = (result) => {
@@ -380,5 +392,9 @@ bookingSchema.index({ bookingId: 1, "commercialSegments.operationKeyHash": 1 }, 
         "commercialSegments.operationKeyHash": { $type: "string" },
     },
 });
+bookingSchema.index({ searchBookingIds: 1 }, { name: "master_search_booking_ids" });
+bookingSchema.index({ searchBookingIdPrefixes: 1 }, { name: "master_search_booking_id_prefixes" });
+bookingSchema.index({ searchNamePrefixes: 1 }, { name: "master_search_name_prefixes" });
+bookingSchema.index({ checkIn: 1, checkOut: 1 }, { name: "master_browse_dates" });
 exports.default = mongoose_1.default.model("Booking", bookingSchema);
 //# sourceMappingURL=booking.js.map

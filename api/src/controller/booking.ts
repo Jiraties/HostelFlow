@@ -69,6 +69,10 @@ import {
   effectiveCommercialSegments,
 } from "../helpers/commercialSegmentHelpers";
 import {
+  buildGuestNameSearchPrefixes,
+  normalizeBookingSearchText,
+} from "../helpers/bookingSearchHelpers";
+import {
   bookingRevisionPredicate,
   expectedBookingRevision,
   sendBookingRevisionConflict,
@@ -350,6 +354,17 @@ const effectiveRoomStayEnd = (currentBooking: booking, roomStay: roomStay) => {
   }
 
   return stayEnd;
+};
+
+const effectiveCalendarRoomStayEnd = (
+  currentBooking: booking,
+  roomStay: roomStay,
+) => {
+  if (currentBooking.checkout?.roomReleaseStatus === "blocked") {
+    return new Date(roomStay.to);
+  }
+
+  return effectiveRoomStayEnd(currentBooking, roomStay);
 };
 
 const bookingOccupiedRoomIdsOnDate = (
@@ -1193,6 +1208,7 @@ export const editBooking = async (
           {
             $set: {
               name: booking.name,
+              searchNamePrefixes: buildGuestNameSearchPrefixes(booking.name),
               checkIn: newCheckIn,
               checkOut: newCheckOut,
               nights: calculateNights(booking.checkIn, booking.checkOut),
@@ -1701,49 +1717,94 @@ const escapeRegex = (value: string) =>
 
 const DEFAULT_MASTER_BOOKINGS_PAGE_SIZE = 75;
 const MAX_MASTER_BOOKINGS_PAGE_SIZE = 200;
+const MAX_GLOBAL_MASTER_SEARCH_PAGE_SIZE = 50;
+const MIN_GLOBAL_MASTER_SEARCH_LENGTH = 3;
 
 export const getMasterBookings = async (req: Request, res: Response) => {
-  const { from, to, name, bookingId, room, channel, status, page, limit } =
-    req.query;
+  const {
+    from,
+    to,
+    search,
+    name,
+    bookingId,
+    room,
+    channel,
+    status,
+    page,
+    limit,
+  } = req.query;
+  const searchTerm =
+    typeof search === "string" ? normalizeBookingSearchText(search) : "";
+  const hasSearch = searchTerm.length >= MIN_GLOBAL_MASTER_SEARCH_LENGTH;
+  const hasAnyDate = Boolean(from || to);
+  const hasDateRange = Boolean(from && to);
 
-  if (!from || !to) {
+  if (searchTerm && !hasSearch) {
+    return res.status(400).json({
+      message: `กรุณาพิมพ์อย่างน้อย ${MIN_GLOBAL_MASTER_SEARCH_LENGTH} ตัวอักษรเพื่อค้นหาทุกช่วงเวลา`,
+    });
+  }
+
+  if (!hasSearch && !hasDateRange) {
     return res.status(400).json({
       message: "Please specify from and to dates",
     });
   }
 
-  const fromDate = new Date(`${from as string}T00:00:00`);
-  const toDate = new Date(`${to as string}T00:00:00`);
-
-  if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime())) {
+  if (hasAnyDate && !hasDateRange) {
     return res.status(400).json({
-      message: "Invalid date range",
+      message: "Please specify both from and to dates",
     });
   }
 
-  if (fromDate > toDate) {
+  const fromDate = hasDateRange
+    ? new Date(`${from as string}T00:00:00`)
+    : null;
+  const toDate = hasDateRange ? new Date(`${to as string}T00:00:00`) : null;
+  if (
+    (fromDate && Number.isNaN(fromDate.getTime())) ||
+    (toDate && Number.isNaN(toDate.getTime()))
+  ) {
+    return res.status(400).json({ message: "Invalid date range" });
+  }
+  if (fromDate && toDate && fromDate > toDate) {
     return res.status(400).json({
       message: "วันที่เริ่มต้นต้องไม่อยู่หลังวันที่สิ้นสุด",
     });
   }
 
-  const endOfToDate = new Date(toDate);
-  endOfToDate.setDate(endOfToDate.getDate() + 1);
+  const endOfToDate = toDate ? new Date(toDate) : null;
+  endOfToDate?.setDate(endOfToDate.getDate() + 1);
   const parsedPage = Number(page);
   const parsedLimit = Number(limit);
   const currentPage =
     Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+  const maximumPageSize = hasSearch
+    ? MAX_GLOBAL_MASTER_SEARCH_PAGE_SIZE
+    : MAX_MASTER_BOOKINGS_PAGE_SIZE;
   const pageSize =
     Number.isInteger(parsedLimit) && parsedLimit > 0
-      ? Math.min(parsedLimit, MAX_MASTER_BOOKINGS_PAGE_SIZE)
-      : DEFAULT_MASTER_BOOKINGS_PAGE_SIZE;
+      ? Math.min(parsedLimit, maximumPageSize)
+      : Math.min(DEFAULT_MASTER_BOOKINGS_PAGE_SIZE, maximumPageSize);
 
   try {
-    const query: Record<string, unknown> = {
-      checkIn: { $lt: endOfToDate },
-      checkOut: { $gt: fromDate },
-    };
+    const query: Record<string, unknown> = {};
     const andFilters: Record<string, unknown>[] = [];
+
+    if (fromDate && endOfToDate) {
+      query.checkIn = { $lt: endOfToDate };
+      query.checkOut = { $gt: fromDate };
+    }
+
+    if (hasSearch) {
+      andFilters.push({
+        $or: [
+          { searchBookingIds: searchTerm },
+          { searchBookingIdPrefixes: searchTerm },
+          { searchNamePrefixes: searchTerm },
+        ],
+      });
+    }
 
     if (typeof name === "string" && name.trim()) {
       query.name = { $regex: escapeRegex(name.trim()), $options: "i" };
@@ -1789,24 +1850,21 @@ export const getMasterBookings = async (req: Request, res: Response) => {
     }
     if (andFilters.length > 0) query.$and = andFilters;
 
-    const [bookingPage, occupancy] = await Promise.all([
-      Booking.find(query)
-        .sort({
-          checkIn: 1,
-          checkOut: 1,
-          name: 1,
-          _id: 1,
-        })
-        .skip((currentPage - 1) * pageSize)
-        .limit(pageSize + 1),
-      getGuestsInHouse(),
-    ]);
+    const bookingPage = await Booking.find(query)
+      .sort(
+        hasSearch && !hasDateRange
+          ? { checkIn: -1, checkOut: -1, name: 1, _id: -1 }
+          : { checkIn: 1, checkOut: 1, name: 1, _id: 1 },
+      )
+      .skip((currentPage - 1) * pageSize)
+      .limit(pageSize + 1)
+      .maxTimeMS(2000);
     const hasMore = bookingPage.length > pageSize;
     const bookings = hasMore ? bookingPage.slice(0, pageSize) : bookingPage;
 
     res.status(200).json({
       bookings,
-      occupancy,
+      scope: hasDateRange ? "range" : "all_dates",
       pagination: {
         page: currentPage,
         pageSize,
@@ -2670,7 +2728,7 @@ export const getMonthCalendar = async (req: Request, res: Response) => {
         (roomCharge.paymentMethod === "Unpaid" && !hasRoomChargeSettlement);
 
       commercialRoomSlices(booking).forEach((slice) => {
-        const effectiveStayEnd = effectiveRoomStayEnd(booking, {
+        const effectiveStayEnd = effectiveCalendarRoomStayEnd(booking, {
           roomIds: slice.roomIds,
           from: slice.from,
           to: slice.to,

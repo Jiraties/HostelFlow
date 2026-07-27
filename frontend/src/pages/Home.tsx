@@ -40,8 +40,7 @@ type HomeStatus = "arrivals" | "departures" | "master";
 type MasterFilters = {
   from: string;
   to: string;
-  name: string;
-  bookingId: string;
+  search: string;
   room: string;
   channel: string;
   status: string;
@@ -78,8 +77,7 @@ const getDefaultMasterFilters = (): MasterFilters => {
   return {
     from: formatInputDate(thirtyDaysAgo),
     to: formatInputDate(thirtyDaysFromNow),
-    name: "",
-    bookingId: "",
+    search: "",
     room: "",
     channel: "",
     status: "",
@@ -149,6 +147,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMoreBookings, setHasMoreBookings] = useState(true);
+  const [limitSearchToRange, setLimitSearchToRange] = useState(false);
   const [filtersModalIsOpen, setFiltersModalIsOpen] = useState(false);
   const [confirmationModalIsOpen, setConfirmationModalIsOpen] = useState<{
     isOpen: boolean;
@@ -168,6 +167,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
   const masterPageRef = useRef(0);
   const masterRequestIdRef = useRef(0);
   const masterLoadingMoreRef = useRef(false);
+  const masterAbortControllerRef = useRef<AbortController | null>(null);
   const openedBookingIdFromQueryRef = useRef("");
 
   useEffect(() => {
@@ -182,10 +182,11 @@ const Home = ({ status }: { status: HomeStatus }) => {
     if (!bookingIdQuery) return;
 
     setMasterFilters((prev) =>
-      prev.bookingId === bookingIdQuery
+      prev.search === bookingIdQuery
         ? prev
-        : { ...prev, bookingId: bookingIdQuery },
+        : { ...prev, search: bookingIdQuery },
     );
+    setLimitSearchToRange(false);
   }, [bookingIdQuery, isMaster]);
 
   const fullFormattedDate = formatHeaderDate(new Date(), dateFormat);
@@ -365,6 +366,14 @@ const Home = ({ status }: { status: HomeStatus }) => {
     ) => {
       const append = options.append === true;
       if (append && masterLoadingMoreRef.current) return;
+      const normalizedSearch = filters.search.trim();
+      const hasGlobalSearch = normalizedSearch.length >= 3;
+      const useDateRange = !hasGlobalSearch || limitSearchToRange;
+      const otherFilters = {
+        room: filters.room,
+        channel: filters.channel,
+        status: filters.status,
+      };
 
       const requestId = append
         ? masterRequestIdRef.current
@@ -375,6 +384,8 @@ const Home = ({ status }: { status: HomeStatus }) => {
         masterLoadingMoreRef.current = true;
         setLoadingMore(true);
       } else {
+        masterAbortControllerRef.current?.abort();
+        masterAbortControllerRef.current = new AbortController();
         masterRequestIdRef.current = requestId;
         masterPageRef.current = 0;
         masterLoadingMoreRef.current = false;
@@ -388,8 +399,15 @@ const Home = ({ status }: { status: HomeStatus }) => {
           `${API_URL}/bookings/getMasterBookings`,
           {
             withCredentials: true,
+            signal: append
+              ? undefined
+              : masterAbortControllerRef.current?.signal,
             params: {
-              ...filters,
+              ...otherFilters,
+              ...(hasGlobalSearch ? { search: normalizedSearch } : {}),
+              ...(useDateRange
+                ? { from: filters.from, to: filters.to }
+                : {}),
               page: requestedPage,
               limit: MASTER_BOOKINGS_PAGE_SIZE,
             },
@@ -401,7 +419,9 @@ const Home = ({ status }: { status: HomeStatus }) => {
         const bookingsData = formatBookingsDates(response.data.bookings);
         const hasMore = response.data.pagination?.hasMore === true;
         setLastUpdated(new Date());
-        setOccupancy(response.data.occupancy);
+        if (typeof response.data.occupancy === "number") {
+          setOccupancy(response.data.occupancy);
+        }
         setBookings((currentBookings) => {
           if (!append) return bookingsData;
 
@@ -420,6 +440,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
           response.data.pagination?.page || requestedPage;
         setHasMoreBookings(hasMore);
       } catch (err) {
+        if (axios.isCancel(err)) return;
         if (requestId === masterRequestIdRef.current) {
           if (!append) setHasMoreBookings(false);
           throw err;
@@ -435,7 +456,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
         }
       }
     },
-    [],
+    [limitSearchToRange],
   );
 
   const fetchBookings = useCallback(async () => {
@@ -488,6 +509,9 @@ const Home = ({ status }: { status: HomeStatus }) => {
   ]);
 
   const updateMasterFilter = (key: keyof MasterFilters, value: string) => {
+    if (key === "search" && value.trim().length >= 3) {
+      setLimitSearchToRange(false);
+    }
     setMasterFilters((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -546,11 +570,55 @@ const Home = ({ status }: { status: HomeStatus }) => {
   }, [bookingIdQuery, bookings, loading]);
 
   const renderMasterFilterFields = ({
-    includeName = true,
+    includeSearch = true,
   }: {
-    includeName?: boolean;
+    includeSearch?: boolean;
   } = {}) => (
     <div className="home__masterFiltersInner">
+      {includeSearch && (
+        <div className="home__filterField home__filterField--search">
+          <div className="home__filterLabelRow">
+            <p className="home__filterLabel">ค้นหาการจอง</p>
+            {masterFilters.search.trim().length >= 3 && (
+              <button
+                type="button"
+                className="home__searchScopeToggle"
+                onClick={() =>
+                  setLimitSearchToRange((currentValue) => !currentValue)
+                }
+                title={
+                  limitSearchToRange
+                    ? "เปลี่ยนเป็นค้นหาทุกช่วงเวลา"
+                    : "จำกัดผลลัพธ์ตามช่วงวันที่"
+                }
+              >
+                <i
+                  className={`bx ${
+                    limitSearchToRange ? "bx-calendar" : "bx-globe"
+                  }`}
+                  aria-hidden="true"
+                />
+                <span>
+                  {limitSearchToRange ? "ช่วงวันที่" : "ทุกช่วงเวลา"}
+                </span>
+              </button>
+            )}
+          </div>
+          <div className="home__searchInput">
+            <i className="bx bx-search" aria-hidden="true" />
+            <input
+              className="boxInput home__filterInput"
+              type="search"
+              value={masterFilters.search}
+              placeholder="ชื่อแขก หรือ Booking ID"
+              autoComplete="off"
+              onChange={(event) =>
+                updateMasterFilter("search", event.target.value)
+              }
+            />
+          </div>
+        </div>
+      )}
       <div className="home__dateFilter">
         <div className="home__filterLabels">
           <p className="home__filterLabel">จากวันที่</p>
@@ -559,37 +627,23 @@ const Home = ({ status }: { status: HomeStatus }) => {
         <div className="home__dateInputs">
           <PreferredDateInput
             value={masterFilters.from}
+            disabled={
+              masterFilters.search.trim().length >= 3 &&
+              !limitSearchToRange
+            }
             onChange={(e) => updateMasterFilter("from", e.target.value)}
             className="boxInput home__dateInput"
           />
           <PreferredDateInput
             value={masterFilters.to}
+            disabled={
+              masterFilters.search.trim().length >= 3 &&
+              !limitSearchToRange
+            }
             onChange={(e) => updateMasterFilter("to", e.target.value)}
             className="boxInput home__dateInput"
           />
         </div>
-      </div>
-      {includeName && (
-        <div className="home__filterField">
-          <p className="home__filterLabel">ชื่อ</p>
-          <input
-            className="boxInput home__filterInput"
-            type="text"
-            value={masterFilters.name}
-            placeholder="ค้นหาชื่อแขก"
-            onChange={(e) => updateMasterFilter("name", e.target.value)}
-          />
-        </div>
-      )}
-      <div className="home__filterField">
-        <p className="home__filterLabel">Booking ID</p>
-        <input
-          className="boxInput home__filterInput"
-          type="text"
-          value={masterFilters.bookingId}
-          placeholder="ค้นหา Booking ID หลักหรือ Add Nights"
-          onChange={(e) => updateMasterFilter("bookingId", e.target.value)}
-        />
       </div>
       <div className="home__filterField">
         <p className="home__filterLabel">ห้อง</p>
@@ -652,7 +706,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
   );
 
   return (
-    <main className="home">
+    <main className={`home${isMaster ? " home--master" : ""}`}>
       <Modal
         open={addBookingIsOpen}
         className="home__modalCenter"
@@ -726,7 +780,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
             />
           </div>
           <div className="home__mobileFilters">
-            {renderMasterFilterFields({ includeName: false })}
+            {renderMasterFilterFields({ includeSearch: false })}
           </div>
         </div>
       </Modal>
@@ -736,38 +790,66 @@ const Home = ({ status }: { status: HomeStatus }) => {
         onRefresh={fetchBookings}
       />
       {isMaster && (
-        <section className="home__masterControls">
-          <div className="home__masterFilters">
-            {renderMasterFilterFields()}
-          </div>
-          <div className="home__masterActions">
-            <label className="home__mobileNameSearch">
-              <i className="bx bx-search" aria-hidden="true" />
-              <input
-                type="search"
-                value={masterFilters.name}
-                placeholder="ค้นหาชื่อแขก"
-                aria-label="ค้นหาด้วยชื่อแขก"
-                autoComplete="off"
-                onChange={(event) =>
-                  updateMasterFilter("name", event.target.value)
-                }
+        <>
+          <section className="home__masterControls">
+            <div className="home__masterFilters">
+              {renderMasterFilterFields()}
+            </div>
+            <div className="home__masterActions">
+              <label className="home__mobileNameSearch">
+                <i className="bx bx-search" aria-hidden="true" />
+                <input
+                  type="search"
+                  value={masterFilters.search}
+                  placeholder="ชื่อแขก หรือ Booking ID"
+                  aria-label="ค้นหาด้วยชื่อแขกหรือ Booking ID"
+                  autoComplete="off"
+                  onChange={(event) =>
+                    updateMasterFilter("search", event.target.value)
+                  }
+                />
+              </label>
+              {masterFilters.search.trim().length >= 3 && (
+                <button
+                  type="button"
+                  className="home__mobileSearchScopeToggle"
+                  onClick={() =>
+                    setLimitSearchToRange((currentValue) => !currentValue)
+                  }
+                  aria-label={
+                    limitSearchToRange
+                      ? "เปลี่ยนเป็นค้นหาทุกช่วงเวลา"
+                      : "จำกัดผลลัพธ์ตามช่วงวันที่"
+                  }
+                  title={
+                    limitSearchToRange
+                      ? "ค้นหาตามช่วงวันที่"
+                      : "ค้นหาทุกช่วงเวลา"
+                  }
+                >
+                  <i
+                    className={`bx ${
+                      limitSearchToRange ? "bx-calendar" : "bx-globe"
+                    }`}
+                    aria-hidden="true"
+                  />
+                </button>
+              )}
+              <ActionButton
+                text="ตัวกรอง"
+                icon="bx-filter"
+                className="home__mobileFilterAction"
+                onClick={() => setFiltersModalIsOpen(true)}
               />
-            </label>
-            <ActionButton
-              text="ตัวกรอง"
-              icon="bx-filter"
-              className="home__mobileFilterAction"
-              onClick={() => setFiltersModalIsOpen(true)}
-            />
-            <ActionButton
-              text="เพิ่มการจองใหม่"
-              icon="bx-plus"
-              className="home__addBookingAction"
-              onClick={() => setAddBookingIsOpen(true)}
-            />
-          </div>
-        </section>
+              <ActionButton
+                text="เพิ่มการจองใหม่"
+                icon="bx-plus"
+                className="home__addBookingAction"
+                onClick={() => setAddBookingIsOpen(true)}
+              />
+            </div>
+          </section>
+        </>
       )}
       {!isMaster && (
         <div className="home__statsAndActions">

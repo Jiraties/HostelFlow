@@ -14,6 +14,10 @@ import { toInputDate } from "../helpers/dateHelpers";
 import {
   effectiveCommercialSegments,
 } from "../helpers/commercialSegmentHelpers";
+import {
+  buildBookingIdSearchPrefixes,
+  buildBookingIdSearchValues,
+} from "../helpers/bookingSearchHelpers";
 import { getRoomStayRoomIds } from "../helpers/roomStayHelpers";
 import { bookingRevisionPredicate } from "./bookingConcurrency";
 import {
@@ -533,6 +537,9 @@ export const extendBooking = async ({
               operationKeyHash,
               requestHash,
             };
+            const newSearchBookingIds = buildBookingIdSearchValues(
+              normalizedInput.channelBookingId,
+            );
 
             const updatedBooking = await Booking.findOneAndUpdate(
               {
@@ -551,6 +558,13 @@ export const extendBooking = async ({
                 $push: {
                   commercialSegments: segment,
                   transactions: { $each: assignedTransactions },
+                },
+                $addToSet: {
+                  searchBookingIds: { $each: newSearchBookingIds },
+                  searchBookingIdPrefixes: {
+                    $each:
+                      buildBookingIdSearchPrefixes(newSearchBookingIds),
+                  },
                 },
                 $inc: { revision: 1 },
               },

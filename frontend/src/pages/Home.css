@@ -105,6 +105,61 @@
   width: 100%;
 }
 
+.home__filterField--search {
+  flex-basis: 20rem;
+}
+
+.home__searchInput {
+  position: relative;
+}
+
+.home__searchInput i {
+  position: absolute;
+  top: 50%;
+  left: 0.9rem;
+  z-index: 1;
+  color: var(--primary-color);
+  font-size: 1.2rem;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.home__searchInput input {
+  padding-left: 2.75rem;
+}
+
+.home__filterLabelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.home__searchScopeToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-bottom: 0.5rem;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--primary-color);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.home__searchScopeToggle:hover,
+.home__searchScopeToggle:focus-visible {
+  text-decoration: underline;
+}
+
+.home__mobileSearchScopeToggle {
+  display: none;
+}
+
 .home__filterActions {
   display: flex;
   gap: 1rem;
@@ -132,6 +187,10 @@
 
 .home__statsAndActions + .home__gridArea {
   margin-top: -0.75rem;
+}
+
+.home--master .home__masterControls + .home__gridArea {
+  margin-top: -1.25rem;
 }
 
 .home__gridFab {
@@ -285,6 +344,21 @@
     padding-bottom: 0.5rem;
   }
 
+  .home__mobileSearchScopeToggle {
+    display: grid;
+    place-items: center;
+    flex: 0 0 var(--mobile-touch-target, 2.75rem);
+    width: var(--mobile-touch-target, 2.75rem);
+    height: var(--mobile-touch-target, 2.75rem);
+    border: 0;
+    border-radius: 50%;
+    background-color: var(--background);
+    box-shadow: var(--main-shadow);
+    color: var(--primary-color);
+    font-size: 1.25rem;
+    cursor: pointer;
+  }
+
   .home__masterActions .home__action {
     flex: 1 1 0;
     justify-content: center;
@@ -396,6 +470,10 @@
     min-height: 28rem;
     border-radius: var(--mobile-card-radius, 1.25rem);
   }
+
+  .home--master .home__masterControls + .home__gridArea {
+    margin-top: -0.5rem;
+  }
 }
 
 @media (max-width: 520px) {
@@ -410,5 +488,9 @@
 
   .home__filterField {
     flex-basis: 11.5rem;
+  }
+
+  .home--master .home__masterControls + .home__gridArea {
+    margin-top: -0.75rem;
   }
 }

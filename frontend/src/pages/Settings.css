@@ -159,6 +159,15 @@
   font-weight: 500;
 }
 
+.settings__resetLayout {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.settings__resetLayout i {
+  color: var(--primary-color);
+}
+
 .settings__activities {
   padding: 0 1.5rem 1.5rem 1.5rem;
   background-color: #fff;

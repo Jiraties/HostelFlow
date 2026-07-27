@@ -2,6 +2,7 @@ import bcrypt from "bcrypt";
 import User from "../models/user";
 import { defaultUserSettings } from "../models/user";
 import type { UserSettings } from "../models/user";
+import type { SpreadsheetColumnOrders } from "../models/user";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import { Request, Response, NextFunction } from "express";
@@ -36,6 +37,9 @@ const normalizeUserSettings = (settings?: Partial<UserSettings>) => ({
   defaultPaymentMethod:
     settings?.defaultPaymentMethod ?? defaultUserSettings.defaultPaymentMethod,
   dateFormat: settings?.dateFormat || defaultUserSettings.dateFormat,
+  spreadsheetColumnOrders:
+    settings?.spreadsheetColumnOrders ||
+    defaultUserSettings.spreadsheetColumnOrders,
 });
 
 const sanitizeUser = (user: {
@@ -63,6 +67,8 @@ const sanitizeUser = (user: {
   };
 };
 
+type ScalarUserSetting = Exclude<keyof UserSettings, "spreadsheetColumnOrders">;
+
 const settingsOptions = {
   calendarColorMode: ["status", "source"],
   calendarDensity: ["compact", "comfortable", "spacious"],
@@ -70,12 +76,40 @@ const settingsOptions = {
   defaultPlatformId: ["", "BOOK", "HOST", "TRAV", "AGOD", "WALK"],
   defaultPaymentMethod: ["", "OTA", "Cash", "Card", "Transfer", "Unpaid"],
   dateFormat: ["dd/MM/yyyy", "d MMM yyyy"],
-} satisfies Record<keyof UserSettings, readonly string[]>;
+} satisfies Record<ScalarUserSetting, readonly string[]>;
+
+const spreadsheetViews = ["arrivals", "departures", "master"] as const;
+
+const normalizeSpreadsheetColumnOrders = (
+  value: unknown,
+): SpreadsheetColumnOrders => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("รูปแบบการจัดเรียงคอลัมน์ไม่ถูกต้อง");
+  }
+
+  const orders: SpreadsheetColumnOrders = {};
+
+  for (const view of spreadsheetViews) {
+    const order = (value as Record<string, unknown>)[view];
+    if (order === undefined) continue;
+
+    if (
+      !Array.isArray(order) ||
+      order.some((columnId) => typeof columnId !== "string" || !columnId)
+    ) {
+      throw new Error("รูปแบบการจัดเรียงคอลัมน์ไม่ถูกต้อง");
+    }
+
+    orders[view] = [...new Set(order)];
+  }
+
+  return orders;
+};
 
 const normalizeSettingsUpdate = (body: Partial<UserSettings>) => {
   const updates: Partial<UserSettings> = {};
 
-  (Object.keys(settingsOptions) as (keyof UserSettings)[]).forEach((key) => {
+  (Object.keys(settingsOptions) as ScalarUserSetting[]).forEach((key) => {
     const value = body[key];
     if (value === undefined) return;
 
@@ -85,6 +119,12 @@ const normalizeSettingsUpdate = (body: Partial<UserSettings>) => {
 
     updates[key] = value as never;
   });
+
+  if (body.spreadsheetColumnOrders !== undefined) {
+    updates.spreadsheetColumnOrders = normalizeSpreadsheetColumnOrders(
+      body.spreadsheetColumnOrders,
+    );
+  }
 
   return updates;
 };

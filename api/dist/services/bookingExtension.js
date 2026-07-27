@@ -11,6 +11,7 @@ const booking_1 = __importDefault(require("../models/booking"));
 const roomInventory_1 = require("../config/roomInventory");
 const dateHelpers_1 = require("../helpers/dateHelpers");
 const commercialSegmentHelpers_1 = require("../helpers/commercialSegmentHelpers");
+const bookingSearchHelpers_1 = require("../helpers/bookingSearchHelpers");
 const roomStayHelpers_1 = require("../helpers/roomStayHelpers");
 const bookingConcurrency_1 = require("./bookingConcurrency");
 const cashLedgerTransaction_1 = require("./cashLedgerTransaction");
@@ -310,6 +311,7 @@ const extendBooking = async ({ bookingId, input, idempotencyKey, staffUsername, 
                         operationKeyHash,
                         requestHash,
                     };
+                    const newSearchBookingIds = (0, bookingSearchHelpers_1.buildBookingIdSearchValues)(normalizedInput.channelBookingId);
                     const updatedBooking = await booking_1.default.findOneAndUpdate({
                         bookingId,
                         status: currentBooking.status,
@@ -325,6 +327,12 @@ const extendBooking = async ({ bookingId, input, idempotencyKey, staffUsername, 
                         $push: {
                             commercialSegments: segment,
                             transactions: { $each: assignedTransactions },
+                        },
+                        $addToSet: {
+                            searchBookingIds: { $each: newSearchBookingIds },
+                            searchBookingIdPrefixes: {
+                                $each: (0, bookingSearchHelpers_1.buildBookingIdSearchPrefixes)(newSearchBookingIds),
+                            },
                         },
                         $inc: { revision: 1 },
                     }, { session, returnDocument: "after", runValidators: true });

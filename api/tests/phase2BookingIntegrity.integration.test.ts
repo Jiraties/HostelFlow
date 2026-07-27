@@ -251,6 +251,47 @@ test("master booking search matches extension channel booking IDs", async () => 
   );
 });
 
+test("master search finds old bookings without a date range", async () => {
+  const oldBooking = await bookingFixture("OLD-GLOBAL-BOOKING");
+  oldBooking.name = "Anong Global Guest";
+  oldBooking.checkIn = new Date(`${localDate(-180)}T00:00:00`);
+  oldBooking.checkOut = new Date(`${localDate(-179)}T00:00:00`);
+  oldBooking.roomStays[0].from = oldBooking.checkIn;
+  oldBooking.roomStays[0].to = oldBooking.checkOut;
+  await oldBooking.save();
+
+  const nameResponse = response();
+  await controller.getMasterBookings(
+    request({
+      method: "GET",
+      query: { search: "global gue" },
+      url: "/bookings/getMasterBookings",
+    }),
+    nameResponse as any,
+  );
+
+  assert.equal(nameResponse.statusCode, 200);
+  assert.equal(nameResponse.body.scope, "all_dates");
+  assert.deepEqual(
+    nameResponse.body.bookings.map(
+      (currentBooking: { bookingId: string }) => currentBooking.bookingId,
+    ),
+    ["OLD-GLOBAL-BOOKING"],
+  );
+  assert.equal("occupancy" in nameResponse.body, false);
+
+  const shortSearchResponse = response();
+  await controller.getMasterBookings(
+    request({
+      method: "GET",
+      query: { search: "gl" },
+      url: "/bookings/getMasterBookings",
+    }),
+    shortSearchResponse as any,
+  );
+  assert.equal(shortSearchResponse.statusCode, 400);
+});
+
 test("master bookings pagination returns stable non-overlapping pages", async () => {
   await Promise.all([
     bookingFixture("MASTER-PAGE-1"),
@@ -1195,6 +1236,57 @@ test("admin void preserves paid history, actor and reason while releasing invent
     ),
     false,
   );
+});
+
+test("calendar keeps blocked early-checkout nights and hides released nights", async () => {
+  const checkedOutAt = new Date();
+  const originalCheckOut = new Date(`${localDate(3)}T00:00:00`);
+  const blockedBooking = await bookingFixture("EARLY-BLOCKED", "Balcony");
+  const releasedBooking = await bookingFixture("EARLY-RELEASED", "Window");
+
+  for (const [currentBooking, roomReleaseStatus] of [
+    [blockedBooking, "blocked"],
+    [releasedBooking, "released"],
+  ] as const) {
+    currentBooking.status = "checkedOut";
+    currentBooking.checkOut = originalCheckOut;
+    currentBooking.roomStays[0].to = originalCheckOut;
+    currentBooking.checkout = {
+      roomReleaseStatus,
+      depositRefundAmount: 0,
+      checkedOutAt,
+      checkedOutByStaffUsername: "admin",
+      earlyCheckOut: true,
+      nightsEarly: 3,
+      depositDisposition: "returned",
+    };
+    await currentBooking.save();
+  }
+
+  const calendarResponse = response();
+  await controller.getMonthCalendar(
+    request({
+      method: "GET",
+      query: {
+        year: checkedOutAt.getFullYear(),
+        month: checkedOutAt.getMonth(),
+      },
+      url: "/bookings/getMonthCalendar",
+    }),
+    calendarResponse as any,
+  );
+
+  assert.equal(calendarResponse.statusCode, 200);
+  const calendarBooking = (roomId: string, bookingId: string) =>
+    calendarResponse.body
+      .find((room: any) => room.roomId === roomId)
+      ?.bookings.find((item: any) => item.bookingId === bookingId);
+
+  assert.equal(
+    new Date(calendarBooking("Balcony", "EARLY-BLOCKED").to).getTime(),
+    originalCheckOut.getTime(),
+  );
+  assert.equal(calendarBooking("Window", "EARLY-RELEASED"), undefined);
 });
 
 test("unknown room IDs are rejected and accepted bookings map to calendar inventory", async () => {

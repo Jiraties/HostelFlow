@@ -12,6 +12,7 @@
     "migrate:preproduction-integrity": "ts-node src/scripts/migratePreProductionIntegrity.ts",
     "migrate:roomIds": "ts-node src/scripts/migrateRoomStayRoomIds.ts",
     "migrate:booking-extension-indexes": "ts-node src/scripts/migrateBookingExtensionIndexes.ts",
+    "migrate:master-search-indexes": "ts-node src/scripts/migrateMasterSearchIndexes.ts",
     "migrate:pinned-bookings": "ts-node src/scripts/migratePinnedBookings.ts",
     "verify:restore": "ts-node src/scripts/verifyRestoredData.ts",
     "seed:demo": "ts-node src/scripts/seedDemoData.ts",
