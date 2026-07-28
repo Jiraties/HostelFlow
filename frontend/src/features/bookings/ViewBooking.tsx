@@ -638,6 +638,10 @@ const ViewBooking = ({
   };
   const roomChargePayments = roomChargeSettlementTransactions(data);
   const transactionName = (transaction: booking["transactions"][number]) => {
+    if (transaction.type === "misc" && transaction.note?.trim()) {
+      return `Misc · ${transaction.note.trim()}`;
+    }
+
     if (
       transaction.type === "deposit" &&
       transaction.sourceAction === "ADD_TRANSACTION"
@@ -1462,6 +1466,7 @@ const ViewBooking = ({
           initialRoomStays={data.roomStays}
           bookingId={data.bookingId}
           revision={data.revision}
+          canEditHistoricalRoomStays={user?.admin === true}
           checkIn={data.checkIn}
           checkOut={data.checkOut}
           onClose={() => setManageRoomStaysIsOpen(false)}
@@ -2056,8 +2061,21 @@ const ViewBooking = ({
               )}
             </div>
 
+            {!data.voided &&
+              (data.status === "booked" || data.status === "checkedIn") && (
+                <ActionButton
+                  text=""
+                  mobileText="เพิ่มคืน"
+                  tooltip="เพิ่มจำนวนคืน"
+                  onClick={() => setExtendBookingIsOpen(true)}
+                  icon="bx-calendar-plus"
+                  className="viewBooking__mobileExtendAction"
+                />
+              )}
+
             <ActionButton
               text=""
+              mobileText="โน้ต"
               tooltip="เพิ่มโน้ต"
               icon="bx-note"
               onClick={() => {
@@ -2068,6 +2086,7 @@ const ViewBooking = ({
 
             <ActionButton
               text=""
+              mobileText={data.pinned ? "ปักแล้ว" : "ปักหมุด"}
               tooltip="ปักหมุด"
               icon={data.pinned ? "bxf bx-pin-alt" : "bx-pin-alt"}
               className={data.pinned ? "viewBooking__pinAction" : ""}
@@ -2096,6 +2115,7 @@ const ViewBooking = ({
                   tooltip="เพิ่มจำนวนคืน"
                   onClick={() => setExtendBookingIsOpen(true)}
                   icon="bx-calendar-plus"
+                  className="viewBooking__desktopExtendAction"
                 />
               )}
             {data.status === "booked" && !isNoShow && (

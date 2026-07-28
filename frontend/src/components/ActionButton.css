@@ -20,6 +20,10 @@
   white-space: nowrap;
 }
 
+.home__actionMobileText {
+  display: none;
+}
+
 .home__action i {
   font-size: 1.5rem;
   color: var(--primary-color);

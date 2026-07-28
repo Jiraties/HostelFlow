@@ -217,6 +217,76 @@ const getBusinessDateParts = (date = new Date()) => {
   };
 };
 
+const getBusinessDateKey = (date = new Date()) => {
+  const { year, month, day } = getBusinessDateParts(date);
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+};
+
+const nextDateKey = (dateKey: string) => {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const next = new Date(Date.UTC(year, month - 1, day + 1));
+  return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(
+    2,
+    "0",
+  )}-${String(next.getUTCDate()).padStart(2, "0")}`;
+};
+
+const completedRoomAssignments = (
+  roomStays: roomStay[],
+  checkIn: string | Date,
+  checkOut: string | Date,
+  cutoffDateKey: string,
+) => {
+  const normalizedStays = roomStays.map((stay) => ({
+    from: toInputDate(stay.from),
+    to: toInputDate(stay.to),
+    roomIds: [...getRoomStayRoomIds(stay)].sort(),
+  }));
+  const assignments = new Map<string, string>();
+  const finalDateKey =
+    toInputDate(checkOut) < cutoffDateKey
+      ? toInputDate(checkOut)
+      : cutoffDateKey;
+
+  for (
+    let dateKey = toInputDate(checkIn);
+    dateKey < finalDateKey;
+    dateKey = nextDateKey(dateKey)
+  ) {
+    const stay = normalizedStays.find(
+      (candidate) => candidate.from <= dateKey && dateKey < candidate.to,
+    );
+    assignments.set(dateKey, stay?.roomIds.join("\u0000") || "");
+  }
+
+  return assignments;
+};
+
+const preservesCompletedRoomAssignments = (
+  originalRoomStays: roomStay[],
+  incomingRoomStays: roomStay[],
+  checkIn: string | Date,
+  checkOut: string | Date,
+  cutoffDateKey: string,
+) => {
+  const originalAssignments = completedRoomAssignments(
+    originalRoomStays,
+    checkIn,
+    checkOut,
+    cutoffDateKey,
+  );
+  const incomingAssignments = completedRoomAssignments(
+    incomingRoomStays,
+    checkIn,
+    checkOut,
+    cutoffDateKey,
+  );
+
+  return [...originalAssignments].every(
+    ([dateKey, roomIds]) => incomingAssignments.get(dateKey) === roomIds,
+  );
+};
+
 const getBusinessDateStart = (year: number, month: number, day: number) =>
   new Date(Date.UTC(year, month - 1, day, -BANGKOK_UTC_OFFSET_HOURS, 0, 0, 0));
 
@@ -2844,10 +2914,11 @@ export const manageRoomStays = async (req: Request, res: Response) => {
     if ((booking.revision || 0) !== expectedRevision) {
       return sendBookingRevisionConflict(res, bookingId);
     }
-    if (booking.status !== "booked" || booking.voided) {
+    if (!["booked", "checkedIn"].includes(booking.status) || booking.voided) {
       return res.status(409).json({
         error: "BOOKING_LIFECYCLE_CONFLICT",
-        message: "ย้ายห้องหรือวันที่ได้เฉพาะการจองที่ยังไม่เช็คอิน",
+        message:
+          "ย้ายห้องได้เฉพาะการจองที่ยังไม่เช็คอินหรือแขกที่กำลังเข้าพัก",
         booking,
       });
     }
@@ -2880,6 +2951,29 @@ export const manageRoomStays = async (req: Request, res: Response) => {
       }
     }
 
+    const businessDate = getBusinessDateKey();
+    const effectiveFrom =
+      !req.user?.admin && toInputDate(booking.checkIn) < businessDate
+        ? businessDate
+        : null;
+    if (
+      effectiveFrom &&
+      !preservesCompletedRoomAssignments(
+        originalRoomStays,
+        sorted,
+        booking.checkIn,
+        booking.checkOut,
+        effectiveFrom,
+      )
+    ) {
+      return res.status(409).json({
+        error: "PAST_ROOM_STAYS_LOCKED",
+        message:
+          "ไม่สามารถเปลี่ยนห้องของคืนที่ผ่านมาได้ กรุณาย้ายห้องตั้งแต่วันนี้เป็นต้นไป",
+        booking,
+      });
+    }
+
     const roomIds = getUniqueRoomIdsFromRoomStays(sorted);
     const invalidManagedRooms = invalidRoomIds(roomIds);
     if (invalidManagedRooms.length > 0) {
@@ -2888,45 +2982,68 @@ export const manageRoomStays = async (req: Request, res: Response) => {
         message: `ไม่พบห้องที่เปิดใช้งาน: ${invalidManagedRooms.join(", ")}`,
       });
     }
-    const minFrom = new Date(sorted[0].from);
-    const maxTo = new Date(sorted[sorted.length - 1].to);
+    const roomStaysToValidate = effectiveFrom
+      ? sorted
+          .filter((stay) => toInputDate(stay.to) > effectiveFrom)
+          .map((stay) => ({
+            ...stay,
+            from:
+              toInputDate(stay.from) < effectiveFrom
+                ? effectiveFrom
+                : stay.from,
+          }))
+      : sorted;
+    const roomIdsToValidate =
+      getUniqueRoomIdsFromRoomStays(roomStaysToValidate);
 
-    const manageResult = await withRoomMutationLocks(sorted, async () => {
-      const conflictingBookings = await Booking.find({
-        bookingId: { $ne: bookingId },
-        ...buildBlockingRoomConflictQuery(roomIds, minFrom, maxTo),
-      });
+    const manageResult = await withRoomMutationLocks(
+      roomStaysToValidate,
+      async () => {
+        const conflictingBookings =
+          roomStaysToValidate.length > 0
+            ? await Booking.find({
+                bookingId: { $ne: bookingId },
+                ...buildBlockingRoomConflictQuery(
+                  roomIdsToValidate,
+                  new Date(roomStaysToValidate[0].from),
+                  new Date(
+                    roomStaysToValidate[roomStaysToValidate.length - 1].to,
+                  ),
+                ),
+              })
+            : [];
 
-      const hasConflict = conflictingBookings.some((booking) =>
-        booking.roomStays.some((existing: roomStay) =>
-          sorted.some((incoming: roomStay) =>
-            roomStaysConflict(existing, incoming),
+        const hasConflict = conflictingBookings.some((booking) =>
+          booking.roomStays.some((existing: roomStay) =>
+            roomStaysToValidate.some((incoming: roomStay) =>
+              roomStaysConflict(existing, incoming),
+            ),
           ),
-        ),
-      );
+        );
 
-      if (hasConflict) {
-        return { hasConflict };
-      }
+        if (hasConflict) {
+          return { hasConflict };
+        }
 
-      const updatedBooking = await Booking.findOneAndUpdate(
-        {
-          bookingId,
-          status: "booked",
-          voided: { $ne: true },
-          ...bookingRevisionPredicate(expectedRevision),
-        },
-        {
-          $set: {
-            roomStays: sorted,
+        const updatedBooking = await Booking.findOneAndUpdate(
+          {
+            bookingId,
+            status: { $in: ["booked", "checkedIn"] },
+            voided: { $ne: true },
+            ...bookingRevisionPredicate(expectedRevision),
           },
-          $inc: { revision: 1 },
-        },
-        { returnDocument: "after", runValidators: true },
-      );
+          {
+            $set: {
+              roomStays: sorted,
+            },
+            $inc: { revision: 1 },
+          },
+          { returnDocument: "after", runValidators: true },
+        );
 
-      return { updatedBooking };
-    });
+        return { updatedBooking };
+      },
+    );
 
     if (manageResult.hasConflict) {
       return res.status(409).json({
@@ -2947,6 +3064,7 @@ export const manageRoomStays = async (req: Request, res: Response) => {
         summary: {
           beforeRoomStays: originalRoomStays,
           afterRoomStays: sorted,
+          ...(effectiveFrom ? { effectiveFrom } : {}),
         },
         changes: {
           roomStays: { before: originalRoomStays, after: sorted },
@@ -3089,6 +3207,13 @@ export const addTransaction = async (
       });
     }
 
+    if (transaction.type === "misc" && !transaction.note?.trim()) {
+      return res.status(400).json({
+        error: "MISC_REASON_REQUIRED",
+        message: "กรุณาระบุเหตุผลสำหรับรายการ Misc",
+      });
+    }
+
     if (
       transaction.type === "adjustment" &&
       !transaction.relatedTransactionId
@@ -3189,7 +3314,7 @@ export const addTransaction = async (
     const newTransactions = buildTransactionsWithCardSurcharge(baseTransaction, {
       createdBy: req.user?.username,
       sourceAction: "ADD_TRANSACTION",
-      note: transaction.note,
+      note: transaction.note?.trim(),
       reference: transaction.reference,
       sameTypeCount,
     });

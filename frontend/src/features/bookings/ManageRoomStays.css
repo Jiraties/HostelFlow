@@ -10,6 +10,22 @@
   gap: 1rem;
 }
 
+.manageRoomStays__listItem--locked {
+  opacity: 0.72;
+}
+
+.manageRoomStays__checkedInHint {
+  margin: -0.5rem 0 1.25rem;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.manageRoomStays__adminHistoryHint {
+  margin: -0.5rem 0 1.25rem;
+  color: #a05a00;
+  font-size: 0.9rem;
+}
+
 .manageRoomStays__lockedHint {
   display: inline-flex;
   align-items: center;

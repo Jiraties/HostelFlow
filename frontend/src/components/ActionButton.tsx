@@ -11,10 +11,12 @@ const ActionButton = ({
   disabled = false,
   tooltip,
   ariaLabel,
+  mobileText,
 }: {
   text: string;
   icon: string;
   tooltip?: string;
+  mobileText?: string;
   onClick: (event: MouseEvent<HTMLButtonElement>) => void;
   className?: string;
   highlight?: boolean;
@@ -36,9 +38,16 @@ const ActionButton = ({
       }
       onClick={onClick}
       disabled={disabled}
-      aria-label={isIconOnly ? ariaLabel || "ดำเนินการ" : undefined}
+      aria-label={
+        isIconOnly
+          ? ariaLabel || mobileText || tooltip || "ดำเนินการ"
+          : undefined
+      }
     >
       {!isIconOnly && <p>{text}</p>}
+      {mobileText && (
+        <span className="home__actionMobileText">{mobileText}</span>
+      )}
       <i className={`bx ${icon}`} />
     </button>
   );

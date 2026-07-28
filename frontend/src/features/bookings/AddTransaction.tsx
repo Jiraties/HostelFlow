@@ -195,7 +195,9 @@ const AddTransaction = ({
     : 0;
   const totalGuestPays = validAmount + cardSurcharge;
   const needsNote =
-    formData.type === "adjustment" || formData.type === "depositRefund";
+    formData.type === "adjustment" ||
+    formData.type === "depositRefund" ||
+    formData.type === "misc";
   const canAttachTransaction = formData.type === "adjustment";
   const hasCashMovement =
     formData.paymentMethod === "Cash" &&
@@ -256,7 +258,11 @@ const AddTransaction = ({
       }
 
       if (needsNote && !formData.note.trim()) {
-        throw new Error("กรุณาระบุหมายเหตุสำหรับรายการนี้");
+        throw new Error(
+          formData.type === "misc"
+            ? "กรุณาระบุเหตุผลสำหรับรายการ Misc"
+            : "กรุณาระบุหมายเหตุสำหรับรายการนี้",
+        );
       }
 
       if (formData.type === "adjustment" && !formData.relatedTransactionId) {
@@ -433,12 +439,18 @@ const AddTransaction = ({
 
         {needsNote && (
           <div>
-            <p className="addBooking__label">หมายเหตุ</p>
+            <p className="addBooking__label">
+              {formData.type === "misc" ? "เหตุผล (จำเป็น)" : "หมายเหตุ"}
+            </p>
             <input
               className="boxInput"
               type="text"
               value={formData.note}
-              placeholder="เช่น คืนมัดจำบางส่วน / ปรับราคาตามหน้างาน"
+              placeholder={
+                formData.type === "misc"
+                  ? "ระบุว่ายอดนี้เป็นค่าอะไร"
+                  : "เช่น คืนมัดจำบางส่วน / ปรับราคาตามหน้างาน"
+              }
               onChange={(e) => formDataChangeHandler("note", e.target.value)}
             />
           </div>

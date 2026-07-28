@@ -20,6 +20,11 @@ type PassportViewProps = {
   onCorrectPassport: () => void;
 };
 
+const isThaiNationality = (nationality?: string) =>
+  ["TH", "THA", "THAI", "ไทย"].includes(
+    nationality?.trim().toUpperCase() || "",
+  );
+
 const PassportView = ({
   bookingId,
   correctionDisabled = false,
@@ -30,6 +35,8 @@ const PassportView = ({
   const [passportData, setPassportData] = useState<PassportData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const isThaiGuest = isThaiNationality(passportData?.nationality);
+  const identityDocumentLabel = isThaiGuest ? "บัตรประชาชน" : " Passport";
 
   const hidePassportData = () => {
     setPassportData(null);
@@ -79,13 +86,13 @@ const PassportView = ({
           correctionDisabled ? "" : " passportView__temporaryEditIcon"
         }`}
       />
-      แก้ข้อมูล Passport
+      แก้ข้อมูล{identityDocumentLabel}
     </button>
   );
 
   return (
     <div className="viewBooking__item">
-      <span className="viewBooking__label">ข้อมูล Passport</span>
+      <span className="viewBooking__label">ข้อมูล{identityDocumentLabel}</span>
       {isHidden ? (
         <button
           type="button"
@@ -112,11 +119,17 @@ const PassportView = ({
           <div className="passportView passportView__nonHidden">
             <div className="passportView__content">
               <div className="passportView__row">
-                <span>เลข Passport</span>
+                <span>
+                  {isThaiGuest ? "เลขประจำตัวประชาชน" : "เลข Passport"}
+                </span>
                 <p>{passportData.passportNo}</p>
               </div>
               <div className="passportView__row">
-                <span>ชื่อ-นามสกุล Passport</span>
+                <span>
+                  {isThaiGuest
+                    ? "ชื่อ-นามสกุลภาษาไทย"
+                    : "ชื่อ-นามสกุล Passport"}
+                </span>
                 <p>
                   {passportData.namePrefix || "-"} {passportData.passportName}
                 </p>
@@ -145,7 +158,7 @@ const PassportView = ({
                   onClick={hidePassportData}
                 >
                   <i className="bx bx-eye-slash" />
-                  ซ่อนข้อมูล Passport
+                  ซ่อนข้อมูล{identityDocumentLabel}
                 </button>
               </div>
             </div>

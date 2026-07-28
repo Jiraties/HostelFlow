@@ -129,7 +129,7 @@
 }
 
 .bookingDateRangePicker__day--today {
-  background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+  background: color-mix(in srgb, var(--primary-color) 30%, transparent);
 }
 
 .bookingDateRangePicker__day--inRange {

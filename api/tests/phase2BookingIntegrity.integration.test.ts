@@ -731,6 +731,26 @@ test("active staff can add a normal transaction after check-out", async () => {
   booking.checkedInAt = new Date();
   await booking.save();
 
+  const missingReasonResponse = response();
+  await controller.addTransaction(
+    request({
+      body: {
+        transaction: {
+          type: "misc",
+          paymentMethod: "Transfer",
+          amount: 150,
+        },
+      },
+      params: { bookingId: booking.bookingId },
+      method: "POST",
+      url: `/bookings/addTransaction/${booking.bookingId}`,
+      admin: false,
+    }),
+    missingReasonResponse as any,
+  );
+  assert.equal(missingReasonResponse.statusCode, 400);
+  assert.equal(missingReasonResponse.body.error, "MISC_REASON_REQUIRED");
+
   const addTransactionResponse = response();
   await controller.addTransaction(
     request({
@@ -739,6 +759,7 @@ test("active staff can add a normal transaction after check-out", async () => {
           type: "misc",
           paymentMethod: "Transfer",
           amount: 150,
+          note: "Airport transfer",
         },
       },
       params: { bookingId: booking.bookingId },
@@ -762,6 +783,7 @@ test("active staff can add a normal transaction after check-out", async () => {
   assert.equal(addedTransaction?.amount, 150);
   assert.equal(addedTransaction?.paymentMethod, "Transfer");
   assert.equal(addedTransaction?.createdBy, "staff");
+  assert.equal(addedTransaction?.note, "Airport transfer");
 });
 
 test("Thai check-in requires a Thai title, Thai name and 13-digit national ID", async () => {
@@ -1195,6 +1217,198 @@ test("room move increments revision and blocks a stale general edit", async () =
   const stored = await Booking.findOne({ bookingId: "MOVE-EDIT" }).lean();
   assert.deepEqual(stored?.roomStays[0].roomIds, ["Window"]);
   assert.equal(stored?.revision, 1);
+});
+
+test("checked-in guests can move rooms from today without rewriting completed nights", async () => {
+  const booking = await bookingFixture("CHECKED-IN-MOVE");
+  booking.status = "checkedIn";
+  booking.checkIn = new Date(`${localDate(-2)}T00:00:00`);
+  booking.checkOut = new Date(`${localDate(1)}T00:00:00`);
+  booking.nights = 3;
+  booking.roomStays = [
+    {
+      roomIds: ["Balcony"],
+      from: booking.checkIn,
+      to: booking.checkOut,
+    },
+  ];
+  await booking.save();
+
+  const moveResponse = response();
+  await controller.manageRoomStays(
+    request({
+      body: {
+        expectedRevision: 0,
+        roomStays: [
+          {
+            roomIds: ["Balcony"],
+            from: localDate(-2),
+            to: businessDateKey(),
+          },
+          {
+            roomIds: ["Window"],
+            from: businessDateKey(),
+            to: localDate(1),
+          },
+        ],
+      },
+      params: { bookingId: "CHECKED-IN-MOVE" },
+      url: "/bookings/manageRoomStays/CHECKED-IN-MOVE",
+      admin: false,
+    }),
+    moveResponse as any,
+  );
+
+  assert.equal(moveResponse.statusCode, 200, JSON.stringify(moveResponse.body));
+  assert.deepEqual(
+    moveResponse.body.booking.roomStays.map((stay: any) => stay.roomIds),
+    [["Balcony"], ["Window"]],
+  );
+});
+
+test("checked-in room moves cannot rewrite completed nights", async () => {
+  const booking = await bookingFixture("CHECKED-IN-HISTORY");
+  booking.status = "checkedIn";
+  booking.checkIn = new Date(`${localDate(-2)}T00:00:00`);
+  booking.checkOut = new Date(`${localDate(1)}T00:00:00`);
+  booking.nights = 3;
+  booking.roomStays = [
+    {
+      roomIds: ["Balcony"],
+      from: booking.checkIn,
+      to: booking.checkOut,
+    },
+  ];
+  await booking.save();
+
+  const moveResponse = response();
+  await controller.manageRoomStays(
+    request({
+      body: {
+        expectedRevision: 0,
+        roomStays: [
+          {
+            roomIds: ["Window"],
+            from: localDate(-2),
+            to: localDate(-1),
+          },
+          {
+            roomIds: ["Balcony"],
+            from: localDate(-1),
+            to: localDate(1),
+          },
+        ],
+      },
+      params: { bookingId: "CHECKED-IN-HISTORY" },
+      url: "/bookings/manageRoomStays/CHECKED-IN-HISTORY",
+      admin: false,
+    }),
+    moveResponse as any,
+  );
+
+  assert.equal(moveResponse.statusCode, 409);
+  assert.equal(moveResponse.body.error, "PAST_ROOM_STAYS_LOCKED");
+  const stored = await Booking.findOne({
+    bookingId: "CHECKED-IN-HISTORY",
+  }).lean();
+  assert.deepEqual(stored?.roomStays[0].roomIds, ["Balcony"]);
+  assert.equal(stored?.revision, 0);
+});
+
+test("staff cannot rewrite completed nights on a booking still marked booked", async () => {
+  const booking = await bookingFixture("LATE-BOOKED-HISTORY");
+  booking.checkIn = new Date(`${localDate(-2)}T00:00:00`);
+  booking.checkOut = new Date(`${localDate(1)}T00:00:00`);
+  booking.nights = 3;
+  booking.roomStays = [
+    {
+      roomIds: ["Balcony"],
+      from: booking.checkIn,
+      to: booking.checkOut,
+    },
+  ];
+  await booking.save();
+
+  const moveResponse = response();
+  await controller.manageRoomStays(
+    request({
+      body: {
+        expectedRevision: 0,
+        roomStays: [
+          {
+            roomIds: ["Window"],
+            from: localDate(-2),
+            to: localDate(-1),
+          },
+          {
+            roomIds: ["Balcony"],
+            from: localDate(-1),
+            to: localDate(1),
+          },
+        ],
+      },
+      params: { bookingId: "LATE-BOOKED-HISTORY" },
+      url: "/bookings/manageRoomStays/LATE-BOOKED-HISTORY",
+      admin: false,
+    }),
+    moveResponse as any,
+  );
+
+  assert.equal(moveResponse.statusCode, 409);
+  assert.equal(moveResponse.body.error, "PAST_ROOM_STAYS_LOCKED");
+});
+
+test("admins can make an audited historical room correction", async () => {
+  const booking = await bookingFixture("ADMIN-ROOM-HISTORY");
+  booking.status = "checkedIn";
+  booking.checkIn = new Date(`${localDate(-2)}T00:00:00`);
+  booking.checkOut = new Date(`${localDate(1)}T00:00:00`);
+  booking.nights = 3;
+  booking.roomStays = [
+    {
+      roomIds: ["Balcony"],
+      from: booking.checkIn,
+      to: booking.checkOut,
+    },
+  ];
+  await booking.save();
+
+  const moveResponse = response();
+  await controller.manageRoomStays(
+    request({
+      body: {
+        expectedRevision: 0,
+        roomStays: [
+          {
+            roomIds: ["Window"],
+            from: localDate(-2),
+            to: localDate(-1),
+          },
+          {
+            roomIds: ["Balcony"],
+            from: localDate(-1),
+            to: localDate(1),
+          },
+        ],
+      },
+      params: { bookingId: "ADMIN-ROOM-HISTORY" },
+      url: "/bookings/manageRoomStays/ADMIN-ROOM-HISTORY",
+      admin: true,
+    }),
+    moveResponse as any,
+  );
+
+  assert.equal(moveResponse.statusCode, 200, JSON.stringify(moveResponse.body));
+  assert.deepEqual(
+    moveResponse.body.booking.roomStays.map((stay: any) => stay.roomIds),
+    [["Window"], ["Balcony"]],
+  );
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  const activity = await Activity.findOne({
+    action: "MANAGE_ROOM_STAYS",
+    bookingId: "ADMIN-ROOM-HISTORY",
+  }).lean();
+  assert.ok(activity);
 });
 
 test("admin void preserves paid history, actor and reason while releasing inventory", async () => {

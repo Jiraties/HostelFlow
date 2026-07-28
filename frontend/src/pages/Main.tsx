@@ -90,7 +90,7 @@ type TodayRevenueStats = {
 const serviceHighlightMeta: Partial<
   Record<TransactionType, { label: string; icon: string; color: string }>
 > = {
-  roomCharge: { label: "Room Charge", icon: "bx-bed", color: "#51d1dc" },
+  roomCharge: { label: "Extension", icon: "bx-bed", color: "#51d1dc" },
   depositKept: {
     label: "มัดจำที่แขกยอมเสีย",
     icon: "bx-wallet",

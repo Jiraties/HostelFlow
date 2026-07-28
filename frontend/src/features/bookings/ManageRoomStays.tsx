@@ -3,7 +3,7 @@ import "./ManageRoomStays.css";
 import type { OptionType } from "../../helpers/selectStyling";
 import { customStyles } from "../../helpers/selectStyling";
 import { roomIdOptions } from "../../helpers/options";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import ActionButton from "../../components/ActionButton";
 import ModalCloseButton from "../../components/ModalCloseButton";
 import { PreferredDateInput } from "../../components/PreferredDateInput";
@@ -24,10 +24,24 @@ interface roomStay {
   to: string;
 }
 
+const bangkokDateKey = () => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value;
+
+  return `${value("year")}-${value("month")}-${value("day")}`;
+};
+
 const ManageRoomStays = ({
   initialRoomStays,
   bookingId,
   revision,
+  canEditHistoricalRoomStays,
   checkIn,
   checkOut,
   onClose,
@@ -37,6 +51,7 @@ const ManageRoomStays = ({
   initialRoomStays: roomStay[];
   bookingId: string;
   revision: number;
+  canEditHistoricalRoomStays: boolean;
   checkIn: string | Date;
   checkOut: string | Date;
   onClose?: () => void;
@@ -51,18 +66,31 @@ const ManageRoomStays = ({
 
   const bookingCheckIn = normalizeDate(String(checkIn));
   const bookingCheckOut = normalizeDate(String(checkOut));
-  const applyBookingBoundaries = (stays: roomStay[]) =>
-    stays.map((stay, index) => ({
-      ...stay,
-      from: index === 0 ? bookingCheckIn : stay.from,
-      to: index === stays.length - 1 ? bookingCheckOut : stay.to,
-    }));
+  const businessDate = bangkokDateKey();
+  const restrictHistoricalStays =
+    !canEditHistoricalRoomStays && bookingCheckIn < businessDate;
+  const isHistoricalStay = useCallback(
+    (stay: roomStay) =>
+      restrictHistoricalStays &&
+      Boolean(stay.to) &&
+      stay.to <= businessDate,
+    [businessDate, restrictHistoricalStays],
+  );
+  const applyBookingBoundaries = useCallback(
+    (stays: roomStay[]) =>
+      stays.map((stay, index) => ({
+        ...stay,
+        from: index === 0 ? bookingCheckIn : stay.from,
+        to: index === stays.length - 1 ? bookingCheckOut : stay.to,
+      })),
+    [bookingCheckIn, bookingCheckOut],
+  );
 
   const initialManagedRoomStays = useMemo(() => {
     const normalizedCheckIn = normalizeDate(String(checkIn));
     const normalizedCheckOut = normalizeDate(String(checkOut));
 
-    return initialRoomStays.map((stay, index) => ({
+    const normalizedStays = initialRoomStays.map((stay, index) => ({
       ...stay,
       roomIds: getRoomStayRoomIds(stay),
       from:
@@ -78,7 +106,25 @@ const ManageRoomStays = ({
             ? normalizeDate(stay.to)
             : "",
     }));
-  }, [initialRoomStays, checkIn, checkOut]);
+
+    if (!restrictHistoricalStays) return normalizedStays;
+
+    return normalizedStays.flatMap((stay) => {
+      if (stay.from < businessDate && businessDate < stay.to) {
+        return [
+          { ...stay, to: businessDate },
+          { ...stay, from: businessDate },
+        ];
+      }
+      return [stay];
+    });
+  }, [
+    initialRoomStays,
+    checkIn,
+    checkOut,
+    restrictHistoricalStays,
+    businessDate,
+  ]);
 
   const [roomStays, setRoomStays] = useState<roomStay[]>(
     initialManagedRoomStays,
@@ -91,9 +137,14 @@ const ManageRoomStays = ({
   const roomStayAvailabilityKey = useMemo(
     () =>
       applyBookingBoundaries(roomStays)
-        .map((stay) => `${stay.from || ""}:${stay.to || ""}`)
+        .map(
+          (stay) =>
+            `${stay.from || ""}:${stay.to || ""}:${
+              isHistoricalStay(stay) ? "locked" : "editable"
+            }`,
+        )
         .join("|"),
-    [roomStays, bookingCheckIn, bookingCheckOut],
+    [roomStays, applyBookingBoundaries, isHistoricalStay],
   );
 
   useEffect(() => {
@@ -111,12 +162,12 @@ const ManageRoomStays = ({
       from: stay.from,
       to: stay.to,
       valid:
+        !isHistoricalStay(stay) &&
         Boolean(stay.from && stay.to) &&
         new Date(stay.from) < new Date(stay.to),
     }));
 
     if (!availabilityRequests.some((request) => request.valid)) {
-      setOccupiedRoomIdsByStay({});
       return;
     }
 
@@ -157,14 +208,29 @@ const ManageRoomStays = ({
         }, {});
 
         setOccupiedRoomIdsByStay(nextOccupiedRoomIdsByStay);
-        setRoomStays((prevRoomStays) =>
-          prevRoomStays.map((stay, index) => ({
-            ...stay,
-            roomIds: getRoomStayRoomIds(stay).filter(
-              (roomId) => !nextOccupiedRoomIdsByStay[index]?.includes(roomId),
-            ),
-          })),
-        );
+        setRoomStays((prevRoomStays) => {
+          let changed = false;
+          const nextRoomStays = prevRoomStays.map((stay, index) => {
+            const currentRoomIds = getRoomStayRoomIds(stay);
+            const nextRoomIds = isHistoricalStay(stay)
+              ? currentRoomIds
+              : currentRoomIds.filter(
+                  (roomId) =>
+                    !nextOccupiedRoomIdsByStay[index]?.includes(roomId),
+                );
+            if (
+              nextRoomIds.length !== currentRoomIds.length ||
+              nextRoomIds.some(
+                (roomId, roomIndex) => roomId !== currentRoomIds[roomIndex],
+              )
+            ) {
+              changed = true;
+            }
+            return changed ? { ...stay, roomIds: nextRoomIds } : stay;
+          });
+
+          return changed ? nextRoomStays : prevRoomStays;
+        });
       })
       .catch((err) => {
         if (axios.isCancel(err) || err.name === "CanceledError") return;
@@ -172,7 +238,13 @@ const ManageRoomStays = ({
       });
 
     return () => controller.abort();
-  }, [bookingId, roomStayAvailabilityKey]);
+  }, [
+    bookingId,
+    roomStayAvailabilityKey,
+    roomStays,
+    applyBookingBoundaries,
+    isHistoricalStay,
+  ]);
 
   const roomOptionsByStay = useMemo(
     () =>
@@ -196,6 +268,14 @@ const ManageRoomStays = ({
 
   const isFirstStay = (index: number) => index === 0;
   const isLastStay = (index: number) => index === roomStays.length - 1;
+  const editableStayCount = roomStays.filter(
+    (stay) => !isHistoricalStay(stay),
+  ).length;
+  const canEditCurrentOrFuture =
+    !restrictHistoricalStays || bookingCheckOut > businessDate;
+  const canRemoveRoomStay =
+    roomStays.length > 1 &&
+    (!restrictHistoricalStays || editableStayCount > 1);
 
   const removeRoomStay = () => {
     if (submitting) return;
@@ -245,19 +325,46 @@ const ManageRoomStays = ({
       {onClose && <ModalCloseButton onClick={onClose} />}
       <div>
         <h1 className="addBooking__title">จัดการช่วงการเข้าพัก</h1>
+        {restrictHistoricalStays && (
+          <p className="manageRoomStays__checkedInHint">
+            คืนที่ผ่านมาแสดงด้วยเครื่องหมายล็อก
+            และสามารถย้ายห้องได้ตั้งแต่วันนี้เป็นต้นไป
+          </p>
+        )}
+        {canEditHistoricalRoomStays && bookingCheckIn < businessDate && (
+          <p className="manageRoomStays__adminHistoryHint">
+            สิทธิ์แอดมิน: การแก้ไขห้องของคืนที่ผ่านมาเป็นการแก้ไขประวัติ
+          </p>
+        )}
       </div>
 
       <div className="manageRoomStays__list">
         {roomStays.map((roomStay, index) => (
-          <div className="manageRoomStays__listItem" key={index}>
+          <div
+            className={`manageRoomStays__listItem${
+              isHistoricalStay(roomStay)
+                ? " manageRoomStays__listItem--locked"
+                : ""
+            }`}
+            key={`${roomStay.from}-${roomStay.to}-${index}`}
+          >
             <div>
-              <p className="addBooking__label">ห้องพักช่วงพักที่ {index + 1}</p>
+              <p className="addBooking__label">
+                ห้องพักช่วงพักที่ {index + 1}
+                {isHistoricalStay(roomStay) && (
+                  <span className="manageRoomStays__lockedHint">
+                    <i className="bx bx-lock-keyhole" />
+                    คืนที่ผ่านมา
+                  </span>
+                )}
+              </p>
               <Select<OptionType, true>
                 isMulti
                 styles={customStyles<OptionType, true>()}
                 classNamePrefix="rs"
                 options={roomOptionsByStay[index] || roomIdOptions}
                 placeholder="เช่น Veranda 1"
+                isDisabled={submitting || isHistoricalStay(roomStay)}
                 value={(roomOptionsByStay[index] || roomIdOptions).filter(
                   (option) =>
                     getRoomStayRoomIds(roomStay).includes(option.value),
@@ -302,7 +409,13 @@ const ManageRoomStays = ({
                   value={
                     isFirstStay(index) ? bookingCheckIn : roomStay.from || ""
                   }
-                  disabled={isFirstStay(index)}
+                  disabled={
+                    isFirstStay(index) ||
+                    isHistoricalStay(roomStay) ||
+                    (restrictHistoricalStays &&
+                      roomStay.from <= businessDate)
+                  }
+                  min={restrictHistoricalStays ? businessDate : undefined}
                   onChange={(e) => {
                     const newFrom = e.target.value;
 
@@ -334,7 +447,10 @@ const ManageRoomStays = ({
                   value={
                     isLastStay(index) ? bookingCheckOut : roomStay.to || ""
                   }
-                  disabled={isLastStay(index)}
+                  disabled={
+                    isLastStay(index) || isHistoricalStay(roomStay)
+                  }
+                  min={restrictHistoricalStays ? businessDate : undefined}
                   onChange={(e) => {
                     const newTo = e.target.value;
 
@@ -369,11 +485,11 @@ const ManageRoomStays = ({
           <ActionButton
             text="เพิ่มช่วงพัก"
             icon="bx-plus"
-            disabled={submitting}
+            disabled={submitting || !canEditCurrentOrFuture}
             onClick={() => addEmptyRoomStay()}
           />
 
-          {roomStays.length > 1 && (
+          {canRemoveRoomStay && (
             <ActionButton
               text="ลดช่วงพัก"
               icon="bx-minus"
@@ -387,7 +503,7 @@ const ManageRoomStays = ({
           text="แก้ไข"
           icon="bx-edit"
           highlight
-          disabled={submitting}
+          disabled={submitting || !canEditCurrentOrFuture}
           onClick={() => {
             toast.promise(patchRoomStays(), {
               loading: "กำลังอัปเดตข้อมูล...",

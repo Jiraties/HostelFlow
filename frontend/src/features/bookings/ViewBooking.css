@@ -274,12 +274,11 @@
   flex-direction: column;
   gap: 1rem;
   padding: 1rem;
-  height: 100%;
+  min-height: 25rem;
+  contain: size;
   border-radius: 1rem;
   box-shadow: var(--main-shadow);
-
-  overflow-y: scroll;
-  height: 25rem;
+  overflow-y: auto;
 }
 
 /* .viewBooking__mainLeft .viewBooking__label {
@@ -1034,6 +1033,10 @@
   flex-wrap: wrap;
 }
 
+.viewBooking__secondaryActions .viewBooking__mobileExtendAction {
+  display: none;
+}
+
 .viewBooking__moreActions {
   position: relative;
 }
@@ -1286,6 +1289,8 @@
 
   .viewBooking__mainLeft {
     height: auto;
+    min-height: 0;
+    contain: none;
     /* max-height: 22rem; */
   }
 
@@ -1344,42 +1349,45 @@
   .viewBooking__actions .home__action {
     min-height: var(--mobile-touch-target, 2.75rem);
     border-radius: 0.9rem;
-    box-shadow: none;
     justify-content: center;
+  }
+
+  .viewBooking__actions
+    .home__action:not(.home__actionDisabled) {
+    box-shadow: var(--main-shadow);
   }
 
   .viewBooking__actionsRow {
     order: 1;
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.5rem;
     width: 100%;
   }
 
   .viewBooking__actionsRow .home__action:not(.home__actionIconOnly) {
-    flex: 1 1 8.5rem;
-    width: auto;
+    grid-column: 1 / -1;
+    width: 100%;
   }
 
-  .viewBooking__actionsRow .home__actionIconOnly {
-    flex: 0 0 var(--mobile-touch-target, 2.75rem);
-    width: var(--mobile-touch-target, 2.75rem);
-    min-width: var(--mobile-touch-target, 2.75rem);
-    height: var(--mobile-touch-target, 2.75rem);
-    min-height: var(--mobile-touch-target, 2.75rem);
-    padding: 0;
+  .viewBooking__actionsRow:has(.viewBooking__noShowAction)
+    .home__action:not(.home__actionIconOnly) {
+    grid-column: auto;
+  }
+
+  .viewBooking__actionsRow .viewBooking__desktopExtendAction {
+    display: none;
   }
 
   .viewBooking__secondaryActions {
     order: 2;
-    display: flex;
-    flex-wrap: nowrap;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.5rem;
     width: 100%;
   }
 
   .viewBooking__moreActions {
-    flex: 1 1 auto;
     min-width: 0;
   }
 
@@ -1388,19 +1396,29 @@
     background-color: var(--background);
   }
 
+  .viewBooking__secondaryActions .viewBooking__mobileExtendAction {
+    display: flex;
+  }
+
   .viewBooking__secondaryActions > .home__actionIconOnly {
-    flex: 0 0 var(--mobile-touch-target, 2.75rem);
-    width: var(--mobile-touch-target, 2.75rem);
-    min-width: var(--mobile-touch-target, 2.75rem);
-    height: var(--mobile-touch-target, 2.75rem);
+    width: 100%;
+    min-width: 0;
+    height: auto;
     min-height: var(--mobile-touch-target, 2.75rem);
-    padding: 0;
+    padding: 0.7rem 0.8rem;
     background-color: var(--background);
+  }
+
+  .viewBooking__secondaryActions .home__actionMobileText {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .viewBooking__moreActionsMenu {
     bottom: calc(100% + 0.5rem);
-    width: 100%;
+    width: calc(200% + 0.5rem);
     border: 0;
     background-color: var(--background);
     box-shadow: var(--mobile-shadow, var(--light-shadow));
