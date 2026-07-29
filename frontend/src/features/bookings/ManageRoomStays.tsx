@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import ActionButton from "../../components/ActionButton";
 import ModalCloseButton from "../../components/ModalCloseButton";
 import { PreferredDateInput } from "../../components/PreferredDateInput";
+import Tooltip from "../../components/Tooltip";
 import toast from "react-hot-toast";
 import axios from "axios";
 import { API_URL } from "../../config/api";
@@ -333,7 +334,7 @@ const ManageRoomStays = ({
         )}
         {canEditHistoricalRoomStays && bookingCheckIn < businessDate && (
           <p className="manageRoomStays__adminHistoryHint">
-            สิทธิ์แอดมิน: การแก้ไขห้องของคืนที่ผ่านมาเป็นการแก้ไขประวัติ
+            แอดมินแก้ห้องย้อนหลังได้ และระบบจะบันทึกการเปลี่ยนแปลงไว้
           </p>
         )}
       </div>
@@ -352,10 +353,26 @@ const ManageRoomStays = ({
               <p className="addBooking__label">
                 ห้องพักช่วงพักที่ {index + 1}
                 {isHistoricalStay(roomStay) && (
-                  <span className="manageRoomStays__lockedHint">
+                  <Tooltip
+                    className="manageRoomStays__lockedHint"
+                    ariaLabel="ดูเหตุผลที่คืนที่ผ่านมาถูกล็อก"
+                    content={
+                      <>
+                        <strong>ทำไมคืนที่ผ่านมาถึงถูกล็อก?</strong>
+                        <span>
+                          เพื่อรักษาประวัติห้องที่แขกเข้าพักจริง
+                          พนักงานจึงย้ายห้องได้ตั้งแต่วันนี้เป็นต้นไป
+                        </span>
+                        <span>
+                          หากต้องแก้ย้อนหลัง ให้แอดมินดำเนินการ
+                          โดยระบบจะบันทึกการเปลี่ยนแปลงไว้
+                        </span>
+                      </>
+                    }
+                  >
                     <i className="bx bx-lock-keyhole" />
                     คืนที่ผ่านมา
-                  </span>
+                  </Tooltip>
                 )}
               </p>
               <Select<OptionType, true>

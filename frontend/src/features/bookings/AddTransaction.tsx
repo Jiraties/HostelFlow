@@ -437,24 +437,36 @@ const AddTransaction = ({
           />
         </div>
 
-        {needsNote && (
-          <div>
-            <p className="addBooking__label">
-              {formData.type === "misc" ? "เหตุผล (จำเป็น)" : "หมายเหตุ"}
-            </p>
-            <input
-              className="boxInput"
-              type="text"
-              value={formData.note}
-              placeholder={
-                formData.type === "misc"
-                  ? "ระบุว่ายอดนี้เป็นค่าอะไร"
-                  : "เช่น คืนมัดจำบางส่วน / ปรับราคาตามหน้างาน"
-              }
-              onChange={(e) => formDataChangeHandler("note", e.target.value)}
-            />
-          </div>
-        )}
+        <div>
+          <p className="addBooking__label">
+            {formData.type === "misc"
+              ? "เหตุผล (จำเป็น)"
+              : needsNote
+                ? "หมายเหตุรายการ (จำเป็น)"
+                : (
+                    <>
+                      หมายเหตุรายการ
+                      <span className="addTransaction__optionalLabel">
+                        (ไม่บังคับ)
+                      </span>
+                    </>
+                  )}
+          </p>
+          <input
+            className="boxInput"
+            type="text"
+            value={formData.note}
+            maxLength={500}
+            placeholder={
+              formData.type === "misc"
+                ? "ระบุว่ายอดนี้เป็นค่าอะไร"
+                : needsNote
+                  ? "เช่น คืนมัดจำบางส่วน / ปรับราคาตามหน้างาน"
+                  : "รายละเอียดเพิ่มเติมของรายการ"
+            }
+            onChange={(e) => formDataChangeHandler("note", e.target.value)}
+          />
+        </div>
 
         {shouldShowCardSurcharge && validAmount > 0 && (
           <div className="addTransaction__cardPreview">

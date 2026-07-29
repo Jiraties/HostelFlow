@@ -6,7 +6,6 @@ import ActionButton from "../../components/ActionButton";
 import CashShiftNudge from "../../components/CashShiftNudge";
 import { formatDisplayDate } from "../../helpers/displayDate";
 import ModalCloseButton from "../../components/ModalCloseButton";
-import { PreferredDateInput } from "../../components/PreferredDateInput";
 import { useAuth } from "../../context/AuthContext";
 import { API_URL } from "../../config/api";
 import {
@@ -31,8 +30,6 @@ import "./AddTransaction.css";
 import "./Cancellation.css";
 import "./CheckIn.css";
 import "./ExtendBooking.css";
-
-type AssignmentMode = "same" | "move";
 
 type ExtendBookingProps = {
   booking: booking;
@@ -68,7 +65,6 @@ const ExtendBooking = ({
   const { user } = useAuth();
   const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
   const currentCheckOut = formatLocalDate(new Date(booking.checkOut));
-  const currentCheckIn = formatLocalDate(new Date(booking.checkIn));
   const initialNewCheckOut = formatLocalDate(
     addDays(new Date(booking.checkOut), 1),
   );
@@ -89,9 +85,7 @@ const ExtendBooking = ({
     [finalStay],
   );
   const [newCheckOut, setNewCheckOut] = useState(initialNewCheckOut);
-  const minimumTotalNights = booking.nights + 1;
-  const [totalNights, setTotalNights] = useState(String(minimumTotalNights));
-  const [assignmentMode, setAssignmentMode] = useState<AssignmentMode>("same");
+  const [addedNightsInput, setAddedNightsInput] = useState("1");
   const [roomIds, setRoomIds] = useState<string[]>(currentRoomIds);
   const [platformId, setPlatformId] = useState<PlatformId>("WALK");
   const [initialWalkInBookingId] = useState(() => generateWalkInBookingId());
@@ -107,14 +101,14 @@ const ExtendBooking = ({
   const [submitting, setSubmitting] = useState(false);
   const [idempotencyKey] = useState(() => crypto.randomUUID());
 
-  const addedNights = Math.max(
-    Math.round(
-      (new Date(`${newCheckOut}T00:00:00`).getTime() -
-        new Date(`${currentCheckOut}T00:00:00`).getTime()) /
-        86400000,
-    ),
-    0,
+  const addedNightsDifference = Math.round(
+    (new Date(`${newCheckOut}T00:00:00`).getTime() -
+      new Date(`${currentCheckOut}T00:00:00`).getTime()) /
+      86400000,
   );
+  const addedNights = Number.isFinite(addedNightsDifference)
+    ? Math.max(addedNightsDifference, 0)
+    : 0;
   const numericAmount = Number(amount);
   const cardSurcharge =
     paymentMethod === "Card" && Number.isFinite(numericAmount)
@@ -123,7 +117,7 @@ const ExtendBooking = ({
   const paidPaymentOptions = paymentMethodOptions.filter(
     (option) => option.value !== "Unpaid",
   );
-  const selectedRooms = assignmentMode === "same" ? currentRoomIds : roomIds;
+  const selectedRooms = roomIds;
   const selectedRoomLabels = selectedRooms.map(
     (roomId) =>
       roomIdOptions.find((option) => option.value === roomId)?.label || roomId,
@@ -138,46 +132,37 @@ const ExtendBooking = ({
     occupiedRoomIds.includes(roomId),
   );
 
-  const newCheckOutChangeHandler = (value: string) => {
-    setNewCheckOut(value);
-    const nextAddedNights = Math.round(
-      (new Date(`${value}T00:00:00`).getTime() -
-        new Date(`${currentCheckOut}T00:00:00`).getTime()) /
-        86400000,
-    );
+  const addedNightsChangeHandler = (value: string) => {
+    setAddedNightsInput(value);
+    const nextAddedNights = Number(value);
+    if (!Number.isInteger(nextAddedNights) || nextAddedNights < 1) {
+      return;
+    }
 
+    setNewCheckOut(
+      formatLocalDate(
+        addDays(new Date(`${currentCheckOut}T00:00:00`), nextAddedNights),
+      ),
+    );
+  };
+
+  const clampAddedNights = () => {
+    const nextAddedNights = Number(addedNightsInput);
     if (Number.isInteger(nextAddedNights) && nextAddedNights >= 1) {
-      setTotalNights(String(booking.nights + nextAddedNights));
-    }
-  };
-
-  const totalNightsChangeHandler = (value: string) => {
-    setTotalNights(value);
-    const nextTotalNights = Number(value);
-    if (
-      !Number.isInteger(nextTotalNights) ||
-      nextTotalNights < minimumTotalNights
-    ) {
       return;
     }
 
-    setNewCheckOut(
-      formatLocalDate(addDays(new Date(booking.checkIn), nextTotalNights)),
-    );
+    setAddedNightsInput("1");
+    setNewCheckOut(initialNewCheckOut);
   };
 
-  const clampTotalNights = () => {
-    const nextTotalNights = Number(totalNights);
-    if (
-      Number.isInteger(nextTotalNights) &&
-      nextTotalNights >= minimumTotalNights
-    ) {
-      return;
-    }
-
-    setTotalNights(String(minimumTotalNights));
+  const stepAddedNights = (change: number) => {
+    const nextAddedNights = Math.max(1, addedNights + change);
+    setAddedNightsInput(String(nextAddedNights));
     setNewCheckOut(
-      formatLocalDate(addDays(new Date(booking.checkIn), minimumTotalNights)),
+      formatLocalDate(
+        addDays(new Date(`${currentCheckOut}T00:00:00`), nextAddedNights),
+      ),
     );
   };
 
@@ -214,7 +199,8 @@ const ExtendBooking = ({
   useEffect(() => {
     onDirtyChange?.(
       newCheckOut !== initialNewCheckOut ||
-        assignmentMode !== "same" ||
+        addedNightsInput !== "1" ||
+        roomIds.join(",") !== currentRoomIds.join(",") ||
         platformId !== "WALK" ||
         channelBookingId !== initialWalkInBookingId ||
         paymentMethod !== "" ||
@@ -224,8 +210,9 @@ const ExtendBooking = ({
     return () => onDirtyChange?.(false);
   }, [
     amount,
-    assignmentMode,
+    addedNightsInput,
     channelBookingId,
+    currentRoomIds,
     initialNewCheckOut,
     initialWalkInBookingId,
     newCheckOut,
@@ -233,6 +220,7 @@ const ExtendBooking = ({
     onDirtyChange,
     paymentMethod,
     platformId,
+    roomIds,
   ]);
 
   useEffect(() => {
@@ -345,191 +333,146 @@ const ExtendBooking = ({
       </header>
 
       <div className="extendBooking__contentGrid">
-        <div className="extendBooking__leftColumn">
-          <div className="addBooking__dateInputsWithNights extendBooking__dateInputsWithNights">
-            <div className="addBooking__dateGroup">
-              <div className="addBooking__labels">
-                <p className="addBooking__label">Check-In</p>
-                <p className="addBooking__label">Check-Out ใหม่</p>
-              </div>
-              <div className="addBooking__dateInputs">
-                <PreferredDateInput
-                  className="boxInput addBooking__dateInput extendBooking__previousCheckOut"
-                  value={currentCheckIn}
-                  disabled
-                />
-                <PreferredDateInput
-                  className="boxInput addBooking__dateInput"
-                  min={initialNewCheckOut}
-                  value={newCheckOut}
-                  disabled={submitting}
-                  onChange={(event) =>
-                    newCheckOutChangeHandler(event.target.value)
-                  }
-                />
-              </div>
-            </div>
-            <div className="addBooking__nightsField">
-              <p className="addBooking__label">คืน</p>
+        <div className="extendBooking__roomFields">
+          <div className="extendBooking__field">
+            <p className="addBooking__label">ห้องสำหรับคืนที่เพิ่ม</p>
+            <Select<OptionType, true>
+              isMulti
+              isDisabled={submitting || checkingAvailability}
+              styles={customStyles<OptionType, true>()}
+              className={unavailableSelection ? "formField--error" : undefined}
+              classNamePrefix="rs"
+              aria-invalid={unavailableSelection}
+              options={availableRoomOptions}
+              value={availableRoomOptions.filter((option) =>
+                selectedRooms.includes(option.value),
+              )}
+              placeholder="เลือกห้องที่ว่าง"
+              aria-label="เลือกห้องสำหรับคืนที่เพิ่ม"
+              onChange={(options: MultiValue<OptionType>) =>
+                setRoomIds(options.map((option) => option.value))
+              }
+            />
+            {unavailableSelection && (
+              <p className="formField__error">
+                ห้องที่เลือกไม่ว่างในช่วงนี้
+              </p>
+            )}
+          </div>
+          <div className="extendBooking__field">
+            <p className="addBooking__label">เพิ่มอีกกี่คืน?</p>
+            <div className="extendBooking__nightsStepper">
+              <button
+                type="button"
+                aria-label="ลดจำนวนคืน"
+                disabled={submitting || addedNights <= 1}
+                onClick={() => stepAddedNights(-1)}
+              >
+                <i className="bx bx-minus" aria-hidden="true" />
+              </button>
               <input
-                className="boxInput addBooking__nightsInput"
                 type="number"
                 inputMode="numeric"
-                min={minimumTotalNights}
+                min="1"
                 step="1"
-                value={totalNights}
+                value={addedNightsInput}
                 disabled={submitting}
-                aria-label="จำนวนคืนทั้งหมดหลังเพิ่มคืน"
+                aria-label="จำนวนคืนที่เพิ่ม"
                 onChange={(event) =>
-                  totalNightsChangeHandler(event.target.value)
+                  addedNightsChangeHandler(event.target.value)
                 }
-                onBlur={clampTotalNights}
+                onBlur={clampAddedNights}
               />
-            </div>
-          </div>
-          <div>
-            <p className="addBooking__label">ห้องสำหรับคืนที่เพิ่ม</p>
-            <div className="cancellation__segmentedControl">
               <button
                 type="button"
-                className={
-                  "cancellation__segment" +
-                  (assignmentMode === "same"
-                    ? " cancellation__segment--extendActive"
-                    : "")
-                }
+                aria-label="เพิ่มจำนวนคืน"
                 disabled={submitting}
-                onClick={() => {
-                  setAssignmentMode("same");
-                  setRoomIds(currentRoomIds);
-                }}
+                onClick={() => stepAddedNights(1)}
               >
-                <i className="bx bx-bed" />
-                ห้องเดิม
-              </button>
-              <button
-                type="button"
-                className={
-                  "cancellation__segment" +
-                  (assignmentMode === "move"
-                    ? " cancellation__segment--extendActive"
-                    : "")
-                }
-                disabled={submitting}
-                onClick={() => setAssignmentMode("move")}
-              >
-                <i className="bx bx-arrow-right-left" />
-                เลือกห้องใหม่
+                <i className="bx bx-plus" aria-hidden="true" />
               </button>
             </div>
           </div>
-          {assignmentMode === "move" && (
-            <div>
-              <p className="addBooking__label">ห้องสำหรับคืนที่เพิ่ม</p>
-              <Select<OptionType, true>
-                isMulti
-                isDisabled={submitting || checkingAvailability}
-                styles={customStyles<OptionType, true>()}
-                classNamePrefix="rs"
-                options={availableRoomOptions}
-                value={availableRoomOptions.filter((option) =>
-                  selectedRooms.includes(option.value),
-                )}
-                placeholder="เลือกห้องที่ว่าง"
-                onChange={(options: MultiValue<OptionType>) =>
-                  setRoomIds(options.map((option) => option.value))
-                }
-              />
-              {unavailableSelection && (
-                <p className="extendBooking__error">
-                  ห้องที่เลือกไม่ว่างในช่วงนี้
-                </p>
-              )}
-            </div>
-          )}
-
-          <label className="extendBooking__field">
-            <span>หมายเหตุ (ถ้ามี)</span>
-            <input
-              className="boxInput"
-              value={note}
-              placeholder="เช่น แขกเพิ่มคืนและขอย้ายห้อง"
-              disabled={submitting}
-              onChange={(event) => setNote(event.target.value)}
-            />
-          </label>
         </div>
 
-        <div className="extendBooking__rightColumn">
-          <label className="extendBooking__field">
-            <span>ช่องทางสำหรับคืนที่เพิ่ม</span>
-            <Select<OptionType>
-              isDisabled={submitting}
-              styles={customStyles<OptionType>()}
-              classNamePrefix="rs"
-              options={platformOptions}
-              value={platformOptions.find(
-                (option) => option.value === platformId,
-              )}
-              formatOptionLabel={formatPlatformOptionLabel}
-              onChange={(option: SingleValue<OptionType>) =>
-                option && platformChangeHandler(option.value as PlatformId)
-              }
-            />
-          </label>
+        <div className="extendBooking__field">
+          <p className="addBooking__label">ช่องทางสำหรับคืนที่เพิ่ม</p>
+          <Select<OptionType>
+            isDisabled={submitting}
+            styles={customStyles<OptionType>()}
+            classNamePrefix="rs"
+            options={platformOptions}
+            value={platformOptions.find(
+              (option) => option.value === platformId,
+            )}
+            formatOptionLabel={formatPlatformOptionLabel}
+            aria-label="ช่องทางสำหรับคืนที่เพิ่ม"
+            onChange={(option: SingleValue<OptionType>) =>
+              option && platformChangeHandler(option.value as PlatformId)
+            }
+          />
+        </div>
 
-          <label className="extendBooking__field">
-            <span>Booking No. สำหรับคืนที่เพิ่ม</span>
-            <input
-              className="boxInput"
-              value={channelBookingId}
-              maxLength={100}
-              inputMode={platformId === "WALK" ? "numeric" : undefined}
-              placeholder={
-                platformId === "WALK"
-                  ? "เช่น 170720261819"
-                  : "เช่น 4012345678"
-              }
-              disabled={submitting}
-              onChange={(event) =>
-                channelBookingIdChangeHandler(event.target.value)
-              }
-            />
-          </label>
+        <label className="extendBooking__field">
+          <span>Booking No. สำหรับคืนที่เพิ่ม</span>
+          <input
+            className="boxInput"
+            value={channelBookingId}
+            maxLength={100}
+            inputMode={platformId === "WALK" ? "numeric" : undefined}
+            placeholder={
+              platformId === "WALK" ? "เช่น 170720261819" : "เช่น 4012345678"
+            }
+            disabled={submitting}
+            onChange={(event) =>
+              channelBookingIdChangeHandler(event.target.value)
+            }
+          />
+        </label>
 
-          <label className="extendBooking__field">
-            <span>ค่าห้องของคืนที่เพิ่ม</span>
-            <input
-              placeholder="เช่น 1000"
-              className="boxInput"
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={amount}
-              disabled={submitting}
-              onChange={(event) => setAmount(event.target.value)}
-            />
-          </label>
+        <label className="extendBooking__field">
+          <span>ค่าห้องของคืนที่เพิ่ม</span>
+          <input
+            placeholder="เช่น 1000"
+            className="boxInput"
+            type="number"
+            min="0.01"
+            step="0.01"
+            value={amount}
+            disabled={submitting}
+            onChange={(event) => setAmount(event.target.value)}
+          />
+        </label>
 
-          <label className="extendBooking__field">
-            <span>ช่องทางชำระเงิน</span>
-            <Select<OptionType>
-              isDisabled={submitting}
-              styles={customStyles<OptionType>()}
-              classNamePrefix="rs"
-              options={paidPaymentOptions}
-              value={paidPaymentOptions.find(
-                (option) => option.value === paymentMethod,
-              )}
-              placeholder="เลือกช่องทางชำระเงิน"
-              onChange={(option: SingleValue<OptionType>) =>
-                setPaymentMethod((option?.value || "") as PaymentMethod | "")
-              }
-            />
-          </label>
-
+        <div className="extendBooking__field">
+          <p className="addBooking__label">ช่องทางชำระเงิน</p>
+          <Select<OptionType>
+            isDisabled={submitting}
+            styles={customStyles<OptionType>()}
+            classNamePrefix="rs"
+            options={paidPaymentOptions}
+            value={paidPaymentOptions.find(
+              (option) => option.value === paymentMethod,
+            )}
+            placeholder="เลือกช่องทางชำระเงิน"
+            aria-label="ช่องทางชำระเงิน"
+            onChange={(option: SingleValue<OptionType>) =>
+              setPaymentMethod((option?.value || "") as PaymentMethod | "")
+            }
+          />
           {paymentMethod === "Cash" && <CashShiftNudge />}
         </div>
+
+        <label className="extendBooking__field extendBooking__field--full">
+          <span>หมายเหตุ (ถ้ามี)</span>
+          <input
+            className="boxInput"
+            value={note}
+            placeholder="เช่น แขกเพิ่มคืนและขอย้ายห้อง"
+            disabled={submitting}
+            onChange={(event) => setNote(event.target.value)}
+          />
+        </label>
       </div>
 
       <div className="extendBooking__summarySection">
@@ -559,25 +502,23 @@ const ExtendBooking = ({
                 </span>
               </div>
             </div>
-            {assignmentMode === "move" && (
-              <div className="addTransaction__cardPreviewRow">
-                <p>ห้องสำหรับคืนที่เพิ่ม</p>
-                <p className="extendBooking__summaryRooms">
-                  {selectedRoomLabels.length > 0 ? (
-                    selectedRoomLabels.map((roomLabel, index) => (
-                      <span
-                        className="extendBooking__summaryRoomChip"
-                        key={selectedRooms[index]}
-                      >
-                        {roomLabel}
-                      </span>
-                    ))
-                  ) : (
-                    <span>-</span>
-                  )}
-                </p>
-              </div>
-            )}
+            <div className="addTransaction__cardPreviewRow">
+              <p>ห้องสำหรับคืนที่เพิ่ม</p>
+              <p className="extendBooking__summaryRooms">
+                {selectedRoomLabels.length > 0 ? (
+                  selectedRoomLabels.map((roomLabel, index) => (
+                    <span
+                      className="extendBooking__summaryRoomChip"
+                      key={selectedRooms[index]}
+                    >
+                      {roomLabel}
+                    </span>
+                  ))
+                ) : (
+                  <span>-</span>
+                )}
+              </p>
+            </div>
             <div className="addTransaction__cardPreviewRow">
               <p>ช่องทาง</p>
               <p>{platformLabel}</p>
@@ -620,7 +561,7 @@ const ExtendBooking = ({
 
       <div className="extendBooking__actions">
         <ActionButton
-          text={submitting ? "กำลังบันทึก..." : "ยืนยัน Add Nights"}
+          text={submitting ? "กำลังบันทึก..." : "ยืนยันเพิ่มคืน"}
           icon="bx-calendar-plus"
           highlight
           disabled={submitting || checkingAvailability}

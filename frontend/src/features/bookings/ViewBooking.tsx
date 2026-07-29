@@ -10,7 +10,9 @@ import AddBooking from "./AddBooking.tsx";
 import PassportView from "./PassportView.tsx";
 import CheckIn from "./CheckIn.tsx";
 import CheckOut from "./CheckOut.tsx";
-import ResolveBooking from "./ResolveBooking.tsx";
+import ResolveBooking, {
+  type ResolveVariant,
+} from "./ResolveBooking.tsx";
 import ExtendBooking from "./ExtendBooking.tsx";
 import CorrectTransaction from "./CorrectTransaction.tsx";
 import TransactionCorrectionHistory from "./TransactionCorrectionHistory.tsx";
@@ -42,7 +44,7 @@ import {
   formatDisplayDateTime,
 } from "../../helpers/displayDate.ts";
 
-import type { booking, ResolutionOutcome } from "../../types/bookingTypes";
+import type { booking } from "../../types/bookingTypes";
 
 import "./ViewBooking.css";
 import Cancellation from "./Cancellation.tsx";
@@ -207,6 +209,8 @@ const ViewBooking = ({
       message: string | null;
     }>({ loading: false, allowed: false, message: null });
   const [resolveBookingIsOpen, setResolveBookingIsOpen] = useState(false);
+  const [resolveVariant, setResolveVariant] =
+    useState<ResolveVariant>("specialCase");
   const [extendBookingIsOpen, setExtendBookingIsOpen] = useState(false);
   const [transactionToCorrect, setTransactionToCorrect] = useState<
     booking["transactions"][number] | null
@@ -215,9 +219,6 @@ const ViewBooking = ({
     useState<string | null>(null);
   const [correctTransactionIsDirty, setCorrectTransactionIsDirty] =
     useState(false);
-  const [initialResolveOutcome, setInitialResolveOutcome] = useState<
-    ResolutionOutcome | undefined
-  >(undefined);
   const [manageRoomStaysIsDirty, setManageRoomStaysIsDirty] = useState(false);
   const [editBookingIsDirty, setEditBookingIsDirty] = useState(false);
   const [addTransactionIsDirty, setAddTransactionIsDirty] = useState(false);
@@ -1409,10 +1410,7 @@ const ViewBooking = ({
       >
         <ResolveBooking
           booking={data}
-          initialOutcome={initialResolveOutcome}
-          initialFinalStatus={
-            initialResolveOutcome === "no_show" ? "noShow" : undefined
-          }
+          variant={resolveVariant}
           onClose={() => setResolveBookingIsOpen(false)}
           onDirtyChange={setResolveBookingIsDirty}
           onUpdated={(updatedBooking) => {
@@ -1984,36 +1982,36 @@ const ViewBooking = ({
                       )}
                     </button>
                   )}
-                  <button
-                    type="button"
-                    disabled={
-                      (data.status === "checkedOut" ||
-                        data.status === "cancelled" ||
-                        data.status === "noShow") &&
-                      !user?.admin
-                    }
-                    onClick={() => {
-                      setInitialResolveOutcome(undefined);
-                      setResolveBookingIsOpen(true);
-                      setMoreActionsIsOpen(false);
-                    }}
-                  >
-                    <i
-                      className={
-                        "bx " +
-                        (data.status === "checkedOut" ||
-                        data.status === "cancelled" ||
-                        data.status === "noShow"
-                          ? "bx-history"
-                          : "bx-receipt")
-                      }
-                    />
-                    {data.status === "checkedOut" ||
-                    data.status === "cancelled" ||
-                    data.status === "noShow"
-                      ? "แก้ไขหลังปิด"
-                      : "Resolve"}
-                  </button>
+                  {data.status === "checkedIn" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setResolveVariant("specialCase");
+                        setResolveBookingIsOpen(true);
+                        setMoreActionsIsOpen(false);
+                      }}
+                    >
+                      <i className="bx bx-receipt" />
+                      เคลียร์เคสพิเศษ
+                    </button>
+                  )}
+                  {user?.admin &&
+                    (data.status === "checkedOut" ||
+                      data.status === "cancelled" ||
+                      data.status === "noShow") && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setResolveVariant("postClose");
+                          setResolveBookingIsOpen(true);
+                          setMoreActionsIsOpen(false);
+                        }}
+                      >
+                        <i className="bx bx-history" />
+                        แก้ไขหลังปิด
+                        <span className="viewBooking__adminTag">Admin</span>
+                      </button>
+                    )}
                   {user?.admin &&
                     data.status === "booked" &&
                     checkInIsBeforeToday && (
@@ -2039,7 +2037,7 @@ const ViewBooking = ({
                       }}
                     >
                       <i className="bx bx-calendar-x" />
-                      ยกเลิก
+                      ยกเลิกการจอง
                     </button>
                   )}
                   {user?.admin && (
@@ -2137,7 +2135,7 @@ const ViewBooking = ({
                 text="No-Show"
                 className="viewBooking__noShowAction"
                 onClick={() => {
-                  setInitialResolveOutcome("no_show");
+                  setResolveVariant("noShow");
                   setResolveBookingIsOpen(true);
                 }}
                 icon="bx-x"

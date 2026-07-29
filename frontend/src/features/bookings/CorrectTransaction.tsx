@@ -106,6 +106,18 @@ const reasonOptions: Record<TransactionCorrectionType, OptionType[]> = {
 
 const chargeTypes = new Set<TransactionType>(["roomCharge", ...serviceTypes]);
 
+const bangkokDateKey = (value: Date | string) => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(value));
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((item) => item.type === type)?.value;
+  return `${part("year")}-${part("month")}-${part("day")}`;
+};
+
 const CorrectTransaction = ({
   booking: currentBooking,
   transaction,
@@ -139,6 +151,14 @@ const CorrectTransaction = ({
   const [idempotencyKey] = useState(() => crypto.randomUUID());
   const numericAmount = Number(correctedAmount);
   const isCharge = chargeTypes.has(transaction.type);
+  const isStaffEditablePendingRoomCharge =
+    !user?.admin &&
+    currentBooking.status === "booked" &&
+    transaction.type === "roomCharge" &&
+    ["OTA", "Unpaid"].includes(transaction.paymentMethod) &&
+    bangkokDateKey(currentBooking.checkIn) >= bangkokDateKey(new Date());
+  const canSelectChargeChange =
+    Boolean(user?.admin) || isStaffEditablePendingRoomCharge;
   const categoryOptions = (serviceTypes.includes(transaction.type)
     ? serviceTypes
     : [transaction.type]
@@ -195,7 +215,11 @@ const CorrectTransaction = ({
     if (!correctedNote.trim()) {
       throw new Error("กรุณาระบุหมายเหตุ");
     }
-    if (correctionType === "charge_change" && !user?.admin) {
+    if (
+      correctionType === "charge_change" &&
+      !user?.admin &&
+      !isStaffEditablePendingRoomCharge
+    ) {
       throw new Error("การปรับยอดเรียกเก็บต้องให้ Admin ดำเนินการ");
     }
 
@@ -246,7 +270,7 @@ const CorrectTransaction = ({
         {financialChanged && correctedPaymentMethod === "Cash" && (
           <CashShiftNudge />
         )}
-        {user?.admin && (
+        {canSelectChargeChange && (
           <section className="correctTransaction__section">
             <p className="addBooking__label">สิ่งที่ต้องการทำ</p>
             <div className="cancellation__segmentedControl">
@@ -287,7 +311,11 @@ const CorrectTransaction = ({
               options={categoryOptions}
               value={categoryOptions.find((item) => item.value === correctedCategory)}
               formatOptionLabel={formatCategoryLabel}
-              isDisabled={categoryOptions.length === 1 || submitting}
+              isDisabled={
+                categoryOptions.length === 1 ||
+                submitting ||
+                isStaffEditablePendingRoomCharge
+              }
               menuPortalTarget={document.body}
               menuPosition="fixed"
               onChange={(option: SingleValue<OptionType>) =>
@@ -316,7 +344,11 @@ const CorrectTransaction = ({
               value={correctionPaymentMethodOptions.find(
                 (item) => item.value === correctedPaymentMethod,
               )}
-              isDisabled={transaction.type === "deposit" || submitting}
+              isDisabled={
+                transaction.type === "deposit" ||
+                submitting ||
+                isStaffEditablePendingRoomCharge
+              }
               menuPortalTarget={document.body}
               menuPosition="fixed"
               onChange={(option: SingleValue<OptionType>) =>

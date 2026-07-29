@@ -250,16 +250,16 @@ test("minor rounding adjustments stay below review noise while material or repea
   ]);
 });
 
-test("large refund review starts at THB 5,000", () => {
+test("large refund review starts above THB 2,000", () => {
   const refund: transcation = {
     type: "cancellationRefund",
     paymentMethod: "Transfer",
-    amount: 4999,
+    amount: 2000,
   };
 
-  assert.deepEqual(transactionNeedsReview(refund), ["refund"]);
+  assert.deepEqual(transactionNeedsReview(refund), []);
   assert.deepEqual(
-    transactionNeedsReview({ ...refund, amount: 5000 }),
+    transactionNeedsReview({ ...refund, amount: 2000.01 }),
     ["refund", "large_refund"],
   );
 });

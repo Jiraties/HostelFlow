@@ -31,7 +31,7 @@ const canonicalTransactionDirection = (transaction) => {
     return "in";
 };
 exports.canonicalTransactionDirection = canonicalTransactionDirection;
-const enforceAddTransactionPolicy = ({ booking, transaction, isAdmin, }) => {
+const enforceAddTransactionPolicy = ({ booking, transaction, }) => {
     if (transaction.type === "adjustment" &&
         transaction.direction !== "in" &&
         transaction.direction !== "out") {
@@ -45,12 +45,6 @@ const enforceAddTransactionPolicy = ({ booking, transaction, isAdmin, }) => {
         const remainingDeposit = (0, financeHelpers_1.bookingRemainingDepositAmount)(booking.transactions);
         if (transaction.amount > remainingDeposit) {
             throw new FinancialTransactionPolicyError(409, "REFUND_EXCEEDS_AVAILABLE_BALANCE", `ยอดคืนมัดจำเกินยอดคงเหลือ ${remainingDeposit}`);
-        }
-        const priorRefunds = booking.transactions.reduce((total, existing) => existing.type === "depositRefund"
-            ? total + Math.abs(existing.amount || 0)
-            : total, 0);
-        if (!isAdmin && priorRefunds + transaction.amount >= financeHelpers_1.LARGE_REFUND_THRESHOLD) {
-            throw new FinancialTransactionPolicyError(403, "ADMIN_APPROVAL_REQUIRED", "ยอดคืนเงินสะสมสูง ต้องให้ Admin ดำเนินการ");
         }
     }
     return { ...transaction, direction };

@@ -74,7 +74,7 @@ const statusColorMap: Record<booking["status"], string> = {
   checkedIn: "var(--green)",
   checkedOut: "#64748b",
   cancelled: "var(--red)",
-  noShow: "#6b7280",
+  noShow: "var(--red)",
 };
 
 const roomTypeColorMap: Record<string, string> = {

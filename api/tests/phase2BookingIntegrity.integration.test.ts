@@ -494,6 +494,69 @@ test("check-in reuses a deposit recorded on a legacy booked stay", async () => {
   );
 });
 
+test("staff can submit a refund above THB 2,000 for admin review", async () => {
+  await Booking.create({
+    revision: 0,
+    name: "Large Refund Guest",
+    bookingId: "STAFF-LARGE-REFUND",
+    status: "booked",
+    platformId: "BOOKING",
+    staffUsername: "staff",
+    checkIn: new Date(`${localDate(1)}T00:00:00`),
+    checkOut: new Date(`${localDate(2)}T00:00:00`),
+    nights: 1,
+    roomStays: [
+      {
+        roomIds: ["Balcony"],
+        from: new Date(`${localDate(1)}T00:00:00`),
+        to: new Date(`${localDate(2)}T00:00:00`),
+      },
+    ],
+    transactions: [
+      {
+        type: "roomCharge",
+        paymentMethod: "Transfer",
+        amount: 2500,
+        direction: "in",
+        createdBy: "staff",
+        createdAt: new Date(),
+      },
+    ],
+  });
+
+  const cancelResponse = response();
+  await controller.cancelBooking(
+    request({
+      body: {
+        expectedRevision: 0,
+        reopenRoom: true,
+        cancellationType: "refundable",
+      },
+      params: { bookingId: "STAFF-LARGE-REFUND" },
+      url: "/bookings/cancelBooking/STAFF-LARGE-REFUND",
+      key: "staff-large-refund",
+      admin: false,
+    }),
+    cancelResponse as any,
+  );
+
+  assert.equal(
+    cancelResponse.statusCode,
+    200,
+    JSON.stringify(cancelResponse.body),
+  );
+  const stored = await Booking.findOne({
+    bookingId: "STAFF-LARGE-REFUND",
+  }).lean();
+  const refund = stored?.transactions.find(
+    (transaction) => transaction.type === "cancellationRefund",
+  );
+  assert.equal(stored?.status, "cancelled");
+  assert.equal(refund?.amount, 2500);
+  assert.equal(refund?.reviewStatus, "needs_review");
+  assert.deepEqual(refund?.reviewFlags, ["refund", "large_refund"]);
+});
+
 test("add transaction rejects deposits before check-in", async () => {
   await bookingFixture("EARLY-DEPOSIT");
   const addDepositResponse = response();

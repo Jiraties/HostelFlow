@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.transactionFallsOnBusinessDate = exports.summarizeTransactions = exports.normalizeTransaction = exports.transactionRequiresReview = exports.transactionNeedsReview = exports.transactionUnpaidAmount = exports.bookingRemainingDepositAmount = exports.transactionDepositLiabilityDelta = exports.transactionDashboardCollectedRevenueAmount = exports.calculateTodayRevenueSummary = exports.bookingTodayArrivalRevenueAmount = exports.bookingTransactionTodayReductionAmount = exports.transactionTodayReductionAmount = exports.transactionTodayExtrasRevenueAmount = exports.transactionDashboardGrossRevenueAmount = exports.transactionRefundAmount = exports.transactionRevenueAmount = exports.transactionIsRevenue = exports.summarizeCashStashes = exports.transactionCashStashImpact = exports.emptyCashStashSummary = exports.transactionCashImpact = exports.summarizeReceivedPaymentsByMethod = exports.transactionSignedAmount = exports.transactionDirection = exports.cashBalanceAfterMovements = exports.isValidCashCount = exports.ROUNDING_ADJUSTMENT_REVIEW_THRESHOLD = exports.LARGE_REFUND_THRESHOLD = exports.LARGE_CASH_TRANSACTION_THRESHOLD = exports.CASH_VARIANCE_THRESHOLD = void 0;
 exports.CASH_VARIANCE_THRESHOLD = 20;
 exports.LARGE_CASH_TRANSACTION_THRESHOLD = 5000;
-exports.LARGE_REFUND_THRESHOLD = 5000;
+exports.LARGE_REFUND_THRESHOLD = 2000;
 exports.ROUNDING_ADJUSTMENT_REVIEW_THRESHOLD = 1;
 const isValidCashCount = (value) => Number.isFinite(value) && value >= 0;
 exports.isValidCashCount = isValidCashCount;
@@ -358,13 +358,9 @@ const transactionNeedsReview = (transaction, sameTypeCount = 0) => {
         flags.push("negative_adjustment");
     }
     if (direction === "out" &&
-        !["adjustment", "depositRefund", "roomChargeWriteOff"].includes(transaction.type)) {
-        flags.push("refund");
-    }
-    if (direction === "out" &&
         !["adjustment", "roomChargeWriteOff"].includes(transaction.type) &&
-        amount >= exports.LARGE_REFUND_THRESHOLD) {
-        flags.push("large_refund");
+        amount > exports.LARGE_REFUND_THRESHOLD) {
+        flags.push("refund", "large_refund");
     }
     if (transaction.paymentMethod === "Cash" && amount >= exports.LARGE_CASH_TRANSACTION_THRESHOLD) {
         flags.push("large_cash");
@@ -382,7 +378,12 @@ const transactionRequiresReview = (transaction) => {
     if (transaction.reviewStatus === "reviewed")
         return false;
     const policyFlags = (0, exports.transactionNeedsReview)(transaction);
-    const retainedStoredFlags = (transaction.reviewFlags || []).filter((flag) => !["adjustment", "negative_adjustment"].includes(flag) ||
+    const retainedStoredFlags = (transaction.reviewFlags || []).filter((flag) => ![
+        "adjustment",
+        "negative_adjustment",
+        "refund",
+        "large_refund",
+    ].includes(flag) ||
         policyFlags.includes(flag));
     return policyFlags.length > 0 || retainedStoredFlags.length > 0;
 };

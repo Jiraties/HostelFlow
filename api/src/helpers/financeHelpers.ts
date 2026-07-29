@@ -28,7 +28,7 @@ export type SourceAction =
 
 export const CASH_VARIANCE_THRESHOLD = 20;
 export const LARGE_CASH_TRANSACTION_THRESHOLD = 5000;
-export const LARGE_REFUND_THRESHOLD = 5000;
+export const LARGE_REFUND_THRESHOLD = 2000;
 export const ROUNDING_ADJUSTMENT_REVIEW_THRESHOLD = 1;
 
 export const isValidCashCount = (value: number) =>
@@ -551,18 +551,10 @@ export const transactionNeedsReview = (
   }
   if (
     direction === "out" &&
-    !["adjustment", "depositRefund", "roomChargeWriteOff"].includes(
-      transaction.type,
-    )
-  ) {
-    flags.push("refund");
-  }
-  if (
-    direction === "out" &&
     !["adjustment", "roomChargeWriteOff"].includes(transaction.type) &&
-    amount >= LARGE_REFUND_THRESHOLD
+    amount > LARGE_REFUND_THRESHOLD
   ) {
-    flags.push("large_refund");
+    flags.push("refund", "large_refund");
   }
   if (transaction.paymentMethod === "Cash" && amount >= LARGE_CASH_TRANSACTION_THRESHOLD) {
     flags.push("large_cash");
@@ -583,7 +575,12 @@ export const transactionRequiresReview = (transaction: transcation) => {
   const policyFlags = transactionNeedsReview(transaction);
   const retainedStoredFlags = (transaction.reviewFlags || []).filter(
     (flag) =>
-      !["adjustment", "negative_adjustment"].includes(flag) ||
+      ![
+        "adjustment",
+        "negative_adjustment",
+        "refund",
+        "large_refund",
+      ].includes(flag) ||
       policyFlags.includes(flag),
   );
 

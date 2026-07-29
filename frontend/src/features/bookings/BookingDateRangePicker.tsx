@@ -156,6 +156,7 @@ export function BookingDateRangePicker({
           placeholder={dateFormatPlaceholder(dateFormat)}
           value={checkInDraft}
           aria-label="Check-in date"
+          aria-invalid={hasError}
           onFocus={openPicker}
           onChange={(event) =>
             setCheckInDraft(
@@ -177,6 +178,7 @@ export function BookingDateRangePicker({
           placeholder={dateFormatPlaceholder(dateFormat)}
           value={checkOutDraft}
           aria-label="Check-out date"
+          aria-invalid={hasError}
           onFocus={openPicker}
           onChange={(event) =>
             setCheckOutDraft(

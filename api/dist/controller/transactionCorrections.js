@@ -113,12 +113,6 @@ const correctTransaction = async (req, res) => {
                 message: "กรุณาระบุหมายเหตุเพื่อเก็บในประวัติ",
             });
         }
-        if (correctionType === "charge_change" && !req.user?.admin) {
-            return res.status(403).json({
-                error: "ADMIN_APPROVAL_REQUIRED",
-                message: "การปรับยอดเรียกเก็บต้องให้ Admin ดำเนินการ",
-            });
-        }
         if (correctionType === "charge_change" &&
             !CHARGE_CHANGE_REASONS.has(reasonCode)) {
             return res.status(400).json({
@@ -210,6 +204,21 @@ const correctTransaction = async (req, res) => {
         };
         if (correctedPaymentMethod !== "Cash")
             delete after.cashShiftId;
+        const isPendingFutureRoomCharge = booking.status === "booked" &&
+            current.type === "roomCharge" &&
+            ["OTA", "Unpaid"].includes(current.paymentMethod) &&
+            businessDateKey(new Date(booking.checkIn)) >= businessDateKey(new Date());
+        const isStaffEditablePendingRoomCharge = isPendingFutureRoomCharge &&
+            correctedCategory === current.type &&
+            correctedPaymentMethod === current.paymentMethod;
+        if (correctionType === "charge_change" &&
+            !req.user?.admin &&
+            !isStaffEditablePendingRoomCharge) {
+            return res.status(403).json({
+                error: "ADMIN_APPROVAL_REQUIRED",
+                message: "การปรับยอดเรียกเก็บต้องให้ Admin ดำเนินการ",
+            });
+        }
         const financialChange = (0, transactionCorrections_1.correctionChangesFinancialFields)(before, after);
         const previewTransactions = effectiveTransactions.map((transaction) => transaction.originalTransactionId === transactionId
             ? { ...transaction, ...after, _id: transaction._id }
@@ -239,7 +248,8 @@ const correctTransaction = async (req, res) => {
                         isFinalDayClose: true,
                     }).lean(),
                 ]);
-                if (cashShift?.status === "closed" || dailyClose || finalDayClose) {
+                if ((cashShift?.status === "closed" || dailyClose || finalDayClose) &&
+                    !isStaffEditablePendingRoomCharge) {
                     return res.status(409).json({
                         error: "FINANCIAL_PERIOD_CLOSED",
                         message: "รอบการเงินของรายการนี้ปิดแล้ว ระบบจึงไม่แก้ยอดย้อนหลัง กรุณาติดต่อ Admin เพื่อบันทึกรายการแก้ไขในรอบปัจจุบัน",

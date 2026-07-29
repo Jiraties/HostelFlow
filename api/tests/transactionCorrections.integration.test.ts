@@ -117,11 +117,13 @@ const createBooking = async ({
   amount = 1200,
   cashShiftId,
   status = "booked",
+  checkIn = new Date(),
 }: {
-  paymentMethod?: "Unpaid" | "Cash" | "Card" | "Transfer";
+  paymentMethod?: "OTA" | "Unpaid" | "Cash" | "Card" | "Transfer";
   amount?: number;
   cashShiftId?: string;
   status?: "booked" | "checkedIn" | "checkedOut";
+  checkIn?: Date;
 } = {}) =>
   Booking.create({
     revision: 0,
@@ -129,8 +131,8 @@ const createBooking = async ({
     bookingId: "CORRECT-1",
     status,
     staffUsername: "staff",
-    checkIn: new Date(),
-    checkOut: new Date(Date.now() + 86400000),
+    checkIn,
+    checkOut: new Date(checkIn.getTime() + 86400000),
     transactions: [
       {
         type: "roomCharge",
@@ -269,7 +271,7 @@ test("financial correction affecting a closed cash shift is rejected", async () 
   assert.equal((await Booking.findById(booking._id).lean())?.transactionCorrections.length, 0);
 });
 
-test("financial correction after daily close is rejected but metadata-only correction is allowed", async () => {
+test("financial correction for a checked-in booking after daily close is rejected but metadata-only correction is allowed", async () => {
   await DailyClose.create({
     businessDate: businessDateKey(),
     staffUsername: "staff",
@@ -281,7 +283,7 @@ test("financial correction after daily close is rejected but metadata-only corre
     cashOut: 0,
     createdBy: "admin",
   });
-  const booking = await createBooking();
+  const booking = await createBooking({ status: "checkedIn" });
   const transactionId = String(booking.transactions[0]._id);
   const financial = await callCorrection({ transactionId });
   const metadata = await callCorrection({
@@ -371,7 +373,7 @@ test("staff can correct an active deposit after daily close without changing ope
 });
 
 test("charge changes require admin permission", async () => {
-  const booking = await createBooking();
+  const booking = await createBooking({ paymentMethod: "Transfer" });
   const result = await callCorrection({
     transactionId: String(booking.transactions[0]._id),
     admin: false,
@@ -382,6 +384,78 @@ test("charge changes require admin permission", async () => {
   });
   assert.equal(result.statusCode, 403);
   assert.equal(result.body.error, "ADMIN_APPROVAL_REQUIRED");
+});
+
+test("staff can adjust a future OTA room charge after daily close without rewriting the original", async () => {
+  await DailyClose.create({
+    businessDate: businessDateKey(),
+    staffUsername: "staff",
+    openingCash: 0,
+    expectedCash: 0,
+    actualCash: 0,
+    variance: 0,
+    cashIn: 0,
+    cashOut: 0,
+    createdBy: "admin",
+  });
+  const booking = await createBooking({
+    paymentMethod: "OTA",
+    checkIn: new Date(Date.now() + 86400000),
+  });
+  const result = await callCorrection({
+    transactionId: String(booking.transactions[0]._id),
+    admin: false,
+    overrides: {
+      correctedAmount: 800,
+      correctedPaymentMethod: "OTA",
+      correctionType: "charge_change",
+      reasonCode: "cancelled_service",
+      correctedNote: "Guest shortened the OTA reservation before check-in",
+      note: "Booking.com reservation shortened before arrival",
+    },
+  });
+
+  assert.equal(result.statusCode, 200, JSON.stringify(result.body));
+  assert.equal(result.body.effectiveTransaction.amount, 800);
+  const stored = await Booking.findById(booking._id).lean();
+  assert.equal(stored?.transactions[0].amount, 1200);
+  assert.equal(stored?.transactionCorrections[0].after.amount, 800);
+  assert.equal(stored?.transactionCorrections[0].correctedBy, "staff");
+});
+
+test("staff cannot reclassify a future OTA room charge while using the closed-period exception", async () => {
+  await DailyClose.create({
+    businessDate: businessDateKey(),
+    staffUsername: "staff",
+    openingCash: 0,
+    expectedCash: 0,
+    actualCash: 0,
+    variance: 0,
+    cashIn: 0,
+    cashOut: 0,
+    createdBy: "admin",
+  });
+  const booking = await createBooking({
+    paymentMethod: "OTA",
+    checkIn: new Date(Date.now() + 86400000),
+  });
+  const result = await callCorrection({
+    transactionId: String(booking.transactions[0]._id),
+    admin: false,
+    overrides: {
+      correctedAmount: 800,
+      correctedPaymentMethod: "Transfer",
+      correctionType: "charge_change",
+      reasonCode: "cancelled_service",
+    },
+  });
+
+  assert.equal(result.statusCode, 403);
+  assert.equal(result.body.error, "ADMIN_APPROVAL_REQUIRED");
+  assert.equal(
+    (await Booking.findById(booking._id).lean())?.transactionCorrections.length,
+    0,
+  );
 });
 
 test("admin can fully waive an open-period charge without deleting it", async () => {

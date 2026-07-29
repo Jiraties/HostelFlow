@@ -206,6 +206,20 @@ const StandaloneSaleModal = ({
           />
         </div>
 
+        <div>
+          <p className="addBooking__label">
+            หมายเหตุรายการ
+            <span className="addTransaction__optionalLabel">(ไม่บังคับ)</span>
+          </p>
+          <input
+            className="boxInput"
+            value={formData.note}
+            maxLength={500}
+            onChange={(event) => updateForm("note", event.target.value)}
+            placeholder="รายละเอียดเพิ่มเติมของรายการ"
+          />
+        </div>
+
         {showOptionalDetails && (
           <div className="standaloneSale__optionalFields">
             <div>
@@ -230,15 +244,6 @@ const StandaloneSaleModal = ({
                     placeholder="เลขทัวร์ ตั๋ว หรือใบเสร็จ"
                   />
                 </div> */}
-            <div>
-              <p className="addBooking__label">หมายเหตุ ( ไม่บังคับ )</p>
-              <input
-                className="boxInput"
-                value={formData.note}
-                onChange={(event) => updateForm("note", event.target.value)}
-                placeholder="รายละเอียดเพิ่มเติม"
-              />
-            </div>
           </div>
         )}
 

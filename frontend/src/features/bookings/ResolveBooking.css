@@ -1,7 +1,3 @@
-.resolveBooking__wrapper {
-  width: min(58rem, calc(100vw - 2rem));
-}
-
 .resolveBooking__header {
   display: flex;
   flex-direction: column;
@@ -32,14 +28,12 @@
   gap: 1rem;
 }
 
-.resolveBooking__scenarioGrid,
 .resolveBooking__quickActions {
   display: grid;
   gap: 0.75rem;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
 }
 
-.resolveBooking__scenario,
 .resolveBooking__quickAction {
   background-color: var(--background);
   border: none;
@@ -60,18 +54,17 @@
     transform 0.2s ease;
 }
 
-.resolveBooking__scenario:hover,
 .resolveBooking__quickAction:hover {
   box-shadow: var(--main-shadow);
   transform: translateY(-1px);
 }
 
-.resolveBooking__scenario--active,
 .resolveBooking__quickAction--active {
+  background-color: color-mix(in srgb, var(--primary-color) 7%, #fff);
+
   box-shadow: var(--main-shadow);
 }
 
-.resolveBooking__scenario i,
 .resolveBooking__quickAction i {
   align-items: center;
   background-color: color-mix(in srgb, var(--primary-color) 14%, #fff);
@@ -84,7 +77,6 @@
   width: 2.5rem;
 }
 
-.resolveBooking__scenario span,
 .resolveBooking__quickAction span {
   color: var(--text);
   font-weight: 500;
@@ -92,7 +84,6 @@
   line-height: 1.35;
 }
 
-.resolveBooking__scenario small,
 .resolveBooking__quickAction small {
   font-size: 1rem;
   line-height: 1.45;
@@ -103,6 +94,31 @@
   display: grid;
   gap: 1rem;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.resolveBooking__lockedStatus {
+  align-items: center;
+  background: color-mix(in srgb, var(--primary-color) 7%, #fff);
+  border-radius: 0.75rem;
+  display: flex;
+  gap: 0.8rem;
+  padding: 0.9rem 1rem;
+}
+
+.resolveBooking__lockedStatus > i {
+  color: var(--primary-color);
+  font-size: 1.35rem;
+}
+
+.resolveBooking__lockedStatus div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.resolveBooking__lockedStatus span {
+  color: #666666;
+  font-size: 0.9rem;
 }
 
 .resolveBooking__toggle,
@@ -138,16 +154,6 @@
   grid-column: 1 / -1;
   justify-self: start;
   padding: 0.2rem 0;
-}
-
-.resolveBooking__removeButton {
-  bottom: 1.25rem;
-  position: absolute;
-  right: 1.25rem;
-}
-
-.resolveBooking__removeButton i {
-  color: var(--red);
 }
 
 .resolveBooking__note {
@@ -186,24 +192,122 @@
 .resolveBooking__rows {
   display: flex;
   flex-direction: column;
-  gap: 0.9rem;
+  gap: 1rem;
+  margin-top: 0.2rem;
 }
 
 .resolveBooking__row {
-  align-items: end;
-  background-color: var(--background);
-  border: 0;
-  border-radius: 1.5rem;
+  align-items: start;
   box-shadow: var(--light-shadow);
+  border-radius: 1rem;
   display: grid;
-  gap: 0.75rem;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  padding: 1.25rem 5.35rem 1.25rem 1.25rem;
-  position: relative;
+  column-gap: 1.1rem;
+  row-gap: 0.9rem;
+  padding: 1.2rem 1.25rem 1.25rem;
+}
+
+.resolveBooking__row:has(
+  .resolveBooking__advancedToggle[aria-expanded="false"]
+) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.resolveBooking__rowHeader {
+  align-items: center;
+  display: flex;
+  grid-column: 1 / -1;
+  justify-content: space-between;
+  min-height: 1.8rem;
+  padding-bottom: 0.1rem;
+}
+
+.resolveBooking__rowHeader > p {
+  color: #6f737a;
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+
+.resolveBooking__rowRemove {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 0.55rem;
+  color: #c46770;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 400;
+  gap: 0.3rem;
+  padding: 0.35rem 0.5rem;
+}
+
+.resolveBooking__rowRemove:hover,
+.resolveBooking__rowRemove:focus-visible {
+  background: #fff1f2;
+  outline: 0;
+}
+
+.resolveBooking__addTransaction {
+  align-self: flex-start;
+  background: color-mix(in srgb, var(--primary-color) 8%, #fff);
+  border-radius: 0.7rem;
+  font-weight: 500;
+  margin-top: 0.1rem;
+  padding: 0.65rem 0.85rem;
+}
+
+.resolveBooking__addTransaction:hover,
+.resolveBooking__addTransaction:focus-visible {
+  background: color-mix(in srgb, var(--primary-color) 13%, #fff);
+  outline: 0;
 }
 
 .resolveBooking__rowNote {
   min-width: 0;
+}
+
+.resolveBooking__row > div > .addBooking__label {
+  align-items: center;
+  display: flex;
+  line-height: 1.2;
+  min-height: 1.35rem;
+}
+
+.resolveBooking__labelWithInfo {
+  align-items: center;
+  display: flex;
+  gap: 0.35rem;
+  margin-bottom: 0.5rem;
+  min-height: 1.35rem;
+}
+
+.resolveBooking__labelWithInfo .addBooking__label {
+  line-height: 1.2;
+  margin-bottom: 0;
+}
+
+.resolveBooking__labelWithInfo .appTooltip__trigger {
+  align-items: center;
+  color: #777777;
+  cursor: help;
+  height: 1.15rem;
+  justify-content: center;
+  line-height: 1;
+  width: 1.15rem;
+}
+
+.resolveBooking__labelWithInfo .appTooltip__trigger i {
+  display: block;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.resolveBooking__typeHelp {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
 }
 
 .resolveBooking__option {
@@ -219,10 +323,79 @@
   width: 0.65rem;
 }
 
-.resolveBooking__fieldError {
-  color: var(--red);
+.resolveSelect__control,
+.resolveSelect__single-value,
+.resolveSelect__input-container,
+.resolveSelect__placeholder,
+.resolveSelect__menu,
+.resolveSelect__option {
   font-size: 0.9rem;
-  margin-top: 0.35rem;
+}
+
+.resolveBooking__statusSelect .resolveBooking__option span,
+.resolveSelect__menu .resolveBooking__option span {
+  height: 0.55rem;
+  width: 0.55rem;
+}
+
+.resolveBooking__depositNotice {
+  align-items: flex-start;
+  border-radius: 0.75rem;
+  box-shadow: var(--light-shadow);
+  display: flex;
+  gap: 0.85rem;
+  padding: 1rem;
+}
+
+.resolveBooking__depositNotice div strong {
+  font-weight: 500;
+}
+
+.resolveBooking__depositNotice > i {
+  color: #f4a900;
+  font-size: 1.45rem;
+}
+
+.resolveBooking__depositNotice > div {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.resolveBooking__depositNotice p {
+  color: #666;
+  line-height: 1.45;
+}
+
+.resolveBooking__summary {
+  background: #00000005;
+  border-radius: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 1rem;
+}
+
+.resolveBooking__summary ul {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.resolveBooking__summary li {
+  align-items: center;
+  display: flex;
+  gap: 0.55rem;
+  line-height: 1.4;
+}
+
+.resolveBooking__summary li i {
+  color: var(--green);
+  font-size: 1.15rem;
 }
 
 .resolveBooking__actions {
@@ -236,7 +409,6 @@
     width: calc(100vw - 1.5rem);
   }
 
-  .resolveBooking__scenarioGrid,
   .resolveBooking__quickActions,
   .resolveBooking__twoColumn {
     grid-template-columns: 1fr;
@@ -254,14 +426,12 @@
 }
 
 @media (max-width: 560px) {
-  .resolveBooking__row {
+  .resolveBooking__row,
+  .resolveBooking__row:has(
+    .resolveBooking__advancedToggle[aria-expanded="false"]
+  ) {
     grid-template-columns: 1fr;
-    padding: 1.25rem 1.25rem 5.35rem;
-  }
-
-  .resolveBooking__removeButton {
-    bottom: 1.25rem;
-    right: 1.25rem;
+    padding: 1rem;
   }
 
   .resolveBooking__actions {
@@ -274,5 +444,5 @@
   }
 }
 .resolveBooking__depositReturn {
-  margin-bottom: 1rem;
+  margin-top: 0.5rem;
 }

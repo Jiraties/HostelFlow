@@ -152,11 +152,11 @@ const paymentMethodIconMap: Record<PaymentMethod, string> = {
 };
 
 const paymentMethodColorMap: Record<PaymentMethod, string> = {
-  OTA: "#4f8fda",
-  Cash: "#4fb58a",
-  Card: "#8b6fd6",
-  Transfer: "#d9a441",
-  Unpaid: "#d66f61",
+  OTA: "var(--payment-method-ota)",
+  Cash: "var(--payment-method-cash)",
+  Card: "var(--payment-method-card)",
+  Transfer: "var(--payment-method-transfer)",
+  Unpaid: "var(--payment-method-unpaid)",
 };
 
 const getFetchErrorMessage = (err: unknown) => {
@@ -342,6 +342,15 @@ const BreakdownSection = ({
                               // </Tooltip>
                             )}
                           </div>
+                          {transaction.note?.trim() && (
+                            <p className="financialBreakdown__transactionRemark">
+                              <i
+                                className="bx bx-message-dots"
+                                aria-hidden="true"
+                              />
+                              <span>{transaction.note.trim()}</span>
+                            </p>
+                          )}
                         </div>
                         <div className="financialBreakdown__transactionSide">
                           <strong className="financialBreakdown__transactionAmount">

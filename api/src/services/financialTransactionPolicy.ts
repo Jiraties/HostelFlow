@@ -4,10 +4,7 @@ import type {
   TransactionDirection,
   TransactionType,
 } from "../models/booking";
-import {
-  LARGE_REFUND_THRESHOLD,
-  bookingRemainingDepositAmount,
-} from "../helpers/financeHelpers";
+import { bookingRemainingDepositAmount } from "../helpers/financeHelpers";
 
 const outwardTypes: TransactionType[] = [
   "depositRefund",
@@ -45,7 +42,6 @@ export const canonicalTransactionDirection = (
 export const enforceAddTransactionPolicy = ({
   booking,
   transaction,
-  isAdmin,
 }: {
   booking: Pick<booking, "transactions">;
   transaction: transcation;
@@ -83,20 +79,6 @@ export const enforceAddTransactionPolicy = ({
       );
     }
 
-    const priorRefunds = booking.transactions.reduce(
-      (total, existing) =>
-        existing.type === "depositRefund"
-          ? total + Math.abs(existing.amount || 0)
-          : total,
-      0,
-    );
-    if (!isAdmin && priorRefunds + transaction.amount >= LARGE_REFUND_THRESHOLD) {
-      throw new FinancialTransactionPolicyError(
-        403,
-        "ADMIN_APPROVAL_REQUIRED",
-        "ยอดคืนเงินสะสมสูง ต้องให้ Admin ดำเนินการ",
-      );
-    }
   }
 
   return { ...transaction, direction };

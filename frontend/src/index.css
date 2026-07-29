@@ -18,6 +18,12 @@
   --green: rgb(30, 203, 131);
   --red: #fd4169;
   --light-red: #fd416910;
+  --field-error-color: #dc2626;
+  --payment-method-ota: #4f8fda;
+  --payment-method-cash: #4fb58a;
+  --payment-method-card: #8b6fd6;
+  --payment-method-transfer: #d9a441;
+  --payment-method-unpaid: #d66f61;
 
   color: var(--text);
   background-color: var(--background);
@@ -77,6 +83,18 @@ body {
   width: 100%;
   box-sizing: border-box;
   appearance: none;
+}
+
+.formField__error {
+  color: var(--field-error-color);
+  font-size: 0.82rem;
+  margin-top: 0.5rem;
+}
+
+.boxInput--error,
+.formField--error .rs__control,
+.formField--error .resolveSelect__control {
+  outline: 1px solid var(--field-error-color);
 }
 
 .boxButton {

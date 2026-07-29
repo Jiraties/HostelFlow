@@ -1766,13 +1766,6 @@ const checkOut = async (req, res) => {
                 message: `กรุณายืนยันว่าคืนมัดจำ ${remainingDepositAmount} บาทให้แขกแล้ว`,
             });
         }
-        if (!req.user?.admin &&
-            remainingDepositAmount >= financeHelpers_1.LARGE_REFUND_THRESHOLD) {
-            return res.status(403).json({
-                error: "ADMIN_APPROVAL_REQUIRED",
-                message: "ยอดคืนเงินสูง ต้องให้ Admin ดำเนินการ",
-            });
-        }
         const { start: todayStart } = getBusinessDayBounds();
         const checkOutParts = getBusinessDateParts(existingBooking.checkOut);
         const checkoutDateStart = getBusinessDateStart(checkOutParts.year, checkOutParts.month, checkOutParts.day);
@@ -2331,14 +2324,6 @@ const addTransaction = async (req, res) => {
                 message: "รายการของ Booking ที่ยกเลิกแล้วต้องให้ Admin ดำเนินการ",
             });
         }
-        if (!req.user?.admin &&
-            transaction.type === "depositRefund" &&
-            amount >= financeHelpers_1.LARGE_REFUND_THRESHOLD) {
-            return res.status(403).json({
-                error: "ADMIN_APPROVAL_REQUIRED",
-                message: "ยอดคืนเงินสูง ต้องให้ Admin ดำเนินการ",
-            });
-        }
         if (transaction.relatedTransactionId) {
             const linkedTransactionExists = booking.transactions.some((existingTransaction) => String(existingTransaction._id) === transaction.relatedTransactionId);
             if (!linkedTransactionExists) {
@@ -2545,12 +2530,6 @@ const cancelBooking = async (req, res) => {
         const keptAmount = hasReceivedPayment && effectiveCancellationType === "non_refundable"
             ? paidAmount
             : 0;
-        if (!req.user?.admin && refundAmount >= financeHelpers_1.LARGE_REFUND_THRESHOLD) {
-            return res.status(403).json({
-                error: "ADMIN_APPROVAL_REQUIRED",
-                message: "ยอดคืนเงินสูง ต้องให้ Admin ดำเนินการ",
-            });
-        }
         const refundTransactions = refundAmount > 0
             ? Array.from(paidByMethod.entries()).map(([paymentMethod, amount]) => (0, financeHelpers_1.normalizeTransaction)({
                 type: "cancellationRefund",
@@ -2834,16 +2813,6 @@ const resolveBooking = async (req, res) => {
                 reference: transaction.reference,
                 sameTypeCount,
             }));
-        }
-        const priorSensitiveOutTotal = booking.transactions.reduce((total, existingTransaction) => ["depositRefund", "cancellationRefund", "roomRefund", "compensation"].includes(existingTransaction.type)
-            ? total + Math.abs(existingTransaction.amount || 0)
-            : total, 0);
-        if (!req.user?.admin &&
-            priorSensitiveOutTotal + sensitiveOutTotal >= financeHelpers_1.LARGE_REFUND_THRESHOLD) {
-            return res.status(403).json({
-                error: "ADMIN_APPROVAL_REQUIRED",
-                message: "ยอดคืนเงินสูง ต้องให้ Admin ดำเนินการ",
-            });
         }
         if (depositRefundAmount >
             (0, financeHelpers_1.bookingRemainingDepositAmount)((0, transactionCorrections_1.effectiveBookingTransactions)(booking))) {

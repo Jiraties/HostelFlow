@@ -25,20 +25,10 @@
   margin-bottom: 0.5rem;
 }
 
-.addBooking__fieldError {
-  color: #dc2626;
-  font-size: 0.82rem;
-  margin-top: 0.5rem;
-}
-
 .addBooking__fieldHelper {
   color: #6b7280;
   font-size: 0.82rem;
   margin-top: 0.5rem;
-}
-
-.boxInput--error {
-  outline: 1px solid #dc2626;
 }
 
 .addBooking__roomOption {
@@ -168,7 +158,9 @@
   background-color: var(--green);
 }
 
-.addBooking__advanceOption input:checked + .addBooking__advanceCheckmark::after {
+.addBooking__advanceOption
+  input:checked
+  + .addBooking__advanceCheckmark::after {
   content: "";
   width: 0.28rem;
   height: 0.52rem;

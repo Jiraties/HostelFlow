@@ -825,11 +825,12 @@ const AddBooking = ({
             className={`boxInput ${formErrors.name ? "boxInput--error" : ""}`}
             value={formData.name}
             maxLength={30}
+            aria-invalid={Boolean(formErrors.name)}
             onChange={(e) => formDataChangeHandler("name", e.target.value)}
             placeholder="เช่น Robert Brown"
           />
           {formErrors.name && (
-            <p className="addBooking__fieldError">{formErrors.name}</p>
+            <p className="formField__error">{formErrors.name}</p>
           )}
         </div>
         <div>
@@ -864,7 +865,7 @@ const AddBooking = ({
             </div>
           </div>
           {(formErrors.checkIn || formErrors.checkOut) && (
-            <p className="addBooking__fieldError">
+            <p className="formField__error">
               {formErrors.checkIn || formErrors.checkOut}
             </p>
           )}
@@ -890,7 +891,9 @@ const AddBooking = ({
             <Select<RoomOptionWithReason, true>
               isMulti
               styles={customStyles<OptionType, true>()}
+              className={formErrors.roomIds ? "formField--error" : undefined}
               classNamePrefix="rs"
+              aria-invalid={Boolean(formErrors.roomIds)}
               placeholder="เช่น Veranda 1"
               options={roomOptions}
               isOptionDisabled={(option) => option.isDisabled === true}
@@ -921,7 +924,7 @@ const AddBooking = ({
             <p
               className={
                 formErrors.roomIds
-                  ? "addBooking__fieldError"
+                  ? "formField__error"
                   : "addBooking__fieldHelper"
               }
             >
@@ -940,7 +943,9 @@ const AddBooking = ({
           <p className="addBooking__label">ช่องทางการจอง</p>
           <Select<OptionType>
             styles={customStyles<OptionType>()}
+            className={formErrors.platformId ? "formField--error" : undefined}
             classNamePrefix="rs"
+            aria-invalid={Boolean(formErrors.platformId)}
             options={platformOptions}
             placeholder="เลือกช่องทางการจอง"
             value={
@@ -954,7 +959,7 @@ const AddBooking = ({
             }
           />
           {formErrors.platformId && (
-            <p className="addBooking__fieldError">{formErrors.platformId}</p>
+            <p className="formField__error">{formErrors.platformId}</p>
           )}
         </div>
 
@@ -968,11 +973,12 @@ const AddBooking = ({
                 className={`boxInput ${formErrors.price ? "boxInput--error" : ""}`}
                 type="number"
                 value={formData.price}
+                aria-invalid={Boolean(formErrors.price)}
                 placeholder="เช่น 1000"
                 onChange={(e) => formDataChangeHandler("price", e.target.value)}
               />
               {formErrors.price && (
-                <p className="addBooking__fieldError">{formErrors.price}</p>
+                <p className="formField__error">{formErrors.price}</p>
               )}
               {!formErrors.price && (
                 <p className="addBooking__fieldHelper">
@@ -988,7 +994,11 @@ const AddBooking = ({
               </p>
               <Select<OptionType>
                 styles={customStyles<OptionType>()}
+                className={
+                  formErrors.paymentMethod ? "formField--error" : undefined
+                }
                 classNamePrefix="rs"
+                aria-invalid={Boolean(formErrors.paymentMethod)}
                 options={visiblePaymentMethodOptions}
                 placeholder="เลือกช่องทางการชำระเงิน"
                 formatOptionLabel={formatPaymentMethodLabel}
@@ -1002,7 +1012,7 @@ const AddBooking = ({
                 }
               />
               {formErrors.paymentMethod && (
-                <p className="addBooking__fieldError">
+                <p className="formField__error">
                   {formErrors.paymentMethod}
                 </p>
               )}
@@ -1089,6 +1099,11 @@ const AddBooking = ({
                                 : "100"
                             }
                             step="0.01"
+                            aria-invalid={Boolean(
+                              advancePaymentCalculationMode === "amount"
+                                ? formErrors.advancePaymentAmount
+                                : formErrors.advancePaymentPercentage,
+                            )}
                             value={
                               advancePaymentCalculationMode === "amount"
                                 ? advancePaymentAmountInput
@@ -1119,7 +1134,7 @@ const AddBooking = ({
                       {(advancePaymentCalculationMode === "amount"
                         ? formErrors.advancePaymentAmount
                         : formErrors.advancePaymentPercentage) && (
-                        <p className="addBooking__fieldError">
+                        <p className="formField__error">
                           {advancePaymentCalculationMode === "amount"
                             ? formErrors.advancePaymentAmount
                             : formErrors.advancePaymentPercentage}
@@ -1163,6 +1178,7 @@ const AddBooking = ({
                 }`}
                 type="text"
                 inputMode={formData.platformId === "WALK" ? "numeric" : undefined}
+                aria-invalid={Boolean(formErrors.bookingId)}
                 value={formData.bookingId}
                 placeholder={
                   formData.platformId === "WALK"
@@ -1174,7 +1190,7 @@ const AddBooking = ({
                 }
               />
               {formErrors.bookingId && (
-                <p className="addBooking__fieldError">{formErrors.bookingId}</p>
+                <p className="formField__error">{formErrors.bookingId}</p>
               )}
             </div>
           </>

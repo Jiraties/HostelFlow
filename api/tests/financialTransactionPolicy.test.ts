@@ -67,3 +67,26 @@ test("ordinary charges still reject a forged outgoing direction", () => {
       error.status === 400,
   );
 });
+
+test("staff deposit refunds are validated but not blocked by the review threshold", () => {
+  const transaction = enforceAddTransactionPolicy({
+    booking: {
+      transactions: [
+        {
+          type: "deposit",
+          paymentMethod: "Cash",
+          amount: 3000,
+        },
+      ],
+    },
+    transaction: {
+      type: "depositRefund",
+      paymentMethod: "Cash",
+      amount: 2500,
+    },
+    isAdmin: false,
+  });
+
+  assert.equal(transaction.direction, "out");
+  assert.equal(transaction.amount, 2500);
+});

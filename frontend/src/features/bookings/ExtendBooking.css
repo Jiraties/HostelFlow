@@ -32,14 +32,6 @@
   align-items: start;
 }
 
-.extendBooking__leftColumn,
-.extendBooking__rightColumn {
-  display: flex;
-  flex-direction: column;
-  gap: 2rem;
-  min-width: 0;
-}
-
 .extendBooking__field {
   display: block;
   min-width: 0;
@@ -51,33 +43,70 @@
   font-weight: 400;
 }
 
-.extendBooking__dateInputsWithNights {
-  box-sizing: border-box;
-  max-width: 100%;
-  width: min(100%, 23rem);
+.extendBooking__nightsStepper {
+  background: #fff;
+  border-radius: 0.5rem;
+  box-shadow: var(--main-shadow);
+  display: grid;
+  grid-template-columns: 3rem minmax(3.5rem, 1fr) 3rem;
+  min-height: 3.3rem;
+  overflow: hidden;
 }
 
-.extendBooking__wrapper
-  .extendBooking__dateInputsWithNights
-  .addBooking__dateInput {
-  box-shadow: none;
+.extendBooking__nightsStepper button,
+.extendBooking__nightsStepper input {
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  font: inherit;
+  min-width: 0;
 }
 
-.extendBooking__previousCheckOut {
-  background: #f1f1f1;
-  color: #777;
+.extendBooking__nightsStepper button {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  font-size: 1.15rem;
+  justify-content: center;
 }
 
-.extendBooking__rightColumn .cancellation__segment--active,
-.extendBooking__rightColumn
-  .cancellation__segment:first-child.cancellation__segment--active {
+.extendBooking__nightsStepper button:hover:not(:disabled),
+.extendBooking__nightsStepper button:focus-visible {
   background: color-mix(in srgb, var(--primary-color) 8%, #fff);
   color: var(--primary-color);
-  font-weight: 500;
+  outline: 0;
 }
 
-.extendBooking__rightColumn .cancellation__segment--active i {
-  color: var(--primary-color);
+.extendBooking__nightsStepper button:disabled {
+  color: #b8b8b8;
+  cursor: not-allowed;
+}
+
+.extendBooking__nightsStepper input {
+  appearance: textfield;
+  text-align: center;
+}
+
+.extendBooking__nightsStepper input:focus {
+  outline: 0;
+}
+
+.extendBooking__nightsStepper input::-webkit-inner-spin-button,
+.extendBooking__nightsStepper input::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+.extendBooking__roomFields {
+  align-items: start;
+  display: grid;
+  gap: 2rem;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.extendBooking__field--full {
+  grid-column: 1 / -1;
 }
 
 .extendBooking__platformOption {
@@ -96,11 +125,6 @@
 .extendBooking__wrapper .boxInput {
   border: 0;
   box-shadow: var(--main-shadow);
-}
-
-.extendBooking__error {
-  color: #b42318;
-  margin: 0.65rem 0 0;
 }
 
 .extendBooking__summarySection {
@@ -140,11 +164,6 @@
   margin-top: 2rem;
 }
 
-.cancellation__segment--extendActive {
-  color: var(--primary-color);
-  font-weight: 500;
-}
-
 @media (max-width: 760px) {
   .extendBooking__wrapper {
     width: calc(100vw - 1.5rem);
@@ -157,9 +176,13 @@
     gap: 1.25rem;
   }
 
-  .extendBooking__leftColumn,
-  .extendBooking__rightColumn {
+  .extendBooking__field--full {
+    grid-column: 1 / -1;
+  }
+
+  .extendBooking__roomFields {
     gap: 1.25rem;
+    grid-template-columns: 1fr;
   }
 
   .extendBooking__summarySection {

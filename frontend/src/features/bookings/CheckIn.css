@@ -201,23 +201,48 @@
 }
 
 .checkIn__paymentTag.cash {
-  background-color: #e6f4ea;
-  color: #1e8e3e;
+  background-color: color-mix(
+    in srgb,
+    var(--payment-method-cash) 16%,
+    #ffffff
+  );
+  color: var(--payment-method-cash);
 }
 
 .checkIn__paymentTag.transfer {
-  background-color: #e8f0fe;
-  color: #1a73e8;
+  background-color: color-mix(
+    in srgb,
+    var(--payment-method-transfer) 16%,
+    #ffffff
+  );
+  color: var(--payment-method-transfer);
 }
 
 .checkIn__paymentTag.card {
-  background-color: #fce8e6;
-  color: #d93025;
+  background-color: color-mix(
+    in srgb,
+    var(--payment-method-card) 16%,
+    #ffffff
+  );
+  color: var(--payment-method-card);
 }
 
 .checkIn__paymentTag.ota {
-  background-color: #fef7e0;
-  color: #f9ab00;
+  background-color: color-mix(
+    in srgb,
+    var(--payment-method-ota) 16%,
+    #ffffff
+  );
+  color: var(--payment-method-ota);
+}
+
+.checkIn__paymentTag.unpaid {
+  background-color: color-mix(
+    in srgb,
+    var(--payment-method-unpaid) 16%,
+    #ffffff
+  );
+  color: var(--payment-method-unpaid);
 }
 
 .checkIn__paymentConfirmationTotal {
