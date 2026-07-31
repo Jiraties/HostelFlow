@@ -265,8 +265,8 @@ const terminalAction = (
     return {
       actor: currentBooking.resolution.resolvedByStaffUsername,
       at: new Date(currentBooking.resolution.resolvedAt),
-      expectedActivities: ["RESOLVE_STAY"],
-      sourceActions: ["RESOLVE_STAY"],
+      expectedActivities: ["RESOLVE_STAY", "MARK_NO_SHOW"],
+      sourceActions: ["RESOLVE_STAY", "MARK_NO_SHOW"],
     };
   }
   return null;

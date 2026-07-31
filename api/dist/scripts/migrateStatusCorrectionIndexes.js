@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const dotenv_1 = __importDefault(require("dotenv"));
 const mongoose_1 = __importDefault(require("mongoose"));
 const statusCorrection_1 = __importDefault(require("../models/statusCorrection"));
+const deploymentIdentity_1 = require("../config/deploymentIdentity");
 dotenv_1.default.config();
 const main = async () => {
     if (!process.env.MONGO_URI)
@@ -14,9 +15,11 @@ const main = async () => {
         throw new Error("Set RUN_STATUS_CORRECTION_INDEX_MIGRATION=true to run this migration");
     }
     await mongoose_1.default.connect(process.env.MONGO_URI, { autoIndex: false });
+    const deployment = (0, deploymentIdentity_1.assertDeploymentIdentity)();
     await statusCorrection_1.default.createIndexes();
     const indexes = await statusCorrection_1.default.collection.indexes();
     console.log(JSON.stringify({
+        deployment,
         collection: statusCorrection_1.default.collection.collectionName,
         indexes: indexes.map((index) => index.name),
     }, null, 2));

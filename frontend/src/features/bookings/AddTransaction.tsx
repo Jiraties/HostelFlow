@@ -6,7 +6,11 @@ import ActionButton from "../../components/ActionButton";
 import ModalCloseButton from "../../components/ModalCloseButton";
 import CashShiftNudge from "../../components/CashShiftNudge";
 import { API_URL } from "../../config/api";
-import { formatBookingDates } from "../../helpers/bookingHelpers";
+import {
+  bookingFinancialPosition,
+  formatBookingDates,
+} from "../../helpers/bookingHelpers";
+import { paymentMethodOptions } from "../../helpers/options";
 import { customStyles, type OptionType } from "../../helpers/selectStyling";
 import {
   addTransactionPaymentMethodOptions,
@@ -16,6 +20,7 @@ import {
 import type { booking } from "../../types/bookingTypes";
 import "./AddTransaction.css";
 import "./Cancellation.css";
+import "./ResolveBooking.css";
 
 type Transaction = booking["transactions"][number];
 type TransactionType = Transaction["type"];
@@ -39,12 +44,18 @@ const prioritizedTransactionTypeOptions = [...transactionTypeOptions].sort(
     (addTransactionTypePriority.get(first.value) ?? Number.MAX_SAFE_INTEGER) -
     (addTransactionTypePriority.get(second.value) ?? Number.MAX_SAFE_INTEGER),
 );
+const focusedTransactionTypeOptions: OptionType[] = [
+  { value: "roomRefund", label: "คืนเงินลูกค้า", color: "#fb7185" },
+  { value: "compensation", label: "ชดเชยลูกค้า", color: "#38bdf8" },
+];
 
 type AddTransactionFormData = {
   type: TransactionType | "";
   paymentMethod: PaymentMethod | "";
   amount: string;
   note: string;
+  reason: string;
+  reference: string;
   relatedTransactionId: string;
   adjustmentDirection: AdjustmentDirection;
 };
@@ -85,17 +96,12 @@ const transactionAttachmentMeta: Record<
 };
 
 const AddTransaction = ({
-  bookingId,
-  bookingStatus,
-  transactions,
+  booking: currentBooking,
   onClose,
   onUpdated,
   onDirtyChange,
 }: {
-  bookingId: string;
-  bookingStatus: booking["status"];
-  guestName: string;
-  transactions: Transaction[];
+  booking: booking;
   onClose: () => void;
   onUpdated?: (booking: booking) => void;
   onDirtyChange?: (isDirty: boolean) => void;
@@ -106,6 +112,8 @@ const AddTransaction = ({
     paymentMethod: "",
     amount: "",
     note: "",
+    reason: "",
+    reference: "",
     relatedTransactionId: "",
     adjustmentDirection: "in",
   });
@@ -117,6 +125,8 @@ const AddTransaction = ({
         formData.paymentMethod ||
         formData.amount ||
         formData.note ||
+        formData.reason ||
+        formData.reference ||
         formData.relatedTransactionId ||
         formData.adjustmentDirection !== "in",
       ),
@@ -141,6 +151,14 @@ const AddTransaction = ({
     setFormData((prev) => ({
       ...prev,
       type,
+      relatedTransactionId: "",
+      reason: "",
+      reference: "",
+      ...(type === "roomRefund" || type === "compensation"
+        ? { paymentMethod: "Cash" as PaymentMethod }
+        : prev.paymentMethod === "OTA"
+          ? { paymentMethod: "" as const }
+          : {}),
       ...(preset
         ? {
             ...(preset.amount != null
@@ -185,9 +203,13 @@ const AddTransaction = ({
     });
 
   const amount = Number(formData.amount);
+  const isRefund = formData.type === "roomRefund";
+  const isCompensation = formData.type === "compensation";
+  const isFocusedFinancialAction = isRefund || isCompensation;
   const validAmount = Number.isFinite(amount) && amount > 0 ? amount : 0;
   const shouldShowCardSurcharge =
     formData.paymentMethod === "Card" &&
+    !isFocusedFinancialAction &&
     formData.type !== "depositRefund" &&
     !(formData.type === "adjustment" && formData.adjustmentDirection === "out");
   const cardSurcharge = shouldShowCardSurcharge
@@ -197,8 +219,9 @@ const AddTransaction = ({
   const needsNote =
     formData.type === "adjustment" ||
     formData.type === "depositRefund" ||
-    formData.type === "misc";
-  const canAttachTransaction = formData.type === "adjustment";
+    formData.type === "misc" ||
+    isFocusedFinancialAction;
+  const canAttachTransaction = formData.type === "adjustment" || isRefund;
   const hasCashMovement =
     formData.paymentMethod === "Cash" &&
     formData.type !== "deposit" &&
@@ -227,22 +250,76 @@ const AddTransaction = ({
 
     return transactionAttachmentMeta[transaction.type].label;
   };
-  const transactionAttachmentOptions: OptionType[] = transactions
+  const effectiveTransactions =
+    currentBooking.effectiveTransactions || currentBooking.transactions;
+  const remainingRefundableAmount = (transaction: Transaction) => {
+    const alreadyRefunded = effectiveTransactions
+      .filter(
+        (candidate) =>
+          ["roomRefund", "cancellationRefund"].includes(candidate.type) &&
+          candidate.relatedTransactionId === transaction._id,
+      )
+      .reduce(
+        (total, candidate) => total + Math.abs(candidate.amount || 0),
+        0,
+      );
+    return Math.max(transaction.amount - alreadyRefunded, 0);
+  };
+  const refundableTransactions = effectiveTransactions.filter(
+    (transaction) =>
+      transaction._id &&
+      transaction.paymentMethod !== "Unpaid" &&
+      transaction.direction !== "out" &&
+      ![
+        "deposit",
+        "depositRefund",
+        "roomRefund",
+        "cancellationRefund",
+        "compensation",
+        "cardSurcharge",
+      ].includes(transaction.type) &&
+      remainingRefundableAmount(transaction) > 0,
+  );
+  const attachableTransactions = isRefund
+    ? refundableTransactions
+    : currentBooking.transactions;
+  const transactionAttachmentOptions: OptionType[] = attachableTransactions
     .filter((transaction) => transaction._id)
     .map((transaction) => ({
       value: transaction._id || "",
-      label: `${attachmentTransactionLabel(transaction)} · ${transaction.paymentMethod} · ${formatCurrency(transaction.amount)} บาท`,
+      label: isRefund
+        ? `${attachmentTransactionLabel(transaction)} · ${transaction.paymentMethod} · คืนได้ ${formatCurrency(remainingRefundableAmount(transaction))} บาท`
+        : `${attachmentTransactionLabel(transaction)} · ${transaction.paymentMethod} · ${formatCurrency(transaction.amount)} บาท`,
       color: transactionAttachmentMeta[transaction.type].color,
     }));
-  const availableTransactionTypeOptions = prioritizedTransactionTypeOptions.filter(
-    (option) => option.value !== "deposit" || bookingStatus === "checkedIn",
-  );
+  const availableTransactionTypeOptions = [
+    ...prioritizedTransactionTypeOptions.filter(
+      (option) =>
+        option.value !== "deposit" || currentBooking.status === "checkedIn",
+    ),
+    ...focusedTransactionTypeOptions,
+  ];
   const availablePaymentMethodOptions =
-    formData.type === "deposit"
-      ? addTransactionPaymentMethodOptions.filter(
-          (option) => option.value === "Cash",
-        )
-      : addTransactionPaymentMethodOptions;
+    isFocusedFinancialAction
+      ? paymentMethodOptions.filter((option) => option.value !== "Unpaid")
+      : formData.type === "deposit"
+        ? addTransactionPaymentMethodOptions.filter(
+            (option) => option.value === "Cash",
+          )
+        : addTransactionPaymentMethodOptions;
+  const currentPosition = bookingFinancialPosition(currentBooking);
+  const afterBookingTotal = Math.max(
+    currentPosition.bookingTotal - (isFocusedFinancialAction ? validAmount : 0),
+    0,
+  );
+  const afterAmountReceived = Math.max(
+    currentPosition.amountReceived - (isFocusedFinancialAction ? validAmount : 0),
+    0,
+  );
+  const afterDifference = Number(
+    (afterBookingTotal - afterAmountReceived).toFixed(2),
+  );
+  const [idempotencyKey] = useState(() => crypto.randomUUID());
 
   const submitHandler = async () => {
     if (submitting) return;
@@ -265,27 +342,66 @@ const AddTransaction = ({
         );
       }
 
+      if (isFocusedFinancialAction && !formData.reason.trim()) {
+        throw new Error("กรุณาระบุเหตุผลสำหรับรายการนี้");
+      }
+
+      if (isRefund && !formData.relatedTransactionId) {
+        throw new Error("กรุณาเลือกรายการรับเงินเดิมที่ต้องการคืน");
+      }
+
       if (formData.type === "adjustment" && !formData.relatedTransactionId) {
         throw new Error("กรุณาเลือกรายการเดิมที่ต้องการปรับยอด");
       }
 
-      const transaction: Transaction = {
-        type: formData.type,
-        paymentMethod: formData.paymentMethod,
-        amount,
-        note: formData.note.trim() || undefined,
-        relatedTransactionId: formData.relatedTransactionId || undefined,
-        direction:
-          formData.type === "adjustment"
-            ? formData.adjustmentDirection
-            : undefined,
-      };
+      let response;
+      if (isFocusedFinancialAction) {
+        let largeAmountConfirmed = false;
+        if (amount >= 10000 && amount % 10 === 0) {
+          largeAmountConfirmed = window.confirm(
+            `ยืนยันยอด ${formatCurrency(amount)} บาท? ระบบตรวจพบว่ายอดอาจมีศูนย์เกิน`,
+          );
+          if (!largeAmountConfirmed) return;
+        }
+        response = await axios.post(
+          `${API_URL}/bookings/${currentBooking.bookingId}/financial-actions`,
+          {
+            expectedRevision: currentBooking.revision,
+            action: isRefund ? "refund" : "compensation",
+            amount,
+            paymentMethod: formData.paymentMethod,
+            reason: formData.reason.trim(),
+            note: formData.note.trim(),
+            reference: formData.reference.trim() || undefined,
+            relatedTransactionId: isRefund
+              ? formData.relatedTransactionId
+              : undefined,
+            largeAmountConfirmed,
+          },
+          {
+            withCredentials: true,
+            headers: { "Idempotency-Key": idempotencyKey },
+          },
+        );
+      } else {
+        const transaction: Transaction = {
+          type: formData.type,
+          paymentMethod: formData.paymentMethod,
+          amount,
+          note: formData.note.trim() || undefined,
+          relatedTransactionId: formData.relatedTransactionId || undefined,
+          direction:
+            formData.type === "adjustment"
+              ? formData.adjustmentDirection
+              : undefined,
+        };
 
-      const response = await axios.post(
-        `${API_URL}/bookings/addTransaction/${bookingId}`,
-        { transaction },
-        { withCredentials: true },
-      );
+        response = await axios.post(
+          `${API_URL}/bookings/addTransaction/${currentBooking.bookingId}`,
+          { transaction },
+          { withCredentials: true },
+        );
+      }
 
       if (response.status !== 200) throw new Error(response.data.message);
       if (response.data.booking) {
@@ -304,11 +420,11 @@ const AddTransaction = ({
       <div className="addTransaction__header">
         <div>
           <h1 className="addBooking__title">
-            {bookingStatus === "checkedOut"
+            {currentBooking.status === "checkedOut"
               ? "เพิ่มรายการหลัง Check-Out"
               : "เพิ่มรายการใช้จ่าย"}
           </h1>
-          {bookingStatus === "checkedOut" && (
+          {currentBooking.status === "checkedOut" && (
             <p className="addTransaction__description">
               รายการนี้จะถูกบันทึกเพิ่มในประวัติของ Booking ที่ปิดแล้ว
             </p>
@@ -390,14 +506,18 @@ const AddTransaction = ({
           </div>
         )}
 
-        {canAttachTransaction && transactionAttachmentOptions.length > 0 && (
+        {canAttachTransaction && (
           <div>
-            <p className="addBooking__label">แนบรายการที่ปรับ</p>
+            <p className="addBooking__label">
+              {isRefund ? "รายการรับเงินเดิม (จำเป็น)" : "แนบรายการที่ปรับ"}
+            </p>
             <Select<OptionType>
               styles={customStyles<OptionType>()}
               classNamePrefix="rs"
               options={transactionAttachmentOptions}
-              placeholder="เลือกรายการเดิม"
+              placeholder={
+                isRefund ? "เลือกรายการที่ต้องการคืนเงิน" : "เลือกรายการเดิม"
+              }
               formatOptionLabel={formatTransactionTypeLabel}
               menuPortalTarget={document.body}
               menuPosition="fixed"
@@ -413,6 +533,11 @@ const AddTransaction = ({
                 )
               }
             />
+            {isRefund && transactionAttachmentOptions.length === 0 ? (
+              <p className="formField__error">
+                ไม่พบรายการรับเงินเดิมที่สามารถคืนเงินได้
+              </p>
+            ) : null}
           </div>
         )}
 
@@ -436,6 +561,26 @@ const AddTransaction = ({
             }
           />
         </div>
+
+        {isFocusedFinancialAction ? (
+          <div>
+            <p className="addBooking__label">เหตุผล (จำเป็น)</p>
+            <input
+              className="boxInput"
+              type="text"
+              value={formData.reason}
+              maxLength={200}
+              placeholder={
+                isRefund
+                  ? "เช่น ลดจำนวนคืน / คืนค่าบริการ"
+                  : "เช่น ห้องมีปัญหา / บริการไม่เป็นไปตามที่ตกลง"
+              }
+              onChange={(event) =>
+                formDataChangeHandler("reason", event.target.value)
+              }
+            />
+          </div>
+        ) : null}
 
         <div>
           <p className="addBooking__label">
@@ -467,6 +612,59 @@ const AddTransaction = ({
             onChange={(e) => formDataChangeHandler("note", e.target.value)}
           />
         </div>
+
+        {isFocusedFinancialAction ? (
+          <div>
+            <p className="addBooking__label">
+              เลขอ้างอิง
+              <span className="addTransaction__optionalLabel">(ไม่บังคับ)</span>
+            </p>
+            <input
+              className="boxInput"
+              type="text"
+              value={formData.reference}
+              maxLength={200}
+              placeholder="เช่น เลขรายการโอน / เอกสารอนุมัติ"
+              onChange={(event) =>
+                formDataChangeHandler("reference", event.target.value)
+              }
+            />
+          </div>
+        ) : null}
+
+        {isFocusedFinancialAction && validAmount > 0 ? (
+          <section className="resolveBooking__summary" aria-live="polite">
+            <p className="addBooking__label">ตรวจสอบก่อนบันทึก</p>
+            <ul>
+              <li>
+                <i className="bx bx-user" />
+                {currentBooking.name} · {currentBooking.bookingId}
+              </li>
+              <li>
+                <i className="bx bx-arrow-from-top" />
+                เงินออก {formatCurrency(validAmount)} บาท · {formData.paymentMethod}
+              </li>
+              <li>
+                <i className="bx bx-receipt" />
+                ยอด Booking {formatCurrency(currentPosition.bookingTotal)} →{" "}
+                {formatCurrency(afterBookingTotal)} บาท
+              </li>
+              <li>
+                <i className="bx bx-wallet" />
+                ยอดรับแล้ว {formatCurrency(currentPosition.amountReceived)} →{" "}
+                {formatCurrency(afterAmountReceived)} บาท · คงค้าง{" "}
+                {formatCurrency(Math.max(afterDifference, 0))} บาท · เครดิตแขก{" "}
+                {formatCurrency(Math.max(-afterDifference, 0))} บาท
+              </li>
+            </ul>
+          </section>
+        ) : null}
+
+        {isFocusedFinancialAction && validAmount > 2000 ? (
+          <p className="resolveBooking__warning">
+            รายการเกิน 2,000 บาท ต้องให้ Admin เป็นผู้บันทึก
+          </p>
+        ) : null}
 
         {shouldShowCardSurcharge && validAmount > 0 && (
           <div className="addTransaction__cardPreview">
@@ -500,14 +698,24 @@ const AddTransaction = ({
       <div className="addTransaction__actions">
         <ActionButton text="ยกเลิก" icon="bx-x" onClick={onClose} />
         <ActionButton
-          text="บันทึกรายการ"
+          text={
+            isRefund
+              ? "บันทึกคืนเงิน"
+              : isCompensation
+                ? "บันทึกค่าชดเชย"
+                : "บันทึกรายการ"
+          }
           icon="bx-save"
           highlight
           disabled={submitting}
           onClick={() =>
             toast.promise(submitHandler(), {
               loading: "กำลังบันทึกรายการ...",
-              success: "เพิ่มรายการใช้จ่ายสำเร็จ",
+              success: isRefund
+                ? "บันทึกการคืนเงินสำเร็จ"
+                : isCompensation
+                  ? "บันทึกค่าชดเชยสำเร็จ"
+                  : "เพิ่มรายการใช้จ่ายสำเร็จ",
               error: (err) => {
                 if (axios.isAxiosError(err)) {
                   return (

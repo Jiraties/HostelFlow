@@ -34,6 +34,13 @@ const actionMap = {
   CHECK_OUT: { icon: "bx-door-open", text: "Check-Out" },
   CANCEL_BOOKING: { icon: "bx-calendar-x", text: "ยกเลิก Booking" },
   RESOLVE_STAY: { icon: "bx-receipt", text: "เคลียร์การเข้าพัก" },
+  MARK_NO_SHOW: { icon: "bx-user-x", text: "บันทึก No-Show" },
+  CORRECT_CLOSED_ROOM_AVAILABILITY: {
+    icon: "bx-bed",
+    text: "แก้ไขการเปิดห้องหลังปิด",
+  },
+  RECORD_REFUND: { icon: "bx-undo", text: "บันทึกการคืนเงิน" },
+  RECORD_COMPENSATION: { icon: "bx-gift", text: "บันทึกค่าชดเชย" },
   POST_CLOSE_ADJUSTMENT: {
     icon: "bx-history",
     text: "แก้ไขหลังปิด",

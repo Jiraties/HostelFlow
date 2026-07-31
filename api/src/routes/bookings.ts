@@ -20,7 +20,6 @@ import {
   updateBookingNote,
   pinBooking,
   extendBooking,
-  correctDeposit,
 } from "../controller/booking";
 import { requirePassportAccess } from "../middleware/passportAuthorization";
 import { correctTransaction } from "../controller/transactionCorrections";
@@ -41,6 +40,11 @@ import {
   revealAdditionalGuest,
   updateAdditionalGuest,
 } from "../controller/additionalGuests";
+import {
+  correctClosedRoomAvailability,
+  markNoShow,
+  recordFinancialAction,
+} from "../controller/focusedBookingActions";
 
 const bookingsRouter = express.Router();
 
@@ -86,9 +90,14 @@ bookingsRouter.get(
 );
 bookingsRouter.post("/:bookingId/status-corrections", correctStatus);
 bookingsRouter.patch("/checkOut/:bookingId", checkOut);
-bookingsRouter.patch("/:bookingId/deposit", correctDeposit);
 bookingsRouter.patch("/manageRoomStays/:bookingId", manageRoomStays);
 bookingsRouter.patch("/cancelBooking/:bookingId", cancelBooking);
+bookingsRouter.post("/:bookingId/no-show", markNoShow);
+bookingsRouter.patch(
+  "/:bookingId/closed-room-availability",
+  correctClosedRoomAvailability,
+);
+bookingsRouter.post("/:bookingId/financial-actions", recordFinancialAction);
 bookingsRouter.patch("/resolveBooking/:bookingId", resolveBooking);
 bookingsRouter.get("/getMonthCalendar", getMonthCalendar);
 bookingsRouter.get("/getBookingById/:bookingId", getBookingById);

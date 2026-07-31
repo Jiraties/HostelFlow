@@ -618,44 +618,6 @@ test("an additional deposit must be paid in Cash", async () => {
   );
 });
 
-test("staff can correct one active deposit with an audited reason", async () => {
-  const booking = await bookingFixture("DEPOSIT-CORRECTION");
-  booking.status = "checkedIn";
-  booking.transactions.push({
-    type: "deposit",
-    paymentMethod: "Cash",
-    amount: 200,
-    sourceAction: "CHECK_IN",
-    createdBy: "staff",
-  });
-  await booking.save();
-
-  const correction = response();
-  await controller.correctDeposit(
-    request({
-      body: { expectedRevision: 0, amount: 250, reason: "บันทึกยอดผิด" },
-      params: { bookingId: "DEPOSIT-CORRECTION" },
-      url: "/bookings/DEPOSIT-CORRECTION/deposit",
-      admin: false,
-    }),
-    correction as any,
-  );
-
-  assert.equal(correction.statusCode, 200, JSON.stringify(correction.body));
-  const [stored, activity] = await Promise.all([
-    Booking.findOne({ bookingId: "DEPOSIT-CORRECTION" }).lean(),
-    Activity.findOne({ bookingId: "DEPOSIT-CORRECTION", action: "EDIT_BOOKING" }).lean(),
-  ]);
-  assert.equal(stored?.revision, 1);
-  const correctedDeposit = stored?.transactions.find(
-    (transaction) => transaction.type === "deposit",
-  );
-  assert.equal(correctedDeposit?.amount, 250);
-  assert.equal(correctedDeposit?.cashShiftId, undefined);
-  assert.equal((activity?.details as any)?.summary?.action, "CORRECT_DEPOSIT");
-  assert.equal((activity?.details as any)?.summary?.reason, "บันทึกยอดผิด");
-});
-
 test("checkout requires full deposit return confirmation and bypasses cash shifts", async () => {
   const booking = await bookingFixture("STRICT-DEPOSIT-CHECKOUT");
   booking.status = "checkedIn";

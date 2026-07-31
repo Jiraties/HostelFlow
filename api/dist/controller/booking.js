@@ -36,7 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getNeedsReviewBookings = exports.resolveBooking = exports.cancelBooking = exports.getPassportData = exports.addTransaction = exports.extendBooking = exports.manageRoomStays = exports.getBookingById = exports.getMonthCalendar = exports.correctDeposit = exports.checkOut = exports.checkIn = exports.removeBooking = exports.getMasterBookings = exports.getAdminDashboardStats = exports.getTodayBookings = exports.pinBooking = exports.updateBookingNote = exports.editBooking = exports.getRoomAvailability = exports.newBooking = exports.occupancySummaryForRange = exports.occupiedCapacityOnDate = void 0;
+exports.getNeedsReviewBookings = exports.resolveBooking = exports.cancelBooking = exports.getPassportData = exports.addTransaction = exports.extendBooking = exports.manageRoomStays = exports.getBookingById = exports.getMonthCalendar = exports.checkOut = exports.checkIn = exports.removeBooking = exports.getMasterBookings = exports.getAdminDashboardStats = exports.getTodayBookings = exports.pinBooking = exports.updateBookingNote = exports.editBooking = exports.getRoomAvailability = exports.newBooking = exports.occupancySummaryForRange = exports.occupiedCapacityOnDate = void 0;
 const booking_1 = __importStar(require("../models/booking"));
 const standaloneSale_1 = __importDefault(require("../models/standaloneSale"));
 const dotenv_1 = __importDefault(require("dotenv"));
@@ -57,6 +57,7 @@ const bookingConcurrency_1 = require("../services/bookingConcurrency");
 const bookingExtension_1 = require("../services/bookingExtension");
 const transactionCorrections_1 = require("../services/transactionCorrections");
 const passportData_1 = require("../services/passportData");
+const resolveRetirement_1 = require("../config/resolveRetirement");
 const expectedStayRevenueHelpers_1 = require("../helpers/expectedStayRevenueHelpers");
 dotenv_1.default.config();
 const ACTIVE_ROOM_INVENTORY = (0, roomInventory_1.activeRoomInventory)();
@@ -1851,103 +1852,6 @@ const checkOut = async (req, res) => {
     }
 };
 exports.checkOut = checkOut;
-const correctDeposit = async (req, res) => {
-    try {
-        const { bookingId } = req.params;
-        const expectedRevision = (0, bookingConcurrency_1.expectedBookingRevision)(req.body.expectedRevision);
-        const amount = Number(req.body.amount);
-        const reason = String(req.body.reason || "").trim();
-        const staffUsername = req.user?.username;
-        if (expectedRevision === null) {
-            return res.status(400).json({
-                error: "EXPECTED_REVISION_REQUIRED",
-                message: "กรุณารีเฟรชข้อมูลการจองก่อนแก้ไขมัดจำ",
-            });
-        }
-        if (!staffUsername) {
-            return res.status(401).json({ message: "กรุณาเข้าสู่ระบบใหม่" });
-        }
-        if (!Number.isFinite(amount) || amount < 0 || !reason) {
-            return res.status(400).json({
-                error: "INVALID_DEPOSIT_CORRECTION",
-                message: "กรุณาระบุยอดมัดจำและเหตุผลที่ถูกต้อง",
-            });
-        }
-        const existingBooking = await booking_1.default.findOne({ bookingId }).lean();
-        if (!existingBooking) {
-            return res.status(404).json({ message: "ไม่พบ booking นี้" });
-        }
-        if ((existingBooking.revision || 0) !== expectedRevision) {
-            return (0, bookingConcurrency_1.sendBookingRevisionConflict)(res, bookingId);
-        }
-        if (existingBooking.status !== "checkedIn" || existingBooking.voided) {
-            return res.status(409).json({
-                error: "DEPOSIT_CORRECTION_NOT_ALLOWED",
-                message: "แก้ไขมัดจำได้เฉพาะ booking ที่กำลังเข้าพัก",
-            });
-        }
-        const depositTransactions = existingBooking.transactions.filter((transaction) => transaction.type === "deposit");
-        const hasDepositDisposition = existingBooking.transactions.some((transaction) => transaction.type === "depositRefund" ||
-            transaction.type === "depositKept");
-        if (depositTransactions.length !== 1 || hasDepositDisposition) {
-            return res.status(409).json({
-                error: "LEGACY_DEPOSIT_READ_ONLY",
-                message: "ประวัติมัดจำแบบเดิมแก้ไขไม่ได้ แต่ยังคืนยอดคงเหลือได้ตอนออก",
-            });
-        }
-        const depositTransactionId = String(depositTransactions[0]._id);
-        const previousAmount = Number(depositTransactions[0].amount || 0);
-        const updatedTransactions = existingBooking.transactions.map((transaction) => String(transaction._id) === depositTransactionId
-            ? { ...transaction, amount }
-            : transaction);
-        const updatedBooking = await (0, mutationIdempotency_1.withMutationIdempotency)(req, async () => {
-            const session = await mongoose_1.default.startSession();
-            try {
-                return await session.withTransaction(async () => {
-                    const updated = await booking_1.default.findOneAndUpdate({
-                        bookingId,
-                        status: "checkedIn",
-                        voided: { $ne: true },
-                        ...(0, bookingConcurrency_1.bookingRevisionPredicate)(expectedRevision),
-                    }, {
-                        $set: { transactions: updatedTransactions },
-                        $inc: { revision: 1 },
-                    }, { returnDocument: "after", runValidators: true, session });
-                    if (!updated)
-                        return null;
-                    await (0, activityServices_1.logActivityStrict)(staffUsername, "EDIT_BOOKING", {
-                        changes: {
-                            depositAmount: { before: previousAmount, after: amount },
-                        },
-                        summary: {
-                            action: "CORRECT_DEPOSIT",
-                            reason,
-                            depositTransactionId,
-                        },
-                    }, String(bookingId), session);
-                    return updated;
-                });
-            }
-            finally {
-                await session.endSession();
-            }
-        });
-        if (!updatedBooking) {
-            return (0, bookingConcurrency_1.sendBookingRevisionConflict)(res, bookingId);
-        }
-        return res.status(200).json({
-            message: "แก้ไขยอดมัดจำแล้ว",
-            booking: updatedBooking,
-        });
-    }
-    catch (err) {
-        if (err instanceof mutationIdempotency_1.IdempotencyConflictError) {
-            return sendDuplicateMutationResponse(res);
-        }
-        return res.status(500).json({ error: err.message });
-    }
-};
-exports.correctDeposit = correctDeposit;
 const getMonthCalendar = async (req, res) => {
     try {
         let { year, month } = req.query;
@@ -2698,6 +2602,35 @@ const resolveBooking = async (req, res) => {
                 message: "กรุณาเข้าสู่ระบบใหม่",
             });
         }
+        const resolveFlags = (0, resolveRetirement_1.resolveRetirementFlags)();
+        const fallbackEnabled = outcome === "post_close_adjustment"
+            ? resolveFlags.postCloseFallback
+            : outcome === "no_show"
+                ? false
+                : resolveFlags.specialCaseFallback;
+        if (outcome === "no_show" ||
+            !resolveFlags.genericResolveApi ||
+            !fallbackEnabled ||
+            !req.user?.admin) {
+            console.warn("Deprecated Resolve request rejected", {
+                bookingId,
+                outcome,
+                username: resolvedByStaffUsername,
+                replacementAction: (0, resolveRetirement_1.resolveReplacementFor)(outcome),
+            });
+            const resolveRetired = outcome === "no_show" ||
+                !resolveFlags.genericResolveApi ||
+                !fallbackEnabled;
+            return res.status(resolveRetired ? 410 : 403).json({
+                error: resolveRetired
+                    ? "RESOLVE_RETIRED"
+                    : "RESOLVE_FALLBACK_OWNER_ONLY",
+                message: outcome === "no_show"
+                    ? "กรุณาใช้การบันทึก No-Show แบบเฉพาะ"
+                    : "Resolve แบบเดิมเป็นทางสำรองสำหรับ Admin เท่านั้น",
+                replacementAction: (0, resolveRetirement_1.resolveReplacementFor)(outcome),
+            });
+        }
         if (!RESOLUTION_OUTCOMES.includes(outcome) ||
             !RESOLUTION_FINAL_STATUSES.includes(finalStatus) ||
             !ROOM_RELEASE_STATUSES.includes(roomReleaseStatus) ||
@@ -2759,12 +2692,10 @@ const resolveBooking = async (req, res) => {
                 message: "Outcome นี้ใช้กับ Booking ที่ Check-In แล้วเท่านั้น",
             });
         }
-        if (!bookingIsClosed &&
-            ((outcome === "no_show" && finalStatus !== "noShow") ||
-                (outcome !== "no_show" && finalStatus === "noShow"))) {
+        if (!bookingIsClosed && finalStatus === "noShow") {
             return res.status(400).json({
                 error: "INVALID_NO_SHOW_STATUS",
-                message: "No-Show ต้องใช้สถานะสุดท้ายเป็น No-Show เท่านั้น",
+                message: "กรุณาใช้การบันทึก No-Show แบบเฉพาะ",
             });
         }
         const remainingDepositAmount = (0, financeHelpers_1.bookingRemainingDepositAmount)((0, transactionCorrections_1.effectiveBookingTransactions)(booking));

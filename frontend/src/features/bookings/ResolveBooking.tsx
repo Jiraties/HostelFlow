@@ -203,7 +203,9 @@ const ResolveBooking = ({
   const isPostClose = variant === "postClose";
   const initialRoomStatus = isPostClose
     ? getInitialRoomStatus(booking)
-    : "released";
+    : isNoShow
+      ? null
+      : "released";
   const initialReasonCode = isPostClose
     ? booking.resolution?.reasonCode || "payment_error"
     : "";
@@ -211,7 +213,7 @@ const ResolveBooking = ({
     useState<SpecialCaseFinalStatus | null>(null);
   const [statusTouched, setStatusTouched] = useState(false);
   const [roomReleaseStatus, setRoomReleaseStatus] =
-    useState<RoomReleaseStatus>(initialRoomStatus);
+    useState<RoomReleaseStatus | null>(initialRoomStatus);
   const [reasonCode, setReasonCode] = useState(initialReasonCode);
   const [note, setNote] = useState("");
   const [moneyAction, setMoneyAction] = useState<MoneyActionId>("none");
@@ -226,6 +228,7 @@ const ResolveBooking = ({
     () => new Set(),
   );
   const [confirmedDepositReturn, setConfirmedDepositReturn] = useState(false);
+  const [idempotencyKey] = useState(() => crypto.randomUUID());
 
   const outcome: ResolutionOutcome | null = isNoShow
     ? "no_show"
@@ -360,7 +363,10 @@ const ResolveBooking = ({
   const noteError = !note.trim()
     ? "กรุณาระบุหมายเหตุเพื่อให้ทีมตรวจสอบย้อนหลังได้"
     : "";
-  const canSubmit = !(isPostClose && !user?.admin) && !submitting;
+  const canSubmit =
+    !(isPostClose && !user?.admin) &&
+    (!isNoShow || roomReleaseStatus !== null) &&
+    !submitting;
   const detailedTransactionsVisible = !isPostClose || advancedRowsOpen;
 
   useEffect(() => {
@@ -504,6 +510,9 @@ const ResolveBooking = ({
     if (!effectiveReasonCode || !note.trim()) {
       throw new Error("กรุณาระบุหมายเหตุ");
     }
+    if (!roomReleaseStatus) {
+      throw new Error("กรุณาเลือกว่าจะเปิดห้องให้จองต่อหรือกันห้องไว้");
+    }
     if (rowErrors.size > 0) {
       throw new Error(Array.from(rowErrors.values())[0]);
     }
@@ -528,20 +537,36 @@ const ResolveBooking = ({
     setSubmitting(true);
 
     try {
-      const response = await axios.patch(
-        `${API_URL}/bookings/resolveBooking/${booking.bookingId}`,
-        {
-          expectedRevision: booking.revision,
-          outcome,
-          finalStatus,
-          roomReleaseStatus,
-          reasonCode: effectiveReasonCode,
-          note: note.trim(),
-          depositReturned: confirmedDepositReturn,
-          transactions: settlementTransactions,
-        },
-        { withCredentials: true },
-      );
+      const response = isNoShow
+        ? await axios.post(
+            `${API_URL}/bookings/${booking.bookingId}/no-show`,
+            {
+              expectedRevision: booking.revision,
+              roomReleaseStatus,
+              note: note.trim(),
+            },
+            {
+              withCredentials: true,
+              headers: { "Idempotency-Key": idempotencyKey },
+            },
+          )
+        : await axios.patch(
+            `${API_URL}/bookings/resolveBooking/${booking.bookingId}`,
+            {
+              expectedRevision: booking.revision,
+              outcome,
+              finalStatus,
+              roomReleaseStatus,
+              reasonCode: effectiveReasonCode,
+              note: note.trim(),
+              depositReturned: confirmedDepositReturn,
+              transactions: settlementTransactions,
+            },
+            {
+              withCredentials: true,
+              headers: { "Idempotency-Key": idempotencyKey },
+            },
+          );
 
       if (response.data.booking) {
         onUpdated?.(formatBookingDates(response.data.booking));
@@ -1071,7 +1096,9 @@ const ResolveBooking = ({
             <i className="bx bx-bed" aria-hidden="true" />
             {roomReleaseStatus === "released"
               ? "เปิดคืนที่เหลือให้ลูกค้าคนอื่นจอง"
-              : "กันห้องไว้ ไม่เปิดให้จอง"}
+              : roomReleaseStatus === "blocked"
+                ? "กันห้องไว้ ไม่เปิดให้จอง"
+                : "กรุณาเลือกผลต่อห้องก่อนบันทึก"}
           </li>
           {!isNoShow ? (
             <li>

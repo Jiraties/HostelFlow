@@ -17,6 +17,7 @@ import CorrectTransaction from "./CorrectTransaction.tsx";
 import TransactionCorrectionHistory from "./TransactionCorrectionHistory.tsx";
 import CorrectCheckIn from "./CorrectCheckIn.tsx";
 import CorrectBookingStatus from "./CorrectBookingStatus.tsx";
+import ClosedRoomAvailability from "./ClosedRoomAvailability.tsx";
 
 import { useCallback, useState, useEffect, useRef } from "react";
 import { API_URL } from "../../config/api.ts";
@@ -217,6 +218,8 @@ const ViewBooking = ({
   const [manageRoomStaysIsOpen, setManageRoomStaysIsOpen] = useState(false);
   const [editBookingIsOpen, setEditBookingIsOpen] = useState(false);
   const [addTransactionIsOpen, setAddTransactionIsOpen] = useState(false);
+  const [closedRoomAvailabilityIsOpen, setClosedRoomAvailabilityIsOpen] =
+    useState(false);
   const [transactionEditMode, setTransactionEditMode] = useState(false);
   const [cancellationIsOpen, setCancellationIsOpen] = useState(false);
   const [checkInIsOpen, setCheckInIsOpen] = useState(false);
@@ -253,6 +256,8 @@ const ViewBooking = ({
   const [manageRoomStaysIsDirty, setManageRoomStaysIsDirty] = useState(false);
   const [editBookingIsDirty, setEditBookingIsDirty] = useState(false);
   const [addTransactionIsDirty, setAddTransactionIsDirty] = useState(false);
+  const [closedRoomAvailabilityIsDirty, setClosedRoomAvailabilityIsDirty] =
+    useState(false);
   const [cancellationIsDirty, setCancellationIsDirty] = useState(false);
   const [checkInIsDirty, setCheckInIsDirty] = useState(false);
   const [checkOutIsDirty, setCheckOutIsDirty] = useState(false);
@@ -1547,7 +1552,6 @@ const ViewBooking = ({
             updateBooking(updatedBooking);
             setCheckOutIsOpen(false);
           }}
-          onBookingUpdated={updateBooking}
         />
       </Modal>
       <Modal
@@ -1590,15 +1594,36 @@ const ViewBooking = ({
         className="home__modalCenter"
       >
         <AddTransaction
-          bookingId={data.bookingId}
-          bookingStatus={data.status}
-          guestName={data.name}
-          transactions={data.transactions}
+          booking={data}
           onClose={() => setAddTransactionIsOpen(false)}
           onDirtyChange={setAddTransactionIsDirty}
           onUpdated={(updatedBooking) => {
             updateBooking(updatedBooking);
             setAddTransactionIsOpen(false);
+          }}
+        />
+      </Modal>
+      <Modal
+        open={closedRoomAvailabilityIsOpen}
+        className="home__modalCenter"
+        onClose={() =>
+          requestUnsavedModalClose(
+            closedRoomAvailabilityIsDirty,
+            () => setClosedRoomAvailabilityIsOpen(false),
+            () =>
+              setPendingUnsavedClose(
+                () => () => setClosedRoomAvailabilityIsOpen(false),
+              ),
+          )
+        }
+      >
+        <ClosedRoomAvailability
+          booking={data}
+          onClose={() => setClosedRoomAvailabilityIsOpen(false)}
+          onDirtyChange={setClosedRoomAvailabilityIsDirty}
+          onUpdated={(updatedBooking) => {
+            updateBooking(updatedBooking);
+            setClosedRoomAvailabilityIsOpen(false);
           }}
         />
       </Modal>
@@ -2171,6 +2196,22 @@ const ViewBooking = ({
                       ? "ซ่อนปุ่มแก้ไขรายการ"
                       : "แก้ไขรายการใช้จ่าย"}
                   </button>
+                  {user?.admin &&
+                    (data.status === "checkedOut" ||
+                      data.status === "cancelled" ||
+                      data.status === "noShow") && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setClosedRoomAvailabilityIsOpen(true);
+                          setMoreActionsIsOpen(false);
+                        }}
+                      >
+                        <i className="bx bx-bed" />
+                        แก้ไขการเปิดห้อง
+                        <span className="viewBooking__adminTag">Admin</span>
+                      </button>
+                    )}
                   {data.status === "checkedIn" && (
                     <button
                       type="button"
@@ -2233,7 +2274,7 @@ const ViewBooking = ({
                       )}
                     </button>
                   )}
-                  {data.status === "checkedIn" && (
+                  {user?.admin && data.status === "checkedIn" && (
                     <button
                       type="button"
                       onClick={() => {
@@ -2243,7 +2284,8 @@ const ViewBooking = ({
                       }}
                     >
                       <i className="bx bx-receipt" />
-                      เคลียร์เคสพิเศษ
+                      Resolve สำรอง
+                      <span className="viewBooking__adminTag">Admin</span>
                     </button>
                   )}
                   {user?.admin &&

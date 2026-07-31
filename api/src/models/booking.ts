@@ -32,6 +32,9 @@ export type SourceAction =
   | "CHECK_OUT"
   | "ADD_TRANSACTION"
   | "CANCEL_BOOKING"
+  | "MARK_NO_SHOW"
+  | "RECORD_REFUND"
+  | "RECORD_COMPENSATION"
   | "RESOLVE_STAY"
   | "ADD_STANDALONE_SALE"
   | "ADJUST_STANDALONE_SALE"
@@ -435,6 +438,9 @@ export const transactionSchema = new mongoose.Schema({
       "CHECK_OUT",
       "ADD_TRANSACTION",
       "CANCEL_BOOKING",
+      "MARK_NO_SHOW",
+      "RECORD_REFUND",
+      "RECORD_COMPENSATION",
       "RESOLVE_STAY",
       "ADD_STANDALONE_SALE",
       "ADJUST_STANDALONE_SALE",

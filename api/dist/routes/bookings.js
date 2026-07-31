@@ -10,6 +10,7 @@ const transactionCorrections_1 = require("../controller/transactionCorrections")
 const checkInCorrections_1 = require("../controller/checkInCorrections");
 const statusCorrections_1 = require("../controller/statusCorrections");
 const additionalGuests_1 = require("../controller/additionalGuests");
+const focusedBookingActions_1 = require("../controller/focusedBookingActions");
 const bookingsRouter = express_1.default.Router();
 bookingsRouter.post("/newBooking", booking_1.newBooking);
 bookingsRouter.post("/:bookingId/extensions", booking_1.extendBooking);
@@ -32,9 +33,11 @@ bookingsRouter.post("/:bookingId/status-corrections/preview", statusCorrections_
 bookingsRouter.get("/:bookingId/status-corrections/eligibility", statusCorrections_1.getStatusCorrectionEligibility);
 bookingsRouter.post("/:bookingId/status-corrections", statusCorrections_1.correctStatus);
 bookingsRouter.patch("/checkOut/:bookingId", booking_1.checkOut);
-bookingsRouter.patch("/:bookingId/deposit", booking_1.correctDeposit);
 bookingsRouter.patch("/manageRoomStays/:bookingId", booking_1.manageRoomStays);
 bookingsRouter.patch("/cancelBooking/:bookingId", booking_1.cancelBooking);
+bookingsRouter.post("/:bookingId/no-show", focusedBookingActions_1.markNoShow);
+bookingsRouter.patch("/:bookingId/closed-room-availability", focusedBookingActions_1.correctClosedRoomAvailability);
+bookingsRouter.post("/:bookingId/financial-actions", focusedBookingActions_1.recordFinancialAction);
 bookingsRouter.patch("/resolveBooking/:bookingId", booking_1.resolveBooking);
 bookingsRouter.get("/getMonthCalendar", booking_1.getMonthCalendar);
 bookingsRouter.get("/getBookingById/:bookingId", booking_1.getBookingById);

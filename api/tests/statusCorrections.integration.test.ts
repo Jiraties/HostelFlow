@@ -739,7 +739,7 @@ test("no-show restores booked while preserving fee and warns for OTA", async () 
             paymentMethod: "Card",
             amount: 450,
             direction: "in",
-            sourceAction: "RESOLVE_STAY",
+            sourceAction: "MARK_NO_SHOW",
             createdBy: "frontdesk",
             createdAt: terminalAt,
             note: "No-show fee",

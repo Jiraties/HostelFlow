@@ -22,7 +22,6 @@ type CheckOutProps = {
   onClose?: () => void;
   onDirtyChange?: (isDirty: boolean) => void;
   handleCheckOutSuccess?: (booking: booking) => void;
-  onBookingUpdated?: (booking: booking) => void;
   onRecordPayment?: () => void;
 };
 
@@ -32,16 +31,12 @@ const CheckOut = ({
   isEarlyCheckOut,
   onDirtyChange,
   handleCheckOutSuccess,
-  onBookingUpdated,
   onRecordPayment,
 }: CheckOutProps) => {
   const { user } = useAuth();
   const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
   const [releaseRemainingNights, setReleaseRemainingNights] = useState(true);
   const [confirmedDepositReturn, setConfirmedDepositReturn] = useState(false);
-  const [correctingDeposit, setCorrectingDeposit] = useState(false);
-  const [correctedDepositAmount, setCorrectedDepositAmount] = useState("");
-  const [depositCorrectionReason, setDepositCorrectionReason] = useState("");
   const [confirmedStillUnpaid, setConfirmedStillUnpaid] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const today = new Date();
@@ -119,28 +114,9 @@ const CheckOut = ({
     0,
   );
   const hasUnpaidBalance = unpaidRoomChargeAmount > 0;
-  const depositCanBeCorrected =
-    depositTransactions.length === 1 &&
-    refundedDepositAmount === 0 &&
-    retainedDepositAmount === 0;
-  const parsedCorrectedDepositAmount = Number(correctedDepositAmount);
-  const effectiveDepositAmount =
-    correctingDeposit &&
-    correctedDepositAmount !== "" &&
-    Number.isFinite(parsedCorrectedDepositAmount) &&
-    parsedCorrectedDepositAmount >= 0
-      ? parsedCorrectedDepositAmount
-      : depositAmount;
-  const effectiveRemainingDepositAmount = correctingDeposit
-    ? effectiveDepositAmount
-    : remainingDepositAmount;
-
   useEffect(() => {
     onDirtyChange?.(
       confirmedDepositReturn ||
-        correctingDeposit ||
-        correctedDepositAmount !== "" ||
-        depositCorrectionReason !== "" ||
         confirmedStillUnpaid ||
         (isEarlyCheckOut && !releaseRemainingNights),
     );
@@ -148,9 +124,6 @@ const CheckOut = ({
     return () => onDirtyChange?.(false);
   }, [
     confirmedDepositReturn,
-    correctingDeposit,
-    correctedDepositAmount,
-    depositCorrectionReason,
     confirmedStillUnpaid,
     isEarlyCheckOut,
     onDirtyChange,
@@ -158,21 +131,7 @@ const CheckOut = ({
   ]);
 
   const checkOutHandler = async () => {
-    if (correctingDeposit) {
-      if (
-        correctedDepositAmount === "" ||
-        !Number.isFinite(parsedCorrectedDepositAmount) ||
-        parsedCorrectedDepositAmount < 0 ||
-        !depositCorrectionReason.trim()
-      ) {
-        throw new Error("กรุณาระบุยอดมัดจำที่ถูกต้องและเหตุผล");
-      }
-      if (parsedCorrectedDepositAmount === depositAmount) {
-        throw new Error("ยอดมัดจำใหม่ต้องไม่เท่ากับยอดเดิม");
-      }
-    }
-
-    if (effectiveRemainingDepositAmount > 0 && !confirmedDepositReturn) {
+    if (remainingDepositAmount > 0 && !confirmedDepositReturn) {
       throw new Error("กรุณายืนยันการคืนมัดจำก่อนเช็คเอาท์");
     }
 
@@ -185,17 +144,10 @@ const CheckOut = ({
     setSubmitting(true);
 
     try {
-      let checkoutRevision = booking.revision;
-      if (correctingDeposit) {
-        const correctedBooking = await correctDepositHandler();
-        checkoutRevision = correctedBooking.revision;
-        onBookingUpdated?.(formatBookingDates(correctedBooking));
-      }
-
       const response = await axios.patch(
         `${API_URL}/bookings/checkOut/${booking.bookingId}`,
         {
-          expectedRevision: checkoutRevision,
+          expectedRevision: booking.revision,
           depositReturned: confirmedDepositReturn,
           releaseRemainingNights,
           confirmedStillUnpaid,
@@ -211,20 +163,6 @@ const CheckOut = ({
     } finally {
       setSubmitting(false);
     }
-  };
-
-  const correctDepositHandler = async () => {
-    const response = await axios.patch(
-      `${API_URL}/bookings/${booking.bookingId}/deposit`,
-      {
-        expectedRevision: booking.revision,
-        amount: parsedCorrectedDepositAmount,
-        reason: depositCorrectionReason.trim(),
-      },
-      { withCredentials: true },
-    );
-
-    return response.data.booking as booking;
   };
 
   return (
@@ -288,34 +226,6 @@ const CheckOut = ({
         </div>
 
         <div>
-          {correctingDeposit && (
-            <section className="checkOut__depositCorrection">
-              <label>
-                <span>ยอดมัดจำที่ถูกต้อง</span>
-                <input
-                  className="boxInput"
-                  type="number"
-                  min="0"
-                  value={correctedDepositAmount}
-                  onChange={(event) => {
-                    setCorrectedDepositAmount(event.target.value);
-                    setConfirmedDepositReturn(false);
-                  }}
-                />
-              </label>
-              <label>
-                <span>เหตุผลที่แก้ไข</span>
-                <input
-                  className="boxInput"
-                  value={depositCorrectionReason}
-                  placeholder="เช่น บันทึกยอดมัดจำตอนเช็คอินผิด"
-                  onChange={(event) =>
-                    setDepositCorrectionReason(event.target.value)
-                  }
-                />
-              </label>
-            </section>
-          )}
           <p className="checkIn__label">สรุปยอดการคืนมัดจำ</p>
           {hasUnpaidBalance && (
             <section className="checkOut__unpaidWarning">
@@ -365,7 +275,7 @@ const CheckOut = ({
                     {depositPaymentMethod}
                   </span>
                 </p>
-                <p>{formatCurrency(effectiveDepositAmount)}</p>
+                <p>{formatCurrency(depositAmount)}</p>
               </div>
 
               {refundedDepositAmount > 0 && (
@@ -379,16 +289,16 @@ const CheckOut = ({
               <div className="checkIn__totalsBreakdown">
                 <div className="checkIn__totalRow cash-total">
                   <p>
-                    {effectiveRemainingDepositAmount > 0
+                    {remainingDepositAmount > 0
                       ? "ยอดเงินสดที่ต้องคืน:"
                       : "ไม่มียอดมัดจำที่ต้องคืน"}
                   </p>
                   <p className="checkIn__paymentConfirmationTotalText">
-                    {formatCurrency(effectiveRemainingDepositAmount)}
+                    {formatCurrency(remainingDepositAmount)}
                   </p>
                 </div>
               </div>
-              {effectiveRemainingDepositAmount > 0 && (
+              {remainingDepositAmount > 0 && (
                 <label className="checkbox checkOut__depositReturnConfirmation">
                   ยืนยันว่าคืนมัดจำแล้ว{" "}
                   <input
@@ -442,26 +352,6 @@ const CheckOut = ({
       </div>
 
       <div className="checkOut__actions">
-        {depositCanBeCorrected && (
-          <ActionButton
-            text="ยอดมัดจำไม่ตรง"
-            icon={correctingDeposit ? "bx-check" : "bx-edit"}
-            highlight={correctingDeposit}
-            disabled={submitting}
-            onClick={() => {
-              setCorrectingDeposit((current) => {
-                if (current) {
-                  setCorrectedDepositAmount("");
-                  setDepositCorrectionReason("");
-                } else {
-                  setCorrectedDepositAmount(String(depositAmount));
-                }
-                setConfirmedDepositReturn(false);
-                return !current;
-              });
-            }}
-          />
-        )}
         <ActionButton
           text={isEarlyCheckOut ? "Early Check Out" : "Check Out"}
           icon="bx-door-open"

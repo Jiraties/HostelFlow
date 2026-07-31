@@ -1,6 +1,7 @@
 import dotenv from "dotenv";
 import mongoose from "mongoose";
 import StatusCorrection from "../models/statusCorrection";
+import { assertDeploymentIdentity } from "../config/deploymentIdentity";
 
 dotenv.config();
 
@@ -13,12 +14,14 @@ const main = async () => {
   }
 
   await mongoose.connect(process.env.MONGO_URI, { autoIndex: false });
+  const deployment = assertDeploymentIdentity();
   await StatusCorrection.createIndexes();
 
   const indexes = await StatusCorrection.collection.indexes();
   console.log(
     JSON.stringify(
       {
+        deployment,
         collection: StatusCorrection.collection.collectionName,
         indexes: indexes.map((index) => index.name),
       },
