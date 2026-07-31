@@ -30,6 +30,11 @@ import {
   previewCheckInCorrection,
 } from "../controller/checkInCorrections";
 import {
+  correctStatus,
+  getStatusCorrectionEligibility,
+  previewStatusCorrection,
+} from "../controller/statusCorrections";
+import {
   addAdditionalGuest,
   getAdditionalGuests,
   removeAdditionalGuest,
@@ -71,6 +76,15 @@ bookingsRouter.post(
   requirePassportAccess,
   correctCheckIn,
 );
+bookingsRouter.post(
+  "/:bookingId/status-corrections/preview",
+  previewStatusCorrection,
+);
+bookingsRouter.get(
+  "/:bookingId/status-corrections/eligibility",
+  getStatusCorrectionEligibility,
+);
+bookingsRouter.post("/:bookingId/status-corrections", correctStatus);
 bookingsRouter.patch("/checkOut/:bookingId", checkOut);
 bookingsRouter.patch("/:bookingId/deposit", correctDeposit);
 bookingsRouter.patch("/manageRoomStays/:bookingId", manageRoomStays);

@@ -16,6 +16,7 @@ import ExtendBooking from "./ExtendBooking.tsx";
 import CorrectTransaction from "./CorrectTransaction.tsx";
 import TransactionCorrectionHistory from "./TransactionCorrectionHistory.tsx";
 import CorrectCheckIn from "./CorrectCheckIn.tsx";
+import CorrectBookingStatus from "./CorrectBookingStatus.tsx";
 
 import { useCallback, useState, useEffect, useRef } from "react";
 import { API_URL } from "../../config/api.ts";
@@ -31,6 +32,10 @@ import {
   transactionRequiresReview,
 } from "../../helpers/bookingHelpers.ts";
 import { requestUnsavedModalClose } from "../../helpers/modalGuards.ts";
+import {
+  statusCorrectionActionLabel,
+  statusCorrectionForStatus,
+} from "../../helpers/statusCorrectionHelpers.ts";
 import {
   formatCompactRoomNames,
   formatRoomStayRooms,
@@ -156,12 +161,30 @@ type CheckInCorrectionEligibility = {
   staffShiftId: string | null;
 };
 
+type StatusCorrectionEligibility = {
+  allowed: boolean;
+  correctionType: string | null;
+  message: string | null;
+  requiresAdmin: boolean;
+  sameBusinessDate: boolean;
+  affectedShiftsOpen: boolean;
+};
+
 const fetchCheckInCorrectionEligibility = (
   bookingId: string,
   signal?: AbortSignal,
 ) =>
   axios.get<CheckInCorrectionEligibility>(
     `${API_URL}/bookings/${bookingId}/check-in-corrections/eligibility`,
+    { withCredentials: true, signal },
+  );
+
+const fetchStatusCorrectionEligibility = (
+  bookingId: string,
+  signal?: AbortSignal,
+) =>
+  axios.get<StatusCorrectionEligibility>(
+    `${API_URL}/bookings/${bookingId}/status-corrections/eligibility`,
     { withCredentials: true, signal },
   );
 
@@ -200,9 +223,17 @@ const ViewBooking = ({
   const [adminHistoricalCheckIn, setAdminHistoricalCheckIn] = useState(false);
   const [checkOutIsOpen, setCheckOutIsOpen] = useState(false);
   const [correctCheckInIsOpen, setCorrectCheckInIsOpen] = useState(false);
+  const [correctBookingStatusIsOpen, setCorrectBookingStatusIsOpen] =
+    useState(false);
   const [checkInCorrectionMode, setCheckInCorrectionMode] =
     useState<CheckInCorrectionMode>("undo_check_in");
   const [checkInCorrectionEligibility, setCheckInCorrectionEligibility] =
+    useState<{
+      loading: boolean;
+      allowed: boolean;
+      message: string | null;
+    }>({ loading: false, allowed: false, message: null });
+  const [statusCorrectionEligibility, setStatusCorrectionEligibility] =
     useState<{
       loading: boolean;
       allowed: boolean;
@@ -226,6 +257,8 @@ const ViewBooking = ({
   const [checkInIsDirty, setCheckInIsDirty] = useState(false);
   const [checkOutIsDirty, setCheckOutIsDirty] = useState(false);
   const [correctCheckInIsDirty, setCorrectCheckInIsDirty] = useState(false);
+  const [correctBookingStatusIsDirty, setCorrectBookingStatusIsDirty] =
+    useState(false);
   const [resolveBookingIsDirty, setResolveBookingIsDirty] = useState(false);
   const [extendBookingIsDirty, setExtendBookingIsDirty] = useState(false);
   const [noteIsEditing, setNoteIsEditing] = useState(false);
@@ -246,6 +279,12 @@ const ViewBooking = ({
   const priceListRef = useRef<HTMLDivElement | null>(null);
   const { user, resolveStaffName } = useAuth();
   const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
+  const statusCorrectionType = statusCorrectionForStatus(data?.status || "");
+  const statusCorrectionLabel =
+    statusCorrectionActionLabel(statusCorrectionType);
+  const statusCorrectionBookingId = statusCorrectionType
+    ? data?.bookingId || null
+    : null;
 
   const updateTransactionOverflowAlert = useCallback(() => {
     const priceList = priceListRef.current;
@@ -343,6 +382,52 @@ const ViewBooking = ({
     };
   }, [correctionEligibilityBookingId, correctionEligibilityRevision]);
 
+  useEffect(() => {
+    if (!statusCorrectionBookingId) return;
+
+    const controller = new AbortController();
+    let refreshTimer: number | undefined;
+
+    const loadEligibility = async () => {
+      setStatusCorrectionEligibility((current) => ({
+        ...current,
+        loading: true,
+      }));
+      try {
+        const response = await fetchStatusCorrectionEligibility(
+          statusCorrectionBookingId,
+          controller.signal,
+        );
+        const eligibility = response.data;
+        setStatusCorrectionEligibility({
+          loading: false,
+          allowed: eligibility.allowed,
+          message: eligibility.message,
+        });
+
+        if (
+          eligibility.sameBusinessDate &&
+          eligibility.affectedShiftsOpen
+        ) {
+          refreshTimer = window.setTimeout(loadEligibility, 15_000);
+        }
+      } catch (error) {
+        if (axios.isCancel(error)) return;
+        setStatusCorrectionEligibility({
+          loading: false,
+          allowed: false,
+          message: "ไม่สามารถตรวจสอบสิทธิ์แก้ไขสถานะได้",
+        });
+      }
+    };
+
+    void loadEligibility();
+    return () => {
+      controller.abort();
+      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
+    };
+  }, [statusCorrectionBookingId, data?.revision]);
+
   const openCheckInCorrection = async (mode: CheckInCorrectionMode) => {
     if (!correctionEligibilityBookingId) return;
 
@@ -370,6 +455,36 @@ const ViewBooking = ({
         loading: false,
         allowed: false,
         message: "ไม่สามารถตรวจสอบสิทธิ์แก้ไข Check-In ได้",
+      });
+    }
+  };
+
+  const openStatusCorrection = async () => {
+    if (!statusCorrectionBookingId) return;
+
+    setStatusCorrectionEligibility((current) => ({
+      ...current,
+      loading: true,
+    }));
+    try {
+      const response = await fetchStatusCorrectionEligibility(
+        statusCorrectionBookingId,
+      );
+      const eligibility = response.data;
+      setStatusCorrectionEligibility({
+        loading: false,
+        allowed: eligibility.allowed,
+        message: eligibility.message,
+      });
+      if (!eligibility.allowed) return;
+
+      setCorrectBookingStatusIsOpen(true);
+      setMoreActionsIsOpen(false);
+    } catch {
+      setStatusCorrectionEligibility({
+        loading: false,
+        allowed: false,
+        message: "ไม่สามารถตรวจสอบสิทธิ์แก้ไขสถานะได้",
       });
     }
   };
@@ -1380,6 +1495,35 @@ const ViewBooking = ({
         />
       </Modal>
       <Modal
+        open={correctBookingStatusIsOpen}
+        className="home__modalCenter"
+        onClose={() =>
+          requestUnsavedModalClose(
+            correctBookingStatusIsDirty,
+            () => setCorrectBookingStatusIsOpen(false),
+            () =>
+              setPendingUnsavedClose(
+                () => () => setCorrectBookingStatusIsOpen(false),
+              ),
+          )
+        }
+      >
+        {statusCorrectionType ? (
+          <CorrectBookingStatus
+            booking={data}
+            correctionType={statusCorrectionType}
+            onClose={() => setCorrectBookingStatusIsOpen(false)}
+            onDirtyChange={setCorrectBookingStatusIsDirty}
+            onUpdated={(updatedBooking) => {
+              updateBooking(updatedBooking);
+              setCorrectBookingStatusIsOpen(false);
+            }}
+          />
+        ) : (
+          <></>
+        )}
+      </Modal>
+      <Modal
         open={checkOutIsOpen}
         className="home__modalCenter"
         onClose={() =>
@@ -2052,6 +2196,37 @@ const ViewBooking = ({
                       />
                       <span>Undo Check-In</span>
                       {!checkInCorrectionEligibility.allowed ? (
+                        <span className="viewBooking__adminTag">Admin</span>
+                      ) : (
+                        <i className="viewBooking__beforeCashCloseTag bx-clock-dashed-half" />
+                      )}
+                    </button>
+                  )}
+                  {statusCorrectionType && (
+                    <button
+                      type="button"
+                      disabled={
+                        statusCorrectionEligibility.loading ||
+                        !statusCorrectionEligibility.allowed
+                      }
+                      title={
+                        statusCorrectionEligibility.loading
+                          ? "กำลังตรวจสอบสิทธิ์..."
+                          : statusCorrectionEligibility.message || undefined
+                      }
+                      onClick={() => {
+                        void openStatusCorrection();
+                      }}
+                    >
+                      <i
+                        className={`bx bx-undo${
+                          statusCorrectionEligibility.allowed
+                            ? " viewBooking__temporaryActionIcon"
+                            : ""
+                        }`}
+                      />
+                      <span>{statusCorrectionLabel}</span>
+                      {!statusCorrectionEligibility.allowed ? (
                         <span className="viewBooking__adminTag">Admin</span>
                       ) : (
                         <i className="viewBooking__beforeCashCloseTag bx-clock-dashed-half" />

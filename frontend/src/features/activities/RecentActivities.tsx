@@ -27,6 +27,10 @@ const actionMap = {
   EDIT_BOOKING: { icon: "bx-edit", text: "แก้ไข Booking" },
   CHECK_IN: { icon: "bx-check-circle", text: "Check-In" },
   CORRECT_CHECK_IN: { icon: "bx-undo", text: "แก้ไข Check-In" },
+  CORRECT_BOOKING_STATUS: {
+    icon: "bx-undo",
+    text: "แก้สถานะที่บันทึกผิด",
+  },
   CHECK_OUT: { icon: "bx-door-open", text: "Check-Out" },
   CANCEL_BOOKING: { icon: "bx-calendar-x", text: "ยกเลิก Booking" },
   RESOLVE_STAY: { icon: "bx-receipt", text: "เคลียร์การเข้าพัก" },
@@ -513,6 +517,54 @@ const ActivityDetails = ({
         <DetailRow label="จำนวนคืนก่อนกำหนด" value={typeof summary.nightsEarly === "number" ? `${summary.nightsEarly} คืน` : null} />
         <DetailRow label="สถานะห้อง" value={summary.roomReleaseStatus === "released" ? "เปิดขายแล้ว" : summary.roomReleaseStatus === "blocked" ? "ยังบล็อกห้อง" : null} />
         <TransactionDetails item={item} />
+      </div>
+    );
+  }
+
+  if (item.action === "CORRECT_BOOKING_STATUS") {
+    const correctionLabels: Record<string, string> = {
+      UNDO_CHECKOUT: "Mistaken checkout undone",
+      UNDO_CANCELLATION: "Mistaken cancellation undone",
+      UNDO_NO_SHOW: "Mistaken no-show undone",
+    };
+    return (
+      <div className="settings__activityDetails">
+        <DetailRow label="Booking ID" value={item.bookingId} />
+        <DetailRow
+          label="รายการแก้ไข"
+          value={
+            typeof summary.correctionType === "string"
+              ? correctionLabels[summary.correctionType] ||
+                summary.correctionType
+              : null
+          }
+        />
+        <DetailRow
+          label="ผู้บันทึกสถานะเดิม"
+          value={resolveStaffName(summary.originalActionActor as string)}
+        />
+        <DetailRow
+          label="เวลาที่บันทึกสถานะเดิม"
+          value={
+            summary.originalActionAt
+              ? formatActivityDate(
+                  new Date(summary.originalActionAt as string | Date),
+                  dateFormat,
+                )
+              : null
+          }
+        />
+        <DetailRow label="เหตุผล" value={summary.reason as string} />
+        <DetailRow
+          label="ต้องติดตาม OTA"
+          value={
+            typeof summary.otaManualFollowUp === "boolean"
+              ? summary.otaManualFollowUp
+                ? "ต้องตรวจสอบ OTA ด้วยตนเอง"
+                : "ไม่ต้อง"
+              : null
+          }
+        />
       </div>
     );
   }

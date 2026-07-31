@@ -135,6 +135,7 @@ export interface transcation {
     | "EXTEND_BOOKING"
     | "CHECK_IN"
     | "CORRECT_CHECK_IN"
+    | "CORRECT_BOOKING_STATUS"
     | "CHECK_OUT"
     | "ADD_TRANSACTION"
     | "CANCEL_BOOKING"

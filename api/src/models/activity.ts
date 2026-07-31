@@ -9,6 +9,7 @@ export type actionType =
   | "EDIT_BOOKING"
   | "CHECK_IN"
   | "CORRECT_CHECK_IN"
+  | "CORRECT_BOOKING_STATUS"
   | "CHECK_OUT"
   | "CANCEL_BOOKING"
   | "RESOLVE_STAY"
@@ -50,6 +51,7 @@ export type activity =
         | "EDIT_BOOKING"
         | "CHECK_IN"
         | "CORRECT_CHECK_IN"
+        | "CORRECT_BOOKING_STATUS"
         | "CHECK_OUT"
         | "CANCEL_BOOKING"
         | "RESOLVE_STAY"
@@ -106,6 +108,7 @@ const activitySchema = new mongoose.Schema({
       "EDIT_BOOKING",
       "CHECK_IN",
       "CORRECT_CHECK_IN",
+      "CORRECT_BOOKING_STATUS",
       "CHECK_OUT",
       "CANCEL_BOOKING",
       "RESOLVE_STAY",

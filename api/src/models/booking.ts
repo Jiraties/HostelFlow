@@ -28,6 +28,7 @@ export type SourceAction =
   | "EXTEND_BOOKING"
   | "CHECK_IN"
   | "CORRECT_CHECK_IN"
+  | "CORRECT_BOOKING_STATUS"
   | "CHECK_OUT"
   | "ADD_TRANSACTION"
   | "CANCEL_BOOKING"
@@ -430,6 +431,7 @@ export const transactionSchema = new mongoose.Schema({
       "EXTEND_BOOKING",
       "CHECK_IN",
       "CORRECT_CHECK_IN",
+      "CORRECT_BOOKING_STATUS",
       "CHECK_OUT",
       "ADD_TRANSACTION",
       "CANCEL_BOOKING",

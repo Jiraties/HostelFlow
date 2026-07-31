@@ -1,0 +1,96 @@
+.correctBookingStatus {
+  gap: 1.25rem;
+}
+
+.correctBookingStatus__summary {
+  margin-top: 0.15rem;
+}
+
+.correctBookingStatus__deposit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid #dbe3e8;
+  border-radius: 0.8rem;
+}
+
+.correctBookingStatus__deposit legend {
+  padding: 0 0.35rem;
+  font-weight: 500;
+}
+
+.correctBookingStatus__deposit label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 0.75rem;
+  border-radius: 0.65rem;
+  background: #fff;
+  cursor: pointer;
+}
+
+.correctBookingStatus__deposit label > span {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.correctBookingStatus__deposit label > span > span {
+  font-weight: 500;
+}
+
+.correctBookingStatus__deposit small {
+  color: #6b7280;
+  font-size: 0.82rem;
+}
+
+.correctBookingStatus__deposit input {
+  margin-top: 0.2rem;
+}
+
+.correctBookingStatus__reason label {
+  display: block;
+  margin-bottom: 0.45rem;
+  font-weight: 500;
+}
+
+.correctBookingStatus__reason label span {
+  color: var(--red);
+}
+
+.correctBookingStatus__reason textarea {
+  width: 100%;
+  min-height: 6rem;
+  resize: vertical;
+}
+
+.correctBookingStatus__blockers {
+  padding: 0.8rem;
+  border-radius: 0.6rem;
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.correctBookingStatus__summary .correctBookingStatus__blockers p + p {
+  margin-top: 0.35rem;
+}
+
+.correctBookingStatus__warning {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.8rem;
+  color: #92400e;
+}
+
+.correctBookingStatus__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.7rem;
+}
+
+@media (max-width: 680px) {
+  .correctBookingStatus__actions {
+    flex-direction: column;
+  }
+}

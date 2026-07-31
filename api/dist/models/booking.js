@@ -144,6 +144,7 @@ exports.transactionSchema = new mongoose_1.default.Schema({
             "EXTEND_BOOKING",
             "CHECK_IN",
             "CORRECT_CHECK_IN",
+            "CORRECT_BOOKING_STATUS",
             "CHECK_OUT",
             "ADD_TRANSACTION",
             "CANCEL_BOOKING",
