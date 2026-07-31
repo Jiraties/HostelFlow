@@ -166,31 +166,27 @@ const dateQuery = (date) => {
     end.setDate(start.getDate() + 1);
     return { start, end };
 };
-const thaiNationalityValues = ["TH", "THA", "th", "tha", "ไทย"];
-const immigrationDateQuery = (date) => {
+const checkedInGuestDateQuery = (date) => {
     const bounds = dateQuery(date);
     if (!bounds)
         return null;
     return {
-        status: { $ne: "cancelled" },
-        checkIn: { $gte: bounds.start, $lt: bounds.end },
-        "passport.nationality": { $nin: thaiNationalityValues },
-    };
-};
-const hotelAccommodationDateQuery = (date) => {
-    const bounds = dateQuery(date);
-    if (!bounds)
-        return null;
-    return {
-        status: { $ne: "cancelled" },
+        status: { $in: ["checkedIn", "checkedOut"] },
+        voided: { $ne: true },
         $or: [
             { checkedInAt: { $gte: bounds.start, $lt: bounds.end } },
             {
-                checkedInAt: { $exists: false },
+                checkedInAt: null,
                 checkIn: { $gte: bounds.start, $lt: bounds.end },
             },
         ],
     };
+};
+const immigrationDateQuery = (date) => {
+    return checkedInGuestDateQuery(date);
+};
+const hotelAccommodationDateQuery = (date) => {
+    return checkedInGuestDateQuery(date);
 };
 const encryptedFieldIsComplete = (field) => typeof field?.cipherText === "string" &&
     field.cipherText.length > 0 &&
@@ -202,6 +198,29 @@ const passportInfoIsComplete = (passport) => !!passport?.namePrefix &&
     !!passport.nationality &&
     encryptedFieldIsComplete(passport.passportName) &&
     encryptedFieldIsComplete(passport.passportNo);
+const isForeignPassport = (passport) => !passport?.nationality || !(0, passportHelpers_1.isThaiNationality)(passport.nationality);
+const immigrationEntries = (bookings) => bookings.flatMap((booking) => {
+    const entries = [];
+    if (isForeignPassport(booking.passport)) {
+        entries.push({
+            booking,
+            guestId: null,
+            guestLabel: "ผู้จอง / ผู้เข้าพักหลัก",
+            passport: booking.passport,
+        });
+    }
+    (booking.additionalGuests || []).forEach((guest, index) => {
+        if (!isForeignPassport(guest.identityDocument))
+            return;
+        entries.push({
+            booking,
+            guestId: String(guest._id),
+            guestLabel: `ผู้เข้าพักเพิ่มเติม ${index + 1}`,
+            passport: guest.identityDocument,
+        });
+    });
+    return entries;
+});
 const hotelPassportInfoIssue = (passport) => {
     if (!passport?.namePrefix)
         return "ขาดคำนำหน้าชื่อ";
@@ -519,23 +538,29 @@ const getImmigrationReportStatus = async (req, res) => {
             return res.status(400).json({ message: "Invalid date format" });
         }
         const bookings = await booking_1.default.find(query)
-            .select(`bookingId name checkOut passport.namePrefix passport.nationality ${booking_1.PASSPORT_SENSITIVE_SELECT}`)
+            .select(`bookingId name checkOut passport.namePrefix passport.nationality ${booking_1.PASSPORT_SENSITIVE_SELECT} ${booking_1.ADDITIONAL_GUEST_SENSITIVE_SELECT}`)
             .sort({
             checkIn: 1,
             name: 1,
         })
             .lean();
-        const missingBookings = bookings
-            .filter((booking) => !passportInfoIsComplete(booking.passport))
-            .map((booking) => ({
-            bookingId: booking.bookingId,
-            name: booking.name,
-            checkOut: booking.checkOut,
+        const entries = immigrationEntries(bookings);
+        const missingBookings = entries
+            .filter((entry) => !passportInfoIsComplete(entry.passport))
+            .map((entry) => ({
+            bookingId: entry.booking.bookingId,
+            name: entry.booking.name,
+            checkOut: entry.booking.checkOut,
+            guestId: entry.guestId,
+            guestLabel: entry.guestLabel,
+            reason: "ข้อมูล Passport ไม่ครบ",
         }));
+        const total = entries.length;
+        const missing = missingBookings.length;
         res.status(200).json({
-            total: bookings.length,
-            complete: bookings.length - missingBookings.length,
-            missing: missingBookings.length,
+            total,
+            complete: total - missing,
+            missing,
             missingBookings,
         });
     }
@@ -553,12 +578,13 @@ const getImmigrationReport = async (req, res) => {
             return res.status(400).json({ message: "Invalid date format" });
         }
         const bookings = await booking_1.default.find(query)
-            .select(`bookingId name checkOut passport.namePrefix passport.nationality ${booking_1.PASSPORT_SENSITIVE_SELECT}`)
+            .select(`bookingId name checkOut passport.namePrefix passport.nationality ${booking_1.PASSPORT_SENSITIVE_SELECT} ${booking_1.ADDITIONAL_GUEST_SENSITIVE_SELECT}`)
             .sort({
             checkIn: 1,
             name: 1,
         });
-        if (bookings.length === 0)
+        const entries = immigrationEntries(bookings);
+        if (entries.length === 0)
             return res.status(400).json({ message: "ไม่พบรายการจองในวันที่กำหนด" });
         const workbook = new exceljs_1.default.Workbook();
         const templatePath = path_1.default.resolve(process.cwd(), "uploads", "document-templates", "Immigration.xlsx");
@@ -578,16 +604,17 @@ const getImmigrationReport = async (req, res) => {
                 return "F";
             return "";
         };
-        bookings.forEach((booking, index) => {
+        entries.forEach((entry, index) => {
+            const { booking, passport } = entry;
             const row = sheet.getRow(startRow + index);
-            const formattedPassport = formatPassport(booking.passport, nationalitySheet);
+            const formattedPassport = formatPassport(passport, nationalitySheet);
             const splittedPassportName = (0, passportHelpers_1.splitPassportName)(formattedPassport.passportName);
             const missingPassportInfo = !formattedPassport.passportName ||
                 !formattedPassport.passportNo ||
                 !formattedPassport.nationality;
             if (missingPassportInfo) {
                 const missingCell = row.getCell(1);
-                missingCell.value = `MISSING ${booking.name} ${booking.bookingId}`;
+                missingCell.value = `MISSING ${booking.name} ${booking.bookingId}${entry.guestId ? ` ${entry.guestLabel}` : ""}`;
                 missingCell.font = {
                     ...missingCell.font,
                     color: { argb: "FFFF0000" },
@@ -598,7 +625,7 @@ const getImmigrationReport = async (req, res) => {
                 row.getCell(2).value = splittedPassportName.middleName;
                 row.getCell(3).value = splittedPassportName.lastName;
             }
-            row.getCell(4).value = determineGender(booking.passport?.namePrefix);
+            row.getCell(4).value = determineGender(passport?.namePrefix);
             row.getCell(5).value = formattedPassport.passportNo;
             row.getCell(6).value = formattedPassport.nationality;
             row.getCell(8).value = (0, dateHelpers_1.formatDateAD)(booking.checkOut);
@@ -611,6 +638,7 @@ const getImmigrationReport = async (req, res) => {
                 reportType: "immigration",
                 businessDate: date,
                 bookingCount: bookings.length,
+                passportRowCount: entries.length,
             },
         });
         setSensitiveDownloadHeaders(res);

@@ -86,13 +86,21 @@ const PassportView = ({
           correctionDisabled ? "" : " passportView__temporaryEditIcon"
         }`}
       />
-      แก้ข้อมูล{identityDocumentLabel}
+      แก้ไข
     </button>
   );
 
   return (
-    <div className="viewBooking__item">
-      <span className="viewBooking__label">ข้อมูล{identityDocumentLabel}</span>
+    <div className="viewBooking__item passportView__section">
+      <div className="passportView__sectionHeader">
+        <span className="viewBooking__label">
+          {identityDocumentLabel.trim()}
+        </span>
+        <span className="passportView__primaryTag">
+          <i className="bx bx-user" aria-hidden="true" />
+          ผู้จองหลัก
+        </span>
+      </div>
       {isHidden ? (
         <button
           type="button"
@@ -100,19 +108,16 @@ const PassportView = ({
           onClick={fetchPassportData}
           disabled={isLoading}
         >
-          <>
-            <i
-              className={`bx ${isLoading ? "bx-loader-lines bx-spin" : "bx-lock"}`}
-            />
-            <p>
-              {isLoading
-                ? "กำลังโหลดข้อมูล Passport"
-                : "กดเพื่อดูข้อมูล Passport"}
-            </p>
-            {errorMessage && (
-              <p className="passportView__error">{errorMessage}</p>
-            )}
-          </>
+          <i
+            className={`bx ${isLoading ? "bx-loader-lines bx-spin" : "bx-lock"}`}
+          />
+          <span>{isLoading ? "กำลังโหลด..." : "ข้อมูลถูกซ่อน"}</span>
+          <small>
+            {isLoading ? "โปรดรอสักครู่" : "กดเพื่อดู"}
+          </small>
+          {errorMessage ? (
+            <small className="passportView__error">{errorMessage}</small>
+          ) : null}
         </button>
       ) : (
         passportData && (
@@ -158,7 +163,7 @@ const PassportView = ({
                   onClick={hidePassportData}
                 >
                   <i className="bx bx-eye-slash" />
-                  ซ่อนข้อมูล{identityDocumentLabel}
+                  ซ่อน
                 </button>
               </div>
             </div>

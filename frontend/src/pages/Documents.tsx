@@ -36,6 +36,8 @@ type PassportReportStatus = {
     bookingId: string;
     name: string;
     checkOut: string;
+    guestId?: string | null;
+    guestLabel?: string;
     reason?: string;
   }[];
 };
@@ -134,7 +136,9 @@ const Documents = () => {
               : "documents__statusRow--success"
           }`}
         >
-          <i className={`bx ${hasMissing ? "bx-alert-triangle" : "bx-check"}`} />
+          <i
+            className={`bx ${hasMissing ? "bx-alert-triangle" : "bx-check"}`}
+          />
           <p>
             {loading
               ? "กำลังตรวจสอบข้อมูลหนังสือเดินทาง"
@@ -154,7 +158,7 @@ const Documents = () => {
             {status.missingBookings.slice(0, 3).map((booking) => (
               <button
                 className="documents__missingItem"
-                key={booking.bookingId}
+                key={`${booking.bookingId}-${booking.guestId || booking.guestLabel || "primary"}`}
                 type="button"
                 onClick={() =>
                   navigate(
@@ -166,14 +170,13 @@ const Documents = () => {
                   <strong>{booking.name}</strong>
                   <p>
                     {booking.bookingId}
+                    {booking.guestLabel ? ` · ${booking.guestLabel}` : ""}
                     {booking.reason ? ` - ${booking.reason}` : ""}
                   </p>
                 </div>
                 <div className="documents__missingMeta">
                   <strong>{booking.reason || "Passport ไม่ครบ"}</strong>
-                  <span>
-                    {formatDisplayDate(booking.checkOut, dateFormat)}
-                  </span>
+                  <span>{formatDisplayDate(booking.checkOut, dateFormat)}</span>
                 </div>
               </button>
             ))}
@@ -523,10 +526,6 @@ const Documents = () => {
                 className="boxInput"
               />
             </div>
-
-            <p className="documents__hint">
-              ประเทศปลายทางใช้ข้อมูลที่บันทึกแยกสำหรับผู้เข้าพักแต่ละรายตอน Check-In
-            </p>
           </div>
 
           {renderPassportStatus(hotelStatus, hotelStatusLoading)}

@@ -895,6 +895,12 @@ const Home = ({ status }: { status: HomeStatus }) => {
                 }
               : undefined
           }
+          focusMasterToday={
+            isMaster &&
+            !masterFilters.search.trim() &&
+            masterFilters.from <= formatInputDate(today) &&
+            masterFilters.to >= formatInputDate(today)
+          }
           setViewBookingBooking={setViewBookingBooking}
         />
         <ActionButton

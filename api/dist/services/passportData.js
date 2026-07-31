@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.validateAndEncryptPassportData = exports.validatePassportData = exports.PassportDataError = void 0;
+exports.decryptPassportField = exports.validateAndEncryptPassportData = exports.validateAndEncryptGuestIdentityData = exports.validatePassportData = exports.validateGuestIdentityData = exports.PassportDataError = void 0;
 const crypto_1 = __importDefault(require("crypto"));
 const passportHelpers_1 = require("../helpers/passportHelpers");
 const FOREIGN_NAME_PREFIXES = ["Mr", "Mrs", "Ms", "Miss", "Dr"];
@@ -36,10 +36,9 @@ const encrypt = (text) => {
         authTag: cipher.getAuthTag().toString("hex"),
     };
 };
-const validatePassportData = (input) => {
+const validateGuestIdentityData = (input) => {
     if (!input?.namePrefix ||
         !input.nationality?.trim() ||
-        !input.nextDestinationCountry?.trim() ||
         !input.passportNo?.trim() ||
         !input.passportName?.trim()) {
         throw new PassportDataError("กรุณากรอกข้อมูล Passport ให้ครบทุกช่อง");
@@ -65,21 +64,15 @@ const validatePassportData = (input) => {
             throw new PassportDataError("เลขประจำตัวประชาชนต้องเป็นตัวเลข 13 หลัก");
         }
     }
-    const destination = (0, passportHelpers_1.formatDestinationCountryForReport)(input.nextDestinationCountry.trim());
-    if (!destination) {
-        throw new PassportDataError("ประเทศปลายทางถัดไปไม่รองรับในรายงาน รร.");
-    }
     return {
         namePrefix: input.namePrefix,
         nationality,
-        nextDestinationCountry: destination.value,
         passportNo,
         passportName,
     };
 };
-exports.validatePassportData = validatePassportData;
-const validateAndEncryptPassportData = (input) => {
-    const normalized = (0, exports.validatePassportData)(input);
+exports.validateGuestIdentityData = validateGuestIdentityData;
+const encryptNormalizedIdentityData = (normalized) => {
     return {
         passportHash: crypto_1.default
             .createHash("sha256")
@@ -87,10 +80,44 @@ const validateAndEncryptPassportData = (input) => {
             .digest("hex"),
         namePrefix: normalized.namePrefix,
         nationality: normalized.nationality,
-        nextDestinationCountry: normalized.nextDestinationCountry,
         passportNo: encrypt(normalized.passportNo),
         passportName: encrypt(normalized.passportName),
     };
 };
+const validatePassportData = (input) => {
+    const normalized = (0, exports.validateGuestIdentityData)(input);
+    if (!input?.nextDestinationCountry?.trim()) {
+        throw new PassportDataError("กรุณากรอกข้อมูล Passport ให้ครบทุกช่อง");
+    }
+    const destination = (0, passportHelpers_1.formatDestinationCountryForReport)(input.nextDestinationCountry.trim());
+    if (!destination) {
+        throw new PassportDataError("ประเทศปลายทางถัดไปไม่รองรับในรายงาน รร.");
+    }
+    return {
+        ...normalized,
+        nextDestinationCountry: destination.value,
+    };
+};
+exports.validatePassportData = validatePassportData;
+const validateAndEncryptGuestIdentityData = (input) => encryptNormalizedIdentityData((0, exports.validateGuestIdentityData)(input));
+exports.validateAndEncryptGuestIdentityData = validateAndEncryptGuestIdentityData;
+const validateAndEncryptPassportData = (input) => {
+    const normalized = (0, exports.validatePassportData)(input);
+    return {
+        ...encryptNormalizedIdentityData(normalized),
+        nextDestinationCountry: normalized.nextDestinationCountry,
+    };
+};
 exports.validateAndEncryptPassportData = validateAndEncryptPassportData;
+const decryptPassportField = ({ cipherText, iv, authTag, }) => {
+    if (!process.env.CRYPTO_SECRET)
+        throw new Error("CRYPTO_SECRET Missing");
+    const key = Buffer.from(process.env.CRYPTO_SECRET, "hex");
+    const decipher = crypto_1.default.createDecipheriv("aes-256-gcm", key, Buffer.from(iv, "hex"));
+    decipher.setAuthTag(Buffer.from(authTag, "hex"));
+    let decrypted = decipher.update(cipherText, "hex", "utf8");
+    decrypted += decipher.final("utf8");
+    return decrypted;
+};
+exports.decryptPassportField = decryptPassportField;
 //# sourceMappingURL=passportData.js.map

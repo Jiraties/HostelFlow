@@ -27,6 +27,9 @@ export type actionType =
   | "DAILY_CLOSE"
   | "REVIEW_TRANSACTION"
   | "VIEW_PASSPORT"
+  | "ADD_GUEST_PASSPORT"
+  | "UPDATE_GUEST_PASSPORT"
+  | "REMOVE_GUEST_PASSPORT"
   | "EXPORT_PASSPORT_REPORT";
 
 export type activity =
@@ -65,6 +68,9 @@ export type activity =
         | "DAILY_CLOSE"
         | "REVIEW_TRANSACTION"
         | "VIEW_PASSPORT"
+        | "ADD_GUEST_PASSPORT"
+        | "UPDATE_GUEST_PASSPORT"
+        | "REMOVE_GUEST_PASSPORT"
         | "EXPORT_PASSPORT_REPORT";
       details: {
         changes?: Record<string, { before: any; after: any }>;
@@ -118,6 +124,9 @@ const activitySchema = new mongoose.Schema({
       "DAILY_CLOSE",
       "REVIEW_TRANSACTION",
       "VIEW_PASSPORT",
+      "ADD_GUEST_PASSPORT",
+      "UPDATE_GUEST_PASSPORT",
+      "REMOVE_GUEST_PASSPORT",
       "EXPORT_PASSPORT_REPORT",
     ],
   },

@@ -23,6 +23,11 @@ export type PassportInput = {
   nextDestinationCountry: string;
 };
 
+export type GuestIdentityInput = Omit<
+  PassportInput,
+  "nextDestinationCountry"
+>;
+
 export class PassportDataError extends Error {
   readonly status = 400;
 
@@ -48,11 +53,10 @@ const encrypt = (text: string) => {
   };
 };
 
-export const validatePassportData = (input?: PassportInput) => {
+export const validateGuestIdentityData = (input?: GuestIdentityInput) => {
   if (
     !input?.namePrefix ||
     !input.nationality?.trim() ||
-    !input.nextDestinationCountry?.trim() ||
     !input.passportNo?.trim() ||
     !input.passportName?.trim()
   ) {
@@ -85,6 +89,35 @@ export const validatePassportData = (input?: PassportInput) => {
     }
   }
 
+  return {
+    namePrefix: input.namePrefix,
+    nationality,
+    passportNo,
+    passportName,
+  };
+};
+
+const encryptNormalizedIdentityData = (
+  normalized: ReturnType<typeof validateGuestIdentityData>,
+) => {
+  return {
+    passportHash: crypto
+      .createHash("sha256")
+      .update(normalized.passportNo)
+      .digest("hex"),
+    namePrefix: normalized.namePrefix,
+    nationality: normalized.nationality,
+    passportNo: encrypt(normalized.passportNo),
+    passportName: encrypt(normalized.passportName),
+  };
+};
+
+export const validatePassportData = (input?: PassportInput) => {
+  const normalized = validateGuestIdentityData(input);
+  if (!input?.nextDestinationCountry?.trim()) {
+    throw new PassportDataError("กรุณากรอกข้อมูล Passport ให้ครบทุกช่อง");
+  }
+
   const destination = formatDestinationCountryForReport(
     input.nextDestinationCountry.trim(),
   );
@@ -93,26 +126,43 @@ export const validatePassportData = (input?: PassportInput) => {
   }
 
   return {
-    namePrefix: input.namePrefix,
-    nationality,
+    ...normalized,
     nextDestinationCountry: destination.value,
-    passportNo,
-    passportName,
   };
 };
 
+export const validateAndEncryptGuestIdentityData = (
+  input?: GuestIdentityInput,
+) => encryptNormalizedIdentityData(validateGuestIdentityData(input));
+
 export const validateAndEncryptPassportData = (input?: PassportInput) => {
   const normalized = validatePassportData(input);
-
   return {
-    passportHash: crypto
-      .createHash("sha256")
-      .update(normalized.passportNo)
-      .digest("hex"),
-    namePrefix: normalized.namePrefix,
-    nationality: normalized.nationality,
+    ...encryptNormalizedIdentityData(normalized),
     nextDestinationCountry: normalized.nextDestinationCountry,
-    passportNo: encrypt(normalized.passportNo),
-    passportName: encrypt(normalized.passportName),
   };
+};
+
+export const decryptPassportField = ({
+  cipherText,
+  iv,
+  authTag,
+}: {
+  cipherText: string;
+  iv: string;
+  authTag: string;
+}) => {
+  if (!process.env.CRYPTO_SECRET) throw new Error("CRYPTO_SECRET Missing");
+
+  const key = Buffer.from(process.env.CRYPTO_SECRET, "hex");
+  const decipher = crypto.createDecipheriv(
+    "aes-256-gcm",
+    key,
+    Buffer.from(iv, "hex"),
+  );
+  decipher.setAuthTag(Buffer.from(authTag, "hex"));
+
+  let decrypted = decipher.update(cipherText, "hex", "utf8");
+  decrypted += decipher.final("utf8");
+  return decrypted;
 };

@@ -49,6 +49,22 @@
   opacity: 1;
 }
 
+.manageRoomStays__historyReason {
+  display: flex;
+  flex-direction: column;
+}
+
+.manageRoomStays__historyReason textarea {
+  min-height: 6rem;
+  resize: vertical;
+}
+
+.manageRoomStays__historyReason small {
+  margin-top: 0.5rem;
+  color: #666;
+  font-size: 0.82rem;
+}
+
 @media (max-width: 720px) {
   .manageRoomStays__list {
     gap: 1.25rem;

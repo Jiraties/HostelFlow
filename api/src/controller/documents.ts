@@ -1,5 +1,8 @@
 import ExcelJs from "exceljs";
-import Booking, { PASSPORT_SENSITIVE_SELECT } from "../models/booking";
+import Booking, {
+  ADDITIONAL_GUEST_SENSITIVE_SELECT,
+  PASSPORT_SENSITIVE_SELECT,
+} from "../models/booking";
 import User from "../models/user";
 import crypto from "crypto";
 import path from "path";
@@ -163,33 +166,29 @@ const dateQuery = (date: string) => {
   return { start, end };
 };
 
-const thaiNationalityValues = ["TH", "THA", "th", "tha", "ไทย"];
-
-const immigrationDateQuery = (date: string) => {
+const checkedInGuestDateQuery = (date: string) => {
   const bounds = dateQuery(date);
   if (!bounds) return null;
 
   return {
-    status: { $ne: "cancelled" },
-    checkIn: { $gte: bounds.start, $lt: bounds.end },
-    "passport.nationality": { $nin: thaiNationalityValues },
-  };
-};
-
-const hotelAccommodationDateQuery = (date: string) => {
-  const bounds = dateQuery(date);
-  if (!bounds) return null;
-
-  return {
-    status: { $ne: "cancelled" },
+    status: { $in: ["checkedIn", "checkedOut"] },
+    voided: { $ne: true },
     $or: [
       { checkedInAt: { $gte: bounds.start, $lt: bounds.end } },
       {
-        checkedInAt: { $exists: false },
+        checkedInAt: null,
         checkIn: { $gte: bounds.start, $lt: bounds.end },
       },
     ],
   };
+};
+
+const immigrationDateQuery = (date: string) => {
+  return checkedInGuestDateQuery(date);
+};
+
+const hotelAccommodationDateQuery = (date: string) => {
+  return checkedInGuestDateQuery(date);
 };
 
 type MaybeEncryptedField = Partial<EncryptedField> | null | undefined;
@@ -218,6 +217,42 @@ const passportInfoIsComplete = (
   !!passport.nationality &&
   encryptedFieldIsComplete(passport.passportName) &&
   encryptedFieldIsComplete(passport.passportNo);
+
+const isForeignPassport = (
+  passport: { nationality?: string } | null | undefined,
+) =>
+  !passport?.nationality || !isThaiNationality(passport.nationality);
+
+const immigrationEntries = (bookings: any[]) =>
+  bookings.flatMap((booking) => {
+    const entries: {
+      booking: any;
+      guestId: string | null;
+      guestLabel: string;
+      passport: any;
+    }[] = [];
+
+    if (isForeignPassport(booking.passport)) {
+      entries.push({
+        booking,
+        guestId: null,
+        guestLabel: "ผู้จอง / ผู้เข้าพักหลัก",
+        passport: booking.passport,
+      });
+    }
+
+    (booking.additionalGuests || []).forEach((guest: any, index: number) => {
+      if (!isForeignPassport(guest.identityDocument)) return;
+      entries.push({
+        booking,
+        guestId: String(guest._id),
+        guestLabel: `ผู้เข้าพักเพิ่มเติม ${index + 1}`,
+        passport: guest.identityDocument,
+      });
+    });
+
+    return entries;
+  });
 
 const hotelPassportInfoIssue = (
   passport:
@@ -665,7 +700,7 @@ export const getImmigrationReportStatus = async (
 
     const bookings = await Booking.find(query)
       .select(
-        `bookingId name checkOut passport.namePrefix passport.nationality ${PASSPORT_SENSITIVE_SELECT}`,
+        `bookingId name checkOut passport.namePrefix passport.nationality ${PASSPORT_SENSITIVE_SELECT} ${ADDITIONAL_GUEST_SENSITIVE_SELECT}`,
       )
       .sort({
         checkIn: 1,
@@ -673,18 +708,24 @@ export const getImmigrationReportStatus = async (
       })
       .lean();
 
-    const missingBookings = bookings
-      .filter((booking) => !passportInfoIsComplete(booking.passport))
-      .map((booking) => ({
-        bookingId: booking.bookingId,
-        name: booking.name,
-        checkOut: booking.checkOut,
+    const entries = immigrationEntries(bookings);
+    const missingBookings = entries
+      .filter((entry) => !passportInfoIsComplete(entry.passport))
+      .map((entry) => ({
+        bookingId: entry.booking.bookingId,
+        name: entry.booking.name,
+        checkOut: entry.booking.checkOut,
+        guestId: entry.guestId,
+        guestLabel: entry.guestLabel,
+        reason: "ข้อมูล Passport ไม่ครบ",
       }));
+    const total = entries.length;
+    const missing = missingBookings.length;
 
     res.status(200).json({
-      total: bookings.length,
-      complete: bookings.length - missingBookings.length,
-      missing: missingBookings.length,
+      total,
+      complete: total - missing,
+      missing,
       missingBookings,
     });
   } catch (err) {
@@ -704,14 +745,16 @@ export const getImmigrationReport = async (req: Request, res: Response) => {
 
     const bookings = await Booking.find(query)
       .select(
-        `bookingId name checkOut passport.namePrefix passport.nationality ${PASSPORT_SENSITIVE_SELECT}`,
+        `bookingId name checkOut passport.namePrefix passport.nationality ${PASSPORT_SENSITIVE_SELECT} ${ADDITIONAL_GUEST_SENSITIVE_SELECT}`,
       )
       .sort({
         checkIn: 1,
         name: 1,
       });
 
-    if (bookings.length === 0)
+    const entries = immigrationEntries(bookings);
+
+    if (entries.length === 0)
       return res.status(400).json({ message: "ไม่พบรายการจองในวันที่กำหนด" });
 
     const workbook = new ExcelJs.Workbook();
@@ -741,11 +784,12 @@ export const getImmigrationReport = async (req: Request, res: Response) => {
       return "";
     };
 
-    bookings.forEach((booking, index) => {
+    entries.forEach((entry, index) => {
+      const { booking, passport } = entry;
       const row = sheet.getRow(startRow + index);
 
       const formattedPassport = formatPassport(
-        booking.passport,
+        passport,
         nationalitySheet,
       );
 
@@ -759,7 +803,9 @@ export const getImmigrationReport = async (req: Request, res: Response) => {
 
       if (missingPassportInfo) {
         const missingCell = row.getCell(1);
-        missingCell.value = `MISSING ${booking.name} ${booking.bookingId}`;
+        missingCell.value = `MISSING ${booking.name} ${booking.bookingId}${
+          entry.guestId ? ` ${entry.guestLabel}` : ""
+        }`;
         missingCell.font = {
           ...missingCell.font,
           color: { argb: "FFFF0000" },
@@ -769,7 +815,7 @@ export const getImmigrationReport = async (req: Request, res: Response) => {
         row.getCell(2).value = splittedPassportName.middleName;
         row.getCell(3).value = splittedPassportName.lastName;
       }
-      row.getCell(4).value = determineGender(booking.passport?.namePrefix);
+      row.getCell(4).value = determineGender(passport?.namePrefix);
       row.getCell(5).value = formattedPassport.passportNo;
       row.getCell(6).value = formattedPassport.nationality;
       row.getCell(8).value = formatDateAD(booking.checkOut);
@@ -792,6 +838,7 @@ export const getImmigrationReport = async (req: Request, res: Response) => {
         reportType: "immigration",
         businessDate: date,
         bookingCount: bookings.length,
+        passportRowCount: entries.length,
       },
     });
     setSensitiveDownloadHeaders(res);

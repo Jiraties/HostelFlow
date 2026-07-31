@@ -8,7 +8,10 @@ import mongoose from "mongoose";
 import { MongoMemoryReplSet } from "mongodb-memory-server";
 
 import Activity from "../src/models/activity";
-import Booking, { PASSPORT_SENSITIVE_SELECT } from "../src/models/booking";
+import Booking, {
+  ADDITIONAL_GUEST_SENSITIVE_SELECT,
+  PASSPORT_SENSITIVE_SELECT,
+} from "../src/models/booking";
 import LoginAttempt from "../src/models/loginAttempt";
 import User from "../src/models/user";
 import { requirePassportAccess } from "../src/middleware/passportAuthorization";
@@ -167,6 +170,18 @@ test("ordinary booking reads exclude encrypted passport material by default", as
       passportNo: encrypt("SYNTHETIC-NUMBER"),
       passportName: encrypt("Synthetic Passport Guest"),
     },
+    additionalGuests: [
+      {
+        identityDocument: {
+          passportHash: "synthetic-additional-hash",
+          namePrefix: "Mr",
+          nationality: "US",
+          passportNo: encrypt("SYNTHETIC-ADDITIONAL-NUMBER"),
+          passportName: encrypt("Synthetic Additional Guest"),
+        },
+        createdBy: "admin",
+      },
+    ],
   });
 
   const ordinary = await Booking.findOne({ bookingId: "PASSPORT-1" }).lean();
@@ -186,10 +201,13 @@ test("ordinary booking reads exclude encrypted passport material by default", as
 
   const privileged = await Booking.findOne({ bookingId: "PASSPORT-1" })
     .select(
-      `passport.namePrefix passport.nationality ${PASSPORT_SENSITIVE_SELECT}`,
+      `passport.namePrefix passport.nationality ${PASSPORT_SENSITIVE_SELECT} ${ADDITIONAL_GUEST_SENSITIVE_SELECT}`,
     )
     .lean();
   assert.ok(privileged?.passport?.passportNo?.cipherText);
+  assert.ok(
+    privileged?.additionalGuests[0].identityDocument?.passportNo?.cipherText,
+  );
 });
 
 test("authorized passport reveal decrypts, audits and disables caching", async () => {

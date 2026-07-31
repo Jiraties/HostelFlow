@@ -474,6 +474,10 @@ const ActivityDetails = ({
           label="หลังแก้"
           value={roomStayChange?.after.map((stay) => formatRoomStay(stay, dateFormat)).join(", ") || "-"}
         />
+        <DetailRow
+          label="เหตุผลแก้ย้อนหลัง"
+          value={summary.historicalCorrectionReason as string}
+        />
       </div>
     );
   }

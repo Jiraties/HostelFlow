@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.transactionSchema = exports.PASSPORT_SENSITIVE_SELECT = void 0;
+exports.transactionSchema = exports.ADDITIONAL_GUEST_SENSITIVE_SELECT = exports.PASSPORT_SENSITIVE_SELECT = void 0;
 const mongoose_1 = __importDefault(require("mongoose"));
 const bookingSearchHelpers_1 = require("../helpers/bookingSearchHelpers");
 exports.PASSPORT_SENSITIVE_SELECT = [
@@ -14,6 +14,17 @@ exports.PASSPORT_SENSITIVE_SELECT = [
     "+passport.passportName.cipherText",
     "+passport.passportName.iv",
     "+passport.passportName.authTag",
+].join(" ");
+exports.ADDITIONAL_GUEST_SENSITIVE_SELECT = [
+    "+additionalGuests.identityDocument.passportHash",
+    "+additionalGuests.identityDocument.namePrefix",
+    "+additionalGuests.identityDocument.nationality",
+    "+additionalGuests.identityDocument.passportNo.cipherText",
+    "+additionalGuests.identityDocument.passportNo.iv",
+    "+additionalGuests.identityDocument.passportNo.authTag",
+    "+additionalGuests.identityDocument.passportName.cipherText",
+    "+additionalGuests.identityDocument.passportName.iv",
+    "+additionalGuests.identityDocument.passportName.authTag",
 ].join(" ");
 const roomStaySchema = new mongoose_1.default.Schema({
     roomIds: { type: [String], default: [] },
@@ -281,6 +292,43 @@ const resolutionSchema = new mongoose_1.default.Schema({
     amendedAfterClose: { type: Boolean, default: false },
     approvedByStaffUsername: { type: String },
 }, { _id: false });
+const additionalGuestSchema = new mongoose_1.default.Schema({
+    identityDocument: {
+        passportHash: { type: String, select: false, required: true },
+        namePrefix: {
+            type: String,
+            enum: [
+                "Mr",
+                "Mrs",
+                "Ms",
+                "Miss",
+                "Dr",
+                "นาย",
+                "นาง",
+                "นางสาว",
+                "เด็กชาย",
+                "เด็กหญิง",
+            ],
+            select: false,
+            required: true,
+        },
+        nationality: { type: String, select: false, required: true },
+        passportNo: {
+            cipherText: { type: String, select: false, required: true },
+            iv: { type: String, select: false, required: true },
+            authTag: { type: String, select: false, required: true },
+        },
+        passportName: {
+            cipherText: { type: String, select: false, required: true },
+            iv: { type: String, select: false, required: true },
+            authTag: { type: String, select: false, required: true },
+        },
+    },
+    createdAt: { type: Date, default: Date.now, required: true },
+    createdBy: { type: String, required: true },
+    updatedAt: { type: Date },
+    updatedBy: { type: String },
+});
 const bookingSchema = new mongoose_1.default.Schema({
     revision: { type: Number, default: 0, required: true },
     name: { type: String },
@@ -343,6 +391,7 @@ const bookingSchema = new mongoose_1.default.Schema({
             authTag: { type: String, select: false },
         },
     },
+    additionalGuests: { type: [additionalGuestSchema], default: [] },
     advancePayment: advancePaymentSchema,
     cancellation: cancellationSchema,
     checkout: checkoutSchema,

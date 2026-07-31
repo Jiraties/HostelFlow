@@ -72,6 +72,14 @@ interface Passport {
   nextDestinationCountry?: string;
 }
 
+interface AdditionalGuest {
+  _id?: string;
+  createdAt?: string | Date;
+  createdBy?: string;
+  updatedAt?: string | Date;
+  updatedBy?: string;
+}
+
 interface Cancellation {
   cancellationType: CancellationType;
   roomReleaseStatus: RoomReleaseStatus;
@@ -228,6 +236,7 @@ export interface booking {
   checkInMode?: "normal" | "admin_historical_onboarding";
 
   passport?: Passport;
+  additionalGuests?: AdditionalGuest[];
   advancePayment?: AdvancePayment;
   cancellation?: Cancellation;
   checkout?: Checkout;

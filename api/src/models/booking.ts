@@ -97,6 +97,18 @@ export const PASSPORT_SENSITIVE_SELECT = [
   "+passport.passportName.authTag",
 ].join(" ");
 
+export const ADDITIONAL_GUEST_SENSITIVE_SELECT = [
+  "+additionalGuests.identityDocument.passportHash",
+  "+additionalGuests.identityDocument.namePrefix",
+  "+additionalGuests.identityDocument.nationality",
+  "+additionalGuests.identityDocument.passportNo.cipherText",
+  "+additionalGuests.identityDocument.passportNo.iv",
+  "+additionalGuests.identityDocument.passportNo.authTag",
+  "+additionalGuests.identityDocument.passportName.cipherText",
+  "+additionalGuests.identityDocument.passportName.iv",
+  "+additionalGuests.identityDocument.passportName.authTag",
+].join(" ");
+
 export interface roomStay {
   roomIds: string[];
   roomId?: string;
@@ -127,6 +139,15 @@ interface Passport {
   nextDestinationCountry?: string;
   passportNo?: EncryptedField;
   passportName?: EncryptedField;
+}
+
+export interface AdditionalGuest {
+  _id?: mongoose.Types.ObjectId;
+  identityDocument?: Omit<Passport, "nextDestinationCountry">;
+  createdAt?: Date;
+  createdBy?: string;
+  updatedAt?: Date;
+  updatedBy?: string;
 }
 
 export interface transcation {
@@ -276,6 +297,7 @@ export interface booking extends Document {
   checkInMode?: CheckInMode;
 
   passport?: Passport;
+  additionalGuests: AdditionalGuest[];
   advancePayment?: AdvancePayment;
   cancellation?: Cancellation;
   checkout?: Checkout;
@@ -578,6 +600,44 @@ const resolutionSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const additionalGuestSchema = new mongoose.Schema({
+  identityDocument: {
+    passportHash: { type: String, select: false, required: true },
+    namePrefix: {
+      type: String,
+      enum: [
+        "Mr",
+        "Mrs",
+        "Ms",
+        "Miss",
+        "Dr",
+        "นาย",
+        "นาง",
+        "นางสาว",
+        "เด็กชาย",
+        "เด็กหญิง",
+      ],
+      select: false,
+      required: true,
+    },
+    nationality: { type: String, select: false, required: true },
+    passportNo: {
+      cipherText: { type: String, select: false, required: true },
+      iv: { type: String, select: false, required: true },
+      authTag: { type: String, select: false, required: true },
+    },
+    passportName: {
+      cipherText: { type: String, select: false, required: true },
+      iv: { type: String, select: false, required: true },
+      authTag: { type: String, select: false, required: true },
+    },
+  },
+  createdAt: { type: Date, default: Date.now, required: true },
+  createdBy: { type: String, required: true },
+  updatedAt: { type: Date },
+  updatedBy: { type: String },
+});
+
 const bookingSchema = new mongoose.Schema({
   revision: { type: Number, default: 0, required: true },
   name: { type: String },
@@ -647,6 +707,7 @@ const bookingSchema = new mongoose.Schema({
       authTag: { type: String, select: false },
     },
   },
+  additionalGuests: { type: [additionalGuestSchema], default: [] },
 
   advancePayment: advancePaymentSchema,
 

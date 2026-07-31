@@ -205,6 +205,7 @@ const Spreadsheet = ({
   onLoadMore,
   status,
   masterRange,
+  focusMasterToday,
 }: {
   bookings: booking[];
   setViewBookingBooking: (booking: booking) => void;
@@ -217,6 +218,7 @@ const Spreadsheet = ({
     from: string;
     to: string;
   };
+  focusMasterToday?: boolean;
 }) => {
   const { user, login, resolveStaffName } = useAuth();
   const isMaster = status === "master";
@@ -242,6 +244,16 @@ const Spreadsheet = ({
   const [animationsEnabledForStatus, setAnimationsEnabledForStatus] =
     useState<SpreadsheetStatus | null>(null);
   const todayKey = separatorDateKey(new Date());
+  const latestLoadedCheckInKey = useMemo(
+    () =>
+      bookings.reduce((latestDateKey, currentBooking) => {
+        const currentDateKey = separatorDateKey(currentBooking.checkIn);
+        return currentDateKey > latestDateKey ? currentDateKey : latestDateKey;
+      }, ""),
+    [bookings],
+  );
+  const masterDataHasReachedToday =
+    !hasMore || latestLoadedCheckInKey >= todayKey;
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(max-width: 760px)");
@@ -354,7 +366,17 @@ const Spreadsheet = ({
 
   const scrollToTodaySeparator = useCallback(() => {
     const api = gridApiRef.current;
-    if (!api || !isMaster || loading || hasScrolledToTodayRef.current) return;
+    if (
+      !api ||
+      !isMaster ||
+      !focusMasterToday ||
+      loading ||
+      loadingMore ||
+      !masterDataHasReachedToday ||
+      hasScrolledToTodayRef.current
+    ) {
+      return;
+    }
 
     const todayRowIndex = rowData.findIndex(
       (row) => isSeparatorRow(row) && row.dateKey === todayKey,
@@ -364,16 +386,48 @@ const Spreadsheet = ({
 
     api.ensureIndexVisible(todayRowIndex, "top");
     hasScrolledToTodayRef.current = true;
-  }, [isMaster, loading, rowData, todayKey]);
+  }, [
+    focusMasterToday,
+    isMaster,
+    loading,
+    loadingMore,
+    masterDataHasReachedToday,
+    rowData,
+    todayKey,
+  ]);
 
   useEffect(() => {
-    if (isMaster) return;
+    if (isMaster && focusMasterToday) return;
     hasScrolledToTodayRef.current = false;
-  }, [isMaster]);
+  }, [focusMasterToday, isMaster]);
 
   useEffect(() => {
     scrollToTodaySeparator();
   }, [scrollToTodaySeparator]);
+
+  useEffect(() => {
+    if (
+      !isMaster ||
+      !focusMasterToday ||
+      loading ||
+      loadingMore ||
+      masterDataHasReachedToday ||
+      !hasMore ||
+      !onLoadMore
+    ) {
+      return;
+    }
+
+    onLoadMore();
+  }, [
+    focusMasterToday,
+    hasMore,
+    isMaster,
+    loading,
+    loadingMore,
+    masterDataHasReachedToday,
+    onLoadMore,
+  ]);
 
   const colDefs = useMemo<ColDef<SpreadsheetRow>[]>(() => {
     const columns: ColDef<SpreadsheetRow>[] = [

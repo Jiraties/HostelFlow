@@ -66,6 +66,7 @@ type CashAuditShift = {
   _id: string;
   shiftNumber: number;
   status: "open" | "closed";
+  auditStatus: "operating" | "needs_review" | "complete";
   openingMode: "counted" | "accepted_handoff";
   operatingOpeningCash: number;
   operatingCashIn: number;
@@ -281,6 +282,13 @@ const CashCloseAudit = ({
     (shift) => shift.status === "closed",
   ).length;
   const openShiftCount = shifts.length - closedShiftCount;
+  const operatingShiftCount = shifts.filter(
+    (shift) => shift.auditStatus === "operating",
+  ).length;
+  const overdueOpenShiftCount = shifts.filter(
+    (shift) =>
+      shift.status === "open" && shift.auditStatus !== "operating",
+  ).length;
   const variance = shifts.reduce(
     (total, shift) =>
       total + Math.abs(shift.operatingVariance || 0),
@@ -326,15 +334,19 @@ const CashCloseAudit = ({
               ? "กำลังตรวจสอบเงินสด"
               : unresolvedCount
                 ? "มีเงินสดที่ต้องตรวจสอบ"
-                : openShiftCount
-                  ? "ยังมีเงินสดที่รอปิดยอด"
-                  : shifts.length
-                    ? "ยอดเงินสดวันนี้เรียบร้อย"
-                    : "ยังไม่มีการปิดยอดเงินสด"}
+                : operatingShiftCount
+                  ? "กะเงินสดกำลังดำเนินงาน"
+                  : overdueOpenShiftCount
+                    ? "ยังมีเงินสดที่รอปิดยอด"
+                    : shifts.length
+                      ? "ยอดเงินสดวันนี้เรียบร้อย"
+                      : "ยังไม่มีการปิดยอดเงินสด"}
           </h2>
           <span>
             {shifts.length
-              ? `${unresolvedCount} จุดที่ต้องตรวจ · ปิดยอดแล้ว ${closedShiftCount} รายการ`
+              ? operatingShiftCount && !unresolvedCount
+                ? `กำลังดำเนินงาน ${operatingShiftCount} กะ · ปิดยอดแล้ว ${closedShiftCount} รายการ`
+                : `${unresolvedCount} จุดที่ต้องตรวจ · ปิดยอดแล้ว ${closedShiftCount} รายการ`
               : "เลือกวันที่ต้องการตรวจสอบ"}
           </span>
         </div>
@@ -344,20 +356,24 @@ const CashCloseAudit = ({
               "manage__cashAuditBadge" +
               (unresolvedCount
                 ? " manage__cashAuditBadge--attention"
-                : openShiftCount
-                  ? " manage__cashAuditBadge--open"
-                  : shifts.length
-                    ? " manage__cashAuditBadge--complete"
-                    : "")
+                : operatingShiftCount
+                  ? " manage__cashAuditBadge--operating"
+                  : overdueOpenShiftCount
+                    ? " manage__cashAuditBadge--open"
+                    : shifts.length
+                      ? " manage__cashAuditBadge--complete"
+                      : "")
             }
           >
             {unresolvedCount
               ? "ต้องตรวจ"
-              : openShiftCount
-                ? "รอปิดยอด"
-                : shifts.length
-                  ? "เรียบร้อย"
-                  : "ไม่มีข้อมูล"}
+              : operatingShiftCount
+                ? "กำลังดำเนินงาน"
+                : overdueOpenShiftCount
+                  ? "รอปิดยอด"
+                  : shifts.length
+                    ? "เรียบร้อย"
+                    : "ไม่มีข้อมูล"}
           </strong>
           <PreferredDateInput
             className="boxInput manage__dateInput"
@@ -375,8 +391,12 @@ const CashCloseAudit = ({
           </strong>
         </div>
         <div>
-          <p>กะที่ยังเปิด</p>
-          <strong className={openShiftCount ? "manage__auditWarningText" : ""}>
+          <p>{operatingShiftCount ? "กะที่กำลังดำเนินงาน" : "กะที่ยังเปิด"}</p>
+          <strong
+            className={
+              overdueOpenShiftCount ? "manage__auditWarningText" : ""
+            }
+          >
             {openShiftCount}
           </strong>
         </div>
@@ -393,9 +413,17 @@ const CashCloseAudit = ({
           </strong>
         </div>
         <div>
-          <p>ข้อยกเว้นค้าง</p>
-          <strong className={unresolvedCount ? "manage__auditDangerText" : ""}>
-            {unresolvedCount}
+          <p>
+            {operatingShiftCount && !unresolvedCount
+              ? "สถานะปัจจุบัน"
+              : "ข้อยกเว้นค้าง"}
+          </p>
+          <strong
+            className={unresolvedCount ? "manage__auditDangerText" : ""}
+          >
+            {operatingShiftCount && !unresolvedCount
+              ? "ดำเนินงานปกติ"
+              : unresolvedCount}
           </strong>
         </div>
       </div>
@@ -460,10 +488,14 @@ const CashCloseAudit = ({
                     <span
                       className={
                         "manage__shiftStatus manage__shiftStatus--" +
-                        shift.status
+                        shift.auditStatus
                       }
                     >
-                      {shift.status === "closed" ? "ปิดยอดแล้ว" : "ยังเปิดอยู่"}
+                      {shift.auditStatus === "operating"
+                        ? "กำลังดำเนินงาน"
+                        : shift.status === "closed"
+                          ? "ปิดยอดแล้ว"
+                          : "ยังไม่ปิดยอด"}
                     </span>
                     {shift.isFinalDayClose && (
                       <span className="manage__shiftStatus manage__shiftStatus--final">

@@ -291,10 +291,19 @@
   white-space: nowrap;
 }
 
-.manage__cashAuditBadge--open,
 .manage__cashAuditBadge--complete {
   background-color: color-mix(in srgb, var(--green) 20%, #fff);
   color: var(--green);
+}
+
+.manage__cashAuditBadge--open {
+  background-color: #fef3c7;
+  color: #b45309;
+}
+
+.manage__cashAuditBadge--operating {
+  background-color: color-mix(in srgb, var(--primary-color) 18%, #fff);
+  color: var(--primary-color);
 }
 
 .manage__cashAuditBadge--attention {
@@ -541,7 +550,7 @@
   font-weight: 500;
 }
 
-.manage__shiftStatus--closed {
+.manage__shiftStatus--complete {
   color: #047857;
   background: #d1fae5;
 }
@@ -564,9 +573,14 @@
   margin: 0;
   color: #666666;
 }
-.manage__shiftStatus--open {
+.manage__shiftStatus--needs_review {
   color: #b45309;
   background: #fef3c7;
+}
+
+.manage__shiftStatus--operating {
+  color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 16%, #fff);
 }
 
 .manage__cashMath {

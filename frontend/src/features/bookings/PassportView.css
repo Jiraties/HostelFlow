@@ -2,10 +2,44 @@
   width: 100%;
   border: 0;
   font: inherit;
-  min-height: 10rem;
   border-radius: 1rem;
   box-shadow: var(--light-shadow);
-  margin-top: 0.5rem;
+}
+
+.passportView__section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.passportView__sectionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.passportView__primaryTag,
+.passportView__countTag {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.passportView__primaryTag {
+  color: var(--primary-color);
+  background: #51d1dc10;
+}
+
+.passportView__countTag {
+  color: #60636a;
+  background: #e8e9ec;
 }
 
 .passportView__hideButton {
@@ -43,34 +77,46 @@
 }
 
 .passportView__hidden {
-  display: flex;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  background-color: #eee;
-  flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.15rem 0.65rem;
+  background-color: #fff;
   transition-duration: 0.2s;
   cursor: pointer;
-  padding: 1rem;
-  text-align: center;
+  padding: 0.85rem;
+  text-align: left;
 }
 
 .passportView__hidden:hover {
-  transform: scale(1.025);
+  transform: translateY(-1px);
+  box-shadow: var(--main-shadow);
 }
 
-.passportView__hidden p,
+.passportView__hidden span,
+.passportView__hidden small,
 .passportView__hidden i {
   color: #4c4c4c;
 }
 
 .passportView__hidden i {
-  font-size: 2rem;
+  grid-row: 1 / span 2;
+  font-size: 1.4rem;
+}
+
+.passportView__hidden span {
+  font-weight: 500;
+}
+
+.passportView__hidden small {
+  color: #777;
+  font-size: 0.8rem;
 }
 
 .passportView__hidden .passportView__error {
+  grid-column: 1 / -1;
+  margin-top: 0.35rem;
   color: var(--red);
-  font-size: 0.9rem;
 }
 
 .passportView__nonHidden {
@@ -117,6 +163,11 @@
 
   .passportView__nonHidden {
     border-radius: 1rem;
+  }
+
+  .passportView__hidden {
+    background-color: #fff;
+    box-shadow: var(--light-shadow);
   }
 
   .passportView__content {

@@ -1514,6 +1514,12 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
     startOfMonth,
     startOfTomorrow,
   );
+  const occupancyQueryStart = new Date(
+    Math.min(chartStart.getTime(), startOfMonth.getTime()),
+  );
+  const occupancyQueryEnd = new Date(
+    Math.max(chartEnd.getTime(), startOfNextMonth.getTime()),
+  );
 
   try {
     const [
@@ -1537,8 +1543,8 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
         Booking.find({
           roomStays: {
             $elemMatch: {
-              from: { $lt: chartEnd },
-              to: { $gt: chartStart },
+              from: { $lt: occupancyQueryEnd },
+              to: { $gt: occupancyQueryStart },
             },
           },
         }),
@@ -1712,10 +1718,10 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
       });
     });
 
-    const monthToDateOccupancy = occupancySummaryForRange(
+    const wholeMonthOccupancy = occupancySummaryForRange(
       occupancyBookings,
       startOfMonth,
-      startOfTomorrow,
+      startOfNextMonth,
     );
     const selectedRangeOccupancy = occupancySummaryForRange(
       occupancyBookings,
@@ -1768,7 +1774,7 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
       monthBookings: monthBookings.length,
       unpaidAmount,
       financialSummary: monthFinancialSummary,
-      occupancyRate: monthToDateOccupancy.occupancyRate,
+      occupancyRate: wholeMonthOccupancy.occupancyRate,
       rangeOccupancyRate: selectedRangeOccupancy.occupancyRate,
       channelMix,
       revenueRange,
@@ -2840,6 +2846,10 @@ export const manageRoomStays = async (req: Request, res: Response) => {
   try {
     const { roomStays } = req.body;
     const { bookingId } = req.params;
+    const historicalCorrectionReason =
+      typeof req.body.historicalCorrectionReason === "string"
+        ? req.body.historicalCorrectionReason.trim()
+        : "";
     const expectedRevision = expectedBookingRevision(req.body.expectedRevision);
 
     if (expectedRevision === null) {
@@ -2903,11 +2913,23 @@ export const manageRoomStays = async (req: Request, res: Response) => {
     if ((booking.revision || 0) !== expectedRevision) {
       return sendBookingRevisionConflict(res, bookingId);
     }
-    if (!["booked", "checkedIn"].includes(booking.status) || booking.voided) {
+    const isClosedRoomHistoryCorrection = booking.status === "checkedOut";
+    const canEditBookingRoomStays =
+      ["booked", "checkedIn"].includes(booking.status) ||
+      (isClosedRoomHistoryCorrection && req.user?.admin === true);
+
+    if (booking.voided || !canEditBookingRoomStays) {
+      if (isClosedRoomHistoryCorrection && !req.user?.admin) {
+        return res.status(403).json({
+          error: "ADMIN_APPROVAL_REQUIRED",
+          message: "การแก้ประวัติห้องหลัง Check-Out ทำได้เฉพาะ Admin",
+          booking,
+        });
+      }
       return res.status(409).json({
         error: "BOOKING_LIFECYCLE_CONFLICT",
         message:
-          "ย้ายห้องได้เฉพาะการจองที่ยังไม่เช็คอินหรือแขกที่กำลังเข้าพัก",
+          "แก้ห้องได้เฉพาะ Booking ที่ยังไม่ Check-In, กำลังเข้าพัก หรือประวัติหลัง Check-Out โดย Admin",
         booking,
       });
     }
@@ -2941,6 +2963,36 @@ export const manageRoomStays = async (req: Request, res: Response) => {
     }
 
     const businessDate = getBusinessDateKey();
+    const changesCompletedRoomHistory =
+      toInputDate(booking.checkIn) < businessDate &&
+      !preservesCompletedRoomAssignments(
+        originalRoomStays,
+        sorted,
+        booking.checkIn,
+        booking.checkOut,
+        businessDate,
+      );
+    const requiresHistoricalCorrectionAudit =
+      isClosedRoomHistoryCorrection || changesCompletedRoomHistory;
+
+    if (requiresHistoricalCorrectionAudit && !req.user?.admin) {
+      return res.status(409).json({
+        error: "PAST_ROOM_STAYS_LOCKED",
+        message:
+          "ไม่สามารถเปลี่ยนห้องของคืนที่ผ่านมาได้ กรุณาย้ายห้องตั้งแต่วันนี้เป็นต้นไป",
+        booking,
+      });
+    }
+    if (
+      requiresHistoricalCorrectionAudit &&
+      !historicalCorrectionReason
+    ) {
+      return res.status(400).json({
+        error: "HISTORICAL_ROOM_CORRECTION_REASON_REQUIRED",
+        message: "กรุณาระบุเหตุผลที่แก้ไขประวัติห้องพัก",
+      });
+    }
+
     const effectiveFrom =
       !req.user?.admin && toInputDate(booking.checkIn) < businessDate
         ? businessDate
@@ -2984,6 +3036,9 @@ export const manageRoomStays = async (req: Request, res: Response) => {
       : sorted;
     const roomIdsToValidate =
       getUniqueRoomIdsFromRoomStays(roomStaysToValidate);
+    const allowedStatuses = isClosedRoomHistoryCorrection
+      ? ["checkedOut"]
+      : ["booked", "checkedIn"];
 
     const manageResult = await withRoomMutationLocks(
       roomStaysToValidate,
@@ -3017,7 +3072,7 @@ export const manageRoomStays = async (req: Request, res: Response) => {
         const updatedBooking = await Booking.findOneAndUpdate(
           {
             bookingId,
-            status: { $in: ["booked", "checkedIn"] },
+            status: { $in: allowedStatuses },
             voided: { $ne: true },
             ...bookingRevisionPredicate(expectedRevision),
           },
@@ -3054,6 +3109,13 @@ export const manageRoomStays = async (req: Request, res: Response) => {
           beforeRoomStays: originalRoomStays,
           afterRoomStays: sorted,
           ...(effectiveFrom ? { effectiveFrom } : {}),
+          ...(requiresHistoricalCorrectionAudit
+            ? {
+                historicalCorrection: true,
+                historicalCorrectionReason,
+                bookingStatus: booking.status,
+              }
+            : {}),
         },
         changes: {
           roomStays: { before: originalRoomStays, after: sorted },

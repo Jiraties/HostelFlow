@@ -1441,6 +1441,8 @@ test("admins can make an audited historical room correction", async () => {
     request({
       body: {
         expectedRevision: 0,
+        historicalCorrectionReason:
+          "Correct the recorded room after confirming the actual move",
         roomStays: [
           {
             roomIds: ["Window"],
@@ -1472,6 +1474,122 @@ test("admins can make an audited historical room correction", async () => {
     bookingId: "ADMIN-ROOM-HISTORY",
   }).lean();
   assert.ok(activity);
+  assert.equal(
+    (activity?.details as any)?.summary?.historicalCorrectionReason,
+    "Correct the recorded room after confirming the actual move",
+  );
+});
+
+test("only admins can correct checked-out room history and the reason is audited", async () => {
+  const booking = await bookingFixture("CLOSED-ROOM-HISTORY");
+  booking.status = "checkedOut";
+  booking.checkIn = new Date(`${localDate(-4)}T00:00:00`);
+  booking.checkOut = new Date(`${localDate()}T00:00:00`);
+  booking.nights = 4;
+  booking.roomStays = [
+    {
+      roomIds: ["Balcony"],
+      from: booking.checkIn,
+      to: new Date(`${localDate(-2)}T00:00:00`),
+    },
+    {
+      roomIds: ["Window"],
+      from: new Date(`${localDate(-2)}T00:00:00`),
+      to: booking.checkOut,
+    },
+  ];
+  booking.transactions[0].paymentMethod = "Transfer";
+  booking.transactions[0].amount = 2400;
+  await booking.save();
+
+  const correctedRoomStays = [
+    {
+      roomIds: ["Balcony"],
+      from: localDate(-4),
+      to: localDate(-3),
+    },
+    {
+      roomIds: ["Window"],
+      from: localDate(-3),
+      to: localDate(),
+    },
+  ];
+  const staffResponse = response();
+  await controller.manageRoomStays(
+    request({
+      body: {
+        expectedRevision: 0,
+        historicalCorrectionReason: "Guest moved after the first night",
+        roomStays: correctedRoomStays,
+      },
+      params: { bookingId: "CLOSED-ROOM-HISTORY" },
+      url: "/bookings/manageRoomStays/CLOSED-ROOM-HISTORY",
+      admin: false,
+    }),
+    staffResponse as any,
+  );
+  assert.equal(staffResponse.statusCode, 403);
+  assert.equal(staffResponse.body.error, "ADMIN_APPROVAL_REQUIRED");
+
+  const missingReasonResponse = response();
+  await controller.manageRoomStays(
+    request({
+      body: {
+        expectedRevision: 0,
+        roomStays: correctedRoomStays,
+      },
+      params: { bookingId: "CLOSED-ROOM-HISTORY" },
+      url: "/bookings/manageRoomStays/CLOSED-ROOM-HISTORY",
+      admin: true,
+    }),
+    missingReasonResponse as any,
+  );
+  assert.equal(missingReasonResponse.statusCode, 400);
+  assert.equal(
+    missingReasonResponse.body.error,
+    "HISTORICAL_ROOM_CORRECTION_REASON_REQUIRED",
+  );
+
+  const adminResponse = response();
+  await controller.manageRoomStays(
+    request({
+      body: {
+        expectedRevision: 0,
+        historicalCorrectionReason: "Guest moved after the first night",
+        roomStays: correctedRoomStays,
+      },
+      params: { bookingId: "CLOSED-ROOM-HISTORY" },
+      url: "/bookings/manageRoomStays/CLOSED-ROOM-HISTORY",
+      admin: true,
+    }),
+    adminResponse as any,
+  );
+  assert.equal(
+    adminResponse.statusCode,
+    200,
+    JSON.stringify(adminResponse.body),
+  );
+  assert.equal(adminResponse.body.booking.status, "checkedOut");
+  assert.deepEqual(
+    adminResponse.body.booking.roomStays.map((stay: any) => ({
+      roomIds: stay.roomIds,
+      from: new Date(stay.from).toISOString().slice(0, 10),
+      to: new Date(stay.to).toISOString().slice(0, 10),
+    })),
+    correctedRoomStays,
+  );
+  assert.equal(adminResponse.body.booking.transactions[0].amount, 2400);
+
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  const activity = await Activity.findOne({
+    action: "MANAGE_ROOM_STAYS",
+    bookingId: "CLOSED-ROOM-HISTORY",
+  }).lean();
+  assert.equal(
+    (activity?.details as any)?.summary?.historicalCorrectionReason,
+    "Guest moved after the first night",
+  );
+  assert.equal((activity?.details as any)?.summary?.bookingStatus, "checkedOut");
 });
 
 test("admin void preserves paid history, actor and reason while releasing inventory", async () => {

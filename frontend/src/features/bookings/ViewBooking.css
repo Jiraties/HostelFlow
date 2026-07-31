@@ -310,6 +310,29 @@
   align-items: center;
 }
 
+.viewBooking__infoText--withActual {
+  flex-wrap: wrap;
+}
+
+.viewBooking__actualTime {
+  background: rgba(247, 247, 247, 0.8);
+  border-radius: 999rem;
+  color: #343232;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.45rem;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-left: auto;
+}
+
+.viewBooking__actualTime--late {
+  background: #ffde5b20;
+  font-weight: 500;
+  color: #e7c332;
+}
+
 .viewBooking__platform {
   display: flex;
   align-items: center;
@@ -976,6 +999,7 @@
   padding: 1rem;
   border-radius: 0 0 1rem 1rem;
   border-top: 1px solid #eee;
+  cursor: pointer;
   transition-duration: 0.2s;
 }
 
@@ -983,8 +1007,10 @@
   color: var(--primary-color);
 }
 
-.viewBooking__addTransaction:hover {
+.viewBooking__addTransaction:hover,
+.viewBooking__addTransaction:focus-visible {
   background-color: #f6f6f6;
+  outline: none;
 }
 
 .viewBooking__unpaid {
@@ -1352,8 +1378,7 @@
     justify-content: center;
   }
 
-  .viewBooking__actions
-    .home__action:not(.home__actionDisabled) {
+  .viewBooking__actions .home__action:not(.home__actionDisabled) {
     box-shadow: var(--main-shadow);
   }
 

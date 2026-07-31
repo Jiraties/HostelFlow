@@ -72,11 +72,15 @@ export const formatDisplayDate = (
 export const formatDisplayDateTime = (
   date: string | Date,
   dateFormat: DateFormatPreference = "dd/MM/yyyy",
+  options?: { includeYear?: boolean },
 ) =>
-  `${toDate(date).toLocaleTimeString("en-GB", {
+  `${formatDisplayTime(date)} - ${formatDisplayDate(date, dateFormat, options)}`;
+
+export const formatDisplayTime = (date: string | Date) =>
+  toDate(date).toLocaleTimeString("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
-  })} - ${formatDisplayDate(date, dateFormat)}`;
+  });
 
 export const dateFormatPlaceholder = (dateFormat: DateFormatPreference) =>
   dateFormat === "d MMM yyyy" ? "d mmm yyyy" : "dd/mm/yyyy";

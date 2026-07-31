@@ -42,6 +42,7 @@ const ManageRoomStays = ({
   initialRoomStays,
   bookingId,
   revision,
+  bookingStatus,
   canEditHistoricalRoomStays,
   checkIn,
   checkOut,
@@ -52,6 +53,7 @@ const ManageRoomStays = ({
   initialRoomStays: roomStay[];
   bookingId: string;
   revision: number;
+  bookingStatus: booking["status"];
   canEditHistoricalRoomStays: boolean;
   checkIn: string | Date;
   checkOut: string | Date;
@@ -68,6 +70,11 @@ const ManageRoomStays = ({
   const bookingCheckIn = normalizeDate(String(checkIn));
   const bookingCheckOut = normalizeDate(String(checkOut));
   const businessDate = bangkokDateKey();
+  const closedHistoryIsReadOnly =
+    bookingStatus === "checkedOut" && !canEditHistoricalRoomStays;
+  const requiresHistoricalCorrectionReason =
+    canEditHistoricalRoomStays &&
+    (bookingStatus === "checkedOut" || bookingCheckIn < businessDate);
   const restrictHistoricalStays =
     !canEditHistoricalRoomStays && bookingCheckIn < businessDate;
   const isHistoricalStay = useCallback(
@@ -134,6 +141,8 @@ const ManageRoomStays = ({
     Record<number, string[]>
   >({});
   const [submitting, setSubmitting] = useState(false);
+  const [historicalCorrectionReason, setHistoricalCorrectionReason] =
+    useState("");
 
   const roomStayAvailabilityKey = useMemo(
     () =>
@@ -150,11 +159,17 @@ const ManageRoomStays = ({
 
   useEffect(() => {
     onDirtyChange?.(
-      JSON.stringify(roomStays) !== JSON.stringify(initialManagedRoomStays),
+      JSON.stringify(roomStays) !== JSON.stringify(initialManagedRoomStays) ||
+        Boolean(historicalCorrectionReason.trim()),
     );
 
     return () => onDirtyChange?.(false);
-  }, [initialManagedRoomStays, onDirtyChange, roomStays]);
+  }, [
+    historicalCorrectionReason,
+    initialManagedRoomStays,
+    onDirtyChange,
+    roomStays,
+  ]);
 
   useEffect(() => {
     const boundedRoomStays = applyBookingBoundaries(roomStays);
@@ -163,6 +178,7 @@ const ManageRoomStays = ({
       from: stay.from,
       to: stay.to,
       valid:
+        !closedHistoryIsReadOnly &&
         !isHistoricalStay(stay) &&
         Boolean(stay.from && stay.to) &&
         new Date(stay.from) < new Date(stay.to),
@@ -245,6 +261,7 @@ const ManageRoomStays = ({
     roomStays,
     applyBookingBoundaries,
     isHistoricalStay,
+    closedHistoryIsReadOnly,
   ]);
 
   const roomOptionsByStay = useMemo(
@@ -291,6 +308,15 @@ const ManageRoomStays = ({
 
   const patchRoomStays = async () => {
     if (submitting) return;
+    if (closedHistoryIsReadOnly) {
+      throw new Error("การแก้ประวัติห้องหลัง Check-Out ทำได้เฉพาะ Admin");
+    }
+    if (
+      requiresHistoricalCorrectionReason &&
+      !historicalCorrectionReason.trim()
+    ) {
+      throw new Error("กรุณาระบุเหตุผลที่แก้ไขประวัติห้องพัก");
+    }
     const roomStaysWithBoundaries = applyBookingBoundaries(roomStays);
     const hasEmpty = roomStaysWithBoundaries.some(
       (stay) => !getRoomStayRoomIds(stay).length || !stay.from || !stay.to,
@@ -309,7 +335,11 @@ const ManageRoomStays = ({
     try {
       const response = await axios.patch(
         `${API_URL}/bookings/manageRoomStays/${bookingId}`,
-        { roomStays: roomStaysWithBoundaries, expectedRevision: revision },
+        {
+          roomStays: roomStaysWithBoundaries,
+          expectedRevision: revision,
+          historicalCorrectionReason: historicalCorrectionReason.trim(),
+        },
         { withCredentials: true },
       );
 
@@ -325,7 +355,16 @@ const ManageRoomStays = ({
     <div className="addBooking__wrapper">
       {onClose && <ModalCloseButton onClick={onClose} />}
       <div>
-        <h1 className="addBooking__title">จัดการช่วงการเข้าพัก</h1>
+        <h1 className="addBooking__title">
+          {bookingStatus === "checkedOut"
+            ? "แก้ไขประวัติห้องพัก"
+            : "จัดการช่วงการเข้าพัก"}
+        </h1>
+        {closedHistoryIsReadOnly && (
+          <p className="manageRoomStays__checkedInHint">
+            การแก้ประวัติห้องหลัง Check-Out ทำได้เฉพาะ Admin
+          </p>
+        )}
         {restrictHistoricalStays && (
           <p className="manageRoomStays__checkedInHint">
             คืนที่ผ่านมาแสดงด้วยเครื่องหมายล็อก
@@ -381,7 +420,11 @@ const ManageRoomStays = ({
                 classNamePrefix="rs"
                 options={roomOptionsByStay[index] || roomIdOptions}
                 placeholder="เช่น Veranda 1"
-                isDisabled={submitting || isHistoricalStay(roomStay)}
+                isDisabled={
+                  submitting ||
+                  closedHistoryIsReadOnly ||
+                  isHistoricalStay(roomStay)
+                }
                 value={(roomOptionsByStay[index] || roomIdOptions).filter(
                   (option) =>
                     getRoomStayRoomIds(roomStay).includes(option.value),
@@ -427,6 +470,7 @@ const ManageRoomStays = ({
                     isFirstStay(index) ? bookingCheckIn : roomStay.from || ""
                   }
                   disabled={
+                    closedHistoryIsReadOnly ||
                     isFirstStay(index) ||
                     isHistoricalStay(roomStay) ||
                     (restrictHistoricalStays &&
@@ -465,7 +509,9 @@ const ManageRoomStays = ({
                     isLastStay(index) ? bookingCheckOut : roomStay.to || ""
                   }
                   disabled={
-                    isLastStay(index) || isHistoricalStay(roomStay)
+                    closedHistoryIsReadOnly ||
+                    isLastStay(index) ||
+                    isHistoricalStay(roomStay)
                   }
                   min={restrictHistoricalStays ? businessDate : undefined}
                   onChange={(e) => {
@@ -497,12 +543,32 @@ const ManageRoomStays = ({
           </div>
         ))}
       </div>
+      {requiresHistoricalCorrectionReason && (
+        <label className="manageRoomStays__historyReason">
+          <span className="addBooking__label">เหตุผลที่แก้ประวัติห้องพัก</span>
+          <textarea
+            className="boxInput"
+            value={historicalCorrectionReason}
+            maxLength={500}
+            disabled={submitting}
+            placeholder="เช่น แขกย้ายจาก V1 ไป V2 ตั้งแต่คืนที่สอง"
+            onChange={(event) =>
+              setHistoricalCorrectionReason(event.target.value)
+            }
+          />
+          <small>ระบบจะบันทึกเหตุผลพร้อมข้อมูลก่อนและหลังแก้ไข</small>
+        </label>
+      )}
       <div className="viewBooking__actions">
         <div className="viewBooking__actionsLeft">
           <ActionButton
             text="เพิ่มช่วงพัก"
             icon="bx-plus"
-            disabled={submitting || !canEditCurrentOrFuture}
+            disabled={
+              submitting ||
+              closedHistoryIsReadOnly ||
+              !canEditCurrentOrFuture
+            }
             onClick={() => addEmptyRoomStay()}
           />
 
@@ -510,7 +576,7 @@ const ManageRoomStays = ({
             <ActionButton
               text="ลดช่วงพัก"
               icon="bx-minus"
-              disabled={submitting}
+              disabled={submitting || closedHistoryIsReadOnly}
               onClick={() => removeRoomStay()}
             />
           )}
@@ -520,7 +586,13 @@ const ManageRoomStays = ({
           text="แก้ไข"
           icon="bx-edit"
           highlight
-          disabled={submitting || !canEditCurrentOrFuture}
+          disabled={
+            submitting ||
+            closedHistoryIsReadOnly ||
+            !canEditCurrentOrFuture ||
+            (requiresHistoricalCorrectionReason &&
+              !historicalCorrectionReason.trim())
+          }
           onClick={() => {
             toast.promise(patchRoomStays(), {
               loading: "กำลังอัปเดตข้อมูล...",

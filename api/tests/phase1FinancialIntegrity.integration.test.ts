@@ -63,13 +63,13 @@ const request = (
     get: (name: string) => (name === "Idempotency-Key" ? key : undefined),
   }) as any;
 
-const businessDateKey = () => {
+const businessDateKey = (date = new Date()) => {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Bangkok",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).formatToParts(new Date());
+  }).formatToParts(date);
   const value = (type: Intl.DateTimeFormatPartTypes) =>
     parts.find((part) => part.type === type)?.value;
   return `${value("year")}-${value("month")}-${value("day")}`;
@@ -292,6 +292,61 @@ test("cash position is operating-only while audit preserves legacy deposit figur
   assert.equal(auditResponse.statusCode, 200);
   assert.equal(auditResponse.body.shifts[0].legacyDeposit.actualCash, 250);
   assert.equal("depositActualCash" in auditResponse.body.shifts[0], false);
+});
+
+test("today's open cash shift is operating and does not create an audit warning", async () => {
+  await CashShift.create({
+    businessDate: businessDateKey(),
+    shiftNumber: 1,
+    staffUsername: "test-admin",
+    status: "open",
+    openingMode: "counted",
+    operatingOpeningCash: 1000,
+    operatingExpectedCash: 1000,
+    createdBy: "test-admin",
+  });
+
+  const auditResponse = response();
+  await getCashShiftAudit(
+    {
+      ...request("/finance/cash-shift-audit", {}),
+      query: { date: businessDateKey() },
+    } as any,
+    auditResponse as any,
+  );
+
+  assert.equal(auditResponse.statusCode, 200);
+  assert.equal(auditResponse.body.shifts[0].auditStatus, "operating");
+  assert.deepEqual(auditResponse.body.shifts[0].warnings, []);
+});
+
+test("an open cash shift from a past business date still requires review", async () => {
+  const previousBusinessDate = businessDateKey(
+    new Date(Date.now() - 86400000),
+  );
+  await CashShift.create({
+    businessDate: previousBusinessDate,
+    shiftNumber: 1,
+    staffUsername: "test-admin",
+    status: "open",
+    openingMode: "counted",
+    operatingOpeningCash: 1000,
+    operatingExpectedCash: 1000,
+    createdBy: "test-admin",
+  });
+
+  const auditResponse = response();
+  await getCashShiftAudit(
+    {
+      ...request("/finance/cash-shift-audit", {}),
+      query: { date: previousBusinessDate },
+    } as any,
+    auditResponse as any,
+  );
+
+  assert.equal(auditResponse.statusCode, 200);
+  assert.equal(auditResponse.body.shifts[0].auditStatus, "needs_review");
+  assert.equal(auditResponse.body.shifts[0].warnings[0].code, "open_shift");
 });
 
 test("general transaction API rejects deposits before check-in and manual refunds", async () => {

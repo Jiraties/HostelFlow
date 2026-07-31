@@ -29,6 +29,13 @@ import {
   getCheckInCorrectionEligibility,
   previewCheckInCorrection,
 } from "../controller/checkInCorrections";
+import {
+  addAdditionalGuest,
+  getAdditionalGuests,
+  removeAdditionalGuest,
+  revealAdditionalGuest,
+  updateAdditionalGuest,
+} from "../controller/additionalGuests";
 
 const bookingsRouter = express.Router();
 
@@ -75,6 +82,31 @@ bookingsRouter.get(
   "/getPassportData/:bookingId",
   requirePassportAccess,
   getPassportData,
+);
+bookingsRouter.get(
+  "/:bookingId/additional-guests",
+  requirePassportAccess,
+  getAdditionalGuests,
+);
+bookingsRouter.get(
+  "/:bookingId/additional-guests/:guestId/passport",
+  requirePassportAccess,
+  revealAdditionalGuest,
+);
+bookingsRouter.post(
+  "/:bookingId/additional-guests",
+  requirePassportAccess,
+  addAdditionalGuest,
+);
+bookingsRouter.patch(
+  "/:bookingId/additional-guests/:guestId",
+  requirePassportAccess,
+  updateAdditionalGuest,
+);
+bookingsRouter.delete(
+  "/:bookingId/additional-guests/:guestId",
+  requirePassportAccess,
+  removeAdditionalGuest,
 );
 
 export default bookingsRouter;

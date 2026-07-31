@@ -8,6 +8,7 @@ const booking_1 = require("../controller/booking");
 const passportAuthorization_1 = require("../middleware/passportAuthorization");
 const transactionCorrections_1 = require("../controller/transactionCorrections");
 const checkInCorrections_1 = require("../controller/checkInCorrections");
+const additionalGuests_1 = require("../controller/additionalGuests");
 const bookingsRouter = express_1.default.Router();
 bookingsRouter.post("/newBooking", booking_1.newBooking);
 bookingsRouter.post("/:bookingId/extensions", booking_1.extendBooking);
@@ -34,5 +35,10 @@ bookingsRouter.patch("/resolveBooking/:bookingId", booking_1.resolveBooking);
 bookingsRouter.get("/getMonthCalendar", booking_1.getMonthCalendar);
 bookingsRouter.get("/getBookingById/:bookingId", booking_1.getBookingById);
 bookingsRouter.get("/getPassportData/:bookingId", passportAuthorization_1.requirePassportAccess, booking_1.getPassportData);
+bookingsRouter.get("/:bookingId/additional-guests", passportAuthorization_1.requirePassportAccess, additionalGuests_1.getAdditionalGuests);
+bookingsRouter.get("/:bookingId/additional-guests/:guestId/passport", passportAuthorization_1.requirePassportAccess, additionalGuests_1.revealAdditionalGuest);
+bookingsRouter.post("/:bookingId/additional-guests", passportAuthorization_1.requirePassportAccess, additionalGuests_1.addAdditionalGuest);
+bookingsRouter.patch("/:bookingId/additional-guests/:guestId", passportAuthorization_1.requirePassportAccess, additionalGuests_1.updateAdditionalGuest);
+bookingsRouter.delete("/:bookingId/additional-guests/:guestId", passportAuthorization_1.requirePassportAccess, additionalGuests_1.removeAdditionalGuest);
 exports.default = bookingsRouter;
 //# sourceMappingURL=bookings.js.map

@@ -690,6 +690,8 @@ const formatCashAuditAmount = (amount: number) =>
 const getCashShiftAuditForDate = async (businessDate?: string) => {
   const bounds = getBusinessDayBoundsFromKey(businessDate);
   if (!bounds) return null;
+  const isCurrentBusinessDate =
+    bounds.businessDate === formatBusinessDateKey(new Date());
 
   const shifts = await CashShift.find({
     businessDate: bounds.businessDate,
@@ -762,7 +764,9 @@ const getCashShiftAuditForDate = async (businessDate?: string) => {
           message: `เงินดำเนินงานต่าง ${formatCashAuditAmount(operatingVariance)} บาท`,
         });
       }
-      if (shift.status === "open") {
+      const isOperating =
+        shift.status === "open" && isCurrentBusinessDate;
+      if (shift.status === "open" && !isOperating) {
         warnings.push({
           code: "open_shift",
           severity: "warning",
@@ -827,6 +831,11 @@ const getCashShiftAuditForDate = async (businessDate?: string) => {
 
       return {
         ...cashShiftAuditView(shift),
+        auditStatus: warnings.length
+          ? "needs_review"
+          : isOperating
+            ? "operating"
+            : "complete",
         warnings,
         auditResolution: shift.auditResolution,
         flaggedTransactions,

@@ -12,6 +12,7 @@ import CashShift from "../src/models/cashShift";
 import DailyClose from "../src/models/dailyClose";
 import User from "../src/models/user";
 import { verifyRestoredData } from "../src/services/restoreVerification";
+import * as additionalGuests from "../src/controller/additionalGuests";
 
 type DocumentsController = typeof import("../src/controller/documents");
 
@@ -242,6 +243,277 @@ test("TM30 status and export exclude Thai nationals", async () => {
   assert.ok(sheet);
   assert.equal(sheet.getRow(2).getCell(1).value, "ALICE");
   assert.equal(sheet.getRow(3).getCell(1).value, null);
+});
+
+test("additional guest passports support encrypted CRUD with revision and audit controls", async () => {
+  await Booking.create(reportBooking("MULTI-GUEST", "Primary Guest", "LAO"));
+
+  const added = jsonResponse();
+  await additionalGuests.addAdditionalGuest(
+    {
+      params: { bookingId: "MULTI-GUEST" },
+      body: {
+        expectedRevision: 1,
+        passportData: {
+          namePrefix: "Mr",
+          nationality: "GB",
+          passportNo: "EXTRA-123",
+          passportName: "EXTRA GUEST",
+        },
+      },
+      user: { username: "admin" },
+    } as any,
+    added,
+  );
+  assert.equal(added.statusCode, 201, JSON.stringify(added.body));
+  assert.equal(added.body.revision, 2);
+  assert.ok(added.body.guest.guestId);
+
+  const stored = await Booking.findOne({ bookingId: "MULTI-GUEST" })
+    .select(
+      "+additionalGuests.identityDocument.passportHash +additionalGuests.identityDocument.passportNo.cipherText",
+    )
+    .lean();
+  assert.ok(stored?.additionalGuests[0].identityDocument?.passportHash);
+  assert.ok(
+    stored?.additionalGuests[0].identityDocument?.passportNo?.cipherText,
+  );
+  assert.equal(JSON.stringify(stored).includes("EXTRA-123"), false);
+
+  const revealed = jsonResponse();
+  await additionalGuests.revealAdditionalGuest(
+    {
+      params: {
+        bookingId: "MULTI-GUEST",
+        guestId: added.body.guest.guestId,
+      },
+      user: { username: "admin" },
+    } as any,
+    revealed,
+  );
+  assert.equal(revealed.statusCode, 200, JSON.stringify(revealed.body));
+  assert.equal(revealed.body.passportData.passportNo, "EXTRA-123");
+  assert.equal(revealed.headers["cache-control"], "no-store");
+
+  const duplicate = jsonResponse();
+  await additionalGuests.addAdditionalGuest(
+    {
+      params: { bookingId: "MULTI-GUEST" },
+      body: {
+        expectedRevision: 2,
+        passportData: {
+          namePrefix: "Mr",
+          nationality: "GB",
+          passportNo: "EXTRA-123",
+          passportName: "DUPLICATE GUEST",
+        },
+      },
+      user: { username: "admin" },
+    } as any,
+    duplicate,
+  );
+  assert.equal(duplicate.statusCode, 409);
+  assert.equal(duplicate.body.error, "DUPLICATE_PASSPORT");
+
+  const removed = jsonResponse();
+  await additionalGuests.removeAdditionalGuest(
+    {
+      params: {
+        bookingId: "MULTI-GUEST",
+        guestId: added.body.guest.guestId,
+      },
+      body: { expectedRevision: 2, reason: "Attached to wrong booking" },
+      user: { username: "admin" },
+    } as any,
+    removed,
+  );
+  assert.equal(removed.statusCode, 200, JSON.stringify(removed.body));
+  assert.equal(removed.body.revision, 3);
+  assert.equal(
+    await Activity.countDocuments({
+      bookingId: "MULTI-GUEST",
+      action: {
+        $in: [
+          "ADD_GUEST_PASSPORT",
+          "VIEW_PASSPORT",
+          "REMOVE_GUEST_PASSPORT",
+        ],
+      },
+    }),
+    3,
+  );
+});
+
+test("TM30 expands foreign additional guests while hotel report stays primary-only", async () => {
+  const booking = reportBooking(
+    "MIXED-GUESTS",
+    "สมชาย ใจดี",
+    "THA",
+    "TH",
+  );
+  booking.passport.namePrefix = "นาย";
+  booking.passport.passportNo = encrypt("1234567890123");
+  booking.passport.passportName = encrypt("สมชาย ใจดี");
+  await Booking.create({
+    ...booking,
+    additionalGuests: [
+      {
+        identityDocument: {
+          passportHash: crypto
+            .createHash("sha256")
+            .update("FOREIGN-ONE")
+            .digest("hex"),
+          namePrefix: "Ms",
+          nationality: "US",
+          passportNo: encrypt("FOREIGN-ONE"),
+          passportName: encrypt("ALICE EXAMPLE"),
+        },
+        createdBy: "admin",
+      },
+      {
+        identityDocument: {
+          passportHash: crypto
+            .createHash("sha256")
+            .update("FOREIGN-TWO")
+            .digest("hex"),
+          namePrefix: "Mr",
+          nationality: "GB",
+          passportNo: encrypt("FOREIGN-TWO"),
+          passportName: encrypt("BOB EXAMPLE"),
+        },
+        createdBy: "admin",
+      },
+    ],
+  });
+
+  const status = jsonResponse();
+  await documents.getImmigrationReportStatus(
+    { query: { date: "2026-07-14" }, user: { username: "admin" } } as any,
+    status,
+  );
+  assert.equal(status.statusCode, 200);
+  assert.equal(status.body.total, 2);
+  assert.equal(status.body.complete, 2);
+  assert.equal(status.body.missing, 0);
+
+  const immigration = binaryResponse();
+  const immigrationChunks: Buffer[] = [];
+  immigration.on("data", (chunk) =>
+    immigrationChunks.push(Buffer.from(chunk)),
+  );
+  await documents.getImmigrationReport(
+    { query: { date: "2026-07-14" }, user: { username: "admin" } } as any,
+    immigration as any,
+  );
+  assert.equal(immigration.statusCode, 200, JSON.stringify(immigration.body));
+  const immigrationWorkbook = new ExcelJs.Workbook();
+  await immigrationWorkbook.xlsx.load(
+    Buffer.concat(immigrationChunks) as any,
+  );
+  const immigrationSheet = immigrationWorkbook.getWorksheet(
+    "แบบแจ้งที่พัก Inform Accom",
+  );
+  assert.equal(immigrationSheet?.getRow(2).getCell(1).value, "ALICE");
+  assert.equal(immigrationSheet?.getRow(3).getCell(1).value, "BOB");
+  assert.equal(immigrationSheet?.getRow(4).getCell(1).value, null);
+
+  const hotel = binaryResponse();
+  const hotelChunks: Buffer[] = [];
+  hotel.on("data", (chunk) => hotelChunks.push(Buffer.from(chunk)));
+  await documents.getHotelAccomodationReport(
+    { query: { date: "2026-07-14" }, user: { username: "admin" } } as any,
+    hotel as any,
+  );
+  assert.equal(hotel.statusCode, 200, JSON.stringify(hotel.body));
+  const hotelWorkbook = new ExcelJs.Workbook();
+  await hotelWorkbook.xlsx.load(Buffer.concat(hotelChunks) as any);
+  const hotelSheet =
+    hotelWorkbook.getWorksheet("Sheet1") || hotelWorkbook.worksheets[0];
+  assert.equal(hotelSheet.getRow(5).getCell(6).value, "สมชาย");
+  assert.equal(hotelSheet.getRow(6).getCell(1).value, null);
+});
+
+test("passport report alerts use the actual arrival date and exclude guests who never checked in", async () => {
+  const lateArrival = reportBooking(
+    "LATE-ARRIVAL",
+    "Late Arrival",
+    "LAO",
+    "US",
+  );
+  lateArrival.checkIn = new Date("2026-07-13T00:00:00+07:00");
+  lateArrival.roomStays[0].from = lateArrival.checkIn;
+  delete (lateArrival.passport as Partial<typeof lateArrival.passport>)
+    .passportNo;
+
+  const notCheckedIn = reportBooking(
+    "NOT-CHECKED-IN",
+    "Not Checked In",
+    "LAO",
+    "US",
+  );
+  notCheckedIn.status = "booked";
+  delete (notCheckedIn as Partial<typeof notCheckedIn>).checkedInAt;
+  delete (notCheckedIn as Partial<typeof notCheckedIn>).passport;
+
+  const noShow = reportBooking("NO-SHOW", "No Show", "LAO", "US");
+  noShow.status = "noShow";
+  delete (noShow as Partial<typeof noShow>).checkedInAt;
+  delete (noShow as Partial<typeof noShow>).passport;
+
+  await Booking.create([lateArrival, notCheckedIn, noShow]);
+
+  const immigrationStatus = jsonResponse();
+  await documents.getImmigrationReportStatus(
+    { query: { date: "2026-07-14" }, user: { username: "admin" } } as any,
+    immigrationStatus,
+  );
+  assert.equal(immigrationStatus.statusCode, 200);
+  assert.equal(immigrationStatus.body.total, 1);
+  assert.equal(immigrationStatus.body.missing, 1);
+  assert.equal(
+    immigrationStatus.body.missingBookings[0].bookingId,
+    "LATE-ARRIVAL",
+  );
+
+  const hotelStatus = jsonResponse();
+  await documents.getHotelAccomodationReportStatus(
+    { query: { date: "2026-07-14" }, user: { username: "admin" } } as any,
+    hotelStatus,
+  );
+  assert.equal(hotelStatus.statusCode, 200);
+  assert.equal(hotelStatus.body.total, 1);
+  assert.equal(hotelStatus.body.missing, 1);
+  assert.equal(hotelStatus.body.missingBookings[0].bookingId, "LATE-ARRIVAL");
+});
+
+test("passport report alerts retain the scheduled-date fallback for legacy completed stays", async () => {
+  const legacyBooking = reportBooking(
+    "LEGACY-ARRIVAL",
+    "Legacy Arrival",
+    "LAO",
+    "US",
+  );
+  legacyBooking.status = "checkedOut";
+  delete (legacyBooking as Partial<typeof legacyBooking>).checkedInAt;
+  delete (legacyBooking.passport as Partial<typeof legacyBooking.passport>)
+    .passportName;
+  await Booking.create(legacyBooking);
+
+  const immigrationStatus = jsonResponse();
+  await documents.getImmigrationReportStatus(
+    { query: { date: "2026-07-14" }, user: { username: "admin" } } as any,
+    immigrationStatus,
+  );
+  assert.equal(immigrationStatus.body.total, 1);
+  assert.equal(immigrationStatus.body.missing, 1);
+
+  const hotelStatus = jsonResponse();
+  await documents.getHotelAccomodationReportStatus(
+    { query: { date: "2026-07-14" }, user: { username: "admin" } } as any,
+    hotelStatus,
+  );
+  assert.equal(hotelStatus.body.total, 1);
+  assert.equal(hotelStatus.body.missing, 1);
 });
 
 test("hotel export leaves missing destination blank and rejects report-time overrides", async () => {

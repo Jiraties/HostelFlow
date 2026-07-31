@@ -8,11 +8,10 @@ import ManageRoomStays from "./ManageRoomStays.tsx";
 import AddTransaction from "./AddTransaction.tsx";
 import AddBooking from "./AddBooking.tsx";
 import PassportView from "./PassportView.tsx";
+import AdditionalGuestsPassport from "./AdditionalGuestsPassport.tsx";
 import CheckIn from "./CheckIn.tsx";
 import CheckOut from "./CheckOut.tsx";
-import ResolveBooking, {
-  type ResolveVariant,
-} from "./ResolveBooking.tsx";
+import ResolveBooking, { type ResolveVariant } from "./ResolveBooking.tsx";
 import ExtendBooking from "./ExtendBooking.tsx";
 import CorrectTransaction from "./CorrectTransaction.tsx";
 import TransactionCorrectionHistory from "./TransactionCorrectionHistory.tsx";
@@ -42,6 +41,7 @@ import { useAuth } from "../../context/AuthContext.tsx";
 import {
   formatDisplayDate,
   formatDisplayDateTime,
+  formatDisplayTime,
 } from "../../helpers/displayDate.ts";
 
 import type { booking } from "../../types/bookingTypes";
@@ -556,6 +556,18 @@ const ViewBooking = ({
     Boolean(data.checkedInAt) ||
     data.status === "checkedIn" ||
     data.status === "checkedOut";
+  const actualCheckOutAt =
+    data.checkout?.checkedOutAt ||
+    (data.status === "checkedOut" &&
+    data.resolution?.finalStatus === "checkedOut"
+      ? data.resolution.resolvedAt
+      : undefined);
+  const checkInWasOnDifferentDate = Boolean(
+    data.checkedInAt && !isSameDay(new Date(data.checkedInAt), checkInDate),
+  );
+  const checkOutWasOnDifferentDate = Boolean(
+    actualCheckOutAt && !isSameDay(new Date(actualCheckOutAt), checkOutDate),
+  );
 
   const statusDeterminer = (status: string, usedFor: string) => {
     const checkInIsToday = isSameDay(today, checkInDate);
@@ -1464,6 +1476,7 @@ const ViewBooking = ({
           initialRoomStays={data.roomStays}
           bookingId={data.bookingId}
           revision={data.revision}
+          bookingStatus={data.status}
           canEditHistoricalRoomStays={user?.admin === true}
           checkIn={data.checkIn}
           checkOut={data.checkOut}
@@ -1690,15 +1703,41 @@ const ViewBooking = ({
             </div>
             <div className="viewBooking__item">
               <span className="viewBooking__label">Check-In: </span>
-              <p className="viewBooking__infoText">
-                {formatDisplayDate(data.checkIn, dateFormat)}{" "}
+              <p className="viewBooking__infoText viewBooking__infoText--withActual">
+                <span>{formatDisplayDate(data.checkIn, dateFormat)}</span>
                 <span className="viewBooking__nights">{data.nights} คืน</span>
+                {data.checkedInAt && checkInWasOnDifferentDate && (
+                  <Tooltip
+                    className="viewBooking__actualTime viewBooking__actualTime--checkIn viewBooking__actualTime--late"
+                    ariaLabel="วันที่ Check-In จริงไม่ตรงกับวันที่จอง"
+                    content="วันที่และเวลา Late Check-In"
+                  >
+                    <i className="bx bx-arrow-to-left" />{" "}
+                    {formatDisplayTime(data.checkedInAt)}
+                    {` · ${formatDisplayDate(data.checkedInAt, dateFormat, {
+                      includeYear: false,
+                    })}`}
+                  </Tooltip>
+                )}
               </p>
             </div>
             <div className="viewBooking__item">
-              <span className="viewBooking__label">Check-Out </span>
-              <p className="viewBooking__infoText">
-                {formatDisplayDate(data.checkOut, dateFormat)}
+              <span className="viewBooking__label">Check-Out: </span>
+              <p className="viewBooking__infoText viewBooking__infoText--withActual">
+                <span>{formatDisplayDate(data.checkOut, dateFormat)}</span>
+                {actualCheckOutAt && checkOutWasOnDifferentDate && (
+                  <Tooltip
+                    className="viewBooking__actualTime viewBooking__actualTime--checkOut viewBooking__actualTime--late"
+                    ariaLabel="วันที่ Check-Out จริงไม่ตรงกับวันที่จอง"
+                    content="วันที่และเวลา Late Check-Out"
+                  >
+                    <i className="bx bx-arrow-from-left" />{" "}
+                    {formatDisplayTime(actualCheckOutAt)}
+                    {` · ${formatDisplayDate(actualCheckOutAt, dateFormat, {
+                      includeYear: false,
+                    })}`}
+                  </Tooltip>
+                )}
               </p>
             </div>
 
@@ -1717,22 +1756,34 @@ const ViewBooking = ({
             </div>
 
             {hasCheckedIn && (
-              <PassportView
-                key={`${data.bookingId}-${data.revision}`}
-                bookingId={data.bookingId}
-                correctionDisabled={
-                  checkInCorrectionEligibility.loading ||
-                  !checkInCorrectionEligibility.allowed
-                }
-                correctionDisabledReason={
-                  checkInCorrectionEligibility.loading
-                    ? "กำลังตรวจสอบสิทธิ์..."
-                    : checkInCorrectionEligibility.message || undefined
-                }
-                onCorrectPassport={() => {
-                  void openCheckInCorrection("replace_passport");
-                }}
-              />
+              <>
+                <PassportView
+                  key={`${data.bookingId}-${data.revision}`}
+                  bookingId={data.bookingId}
+                  correctionDisabled={
+                    checkInCorrectionEligibility.loading ||
+                    !checkInCorrectionEligibility.allowed
+                  }
+                  correctionDisabledReason={
+                    checkInCorrectionEligibility.loading
+                      ? "กำลังตรวจสอบสิทธิ์..."
+                      : checkInCorrectionEligibility.message || undefined
+                  }
+                  onCorrectPassport={() => {
+                    void openCheckInCorrection("replace_passport");
+                  }}
+                />
+                <AdditionalGuestsPassport
+                  bookingId={data.bookingId}
+                  revision={data.revision}
+                  primaryNationality={data.passport?.nationality}
+                  onRevisionChange={(revision) => {
+                    const updatedBooking = { ...data, revision };
+                    setData(updatedBooking);
+                    onUpdated?.(updatedBooking);
+                  }}
+                />
+              </>
             )}
           </div>
           <div className="viewBooking__mainRight">
@@ -1904,13 +1955,38 @@ const ViewBooking = ({
                   </div>
                 </div>
               ))}
-              <div
-                className="viewBooking__addTransaction"
-                onClick={() => setManageRoomStaysIsOpen(true)}
-              >
-                <i className="bx bx-edit-alt" />
-                <p>จัดการช่วงการเข้าพัก</p>
-              </div>
+              {!data.voided &&
+                (data.status === "booked" ||
+                  data.status === "checkedIn" ||
+                  (data.status === "checkedOut" && user?.admin)) && (
+                  <div
+                    className="viewBooking__addTransaction"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setManageRoomStaysIsOpen(true)}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" && event.key !== " ") return;
+                      event.preventDefault();
+                      setManageRoomStaysIsOpen(true);
+                    }}
+                  >
+                    <i
+                      className={
+                        data.status === "checkedOut"
+                          ? "bx bx-history"
+                          : "bx bx-edit-alt"
+                      }
+                    />
+                    <p>
+                      {data.status === "checkedOut"
+                        ? "แก้ไขประวัติห้องพัก"
+                        : "จัดการช่วงการเข้าพัก"}
+                    </p>
+                    {data.status === "checkedOut" && (
+                      <span className="viewBooking__adminTag">Admin</span>
+                    )}
+                  </div>
+                )}
             </div>
           </div>
         </div>
