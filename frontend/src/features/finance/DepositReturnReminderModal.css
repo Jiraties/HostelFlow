@@ -336,6 +336,31 @@
   gap: 0.7rem;
 }
 
+.depositReminder__finalAcknowledgement {
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  cursor: pointer;
+}
+
+.depositReminder__finalAcknowledgement > i {
+  color: #f4a900;
+}
+
+.depositReminder__finalAcknowledgement strong {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.depositReminder__finalAcknowledgement input {
+  width: 1.2rem;
+  height: 1.2rem;
+  margin: 0 0 0 auto;
+  flex: 0 0 auto;
+  accent-color: var(--primary-color);
+  cursor: pointer;
+}
+
 @media (max-width: 760px) {
   .depositReminder {
     width: calc(100vw - 1.5rem);

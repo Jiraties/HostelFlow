@@ -1,7 +1,9 @@
 import { Request, Response } from "express";
+import crypto from "crypto";
 import mongoose, { type ClientSession } from "mongoose";
 import Booking from "../models/booking";
 import CashShift from "../models/cashShift";
+import CashShiftReopenCorrection from "../models/cashShiftReopenCorrection";
 import DailyClose from "../models/dailyClose";
 import User from "../models/user";
 import StandaloneSale from "../models/standaloneSale";
@@ -12,7 +14,7 @@ import type {
   transcation,
   TransactionType,
 } from "../models/booking";
-import { logActivity } from "../services/activityServices";
+import { logActivity, logActivityStrict } from "../services/activityServices";
 import {
   CASH_VARIANCE_THRESHOLD,
   bookingTransactionTodayReductionAmount,
@@ -57,6 +59,23 @@ const sendDuplicateMutationResponse = (res: Response) =>
 
 const BUSINESS_TIME_ZONE = "Asia/Bangkok";
 const BANGKOK_UTC_OFFSET_HOURS = 7;
+const CASH_SHIFT_REOPEN_ENABLED =
+  process.env.CASH_SHIFT_REOPEN_ENABLED !== "false";
+
+const stableStringify = (value: unknown): string => {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  return `{${Object.keys(value as Record<string, unknown>)
+    .sort()
+    .map(
+      (key) =>
+        `${JSON.stringify(key)}:${stableStringify((value as Record<string, unknown>)[key])}`,
+    )
+    .join(",")}}`;
+};
+
+const sha256 = (value: string) =>
+  crypto.createHash("sha256").update(value).digest("hex");
 
 const expectedStayRevenueTransactionMeta: Partial<
   Record<TransactionType, { label: string; color: string; icon: string }>
@@ -467,14 +486,22 @@ const getShiftTransactions = async (
   );
 };
 
-const getUnassignedCashTransactionsBetween = async (start: Date, end: Date) => {
+const getUnassignedCashTransactionsBetween = async (
+  start: Date,
+  end: Date,
+  session?: ClientSession,
+) => {
   const [bookings, standaloneSales] = await Promise.all([
     Booking.find({
       "transactions.createdAt": { $gte: start, $lt: end },
-    }).lean<booking[]>(),
+    })
+      .session(session || null)
+      .lean<booking[]>(),
     StandaloneSale.find({
       "transactions.createdAt": { $gte: start, $lt: end },
-    }).lean(),
+    })
+      .session(session || null)
+      .lean(),
   ]);
 
   return [
@@ -562,12 +589,17 @@ const cashShiftAuditView = (shift: any) => {
 };
 
 const attachCashShiftStaffProfiles = async <
-  T extends { staffUsername?: string },
+  T extends { staffUsername?: string; closedBy?: string },
 >(
   cashShifts: T[],
 ) => {
   const usernames = [
-    ...new Set(cashShifts.map((cashShift) => cashShift.staffUsername)),
+    ...new Set(
+      cashShifts.flatMap((cashShift) => [
+        cashShift.staffUsername,
+        cashShift.closedBy,
+      ]),
+    ),
   ].filter((username): username is string => Boolean(username));
 
   const users = await User.find({ username: { $in: usernames } })
@@ -579,6 +611,9 @@ const attachCashShiftStaffProfiles = async <
     const staff = cashShift.staffUsername
       ? usersByUsername.get(cashShift.staffUsername)
       : undefined;
+    const closedBy = cashShift.closedBy
+      ? usersByUsername.get(cashShift.closedBy)
+      : undefined;
 
     return {
       ...cashShift,
@@ -589,11 +624,21 @@ const attachCashShiftStaffProfiles = async <
             profilePictureUrl: staff.profilePictureUrl,
           }
         : undefined,
+      closedBy: cashShift.closedBy
+        ? {
+            username: cashShift.closedBy,
+            name: closedBy?.name,
+            profilePictureUrl: closedBy?.profilePictureUrl,
+          }
+        : undefined,
     };
   });
 };
 
-const getCashPositionForDate = async (businessDate?: string) => {
+const getCashPositionForDate = async (
+  businessDate?: string,
+  viewer?: { username?: string; admin?: boolean },
+) => {
   const bounds = getBusinessDayBoundsFromKey(businessDate);
   if (!bounds) return null;
 
@@ -630,6 +675,50 @@ const getCashPositionForDate = async (businessDate?: string) => {
     : (enrichedPreviousShift?.operatingActualCash || 0) +
       unassignedMovements.operatingCashIn -
       unassignedMovements.operatingCashOut;
+  const latestShift = shifts[shifts.length - 1];
+  const finalShift = previousShift?.isFinalDayClose ? previousShift : null;
+  const finalShiftView = finalShift
+    ? enrichedShifts.find(
+        (shift) => String((shift as any)._id) === String(finalShift._id),
+      )
+    : null;
+  const isCurrentBusinessDate =
+    bounds.businessDate === formatBusinessDateKey(new Date());
+  const hasUnassignedOperatingCash =
+    Math.abs(unassignedMovements.operatingCashIn) > 0 ||
+    Math.abs(unassignedMovements.operatingCashOut) > 0;
+  const permissionAllowed = Boolean(
+    finalShift &&
+      viewer?.username &&
+      (viewer.admin || finalShift.closedBy === viewer.username),
+  );
+  const recoveryDenial = !finalShift
+    ? null
+    : !CASH_SHIFT_REOPEN_ENABLED
+      ? {
+          code: "FEATURE_DISABLED",
+          message: "การเปิดกะอีกครั้งถูกปิดใช้งานชั่วคราว",
+        }
+      : !isCurrentBusinessDate
+      ? {
+          code: "PAST_BUSINESS_DATE",
+          message: "เปิดกะได้เฉพาะวันทำการกรุงเทพปัจจุบัน",
+        }
+      : activeShift
+        ? { code: "OPEN_SHIFT_EXISTS", message: "มีกะเงินสดเปิดอยู่แล้ว" }
+        : String(latestShift?._id) !== String(finalShift._id)
+          ? { code: "NOT_LATEST_SHIFT", message: "กะนี้ไม่ใช่กะล่าสุดของวัน" }
+          : hasUnassignedOperatingCash
+            ? {
+                code: "UNASSIGNED_CASH_ACTIVITY",
+                message: "พบรายการเงินสดนอกกะหลังปิดยอด กรุณาตรวจสอบก่อน",
+              }
+            : !permissionAllowed
+              ? {
+                  code: "FORBIDDEN",
+                  message: "เฉพาะผู้ปิดกะเดิมหรือเจ้าของเท่านั้นที่เปิดกะได้",
+                }
+              : null;
 
   return {
     businessDate: bounds.businessDate,
@@ -657,6 +746,25 @@ const getCashPositionForDate = async (businessDate?: string) => {
       fromShiftNumber: enrichedPreviousShift?.shiftNumber,
     },
     shifts: enrichedShifts.map(operatingCashShiftView),
+    finalCloseRecovery:
+      finalShift && finalShiftView
+        ? {
+            eligible: !recoveryDenial,
+            shiftId: String(finalShift._id),
+            businessDate: finalShift.businessDate,
+            shiftNumber: finalShift.shiftNumber,
+            ledgerRevision: finalShift.ledgerRevision || 0,
+            shiftOwner: (finalShiftView as any).staff,
+            originalCloser: (finalShiftView as any).closedBy,
+            originalClose: {
+              endedAt: finalShift.endedAt,
+              operatingExpectedCash: finalShiftView.operatingExpectedCash,
+              operatingActualCash: finalShift.operatingActualCash,
+              operatingVariance: finalShift.operatingVariance,
+            },
+            denialReason: recoveryDenial || undefined,
+          }
+        : null,
   };
 };
 
@@ -687,6 +795,19 @@ type OperatingCashMovements = Pick<
 const formatCashAuditAmount = (amount: number) =>
   new Intl.NumberFormat("th-TH", { maximumFractionDigits: 2 }).format(amount);
 
+const cashShiftReopenCorrectionView = (correction: any) => ({
+  correctionId: correction.correctionId,
+  shiftId: correction.shiftId,
+  businessDate: correction.businessDate,
+  shiftNumber: correction.shiftNumber,
+  originalClose: correction.originalClose,
+  reopenedAt: correction.reopenedAt,
+  reopenedBy: correction.reopenedBy,
+  reason: correction.reason,
+  originalLedgerRevision: correction.originalLedgerRevision,
+  resultingLedgerRevision: correction.resultingLedgerRevision,
+});
+
 const getCashShiftAuditForDate = async (businessDate?: string) => {
   const bounds = getBusinessDayBoundsFromKey(businessDate);
   if (!bounds) return null;
@@ -698,6 +819,11 @@ const getCashShiftAuditForDate = async (businessDate?: string) => {
   }).sort({
     shiftNumber: 1,
   });
+  const reopenCorrections = await CashShiftReopenCorrection.find({
+    businessDate: bounds.businessDate,
+  })
+    .sort({ reopenedAt: 1 })
+    .lean();
   const enrichedShifts = await attachCashShiftStaffProfiles(
     await Promise.all(shifts.map(enrichCashShift)),
   );
@@ -831,6 +957,9 @@ const getCashShiftAuditForDate = async (businessDate?: string) => {
 
       return {
         ...cashShiftAuditView(shift),
+        reopenCorrections: reopenCorrections
+          .filter((correction) => correction.shiftId === String(shift._id))
+          .map(cashShiftReopenCorrectionView),
         auditStatus: warnings.length
           ? "needs_review"
           : isOperating
@@ -1547,6 +1676,7 @@ export const getCashPosition = async (req: Request, res: Response) => {
   try {
     const cashPosition = await getCashPositionForDate(
       req.query.date as string | undefined,
+      { username: req.user?.username, admin: req.user?.admin },
     );
 
     if (!cashPosition) {
@@ -1778,6 +1908,339 @@ export const startCashShift = async (req: Request, res: Response) => {
     }
 
     res.status(500).json({ error: (err as Error).message });
+  }
+};
+
+class CashShiftReopenValidationError extends Error {
+  constructor(
+    readonly status: 400 | 403 | 404 | 409,
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "CashShiftReopenValidationError";
+  }
+}
+
+const cashShiftReopenResponse = (correction: any) => ({
+  correction: cashShiftReopenCorrectionView(correction),
+  cashShift: {
+    _id: correction.shiftId,
+    status: "open" as const,
+    ledgerRevision: correction.resultingLedgerRevision,
+  },
+});
+
+const findReopenByOperationKey = (operationKeyHash: string) =>
+  CashShiftReopenCorrection.findOne({ operationKeyHash })
+    .select("+operationKeyHash +requestHash")
+    .lean();
+
+export const reopenFinalCashShift = async (req: Request, res: Response) => {
+  try {
+    if (!CASH_SHIFT_REOPEN_ENABLED) {
+      return res.status(404).json({
+        error: "CASH_SHIFT_REOPEN_DISABLED",
+        message: "การเปิดกะอีกครั้งถูกปิดใช้งานชั่วคราว",
+      });
+    }
+    const username = req.user?.username;
+    if (!username) {
+      return res.status(401).json({ message: "กรุณาเข้าสู่ระบบใหม่" });
+    }
+
+    const reason = String(req.body.reason || "").trim();
+    const expectedLedgerRevision = Number(req.body.expectedLedgerRevision);
+    const idempotencyKey = req.get("Idempotency-Key")?.trim();
+    if (!Number.isInteger(expectedLedgerRevision) || expectedLedgerRevision < 0) {
+      return res.status(400).json({
+        error: "EXPECTED_LEDGER_REVISION_REQUIRED",
+        message: "กรุณารีเฟรชข้อมูลกะเงินสดก่อนเปิดกะอีกครั้ง",
+      });
+    }
+    if (!reason) {
+      return res.status(400).json({
+        error: "REOPEN_REASON_REQUIRED",
+        message: "กรุณาระบุเหตุผลที่เปิดกะอีกครั้ง",
+      });
+    }
+    if (reason.length > 500) {
+      return res.status(400).json({
+        error: "REOPEN_REASON_TOO_LONG",
+        message: "เหตุผลต้องไม่เกิน 500 ตัวอักษร",
+      });
+    }
+    if (!idempotencyKey || idempotencyKey.length > 200) {
+      return res.status(400).json({
+        error: "IDEMPOTENCY_KEY_REQUIRED",
+        message: "ไม่พบรหัสป้องกันคำขอซ้ำ กรุณาลองใหม่",
+      });
+    }
+
+    const operationKeyHash = sha256(
+      `${username}:POST:/finance/cash-shifts/${req.params.shiftId}/reopen-final:${idempotencyKey}`,
+    );
+    const requestHash = sha256(
+      stableStringify({
+        shiftId: req.params.shiftId,
+        expectedLedgerRevision,
+        reason,
+      }),
+    );
+    const existingOperation = await findReopenByOperationKey(operationKeyHash);
+    if (existingOperation) {
+      if (existingOperation.requestHash !== requestHash) {
+        return res.status(409).json({
+          error: "IDEMPOTENCY_KEY_REUSED",
+          message: "รหัสคำขอนี้ถูกใช้กับข้อมูลอื่นแล้ว",
+        });
+      }
+      return res.status(200).json(cashShiftReopenResponse(existingOperation));
+    }
+
+    const requestedShift = await CashShift.findById(req.params.shiftId).select(
+      "businessDate",
+    );
+    if (!requestedShift) {
+      return res.status(404).json({ message: "ไม่พบกะเงินสดนี้" });
+    }
+
+    const correction = await withCashShiftMutationLock(
+      requestedShift.businessDate,
+      async () => {
+        const session = await mongoose.startSession();
+        try {
+          const transactionResult = await session.withTransaction(async () => {
+            const cashShift = await CashShift.findById(req.params.shiftId).session(
+              session,
+            );
+            if (!cashShift) {
+              throw new CashShiftReopenValidationError(
+                404,
+                "CASH_SHIFT_NOT_FOUND",
+                "ไม่พบกะเงินสดนี้",
+              );
+            }
+            if (cashShift.status !== "closed" || !cashShift.isFinalDayClose) {
+              throw new CashShiftReopenValidationError(
+                409,
+                "NOT_REOPENABLE_FINAL_CLOSE",
+                "กะนี้ไม่ใช่ยอดปิดสุดท้ายที่เปิดใหม่ได้",
+              );
+            }
+            if (!cashShift.endedAt || !cashShift.closedBy) {
+              throw new CashShiftReopenValidationError(
+                409,
+                "INCOMPLETE_FINAL_CLOSE",
+                "ข้อมูลการปิดกะเดิมไม่สมบูรณ์",
+              );
+            }
+            if (
+              !Number.isFinite(cashShift.operatingExpectedCash) ||
+              !Number.isFinite(cashShift.operatingActualCash) ||
+              !Number.isFinite(cashShift.operatingVariance)
+            ) {
+              throw new CashShiftReopenValidationError(
+                409,
+                "INCOMPLETE_FINAL_CLOSE",
+                "ข้อมูลยอดเงินของการปิดกะเดิมไม่สมบูรณ์",
+              );
+            }
+            if (cashShift.businessDate !== formatBusinessDateKey(new Date())) {
+              throw new CashShiftReopenValidationError(
+                409,
+                "PAST_BUSINESS_DATE",
+                "เปิดกะได้เฉพาะวันทำการกรุงเทพปัจจุบัน",
+              );
+            }
+            if (!req.user?.admin && cashShift.closedBy !== username) {
+              throw new CashShiftReopenValidationError(
+                403,
+                "REOPEN_FORBIDDEN",
+                "เฉพาะผู้ปิดกะเดิมหรือเจ้าของเท่านั้นที่เปิดกะได้",
+              );
+            }
+            if ((cashShift.ledgerRevision || 0) !== expectedLedgerRevision) {
+              throw new CashShiftReopenValidationError(
+                409,
+                "CASH_SHIFT_LEDGER_CONFLICT",
+                "กะเงินสดมีการเปลี่ยนแปลง กรุณารีเฟรชแล้วลองอีกครั้ง",
+              );
+            }
+
+            const [latestShift, openShift] = await Promise.all([
+              CashShift.findOne({ businessDate: cashShift.businessDate })
+                .sort({ shiftNumber: -1 })
+                .select("_id")
+                .session(session),
+              CashShift.findOne({
+                businessDate: cashShift.businessDate,
+                status: "open",
+              })
+                .select("_id")
+                .session(session),
+            ]);
+            if (String(latestShift?._id) !== String(cashShift._id)) {
+              throw new CashShiftReopenValidationError(
+                409,
+                "NOT_LATEST_SHIFT",
+                "เปิดใหม่ได้เฉพาะกะล่าสุดของวัน",
+              );
+            }
+            if (openShift) {
+              throw new CashShiftReopenValidationError(
+                409,
+                "OPEN_SHIFT_EXISTS",
+                "มีกะเงินสดเปิดอยู่แล้ว",
+              );
+            }
+
+            const unassignedMovements = summarizeCashStashes(
+              await getUnassignedCashTransactionsBetween(
+                cashShift.endedAt,
+                new Date(),
+                session,
+              ),
+            );
+            if (hasCashMovement(unassignedMovements)) {
+              throw new CashShiftReopenValidationError(
+                409,
+                "UNASSIGNED_CASH_ACTIVITY",
+                "พบรายการเงินสดนอกกะหลังปิดยอด กรุณาตรวจสอบก่อน",
+              );
+            }
+
+            const originalLedgerRevision = cashShift.ledgerRevision || 0;
+            const resultingLedgerRevision = originalLedgerRevision + 1;
+            const reopenedAt = new Date();
+            const terminalCloseKey = sha256(
+              `${cashShift._id}:${cashShift.endedAt.toISOString()}`,
+            );
+            const correctionRecord = new CashShiftReopenCorrection({
+              correctionId: crypto.randomUUID(),
+              shiftId: String(cashShift._id),
+              businessDate: cashShift.businessDate,
+              shiftNumber: cashShift.shiftNumber,
+              terminalCloseKey,
+              originalClose: {
+                endedAt: cashShift.endedAt,
+                closedBy: cashShift.closedBy,
+                operatingExpectedCash: cashShift.operatingExpectedCash,
+                operatingActualCash: cashShift.operatingActualCash,
+                operatingVariance: cashShift.operatingVariance,
+                note: cashShift.note,
+                depositReturnReminder: cashShift.depositReturnReminder,
+                auditResolution: cashShift.auditResolution,
+              },
+              reopenedAt,
+              reopenedBy: username,
+              reason,
+              originalLedgerRevision,
+              resultingLedgerRevision,
+              operationKeyHash,
+              requestHash,
+            });
+
+            const reopenedShift = await CashShift.findOneAndUpdate(
+              {
+                _id: cashShift._id,
+                status: "closed",
+                isFinalDayClose: true,
+                endedAt: cashShift.endedAt,
+                ledgerRevision: originalLedgerRevision,
+              },
+              {
+                $set: { status: "open", isFinalDayClose: false },
+                $unset: {
+                  endedAt: 1,
+                  closedBy: 1,
+                  operatingActualCash: 1,
+                  operatingVariance: 1,
+                  depositReturnReminder: 1,
+                  auditResolution: 1,
+                },
+                $inc: { ledgerRevision: 1 },
+              },
+              { returnDocument: "after", session, runValidators: true },
+            );
+            if (!reopenedShift) throw new CashShiftLedgerConflictError();
+
+            await correctionRecord.save({ session });
+            await logActivityStrict(
+              username,
+              "DAILY_CLOSE",
+              {
+                summary: {
+                  action: "REOPEN_FINAL_CASH_SHIFT",
+                  correctionId: correctionRecord.correctionId,
+                  shiftId: String(cashShift._id),
+                  businessDate: cashShift.businessDate,
+                  shiftNumber: cashShift.shiftNumber,
+                  originalEndedAt: cashShift.endedAt,
+                  originalClosedBy: cashShift.closedBy,
+                  reopenedAt,
+                  reopenedBy: username,
+                  reason,
+                  originalLedgerRevision,
+                  resultingLedgerRevision,
+                },
+              },
+              undefined,
+              session,
+            );
+
+            return correctionRecord.toObject();
+          });
+          if (!transactionResult) throw new CashShiftLedgerConflictError();
+          return transactionResult;
+        } finally {
+          await session.endSession();
+        }
+      },
+    );
+
+    return res.status(200).json(cashShiftReopenResponse(correction));
+  } catch (err) {
+    if (err instanceof CashShiftReopenValidationError) {
+      return res.status(err.status).json({ error: err.code, message: err.message });
+    }
+    if (
+      err instanceof CashShiftMutationConflictError ||
+      err instanceof CashShiftLedgerConflictError
+    ) {
+      return res.status(409).json({
+        error: "CASH_SHIFT_LEDGER_CONFLICT",
+        message: "กะเงินสดกำลังเปลี่ยนแปลง กรุณารีเฟรชแล้วลองอีกครั้ง",
+      });
+    }
+    if ((err as { code?: number }).code === 11000) {
+      const username = req.user?.username || "";
+      const idempotencyKey = req.get("Idempotency-Key")?.trim() || "";
+      const operationKeyHash = sha256(
+        `${username}:POST:/finance/cash-shifts/${req.params.shiftId}/reopen-final:${idempotencyKey}`,
+      );
+      const existingOperation = await findReopenByOperationKey(operationKeyHash);
+      if (existingOperation) {
+        const requestHash = sha256(
+          stableStringify({
+            shiftId: req.params.shiftId,
+            expectedLedgerRevision: Number(req.body.expectedLedgerRevision),
+            reason: String(req.body.reason || "").trim(),
+          }),
+        );
+        if (existingOperation.requestHash === requestHash) {
+          return res
+            .status(200)
+            .json(cashShiftReopenResponse(existingOperation));
+        }
+      }
+      return res.status(409).json({
+        error: "CASH_SHIFT_ALREADY_REOPENED",
+        message: "ยอดปิดนี้ถูกเปิดกะอีกครั้งแล้ว",
+      });
+    }
+
+    return res.status(500).json({ error: (err as Error).message });
   }
 };
 

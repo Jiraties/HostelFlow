@@ -12,6 +12,7 @@ import {
   getReconciliation,
   getReviewEvents,
   resolveCashShiftAudit,
+  reopenFinalCashShift,
   startCashShift,
 } from "../controller/finance";
 import {
@@ -47,6 +48,10 @@ financeRouter.patch(
 );
 financeRouter.post("/cash-shifts/start", startCashShift);
 financeRouter.post("/cash-shifts/:shiftId/close", closeCashShift);
+financeRouter.post(
+  "/cash-shifts/:shiftId/reopen-final",
+  reopenFinalCashShift,
+);
 financeRouter.patch(
   "/cash-shifts/:shiftId/audit-resolution",
   resolveCashShiftAudit,

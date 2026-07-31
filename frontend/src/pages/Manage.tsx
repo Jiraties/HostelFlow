@@ -80,6 +80,22 @@ type CashAuditShift = {
   startedAt: string | Date;
   endedAt?: string | Date;
   staff?: { username: string; name?: string; profilePictureUrl?: string };
+  reopenCorrections: Array<{
+    correctionId: string;
+    reopenedAt: string | Date;
+    reopenedBy: string;
+    reason: string;
+    originalLedgerRevision: number;
+    resultingLedgerRevision: number;
+    originalClose: {
+      endedAt: string | Date;
+      closedBy: string;
+      operatingExpectedCash: number;
+      operatingActualCash: number;
+      operatingVariance: number;
+      note?: string;
+    };
+  }>;
   warnings: CashAuditWarning[];
   flaggedTransactions: ReviewTransaction[];
   auditResolution?: {
@@ -566,6 +582,27 @@ const CashCloseAudit = ({
                         {formatMoney(shift.handoff.expectedOperatingOpening)} ฿
                       </p>
                     )}
+                    {shift.reopenCorrections.map((correction) => (
+                      <div
+                        className="manage__reopenCorrection"
+                        key={correction.correctionId}
+                      >
+                        <strong>
+                          ปิดยอดเดิม {formatTime(correction.originalClose.endedAt)}
+                          {" · "}เปิดกะอีกครั้ง {formatTime(correction.reopenedAt)}
+                        </strong>
+                        <p>
+                          ผู้ปิดเดิม {resolveStaffName(correction.originalClose.closedBy)}
+                          {" · "}ผู้เปิดใหม่ {resolveStaffName(correction.reopenedBy)}
+                        </p>
+                        <p>
+                          คาดไว้ {formatMoney(correction.originalClose.operatingExpectedCash)} ฿
+                          {" · "}นับได้ {formatMoney(correction.originalClose.operatingActualCash)} ฿
+                          {" · "}ต่าง {formatMoney(correction.originalClose.operatingVariance)} ฿
+                        </p>
+                        <p>เหตุผล: {correction.reason}</p>
+                      </div>
+                    ))}
                     {shift.note && (
                       <p className="manage__auditNote">
                         หมายเหตุ: {shift.note}

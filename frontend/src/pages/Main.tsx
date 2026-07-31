@@ -50,6 +50,7 @@ import "./Main.css";
 import FinancialBreakdown from "../features/finance/FinancialBreakdown";
 import StandaloneSaleModal from "../features/finance/StandaloneSaleModal";
 import { DepositReturnReminderModal } from "../features/finance/DepositReturnReminderModal";
+import { ReopenFinalCashShiftModal } from "../features/finance/ReopenFinalCashShiftModal";
 
 const getFetchErrorMessage = (err: unknown) => {
   if (axios.isAxiosError(err) && err.response?.data?.message) {
@@ -525,6 +526,7 @@ const Main = () => {
   const [addBookingIsOpen, setAddBookingIsOpen] = useState(false);
   const [standaloneSaleIsOpen, setStandaloneSaleIsOpen] = useState(false);
   const [depositReminderIsOpen, setDepositReminderIsOpen] = useState(false);
+  const [reopenFinalShiftIsOpen, setReopenFinalShiftIsOpen] = useState(false);
   const [addBookingIsDirty, setAddBookingIsDirty] = useState(false);
   const [financialBreakdownMode, setFinancialBreakdownMode] = useState<
     "monthly" | "today" | null
@@ -702,6 +704,7 @@ const Main = () => {
   const previousCashShift = cashPosition?.previousShift || null;
   const cashShiftIsOpen = Boolean(activeCashShift);
   const cashDayIsFinalized = Boolean(previousCashShift?.isFinalDayClose);
+  const finalCloseRecovery = cashPosition?.finalCloseRecovery || null;
   const canCloseActiveShift = Boolean(
     activeCashShift &&
     (user?.admin || activeCashShift.staffUsername === user?.username),
@@ -748,14 +751,19 @@ const Main = () => {
   const cashShiftSubtitle = activeCashShift
     ? ""
     : cashDayIsFinalized
-      ? "ไม่สามารถเปิดกะเพิ่มในวันที่ปิดยอดสุดท้ายแล้ว"
+      ? finalCloseRecovery?.eligible
+        ? "หากมีเงินสดเข้าหลังปิดยอด ให้เปิดกะเดิมอีกครั้งแล้วปิดยอดใหม่"
+        : finalCloseRecovery?.denialReason?.message ||
+          "ไม่สามารถเปิดกะเพิ่มในวันที่ปิดยอดสุดท้ายแล้ว"
       : hasPreviousCashShift
         ? "รับยอดปิดกะก่อนหน้า หรือเลือกนับใหม่ถ้าเงินไม่ตรง"
         : "นับเงินสดทั่วไปก่อนเริ่มรับผิดชอบกะ";
   const cashShiftActionTitle = activeCashShift
     ? "ปิดกะ"
     : cashDayIsFinalized
-      ? "ปิดยอดวันนี้แล้ว"
+      ? finalCloseRecovery?.eligible
+        ? "เปิดกะอีกครั้ง"
+        : "ปิดยอดวันนี้แล้ว"
       : hasPreviousCashShift && !recountHandoff
         ? "รับส่งเงิน"
         : "นับเงินเริ่มกะ";
@@ -826,6 +834,39 @@ const Main = () => {
         { withCredentials: true },
       );
       await fetchCashClose();
+    } finally {
+      setCashCloseSaving(false);
+    }
+  };
+
+  const reopenFinalCashShift = async (input: {
+    reason: string;
+    expectedLedgerRevision: number;
+    idempotencyKey: string;
+  }) => {
+    if (!finalCloseRecovery) throw new Error("ไม่พบยอดปิดที่เปิดใหม่ได้");
+    setCashCloseSaving(true);
+    try {
+      await axios.post(
+        `${API_URL}/finance/cash-shifts/${finalCloseRecovery.shiftId}/reopen-final`,
+        {
+          reason: input.reason,
+          expectedLedgerRevision: input.expectedLedgerRevision,
+        },
+        {
+          withCredentials: true,
+          headers: { "Idempotency-Key": input.idempotencyKey },
+        },
+      );
+      await fetchCashClose();
+      toast.success("เปิดกะอีกครั้งแล้ว");
+    } catch (err) {
+      if (axios.isAxiosError(err)) {
+        throw new Error(
+          err.response?.data?.message || "ไม่สามารถเปิดกะอีกครั้งได้",
+        );
+      }
+      throw err;
     } finally {
       setCashCloseSaving(false);
     }
@@ -932,6 +973,21 @@ const Main = () => {
             onConfirm={(calculationToken) =>
               closeCashShift(true, { calculationToken })
             }
+          />
+        ) : (
+          <div />
+        )}
+      </Modal>
+      <Modal
+        open={reopenFinalShiftIsOpen}
+        className="home__modalCenter"
+        onClose={() => setReopenFinalShiftIsOpen(false)}
+      >
+        {finalCloseRecovery ? (
+          <ReopenFinalCashShiftModal
+            recovery={finalCloseRecovery}
+            onClose={() => setReopenFinalShiftIsOpen(false)}
+            onConfirm={reopenFinalCashShift}
           />
         ) : (
           <div />
@@ -1423,7 +1479,7 @@ const Main = () => {
                       }
                     />
                   </label>
-                ) : (
+                ) : !cashDayIsFinalized ? (
                   <label>
                     <span>เงินสดเริ่มกะ</span>
                     <input
@@ -1437,8 +1493,8 @@ const Main = () => {
                       }
                     />
                   </label>
-                )}
-                {(ordinaryCloseVarianceNeedsNote ||
+                ) : null}
+                {!cashDayIsFinalized && (ordinaryCloseVarianceNeedsNote ||
                   openingVarianceNeedsNote) && (
                   <label className="main__cashCloseNote">
                     <span>หมายเหตุยอดต่าง</span>
@@ -1451,7 +1507,9 @@ const Main = () => {
                     />
                   </label>
                 )}
-                {!activeCashShift && hasPreviousCashShift && (
+                {!activeCashShift &&
+                  !cashDayIsFinalized &&
+                  hasPreviousCashShift && (
                   <label className="checkbox main__cashCloseToggle">
                     นับใหม่แทนรับส่ง
                     <input
@@ -1475,20 +1533,30 @@ const Main = () => {
                       activeCashShift
                         ? "ปิดเฉพาะกะ"
                         : cashDayIsFinalized
-                          ? "ปิดยอดวันนี้แล้ว"
+                          ? finalCloseRecovery?.eligible
+                            ? "เปิดกะอีกครั้ง"
+                            : "ปิดยอดวันนี้แล้ว"
                           : hasPreviousCashShift && !recountHandoff
                             ? "รับส่งเงินและเริ่มกะ"
                             : "เริ่มกะเงินสด"
                     }
-                    icon="bx-save"
+                    icon={
+                      cashDayIsFinalized && finalCloseRecovery?.eligible
+                        ? "bx-undo"
+                        : "bx-save"
+                    }
                     highlight
                     disabled={
                       cashCloseSaving ||
                       cashCloseLoading ||
-                      cashDayIsFinalized ||
+                      (cashDayIsFinalized && !finalCloseRecovery?.eligible) ||
                       Boolean(activeCashShift && !canCloseActiveShift)
                     }
-                    onClick={() =>
+                    onClick={() => {
+                      if (cashDayIsFinalized && finalCloseRecovery?.eligible) {
+                        setReopenFinalShiftIsOpen(true);
+                        return;
+                      }
                       toast.promise(
                         activeCashShift
                           ? closeCashShift(false)
@@ -1511,8 +1579,8 @@ const Main = () => {
                             return "เกิดข้อผิดพลาดในการบันทึกกะเงินสด";
                           },
                         },
-                      )
-                    }
+                      );
+                    }}
                   />
                   {activeCashShift && (
                     <ActionButton

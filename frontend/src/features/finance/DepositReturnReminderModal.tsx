@@ -15,6 +15,7 @@ import type { DateFormatPreference } from "../../types/userSettings";
 import { DepositReminderGuestList } from "./DepositReminderGuestList";
 import { OverdueDepositCategory } from "./OverdueDepositCategory";
 
+import "../bookings/ResolveBooking.css";
 import "./DepositReturnReminderModal.css";
 
 type DepositReturnReminderModalProps = {
@@ -48,6 +49,7 @@ export function DepositReturnReminderModal({
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [finalCloseAcknowledged, setFinalCloseAcknowledged] = useState(false);
 
   const loadReminder = useCallback(
     async (signal?: AbortSignal) => {
@@ -109,7 +111,8 @@ export function DepositReturnReminderModal({
   };
 
   const hasOverdueDeposits = Boolean(reminder?.overdueBookingCount);
-  const closeDisabled = loading || submitting || !reminder;
+  const closeDisabled =
+    loading || submitting || !reminder || !finalCloseAcknowledged;
 
   return (
     <section
@@ -195,6 +198,24 @@ export function DepositReturnReminderModal({
           <span>{error}</span>
         </div>
       )}
+
+      <label className="resolveBooking__depositNotice depositReminder__finalAcknowledgement">
+        <i className="bx bx-error-circle" aria-hidden="true" />
+        <div>
+          <strong>ยืนยันการปิดยอดสุดท้าย</strong>
+          <p>
+            หลังปิดยอดวันนี้ จะไม่สามารถรับหรือจ่ายเงินสดเพิ่มได้จนกว่าจะเปิดกะอีกครั้ง
+          </p>
+        </div>
+        <input
+          type="checkbox"
+          aria-label="ยืนยันการปิดยอดสุดท้าย"
+          checked={finalCloseAcknowledged}
+          onChange={(event) =>
+            setFinalCloseAcknowledged(event.target.checked)
+          }
+        />
+      </label>
 
       <div className="depositReminder__actions">
         {error && !reminder ? (

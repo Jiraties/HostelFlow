@@ -41,6 +41,7 @@ export type CashShift = {
   shiftNumber: number;
   staffUsername: string;
   status: "open" | "closed";
+  ledgerRevision: number;
   openingMode: "counted" | "accepted_handoff";
   handoffFromShiftId?: string;
   operatingOpeningCash: number;
@@ -76,6 +77,31 @@ export type CashShift = {
   legacyDeposit?: LegacyDepositAudit;
 };
 
+export type FinalCloseRecovery = {
+  eligible: boolean;
+  shiftId: string;
+  businessDate: string;
+  shiftNumber: number;
+  ledgerRevision: number;
+  shiftOwner?: {
+    username: string;
+    name?: string;
+    profilePictureUrl?: string;
+  };
+  originalCloser?: {
+    username: string;
+    name?: string;
+    profilePictureUrl?: string;
+  };
+  originalClose: {
+    endedAt: string | Date;
+    operatingExpectedCash: number;
+    operatingActualCash: number;
+    operatingVariance: number;
+  };
+  denialReason?: { code: string; message: string };
+};
+
 export type CashPositionData = {
   businessDate: string;
   threshold: number;
@@ -88,4 +114,5 @@ export type CashPositionData = {
     fromShiftNumber?: number;
   };
   shifts: CashShift[];
+  finalCloseRecovery: FinalCloseRecovery | null;
 };

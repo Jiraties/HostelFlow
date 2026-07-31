@@ -22,6 +22,7 @@ financeRouter.patch("/review-events/:bookingId/:transactionId/approve", finance_
 financeRouter.patch("/review-events/standaloneSale/:saleId/:transactionId/approve", finance_1.approveStandaloneReviewEvent);
 financeRouter.post("/cash-shifts/start", finance_1.startCashShift);
 financeRouter.post("/cash-shifts/:shiftId/close", finance_1.closeCashShift);
+financeRouter.post("/cash-shifts/:shiftId/reopen-final", finance_1.reopenFinalCashShift);
 financeRouter.patch("/cash-shifts/:shiftId/audit-resolution", finance_1.resolveCashShiftAudit);
 exports.default = financeRouter;
 //# sourceMappingURL=finance.js.map

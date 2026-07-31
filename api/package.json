@@ -13,6 +13,8 @@
     "migrate:roomIds": "ts-node src/scripts/migrateRoomStayRoomIds.ts",
     "migrate:booking-extension-indexes": "ts-node src/scripts/migrateBookingExtensionIndexes.ts",
     "migrate:status-correction-indexes": "ts-node src/scripts/migrateStatusCorrectionIndexes.ts",
+    "migrate:cash-shift-reopen-indexes": "ts-node src/scripts/migrateCashShiftReopenIndexes.ts",
+    "migrate:coordinated-correction-indexes": "ts-node src/scripts/migrateCoordinatedCorrectionIndexes.ts",
     "migrate:focused-booking-action-indexes": "ts-node src/scripts/migrateFocusedBookingActionIndexes.ts",
     "release:resolve-retirement-baseline": "ts-node src/scripts/captureResolveRetirementBaseline.ts",
     "migrate:master-search-indexes": "node dist/scripts/migrateMasterSearchIndexes.js",

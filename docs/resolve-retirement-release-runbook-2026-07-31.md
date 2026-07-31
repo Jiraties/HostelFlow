@@ -26,15 +26,17 @@ From `api/`, capture aggregate-only evidence:
 npm run release:resolve-retirement-baseline
 ```
 
-Then create both sets of indexes:
+Then create the coordinated status-correction/cash-reopen indexes and the
+focused-action indexes:
 
 ```bash
-RUN_STATUS_CORRECTION_INDEX_MIGRATION=true npm run migrate:status-correction-indexes
+RUN_COORDINATED_CORRECTION_INDEX_MIGRATION=true npm run migrate:coordinated-correction-indexes
 RUN_FOCUSED_ACTION_INDEX_MIGRATION=true npm run migrate:focused-booking-action-indexes
 ```
 
 Save both JSON outputs with the release record. Verify unique indexes for
-status-correction IDs/keys and focused-action `actionId`/`operationKeyHash`.
+status-correction IDs/keys, cash-reopen correction/operation/terminal-close
+keys, and focused-action `actionId`/`operationKeyHash`.
 
 ## Feature flags
 
@@ -45,6 +47,7 @@ DEDICATED_NO_SHOW_ENABLED=true
 RESOLVE_SPECIAL_CASE_ENABLED=true
 RESOLVE_POST_CLOSE_ENABLED=true
 GENERIC_RESOLVE_API_ENABLED=true
+CASH_SHIFT_REOPEN_ENABLED=true
 ```
 
 Generic Resolve is still owner-only in this state, and its No-Show variant
@@ -58,9 +61,14 @@ fallback flags to `false`, then set `GENERIC_RESOLVE_API_ENABLED=false`.
 3. Deploy the frontend.
 4. Smoke-test Dedicated No-Show and replay the same idempotency key.
 5. Smoke-test one terminal correction.
-6. As owner, test one closed-room correction where no conflict exists.
-7. Test a small non-cash refund linked to an original transaction and a small
+6. Final-close a test shift, reopen it as the original closer, record a late
+   cash payment, and confirm the second final close includes it once.
+7. Verify the cash audit shows the original close and reopen correction.
+8. As owner, test one closed-room correction where no conflict exists.
+9. Test a small non-cash refund linked to an original transaction and a small
    compensation, then verify activity history and booking revision.
 
 Do not remove historical `resolution`, `RESOLVE_STAY`, or
 `POST_CLOSE_ADJUSTMENT` values during rollback.
+Set `CASH_SHIFT_REOPEN_ENABLED=false` to hide and disable reopening without
+removing correction history or indexes.

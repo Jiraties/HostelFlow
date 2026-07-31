@@ -1,0 +1,73 @@
+.reopenCashShift {
+  box-sizing: border-box;
+}
+
+.reopenCashShift__people {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.reopenCashShift__people p {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+  margin: 0;
+  padding: 1rem;
+  border-radius: 0.75rem;
+  box-shadow: var(--light-shadow);
+}
+
+.reopenCashShift__people span,
+.reopenCashShift__amounts span {
+  color: #777777;
+  font-size: 0.9rem;
+}
+
+.reopenCashShift__people strong {
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reopenCashShift__amounts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.reopenCashShift__amounts div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.reopenCashShift__amounts strong {
+  color: var(--text);
+  font-size: 1.15rem;
+  font-weight: 500;
+}
+
+.reopenCashShift__auditNote {
+  margin: 0;
+}
+
+.reopenCashShift__reason textarea {
+  min-height: 7rem;
+  resize: vertical;
+}
+
+.reopenCashShift__error {
+  margin: 0;
+  color: var(--red);
+}
+
+@media (max-width: 760px) {
+  .reopenCashShift__people,
+  .reopenCashShift__amounts {
+    grid-template-columns: 1fr;
+  }
+}

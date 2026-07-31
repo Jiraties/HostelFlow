@@ -1170,3 +1170,16 @@
   font-size: 0.7rem;
   font-weight: 800;
 }
+.manage__reopenCorrection {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.9rem 1rem;
+  border-left: 0.25rem solid #d49a22;
+  border-radius: 0.6rem;
+  background: #fff8e7;
+  color: #795c1b;
+}
+
+.manage__reopenCorrection p {
+  margin: 0;
+}
