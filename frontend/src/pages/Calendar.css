@@ -392,7 +392,23 @@
 @media (max-width: 760px) {
   .calendar__main {
     padding: var(--mobile-page-padding, 1rem);
+    padding-bottom: 0;
     gap: var(--mobile-section-gap, 1rem);
+    overflow: hidden;
+  }
+
+  .calendar__pageHeader .pageHeader__meta {
+    margin-top: 0.1rem;
+  }
+
+  .calendar__pageHeader .pageHeader__updatedAt {
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  .calendar__pageHeader .pageHeader__refreshAction {
+    width: 1.85rem;
+    height: 1.85rem;
   }
 
   .calendar__monthSelector {
@@ -422,8 +438,18 @@
 
   .timeline__wrapper {
     position: relative;
-    border-radius: var(--mobile-card-radius, 1.25rem);
+    flex: 1 1 0;
+    min-height: 0;
+    width: calc(
+      100% + var(--mobile-page-padding, 1rem) +
+        var(--mobile-page-padding, 1rem)
+    );
+    margin-right: calc(0px - var(--mobile-page-padding, 1rem));
+    margin-left: calc(0px - var(--mobile-page-padding, 1rem));
+    border-radius: 0;
+    background-color: var(--background);
     box-shadow: var(--mobile-shadow, var(--main-shadow));
+    overflow: auto;
     overscroll-behavior-x: contain;
     scroll-snap-type: x proximity;
     -webkit-overflow-scrolling: touch;
@@ -472,6 +498,10 @@
     overflow-x: auto;
     padding: 0.2rem 0.1rem 0.45rem;
     scrollbar-width: none; */
+  }
+
+  .calendar__legend + .timeline__wrapper {
+    margin-top: 0;
   }
 
   .calendar__legend::-webkit-scrollbar {

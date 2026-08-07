@@ -320,7 +320,7 @@
     height: 3.5rem;
     padding: 0;
     border-radius: 50%;
-    box-shadow: 0 0.75rem 1.8rem rgba(81, 209, 220, 0.34);
+    box-shadow: var(--light-shadow);
   }
 
   .home__gridFab p {
@@ -429,12 +429,12 @@
 
   .home__filtersModal {
     align-self: flex-end;
-    width: calc(100vw - 1rem);
-    max-height: calc(100dvh - 1rem - env(safe-area-inset-top));
-    margin: 0.5rem;
+    width: 100vw;
+    max-height: calc(100dvh - 0.5rem - env(safe-area-inset-top));
+    margin: 0;
     padding: 1rem;
     padding-bottom: calc(1rem + env(safe-area-inset-bottom));
-    border-radius: var(--mobile-sheet-radius, 1.5rem);
+    border-radius: 1rem 1rem 0 0;
     box-shadow: var(--mobile-shadow-strong, var(--main-shadow));
     overscroll-behavior: contain;
   }
@@ -468,7 +468,21 @@
 
   .home__gridArea {
     min-height: 28rem;
+    height: clamp(28rem, 62dvh, 42rem);
+    flex: 0 0 auto;
     border-radius: var(--mobile-card-radius, 1.25rem);
+  }
+
+  .home--master {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .home--master .home__gridArea {
+    flex: 1 1 0;
+    height: auto;
+    min-height: 0;
   }
 
   .home--master .home__masterControls + .home__gridArea {

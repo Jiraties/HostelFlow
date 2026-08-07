@@ -45,7 +45,26 @@
 
   .home__modalCenter {
     align-items: flex-end;
-    padding: 0.5rem;
+    padding: 0.5rem 0 0;
+  }
+
+  .home__modalCenter
+    > :not(
+      .MuiBackdrop-root,
+      [data-testid="sentinelStart"],
+      [data-testid="sentinelEnd"]
+    ) {
+    animation: mobileModalSlideUp 320ms cubic-bezier(0.22, 0.72, 0.3, 1)
+      backwards;
+    transform-origin: bottom center;
+  }
+
+  .home__modalCenter > .MuiBackdrop-root {
+    animation: mobileModalBackdropIn 220ms ease-out both;
+  }
+
+  .home__modalCenter > .viewBooking__wrapper--replacedSkeleton {
+    animation: none;
   }
 
   :is(
@@ -57,18 +76,21 @@
       .manageUser__wrapper,
       .financialBreakdown,
       .depositReminder,
-      .confirmationModal
+      .confirmationModal,
+      .correctCheckIn,
+      .additionalGuestsPassport__modal,
+      .home__filtersModal
     ) {
     width: 100% !important;
     max-width: none !important;
-    max-height: calc(100dvh - 1rem - env(safe-area-inset-top)) !important;
+    max-height: calc(100dvh - 0.5rem - env(safe-area-inset-top)) !important;
     margin: 0;
     padding: 1.1rem !important;
     padding-bottom: calc(1.1rem + env(safe-area-inset-bottom)) !important;
     overflow-y: auto;
     overscroll-behavior: contain;
     border: 0;
-    border-radius: var(--mobile-sheet-radius, 1.5rem) !important;
+    border-radius: 1rem 1rem 0 0 !important;
     background-color: var(--background);
     box-shadow: var(--mobile-shadow-strong, var(--main-shadow));
     scrollbar-width: none;
@@ -192,6 +214,35 @@
     box-shadow: none;
   }
 
+}
+
+@keyframes mobileModalSlideUp {
+  from {
+    opacity: 0.9;
+    transform: translate3d(0, 2.5rem, 0) scale(0.995);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes mobileModalBackdropIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 760px) and (prefers-reduced-motion: reduce) {
+  .home__modalCenter > :not(.MuiBackdrop-root),
+  .home__modalCenter > .MuiBackdrop-root {
+    animation: none;
+  }
 }
 
 @media (max-width: 760px) and (hover: none) {

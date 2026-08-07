@@ -216,14 +216,9 @@
     align-items: center;
     justify-content: center;
     height: 100%;
-    gap: 0.35rem;
     min-width: 0;
     width: 100%;
     padding: 0;
-    border-radius: 0.7rem;
-    margin: 0.2rem;
-    width: calc(100% - 0.4rem);
-    height: calc(100% - 0.4rem);
   }
 
   .bookingStatusCell i {

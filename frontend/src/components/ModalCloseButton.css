@@ -4,9 +4,10 @@
 
 @media (max-width: 760px) {
   .modalCloseButton {
-    position: absolute;
+    position: sticky;
     top: 0.75rem;
-    right: 0.75rem;
+    align-self: flex-end;
+    flex: 0 0 auto;
     z-index: 2;
     display: grid;
     place-items: center;
@@ -19,11 +20,17 @@
     color: var(--text);
     box-shadow: var(--light-shadow);
     cursor: pointer;
+    margin-bottom: calc(-1 * var(--mobile-touch-target, 2.75rem));
+    margin-left: auto;
   }
 
   .modalCloseButton:focus-visible {
     outline: 2px solid var(--primary-color);
     outline-offset: 2px;
+  }
+
+  .modalCloseButton:active {
+    transform: scale(0.9);
   }
 
   .modalCloseButton i {

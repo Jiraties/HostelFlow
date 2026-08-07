@@ -489,7 +489,7 @@ const Calendar = () => {
         { withCredentials: true },
       );
       login(response.data.user);
-      toast.success("บันทึกความหนาแน่นปฏิทินแล้ว");
+      // toast.success("บันทึกความหนาแน่นปฏิทินแล้ว");
     } catch (error) {
       login(previousUser);
       const message = axios.isAxiosError<{ message?: string }>(error)
@@ -652,6 +652,7 @@ const Calendar = () => {
         />
       </Modal>
       <PageHeader
+        className="calendar__pageHeader"
         title={
           <span className="calendar__monthSelector">
             <button

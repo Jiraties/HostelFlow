@@ -42,7 +42,7 @@ import {
   formatRoomStayRooms,
   getRoomStayRoomIds,
 } from "../../helpers/roomStayHelpers.ts";
-import { Modal } from "@mui/material";
+import { Modal, useMediaQuery } from "@mui/material";
 import { useAuth } from "../../context/AuthContext.tsx";
 import {
   formatDisplayDate,
@@ -283,6 +283,7 @@ const ViewBooking = ({
   ] = useState(false);
   const priceListRef = useRef<HTMLDivElement | null>(null);
   const { user, resolveStaffName } = useAuth();
+  const isMobileView = useMediaQuery("(max-width:760px)");
   const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
   const statusCorrectionType = statusCorrectionForStatus(data?.status || "");
   const statusCorrectionLabel =
@@ -557,8 +558,8 @@ const ViewBooking = ({
   if (loading || !data) {
     return (
       <div className="viewBooking__wrapper">
-        {onClose && <ModalCloseButton onClick={onClose} />}
         <div className="viewBooking__top">
+          {onClose && <ModalCloseButton onClick={onClose} />}
           <h1 className="viewBooking__name">
             <Skeleton height={28} width={180} />
             <Skeleton height={28} width={120} />
@@ -732,6 +733,36 @@ const ViewBooking = ({
   const fullRoomsName = formatCompactRoomNames(
     data.roomStays.flatMap(getRoomStayRoomIds),
   );
+  const identitySection = hasCheckedIn ? (
+    <>
+      <PassportView
+        key={`${data.bookingId}-${data.revision}`}
+        bookingId={data.bookingId}
+        correctionDisabled={
+          checkInCorrectionEligibility.loading ||
+          !checkInCorrectionEligibility.allowed
+        }
+        correctionDisabledReason={
+          checkInCorrectionEligibility.loading
+            ? "กำลังตรวจสอบสิทธิ์..."
+            : checkInCorrectionEligibility.message || undefined
+        }
+        onCorrectPassport={() => {
+          void openCheckInCorrection("replace_passport");
+        }}
+      />
+      <AdditionalGuestsPassport
+        bookingId={data.bookingId}
+        revision={data.revision}
+        primaryNationality={data.passport?.nationality}
+        onRevisionChange={(revision) => {
+          const updatedBooking = { ...data, revision };
+          setData(updatedBooking);
+          onUpdated?.(updatedBooking);
+        }}
+      />
+    </>
+  ) : null;
   const storedOriginalSegment = (data.commercialSegments || []).find(
     (segment) => segment.kind === "original",
   );
@@ -1693,9 +1724,13 @@ const ViewBooking = ({
           }}
         />
       </Modal>
-      <div className="viewBooking__wrapper">
-        {onClose && <ModalCloseButton onClick={onClose} />}
+      <div
+        className={`viewBooking__wrapper${
+          booking ? "" : " viewBooking__wrapper--replacedSkeleton"
+        }`}
+      >
         <div className="viewBooking__top">
+          {onClose && <ModalCloseButton onClick={onClose} />}
           <h1 className="viewBooking__name">
             {guestNameLines(data.name).map((line, index) => (
               <span key={`${line}-${index}`}>
@@ -1805,7 +1840,7 @@ const ViewBooking = ({
                 )}
               </div>
             )}
-            <div className="viewBooking__item">
+            <div className="viewBooking__item viewBooking__item--channel">
               <span className="viewBooking__label">ช่องทางการจอง: </span>
               <div className="viewBooking__channelJourney">
                 {bookingChannelRows.map((channel, index) => (
@@ -1870,90 +1905,61 @@ const ViewBooking = ({
                 ))}
               </div>
             </div>
-            <div className="viewBooking__item">
-              <span className="viewBooking__label">Check-In: </span>
-              <p className="viewBooking__infoText viewBooking__infoText--withActual">
-                <span>{formatDisplayDate(data.checkIn, dateFormat)}</span>
-                <span className="viewBooking__nights">{data.nights} คืน</span>
-                {data.checkedInAt && checkInWasOnDifferentDate && (
-                  <Tooltip
-                    className="viewBooking__actualTime viewBooking__actualTime--checkIn viewBooking__actualTime--late"
-                    ariaLabel="วันที่ Check-In จริงไม่ตรงกับวันที่จอง"
-                    content="วันที่และเวลา Late Check-In"
-                  >
-                    <i className="bx bx-arrow-to-left" />{" "}
-                    {formatDisplayTime(data.checkedInAt)}
-                    {` · ${formatDisplayDate(data.checkedInAt, dateFormat, {
-                      includeYear: false,
-                    })}`}
-                  </Tooltip>
-                )}
-              </p>
-            </div>
-            <div className="viewBooking__item">
-              <span className="viewBooking__label">Check-Out: </span>
-              <p className="viewBooking__infoText viewBooking__infoText--withActual">
-                <span>{formatDisplayDate(data.checkOut, dateFormat)}</span>
-                {actualCheckOutAt && checkOutWasOnDifferentDate && (
-                  <Tooltip
-                    className="viewBooking__actualTime viewBooking__actualTime--checkOut viewBooking__actualTime--late"
-                    ariaLabel="วันที่ Check-Out จริงไม่ตรงกับวันที่จอง"
-                    content="วันที่และเวลา Late Check-Out"
-                  >
-                    <i className="bx bx-arrow-from-left" />{" "}
-                    {formatDisplayTime(actualCheckOutAt)}
-                    {` · ${formatDisplayDate(actualCheckOutAt, dateFormat, {
-                      includeYear: false,
-                    })}`}
-                  </Tooltip>
-                )}
-              </p>
+            <div className="viewBooking__staySummary">
+              <div className="viewBooking__item viewBooking__item--checkIn">
+                <span className="viewBooking__label">Check-In</span>
+                <p className="viewBooking__infoText viewBooking__infoText--withActual">
+                  <span>{formatDisplayDate(data.checkIn, dateFormat)}</span>
+                  <span className="viewBooking__nights">{data.nights} คืน</span>
+                  {data.checkedInAt && checkInWasOnDifferentDate && (
+                    <Tooltip
+                      className="viewBooking__actualTime viewBooking__actualTime--checkIn viewBooking__actualTime--late"
+                      ariaLabel="วันที่ Check-In จริงไม่ตรงกับวันที่จอง"
+                      content="วันที่และเวลา Late Check-In"
+                    >
+                      <i className="bx bx-arrow-to-left" />{" "}
+                      {formatDisplayTime(data.checkedInAt)}
+                      {` · ${formatDisplayDate(data.checkedInAt, dateFormat, {
+                        includeYear: false,
+                      })}`}
+                    </Tooltip>
+                  )}
+                </p>
+              </div>
+              <div className="viewBooking__item viewBooking__item--checkOut">
+                <span className="viewBooking__label">Check-Out</span>
+                <p className="viewBooking__infoText viewBooking__infoText--withActual">
+                  <span>{formatDisplayDate(data.checkOut, dateFormat)}</span>
+                  {actualCheckOutAt && checkOutWasOnDifferentDate && (
+                    <Tooltip
+                      className="viewBooking__actualTime viewBooking__actualTime--checkOut viewBooking__actualTime--late"
+                      ariaLabel="วันที่ Check-Out จริงไม่ตรงกับวันที่จอง"
+                      content="วันที่และเวลา Late Check-Out"
+                    >
+                      <i className="bx bx-arrow-from-left" />{" "}
+                      {formatDisplayTime(actualCheckOutAt)}
+                      {` · ${formatDisplayDate(actualCheckOutAt, dateFormat, {
+                        includeYear: false,
+                      })}`}
+                    </Tooltip>
+                  )}
+                </p>
+              </div>
+
+              <div className="viewBooking__item viewBooking__item--room">
+                <span className="viewBooking__label">ห้อง</span>
+                <p className="viewBooking__infoText">{fullRoomsName}</p>
+              </div>
+
+              <div className="viewBooking__item viewBooking__item--staff">
+                <span className="viewBooking__label">Staff ที่บันทึก</span>
+                <p className="viewBooking__infoText">
+                  {resolveStaffName(data.staffUsername)}
+                </p>
+              </div>
             </div>
 
-            <div className="viewBooking__item">
-              <span className="viewBooking__label">ห้อง: </span>
-              <p className="viewBooking__infoText">{fullRoomsName}</p>
-            </div>
-
-            <div className="viewBooking__item">
-              <span className="viewBooking__label">
-                Staff ที่บันทึกรายการ:{" "}
-              </span>
-              <p className="viewBooking__infoText">
-                {resolveStaffName(data.staffUsername)}
-              </p>
-            </div>
-
-            {hasCheckedIn && (
-              <>
-                <PassportView
-                  key={`${data.bookingId}-${data.revision}`}
-                  bookingId={data.bookingId}
-                  correctionDisabled={
-                    checkInCorrectionEligibility.loading ||
-                    !checkInCorrectionEligibility.allowed
-                  }
-                  correctionDisabledReason={
-                    checkInCorrectionEligibility.loading
-                      ? "กำลังตรวจสอบสิทธิ์..."
-                      : checkInCorrectionEligibility.message || undefined
-                  }
-                  onCorrectPassport={() => {
-                    void openCheckInCorrection("replace_passport");
-                  }}
-                />
-                <AdditionalGuestsPassport
-                  bookingId={data.bookingId}
-                  revision={data.revision}
-                  primaryNationality={data.passport?.nationality}
-                  onRevisionChange={(revision) => {
-                    const updatedBooking = { ...data, revision };
-                    setData(updatedBooking);
-                    onUpdated?.(updatedBooking);
-                  }}
-                />
-              </>
-            )}
+            {!isMobileView && identitySection}
           </div>
           <div className="viewBooking__mainRight">
             {/* <p>ค่าใช้จ่าย</p> */}
@@ -2159,6 +2165,14 @@ const ViewBooking = ({
             </div>
           </div>
         </div>
+        {isMobileView && identitySection && (
+          <section
+            className="viewBooking__mobileIdentity"
+            aria-label="ข้อมูล Passport"
+          >
+            {identitySection}
+          </section>
+        )}
         <div className="viewBooking__actions">
           <div className="viewBooking__secondaryActions">
             <div className="viewBooking__moreActions">
@@ -2168,7 +2182,16 @@ const ViewBooking = ({
                 onClick={() => setMoreActionsIsOpen((isOpen) => !isOpen)}
               />
               {moreActionsIsOpen && (
-                <div className="viewBooking__moreActionsMenu">
+                <>
+                  {isMobileView && (
+                    <button
+                      type="button"
+                      className="viewBooking__moreActionsBackdrop"
+                      aria-label="ปิดเมนูเพิ่มเติม"
+                      onClick={() => setMoreActionsIsOpen(false)}
+                    />
+                  )}
+                  <div className="viewBooking__moreActionsMenu">
                   <button
                     type="button"
                     onClick={() => {
@@ -2178,6 +2201,47 @@ const ViewBooking = ({
                   >
                     <i className="bx bx-edit" />
                     แก้ไข
+                  </button>
+                  {!data.voided &&
+                    (data.status === "booked" ||
+                      data.status === "checkedIn") && (
+                      <button
+                        type="button"
+                        className="viewBooking__mobileMoreAction"
+                        onClick={() => {
+                          setExtendBookingIsOpen(true);
+                          setMoreActionsIsOpen(false);
+                        }}
+                      >
+                        <i className="bx bx-calendar-plus" />
+                        เพิ่มจำนวนคืน
+                      </button>
+                    )}
+                  <button
+                    type="button"
+                    className="viewBooking__mobileMoreAction"
+                    disabled={pinSaving}
+                    onClick={() => {
+                      setMoreActionsIsOpen(false);
+                      toast.promise(togglePinHandler(), {
+                        loading: data.pinned
+                          ? "กำลังยกเลิกปัก Booking..."
+                          : "กำลังปัก Booking...",
+                        success: data.pinned
+                          ? "ยกเลิกปัก Booking แล้ว"
+                          : "ปัก Booking แล้ว",
+                        error: (err) =>
+                          err.response?.data?.message ||
+                          "เกิดข้อผิดพลาดในการปัก Booking",
+                      });
+                    }}
+                  >
+                    <i
+                      className={
+                        data.pinned ? "bxf bx-pin-alt" : "bx bx-pin-alt"
+                      }
+                    />
+                    {data.pinned ? "ยกเลิกปัก Booking" : "ปัก Booking"}
                   </button>
                   <button
                     type="button"
@@ -2348,7 +2412,8 @@ const ViewBooking = ({
                       ลบ
                     </button>
                   )}
-                </div>
+                  </div>
+                </>
               )}
             </div>
 
@@ -2369,6 +2434,7 @@ const ViewBooking = ({
               mobileText="โน้ต"
               tooltip="เพิ่มโน้ต"
               icon="bx-note"
+              className="viewBooking__noteAction"
               onClick={() => {
                 setNoteDraft(data.note || "");
                 setNoteIsEditing(true);
@@ -2418,7 +2484,8 @@ const ViewBooking = ({
                 }}
                 icon="bx-check-circle"
                 className={
-                  isLateCheckIn ? "viewBooking__lateCheckInAction" : ""
+                  "viewBooking__primaryAction" +
+                  (isLateCheckIn ? " viewBooking__lateCheckInAction" : "")
                 }
                 highlight={!isLateCheckIn}
               />
@@ -2440,7 +2507,10 @@ const ViewBooking = ({
                 onClick={() => setCheckOutIsOpen(true)}
                 icon="bx-door-open"
                 className={
-                  isEarlyCheckOut ? "viewBooking__earlyCheckOutAction" : ""
+                  "viewBooking__primaryAction" +
+                  (isEarlyCheckOut
+                    ? " viewBooking__earlyCheckOutAction"
+                    : "")
                 }
                 highlight={!isEarlyCheckOut}
               />

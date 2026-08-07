@@ -687,10 +687,17 @@ const CashCloseAudit = ({
                     )
                   }
                 >
-                  <span>
+                  <span className="manage__auditDetailsLabel manage__auditDetailsLabel--desktop">
                     {expandedShiftId === shift._id
                       ? "ซ่อนรายละเอียด"
                       : "เปิดรายละเอียด"}
+                  </span>
+                  <span className="manage__auditDetailsLabel manage__auditDetailsLabel--mobile">
+                    {expandedShiftId === shift._id
+                      ? "ซ่อนรายละเอียด"
+                      : shift.warnings.length > 0 && !shift.auditResolution
+                        ? "ตรวจสอบและใส่หมายเหตุ"
+                        : "เปิดรายละเอียด"}
                   </span>
                   <i
                     className={
@@ -805,6 +812,11 @@ const CashCloseAudit = ({
                     <i
                       className={`bx ${approvingTransactionId === transaction._id ? "bx-loader-lines" : "bx-check"}`}
                     />
+                    <span className="manage__approveActionLabel">
+                      {approvingTransactionId === transaction._id
+                        ? "กำลังอนุมัติ"
+                        : "อนุมัติรายการ"}
+                    </span>
                   </button>
                 </div>
               </div>

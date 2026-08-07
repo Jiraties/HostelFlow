@@ -322,9 +322,12 @@
 }
 
 @media (max-width: 480px) {
-  .addBooking__dateInputs,
-  .addBooking__labels {
+  .addBooking__dateInputs {
     grid-template-columns: 1fr;
+  }
+
+  .addBooking__labels {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .addBooking__dateInput:first-child {

@@ -23,6 +23,7 @@ import StatCard from "../features/dashboard/StatCard";
 import { useAuth } from "../context/AuthContext";
 import {
   formatBookingsDates,
+  roomChargeOutstandingAmount,
   truncateDecimal,
 } from "../helpers/bookingHelpers";
 import { platformMap } from "../helpers/maps";
@@ -59,9 +60,6 @@ const getFetchErrorMessage = (err: unknown) => {
 
   return "เกิดข้อผิดพลาดในการโหลดข้อมูล";
 };
-
-const roomChargeTransaction = (booking: booking) =>
-  booking.transactions.find((transaction) => transaction.type === "roomCharge");
 
 const startOfDate = (date: Date) =>
   new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -873,7 +871,7 @@ const Main = () => {
   };
 
   const unpaidArrivals = arrivals.filter(
-    (booking) => roomChargeTransaction(booking)?.paymentMethod === "Unpaid",
+    (booking) => roomChargeOutstandingAmount(booking) > 0,
   ).length;
   const occupancyRatePercent = adminStats
     ? truncateDecimal(adminStats.occupancyRate * 100, 2)
