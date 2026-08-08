@@ -18,6 +18,7 @@ financeRouter.get("/expected-stay-revenue-breakdown", finance_1.getExpectedStayR
 financeRouter.get("/today-revenue-breakdown", finance_1.getTodayRevenueBreakdown);
 financeRouter.get("/today-revenue-summary", finance_1.getTodayRevenueSummary);
 financeRouter.get("/review-events", finance_1.getReviewEvents);
+financeRouter.get("/review-events/count", finance_1.getReviewEventCount);
 financeRouter.patch("/review-events/:bookingId/:transactionId/approve", finance_1.approveReviewEvent);
 financeRouter.patch("/review-events/standaloneSale/:saleId/:transactionId/approve", finance_1.approveStandaloneReviewEvent);
 financeRouter.post("/cash-shifts/start", finance_1.startCashShift);

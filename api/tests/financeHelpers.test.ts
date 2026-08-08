@@ -13,6 +13,7 @@ import {
   transactionDashboardCollectedRevenueAmount,
   transactionDashboardGrossRevenueAmount,
   transactionFallsOnBusinessDate,
+  transactionCorrectionNeedsReview,
   transactionNeedsReview,
   transactionRequiresReview,
   transactionTodayExtrasRevenueAmount,
@@ -231,11 +232,15 @@ test("minor rounding adjustments stay below review noise while material or repea
 
   assert.deepEqual(transactionNeedsReview(minorRounding), []);
   assert.deepEqual(
-    transactionNeedsReview({ ...minorRounding, amount: 1 }),
+    transactionNeedsReview({ ...minorRounding, amount: 6 }),
     [],
   );
   assert.deepEqual(
-    transactionNeedsReview({ ...minorRounding, amount: 1.01 }),
+    transactionNeedsReview({ ...minorRounding, amount: 10 }),
+    [],
+  );
+  assert.deepEqual(
+    transactionNeedsReview({ ...minorRounding, amount: 10.01 }),
     ["adjustment"],
   );
   assert.deepEqual(
@@ -250,17 +255,48 @@ test("minor rounding adjustments stay below review noise while material or repea
   ]);
 });
 
-test("large refund review starts above THB 2,000", () => {
+test("large refund review starts at THB 2,000", () => {
   const refund: transcation = {
     type: "cancellationRefund",
     paymentMethod: "Transfer",
     amount: 2000,
   };
 
-  assert.deepEqual(transactionNeedsReview(refund), []);
+  assert.deepEqual(transactionNeedsReview(refund), ["refund", "large_refund"]);
+});
+
+test("transaction correction review is proportional to financial risk", () => {
+  const before = {
+    type: "roomCharge" as const,
+    paymentMethod: "Transfer" as const,
+    amount: 4000,
+  };
+
   assert.deepEqual(
-    transactionNeedsReview({ ...refund, amount: 2000.01 }),
-    ["refund", "large_refund"],
+    transactionCorrectionNeedsReview(before, { ...before, amount: 3994 }),
+    [],
+  );
+  assert.deepEqual(
+    transactionCorrectionNeedsReview(before, { ...before, amount: 2000 }),
+    ["transaction_correction", "material_amount_correction"],
+  );
+  assert.deepEqual(
+    transactionCorrectionNeedsReview(
+      { ...before, amount: 1000 },
+      { ...before, amount: 1500 },
+    ),
+    ["transaction_correction", "significant_relative_correction"],
+  );
+  assert.deepEqual(
+    transactionCorrectionNeedsReview(before, {
+      ...before,
+      paymentMethod: "Cash",
+    }),
+    ["transaction_correction", "correction_payment_method_change"],
+  );
+  assert.deepEqual(
+    transactionCorrectionNeedsReview(before, { ...before, amount: 3900 }, 1),
+    ["transaction_correction", "repeated_financial_correction"],
   );
 });
 

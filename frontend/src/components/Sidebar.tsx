@@ -1,10 +1,13 @@
 import { Link, useLocation } from "react-router";
 import { useEffect, useRef, useState } from "react";
+import axios from "axios";
 import Logo from "./Logo";
 import "./Sidebar.css";
 import { useAuth } from "../context/AuthContext";
 import { useCommandPalette } from "../context/commandPalette";
 import { navigationItems } from "./navigationItems";
+import { API_URL } from "../config/api";
+import { REVIEW_QUEUE_UPDATED_EVENT } from "../helpers/reviewQueue";
 
 const Sidebar = () => {
   const location = useLocation();
@@ -12,6 +15,7 @@ const Sidebar = () => {
   const { openPalette } = useCommandPalette();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const [reviewQueueCount, setReviewQueueCount] = useState(0);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const moreSheetRef = useRef<HTMLElement>(null);
   const sidebarItems = navigationItems.filter(
@@ -57,6 +61,43 @@ const Sidebar = () => {
   const moreIsActive = moreItems.some(
     (item) => item.link === location.pathname,
   );
+
+  useEffect(() => {
+    if (!user?.admin) return;
+
+    let active = true;
+    const refreshReviewQueueCount = async () => {
+      try {
+        const response = await axios.get<{ count: number }>(
+          `${API_URL}/finance/review-events/count`,
+          { withCredentials: true },
+        );
+        if (active && Number.isFinite(response.data.count)) {
+          setReviewQueueCount(Math.max(0, response.data.count));
+        }
+      } catch {
+        // The badge is supplementary; keep the last known count on failure.
+      }
+    };
+    const refresh = () => void refreshReviewQueueCount();
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+
+    refresh();
+    const interval = window.setInterval(refresh, 60_000);
+    window.addEventListener("focus", refresh);
+    window.addEventListener(REVIEW_QUEUE_UPDATED_EVENT, refresh);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener(REVIEW_QUEUE_UPDATED_EVENT, refresh);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [user?.admin]);
 
   useEffect(() => {
     if (!isMoreOpen) return;
@@ -137,6 +178,15 @@ const Sidebar = () => {
                   >
                     <i className={`bx ${item.icon}`} aria-hidden="true" />
                     <span className="sidebar__navLabel">{item.label}</span>
+                    {item.link === "/manage" && reviewQueueCount > 0 && (
+                      <span
+                        className="sidebar__notificationBadge"
+                        aria-label={`${reviewQueueCount} รายการรออนุมัติ`}
+                        title={`${reviewQueueCount} รายการรออนุมัติ`}
+                      >
+                        {reviewQueueCount > 99 ? "99+" : reviewQueueCount}
+                      </span>
+                    )}
                   </Link>
                 </li>
               ))}
@@ -186,6 +236,15 @@ const Sidebar = () => {
           >
             <i className={`bx ${item.icon}`} aria-hidden="true" />
             <span>{item.label}</span>
+            {item.link === "/manage" && reviewQueueCount > 0 && (
+              <span
+                className="sidebar__notificationBadge sidebar__notificationBadge--mobileNav"
+                aria-label={`${reviewQueueCount} รายการที่ต้องตรวจสอบ`}
+                title={`${reviewQueueCount} รายการที่ต้องตรวจสอบ`}
+              >
+                {reviewQueueCount > 99 ? "99+" : reviewQueueCount}
+              </span>
+            )}
           </Link>
         ))}
         <button
@@ -251,6 +310,17 @@ const Sidebar = () => {
               </button>
             </div>
             <div className="mobileMore__grid">
+              <button
+                className="mobileMore__item mobileMore__item--search"
+                type="button"
+                onClick={() => {
+                  setIsMoreOpen(false);
+                  window.requestAnimationFrame(() => openPalette());
+                }}
+              >
+                <i className="bx bx-search" aria-hidden="true" />
+                <span>ค้นหา</span>
+              </button>
               {moreItems.map((item) => (
                 <Link
                   key={item.id}

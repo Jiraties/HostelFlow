@@ -239,6 +239,8 @@ const Spreadsheet = ({
   const separatorRowHeight =
     tableDensity === "compact" ? 34 : tableDensity === "spacious" ? 50 : 42;
   const gridApiRef = useRef<GridApi<SpreadsheetRow> | null>(null);
+  const gridContainerRef = useRef<HTMLDivElement>(null);
+  const gridRepaintFrameRef = useRef<number | null>(null);
   const hasScrolledToTodayRef = useRef(false);
   const [isMobile, setIsMobile] = useState(false);
   const [animationsEnabledForStatus, setAnimationsEnabledForStatus] =
@@ -404,6 +406,65 @@ const Spreadsheet = ({
   useEffect(() => {
     scrollToTodaySeparator();
   }, [scrollToTodaySeparator]);
+
+  const repaintVisibleGrid = useCallback(() => {
+    const api = gridApiRef.current;
+    const container = gridContainerRef.current;
+    if (!api || api.isDestroyed() || !container) return;
+
+    const { width, height } = container.getBoundingClientRect();
+    if (width < 1 || height < 1) return;
+
+    if (gridRepaintFrameRef.current !== null) {
+      window.cancelAnimationFrame(gridRepaintFrameRef.current);
+    }
+    gridRepaintFrameRef.current = window.requestAnimationFrame(() => {
+      gridRepaintFrameRef.current = null;
+      if (api.isDestroyed()) return;
+
+      api.refreshClientSideRowModel("everything");
+      api.refreshCells({ force: true });
+      api.redrawRows();
+      scrollToTodaySeparator();
+    });
+  }, [scrollToTodaySeparator]);
+
+  useEffect(() => {
+    const container = gridContainerRef.current;
+    if (!container) return;
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") repaintVisibleGrid();
+    };
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver((entries) => {
+            const entry = entries[0];
+            if (entry.contentRect.width > 0 && entry.contentRect.height > 0) {
+              repaintVisibleGrid();
+            }
+          });
+
+    resizeObserver?.observe(container);
+    window.addEventListener("orientationchange", repaintVisibleGrid);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    repaintVisibleGrid();
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("orientationchange", repaintVisibleGrid);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      if (gridRepaintFrameRef.current !== null) {
+        window.cancelAnimationFrame(gridRepaintFrameRef.current);
+        gridRepaintFrameRef.current = null;
+      }
+    };
+  }, [repaintVisibleGrid]);
+
+  useEffect(() => {
+    repaintVisibleGrid();
+  }, [loading, repaintVisibleGrid, rowData, status]);
 
   useEffect(() => {
     if (
@@ -626,6 +687,7 @@ const Spreadsheet = ({
     window.requestAnimationFrame(() => {
       setAnimationsEnabledForStatus(status);
       scrollToTodaySeparator();
+      repaintVisibleGrid();
     });
   };
 
@@ -726,6 +788,7 @@ const Spreadsheet = ({
   return (
     <AgGridProvider modules={spreadsheetModules}>
       <div
+        ref={gridContainerRef}
         className={
           tableDensity === "spacious"
             ? "spreadsheet spreadsheet--spacious"

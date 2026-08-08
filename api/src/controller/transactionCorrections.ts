@@ -35,6 +35,7 @@ import {
   summarizeBookingFinancialPosition,
   transactionIsCharge,
 } from "../services/transactionCorrections";
+import { transactionCorrectionNeedsReview } from "../helpers/financeHelpers";
 
 const PAYMENT_METHODS: PaymentMethod[] = [
   "OTA",
@@ -124,6 +125,7 @@ const correctionRecord = ({
   correctedBy,
   correctedByName,
   originalBusinessDate,
+  reviewFlags = [],
 }: {
   targetTransactionId: string;
   before: ReturnType<typeof snapshotTransaction>;
@@ -134,6 +136,7 @@ const correctionRecord = ({
   correctedBy: string;
   correctedByName?: string;
   originalBusinessDate: string;
+  reviewFlags?: string[];
 }): TransactionCorrection => ({
   _id: String(new mongoose.Types.ObjectId()),
   targetTransactionId,
@@ -148,6 +151,8 @@ const correctionRecord = ({
   financialChange: correctionChangesFinancialFields(before, after),
   originalBusinessDate,
   affectedCashShiftId: before.cashShiftId || after.cashShiftId,
+  reviewFlags,
+  reviewStatus: reviewFlags.length ? "needs_review" : "none",
 });
 
 export const correctTransaction = async (
@@ -348,6 +353,11 @@ export const correctTransaction = async (
     const originalBusinessDate = businessDateKey(
       new Date(current.createdAt || booking.checkIn),
     );
+    const correctionReviewFlags = transactionCorrectionNeedsReview(
+      before,
+      after,
+      current.correctionCount || 0,
+    );
 
     if (financialChange) {
       if (current.type !== "deposit") {
@@ -437,6 +447,7 @@ export const correctTransaction = async (
             correctedBy: req.user?.username || "system",
             correctedByName,
             originalBusinessDate,
+            reviewFlags: correctionReviewFlags,
           }),
         ];
         const generatedTransactions: transcation[] = [];

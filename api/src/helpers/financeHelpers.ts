@@ -2,6 +2,7 @@ import type {
   booking,
   PaymentMethod,
   transcation,
+  TransactionCorrectionSnapshot,
   TransactionType,
 } from "../models/booking";
 
@@ -33,7 +34,10 @@ export type SourceAction =
 export const CASH_VARIANCE_THRESHOLD = 20;
 export const LARGE_CASH_TRANSACTION_THRESHOLD = 5000;
 export const LARGE_REFUND_THRESHOLD = 2000;
-export const ROUNDING_ADJUSTMENT_REVIEW_THRESHOLD = 1;
+export const ROUNDING_ADJUSTMENT_REVIEW_THRESHOLD = 10;
+export const MATERIAL_TRANSACTION_CORRECTION_DELTA = 2000;
+export const RELATIVE_TRANSACTION_CORRECTION_MIN_DELTA = 500;
+export const RELATIVE_TRANSACTION_CORRECTION_RATE = 0.25;
 
 export const isValidCashCount = (value: number) =>
   Number.isFinite(value) && value >= 0;
@@ -556,7 +560,7 @@ export const transactionNeedsReview = (
   if (
     direction === "out" &&
     !["adjustment", "roomChargeWriteOff"].includes(transaction.type) &&
-    amount > LARGE_REFUND_THRESHOLD
+    amount >= LARGE_REFUND_THRESHOLD
   ) {
     flags.push("refund", "large_refund");
   }
@@ -571,6 +575,39 @@ export const transactionNeedsReview = (
   }
 
   return flags;
+};
+
+export const transactionCorrectionNeedsReview = (
+  before: TransactionCorrectionSnapshot,
+  after: TransactionCorrectionSnapshot,
+  priorCorrectionCount = 0,
+) => {
+  const amountDelta = Math.abs(
+    Number((Number(after.amount || 0) - Number(before.amount || 0)).toFixed(2)),
+  );
+  const relativeAmountDelta =
+    amountDelta / Math.max(Math.abs(Number(before.amount || 0)), 1);
+  const flags: string[] = [];
+
+  if (before.paymentMethod !== after.paymentMethod) {
+    flags.push("correction_payment_method_change");
+  }
+  if (before.type !== after.type) {
+    flags.push("correction_category_change");
+  }
+  if (amountDelta >= MATERIAL_TRANSACTION_CORRECTION_DELTA) {
+    flags.push("material_amount_correction");
+  } else if (
+    amountDelta >= RELATIVE_TRANSACTION_CORRECTION_MIN_DELTA &&
+    relativeAmountDelta >= RELATIVE_TRANSACTION_CORRECTION_RATE
+  ) {
+    flags.push("significant_relative_correction");
+  }
+  if (priorCorrectionCount > 0 && amountDelta > 0) {
+    flags.push("repeated_financial_correction");
+  }
+
+  return flags.length > 0 ? ["transaction_correction", ...flags] : [];
 };
 
 export const transactionRequiresReview = (transaction: transcation) => {

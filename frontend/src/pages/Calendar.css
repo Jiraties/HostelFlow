@@ -426,8 +426,19 @@
   }
 
   .calendar__monthSelector {
-    flex-wrap: wrap;
-    gap: 0.5rem;
+    flex-wrap: nowrap;
+    gap: 0.25rem;
+    max-width: 100%;
+    white-space: nowrap;
+  }
+
+  .calendar__pageHeader h1 {
+    font-size: 1.5rem;
+  }
+
+  .calendar__monthPickerTrigger {
+    font-size: 1.5rem;
+    padding-inline: 0.2rem;
   }
 
   .calendar__monthNavButton {
@@ -455,8 +466,7 @@
     flex: 1 1 0;
     min-height: 0;
     width: calc(
-      100% + var(--mobile-page-padding, 1rem) +
-        var(--mobile-page-padding, 1rem)
+      100% + var(--mobile-page-padding, 1rem) + var(--mobile-page-padding, 1rem)
     );
     margin-right: calc(0px - var(--mobile-page-padding, 1rem));
     margin-left: calc(0px - var(--mobile-page-padding, 1rem));

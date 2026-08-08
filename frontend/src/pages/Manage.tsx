@@ -22,6 +22,7 @@ import { formatDisplayDateTime } from "../helpers/displayDate";
 import type { DateFormatPreference } from "../types/userSettings";
 import { PreferredDateInput } from "../components/PreferredDateInput";
 import type { LegacyDepositAudit } from "../types/cashShiftTypes";
+import { notifyReviewQueueUpdated } from "../helpers/reviewQueue";
 
 type StaffUser = ManagedStaffUser;
 
@@ -33,6 +34,9 @@ type ActivityStats = {
 
 type ReviewTransaction = {
   _id?: string;
+  transactionId?: string;
+  correctionId?: string;
+  reviewEventKind?: "transactionCorrection";
   bookingId?: string;
   saleId?: string;
   sourceType?: "booking" | "standaloneSale";
@@ -49,6 +53,8 @@ type ReviewTransaction = {
   reviewedBy?: string;
   reviewedAt?: string | Date;
   note?: string;
+  correctionBeforeAmount?: number;
+  correctionAmountDelta?: number;
 };
 
 type CashAuditWarning = {
@@ -219,6 +225,12 @@ const reviewFlagLabels: Record<string, string> = {
   large_cash: "เงินสดสูง",
   adjustment: "ปรับราคา",
   repeated_sensitive_type: "รายการซ้ำ",
+  transaction_correction: "แก้ไขธุรกรรม",
+  correction_payment_method_change: "เปลี่ยนช่องทางชำระ",
+  correction_category_change: "เปลี่ยนประเภทรายการ",
+  material_amount_correction: "แก้ยอดมูลค่าสูง",
+  significant_relative_correction: "แก้ยอดเปลี่ยนแปลงสูง",
+  repeated_financial_correction: "แก้ยอดซ้ำ",
 };
 
 const emptyNewUserForm: NewUserForm = {
@@ -785,6 +797,14 @@ const CashCloseAudit = ({
                     {transaction.reference && (
                       <span>Ref: {transaction.reference}</span>
                     )}
+                    {transaction.reviewEventKind ===
+                      "transactionCorrection" &&
+                      transaction.correctionBeforeAmount !== undefined && (
+                        <span>
+                          เดิม {formatMoney(transaction.correctionBeforeAmount)}
+                          ฿ → ใหม่ {formatMoney(transaction.amount)} ฿
+                        </span>
+                      )}
                   </div>
                   {(transaction.reviewFlags || []).length > 0 && (
                     <div className="manage__reviewFlags">
@@ -1033,9 +1053,12 @@ const Manage = () => {
     try {
       const approvalPath = transaction.sourceType === "standaloneSale"
         ? `standaloneSale/${transaction.saleId}/${transaction._id}`
-        : `${transaction.bookingId}/${transaction._id}`;
+        : `${transaction.bookingId}/${transaction.transactionId || transaction._id}`;
+      const correctionQuery = transaction.correctionId
+        ? `?correctionId=${encodeURIComponent(transaction.correctionId)}`
+        : "";
       await axios.patch(
-        `${API_URL}/finance/review-events/${approvalPath}/approve`,
+        `${API_URL}/finance/review-events/${approvalPath}/approve${correctionQuery}`,
         {},
         { withCredentials: true },
       );
@@ -1043,6 +1066,7 @@ const Manage = () => {
         prev.filter((event) => event._id !== transaction._id),
       );
       await fetchManageData();
+      notifyReviewQueueUpdated();
       toast.success("อนุมัติรายการสำเร็จ");
     } catch (err) {
       console.error(err);
@@ -1063,6 +1087,7 @@ const Manage = () => {
         { withCredentials: true },
       );
       await fetchManageData();
+      notifyReviewQueueUpdated();
     } catch (err) {
       if (axios.isAxiosError(err)) {
         throw new Error(

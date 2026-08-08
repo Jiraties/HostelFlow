@@ -1,10 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.transactionFallsOnBusinessDate = exports.summarizeTransactions = exports.normalizeTransaction = exports.transactionRequiresReview = exports.transactionNeedsReview = exports.transactionUnpaidAmount = exports.bookingRemainingDepositAmount = exports.transactionDepositLiabilityDelta = exports.transactionDashboardCollectedRevenueAmount = exports.calculateTodayRevenueSummary = exports.bookingTodayArrivalRevenueAmount = exports.bookingTransactionTodayReductionAmount = exports.transactionTodayReductionAmount = exports.transactionTodayExtrasRevenueAmount = exports.transactionDashboardGrossRevenueAmount = exports.transactionRefundAmount = exports.transactionRevenueAmount = exports.transactionIsRevenue = exports.summarizeCashStashes = exports.transactionCashStashImpact = exports.emptyCashStashSummary = exports.transactionCashImpact = exports.summarizeReceivedPaymentsByMethod = exports.transactionSignedAmount = exports.transactionDirection = exports.cashBalanceAfterMovements = exports.isValidCashCount = exports.ROUNDING_ADJUSTMENT_REVIEW_THRESHOLD = exports.LARGE_REFUND_THRESHOLD = exports.LARGE_CASH_TRANSACTION_THRESHOLD = exports.CASH_VARIANCE_THRESHOLD = void 0;
+exports.transactionFallsOnBusinessDate = exports.summarizeTransactions = exports.normalizeTransaction = exports.transactionRequiresReview = exports.transactionCorrectionNeedsReview = exports.transactionNeedsReview = exports.transactionUnpaidAmount = exports.bookingRemainingDepositAmount = exports.transactionDepositLiabilityDelta = exports.transactionDashboardCollectedRevenueAmount = exports.calculateTodayRevenueSummary = exports.bookingTodayArrivalRevenueAmount = exports.bookingTransactionTodayReductionAmount = exports.transactionTodayReductionAmount = exports.transactionTodayExtrasRevenueAmount = exports.transactionDashboardGrossRevenueAmount = exports.transactionRefundAmount = exports.transactionRevenueAmount = exports.transactionIsRevenue = exports.summarizeCashStashes = exports.transactionCashStashImpact = exports.emptyCashStashSummary = exports.transactionCashImpact = exports.summarizeReceivedPaymentsByMethod = exports.transactionSignedAmount = exports.transactionDirection = exports.cashBalanceAfterMovements = exports.isValidCashCount = exports.RELATIVE_TRANSACTION_CORRECTION_RATE = exports.RELATIVE_TRANSACTION_CORRECTION_MIN_DELTA = exports.MATERIAL_TRANSACTION_CORRECTION_DELTA = exports.ROUNDING_ADJUSTMENT_REVIEW_THRESHOLD = exports.LARGE_REFUND_THRESHOLD = exports.LARGE_CASH_TRANSACTION_THRESHOLD = exports.CASH_VARIANCE_THRESHOLD = void 0;
 exports.CASH_VARIANCE_THRESHOLD = 20;
 exports.LARGE_CASH_TRANSACTION_THRESHOLD = 5000;
 exports.LARGE_REFUND_THRESHOLD = 2000;
-exports.ROUNDING_ADJUSTMENT_REVIEW_THRESHOLD = 1;
+exports.ROUNDING_ADJUSTMENT_REVIEW_THRESHOLD = 10;
+exports.MATERIAL_TRANSACTION_CORRECTION_DELTA = 2000;
+exports.RELATIVE_TRANSACTION_CORRECTION_MIN_DELTA = 500;
+exports.RELATIVE_TRANSACTION_CORRECTION_RATE = 0.25;
 const isValidCashCount = (value) => Number.isFinite(value) && value >= 0;
 exports.isValidCashCount = isValidCashCount;
 const cashBalanceAfterMovements = (openingCash, cashIn, cashOut) => openingCash + cashIn - cashOut;
@@ -359,7 +362,7 @@ const transactionNeedsReview = (transaction, sameTypeCount = 0) => {
     }
     if (direction === "out" &&
         !["adjustment", "roomChargeWriteOff"].includes(transaction.type) &&
-        amount > exports.LARGE_REFUND_THRESHOLD) {
+        amount >= exports.LARGE_REFUND_THRESHOLD) {
         flags.push("refund", "large_refund");
     }
     if (transaction.paymentMethod === "Cash" && amount >= exports.LARGE_CASH_TRANSACTION_THRESHOLD) {
@@ -374,6 +377,29 @@ const transactionNeedsReview = (transaction, sameTypeCount = 0) => {
     return flags;
 };
 exports.transactionNeedsReview = transactionNeedsReview;
+const transactionCorrectionNeedsReview = (before, after, priorCorrectionCount = 0) => {
+    const amountDelta = Math.abs(Number((Number(after.amount || 0) - Number(before.amount || 0)).toFixed(2)));
+    const relativeAmountDelta = amountDelta / Math.max(Math.abs(Number(before.amount || 0)), 1);
+    const flags = [];
+    if (before.paymentMethod !== after.paymentMethod) {
+        flags.push("correction_payment_method_change");
+    }
+    if (before.type !== after.type) {
+        flags.push("correction_category_change");
+    }
+    if (amountDelta >= exports.MATERIAL_TRANSACTION_CORRECTION_DELTA) {
+        flags.push("material_amount_correction");
+    }
+    else if (amountDelta >= exports.RELATIVE_TRANSACTION_CORRECTION_MIN_DELTA &&
+        relativeAmountDelta >= exports.RELATIVE_TRANSACTION_CORRECTION_RATE) {
+        flags.push("significant_relative_correction");
+    }
+    if (priorCorrectionCount > 0 && amountDelta > 0) {
+        flags.push("repeated_financial_correction");
+    }
+    return flags.length > 0 ? ["transaction_correction", ...flags] : [];
+};
+exports.transactionCorrectionNeedsReview = transactionCorrectionNeedsReview;
 const transactionRequiresReview = (transaction) => {
     if (transaction.reviewStatus === "reviewed")
         return false;

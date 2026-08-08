@@ -260,9 +260,9 @@ const Home = ({ status }: { status: HomeStatus }) => {
     operatingStash: cashPosition?.current.operatingCash || 0,
   };
   const cashShiftHelperText = cashPosition?.activeShift
-    ? `Shift ${cashPosition.activeShift.shiftNumber} · ${
-        resolveStaffName(cashPosition.activeShift.staffUsername)
-      }`
+    ? `Shift ${cashPosition.activeShift.shiftNumber} · ${resolveStaffName(
+        cashPosition.activeShift.staffUsername,
+      )}`
     : "ยังไม่เปิดกะเงินสด";
 
   const statCards = isMaster
@@ -374,10 +374,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
   };
 
   const fetchBookingsWithFilters = useCallback(
-    async (
-      filters: MasterFilters,
-      options: { append?: boolean } = {},
-    ) => {
+    async (filters: MasterFilters, options: { append?: boolean } = {}) => {
       const append = options.append === true;
       if (append && masterLoadingMoreRef.current) return;
       const normalizedSearch = filters.search.trim();
@@ -419,9 +416,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
             params: {
               ...otherFilters,
               ...(hasGlobalSearch ? { search: normalizedSearch } : {}),
-              ...(useDateRange
-                ? { from: filters.from, to: filters.to }
-                : {}),
+              ...(useDateRange ? { from: filters.from, to: filters.to } : {}),
               page: requestedPage,
               limit: MASTER_BOOKINGS_PAGE_SIZE,
             },
@@ -450,8 +445,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
             ),
           ];
         });
-        masterPageRef.current =
-          response.data.pagination?.page || requestedPage;
+        masterPageRef.current = response.data.pagination?.page || requestedPage;
         setHasMoreBookings(hasMore);
       } catch (err) {
         if (axios.isCancel(err)) return;
@@ -612,9 +606,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
                   }`}
                   aria-hidden="true"
                 />
-                <span>
-                  {limitSearchToRange ? "ช่วงวันที่" : "ทุกช่วงเวลา"}
-                </span>
+                <span>{limitSearchToRange ? "ช่วงวันที่" : "ทุกช่วงเวลา"}</span>
               </button>
             )}
           </div>
@@ -642,8 +634,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
           <PreferredDateInput
             value={masterFilters.from}
             disabled={
-              masterFilters.search.trim().length >= 3 &&
-              !limitSearchToRange
+              masterFilters.search.trim().length >= 3 && !limitSearchToRange
             }
             onChange={(e) => updateMasterFilter("from", e.target.value)}
             className="boxInput home__dateInput"
@@ -651,8 +642,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
           <PreferredDateInput
             value={masterFilters.to}
             disabled={
-              masterFilters.search.trim().length >= 3 &&
-              !limitSearchToRange
+              masterFilters.search.trim().length >= 3 && !limitSearchToRange
             }
             onChange={(e) => updateMasterFilter("to", e.target.value)}
             className="boxInput home__dateInput"

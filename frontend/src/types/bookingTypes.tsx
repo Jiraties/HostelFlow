@@ -202,6 +202,10 @@ export interface TransactionCorrection {
   financialChange: boolean;
   originalBusinessDate: string;
   affectedCashShiftId?: string;
+  reviewFlags?: string[];
+  reviewStatus?: "none" | "needs_review" | "reviewed";
+  reviewedBy?: string;
+  reviewedAt?: string | Date;
 }
 
 export interface BookingFinancialSummary {

@@ -7,7 +7,7 @@ const frontendRoot = path.resolve(__dirname, "../../frontend/src");
 const source = (relativePath: string) =>
   readFileSync(path.join(frontendRoot, relativePath), "utf8");
 
-test("global palette uses desktop sidebar and mobile header triggers with MUI accessible primitives", () => {
+test("global palette uses desktop sidebar and mobile More triggers with MUI accessible primitives", () => {
   const app = source("App.tsx");
   const header = source("components/PageHeader.tsx");
   const sidebar = source("components/Sidebar.tsx");
@@ -17,10 +17,11 @@ test("global palette uses desktop sidebar and mobile header triggers with MUI ac
   const context = source("context/CommandPaletteContext.tsx");
 
   assert.match(app, /<CommandPaletteProvider>/);
-  assert.match(header, /pageHeader__searchAction/);
-  assert.match(header, /aria-keyshortcuts="Control\+K Meta\+K"/);
+  assert.doesNotMatch(header, /pageHeader__searchAction/);
   assert.match(sidebar, /sidebar__searchAction/);
   assert.match(sidebar, /aria-keyshortcuts="Control\+K Meta\+K"/);
+  assert.match(sidebar, /mobileMore__item--search/);
+  assert.match(sidebar, /requestAnimationFrame\(\(\) => openPalette\(\)\)/);
   assert.match(sidebarStyles, /\.sidebar__searchAction/);
   assert.match(paletteStyles, /width: min\(\d+rem, calc\(100vw - 2rem\)\)/);
   assert.match(context, /event\.metaKey/);
@@ -36,19 +37,65 @@ test("global palette uses desktop sidebar and mobile header triggers with MUI ac
   assert.match(source("features/search/GlobalSearchPalette.css"), /\.Mui-focusVisible/);
 });
 
+test("all MUI input modals default to their first usable field", () => {
+  const app = source("App.tsx");
+  const autofocus = source("hooks/useModalInputAutofocus.ts");
+
+  assert.match(app, /useModalInputAutofocus\(\)/);
+  assert.match(autofocus, /\.MuiModal-root/);
+  assert.match(autofocus, /MutationObserver/);
+  assert.match(autofocus, /MODAL_FIELD_SELECTOR/);
+  assert.match(autofocus, /not\(\[disabled\]\)/);
+  assert.match(autofocus, /not\(\[readonly\]\)/);
+  assert.match(autofocus, /field\.focus\(\{ preventScroll: true \}\)/);
+  assert.match(autofocus, /data-disable-input-autofocus/);
+  assert.match(autofocus, /focusedModals/);
+});
+
 test("desktop sidebar groups related workflows and anchors settings separately", () => {
   const sidebar = source("components/Sidebar.tsx");
   const styles = source("components/Sidebar.css");
 
   assert.match(sidebar, /id: "stays"/);
   assert.match(sidebar, /"\/arrivals", "\/departures", "\/calendar", "\/master"/);
-  assert.match(sidebar, /label: user\?\.admin \? "เอกสารและการจัดการ"/);
+  assert.match(sidebar, /id: "tools"/);
   assert.match(sidebar, /sidebar__navGroup/);
   assert.match(sidebar, /sidebar__settingsAction/);
   assert.match(styles, /\.sidebar__navGroup ul/);
+  assert.match(styles, /\.sidebar__navItem--active::before/);
+  assert.match(styles, /\.sidebar__settingsAction::before/);
+  const expandedGroupRule =
+    styles.match(/\.sidebar__navGroup ul \{([^}]*)\}/)?.[1] || "";
+  assert.doesNotMatch(expandedGroupRule, /box-shadow/);
   assert.match(styles, /\.sidebar__settingsAction/);
   assert.match(styles, /\.sidebar--collapsed \.sidebar__settingsAction/);
   assert.match(styles, /@media \(max-width: 760px\)[\s\S]*\.sidebar__settingsAction/);
+});
+
+test("admin Manage navigation shows the canonical review queue badge", () => {
+  const sidebar = source("components/Sidebar.tsx");
+  const styles = source("components/Sidebar.css");
+  const manage = source("pages/Manage.tsx");
+
+  assert.match(sidebar, /finance\/review-events\/count/);
+  assert.match(sidebar, /item\.link === "\/manage"/);
+  assert.match(sidebar, /sidebar__notificationBadge/);
+  assert.match(sidebar, /reviewQueueCount > 99 \? "99\+"/);
+  assert.match(sidebar, /REVIEW_QUEUE_UPDATED_EVENT/);
+  assert.match(styles, /background: var\(--red\)/);
+  assert.match(styles, /\.sidebar--collapsed \.sidebar__notificationBadge/);
+  assert.match(sidebar, /sidebar__notificationBadge--mobileNav/);
+  assert.match(
+    styles,
+    /\.mobileNav__item \.sidebar__notificationBadge--mobileNav/,
+  );
+  assert.ok(
+    (manage.match(/notifyReviewQueueUpdated\(\)/g) || []).length >= 2,
+    "transaction approval and cash-audit acknowledgement both refresh the badge",
+  );
+  assert.match(manage, /reviewEventKind\?: "transactionCorrection"/);
+  assert.match(manage, /correctionId=\$\{encodeURIComponent/);
+  assert.match(manage, /material_amount_correction/);
 });
 
 test("dashboard header always shows the full Bangkok date", () => {
@@ -60,7 +107,7 @@ test("dashboard header always shows the full Bangkok date", () => {
   assert.match(dashboard, /month: "long"/);
   assert.match(dashboard, /weekday: "long"/);
   assert.match(dashboard, /year: "numeric"/);
-  assert.match(dashboard, /title=\{`HostelFlow \| \$\{fullFormattedDate\}`\}/);
+  assert.match(dashboard, /title=\{fullFormattedDate\}/);
   assert.match(dashboard, /setInterval\([\s\S]{0,80}60_000/);
 });
 

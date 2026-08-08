@@ -159,7 +159,7 @@ export const bookingFinancialPosition = (
   };
 };
 
-const ROUNDING_ADJUSTMENT_REVIEW_THRESHOLD = 1;
+const ROUNDING_ADJUSTMENT_REVIEW_THRESHOLD = 10;
 
 export const transactionRequiresReview = (transaction: Transaction) => {
   if (transaction.reviewStatus === "reviewed") return false;

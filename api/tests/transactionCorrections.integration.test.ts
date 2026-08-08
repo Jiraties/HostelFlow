@@ -8,6 +8,10 @@ import CashShift from "../src/models/cashShift";
 import DailyClose from "../src/models/dailyClose";
 import MutationIdempotencyKey from "../src/models/mutationIdempotencyKey";
 import { correctTransaction } from "../src/controller/transactionCorrections";
+import {
+  approveReviewEvent,
+  getReviewEvents,
+} from "../src/controller/finance";
 
 type CapturedResponse = {
   statusCode: number;
@@ -149,7 +153,10 @@ const createBooking = async ({
 test("correction appends audit history and never mutates the original transaction", async () => {
   const booking = await createBooking();
   const transactionId = String(booking.transactions[0]._id);
-  const result = await callCorrection({ transactionId });
+  const result = await callCorrection({
+    transactionId,
+    overrides: { correctedPaymentMethod: "Unpaid" },
+  });
 
   assert.equal(result.statusCode, 200);
   assert.equal(result.body.effectiveTransaction.amount, 1000);
@@ -160,7 +167,76 @@ test("correction appends audit history and never mutates the original transactio
   assert.equal(stored?.transactionCorrections.length, 1);
   assert.equal(stored?.transactionCorrections[0].before.amount, 1200);
   assert.equal(stored?.transactionCorrections[0].after.amount, 1000);
+  assert.equal(stored?.transactionCorrections[0].reviewStatus, "none");
+  assert.deepEqual(stored?.transactionCorrections[0].reviewFlags, []);
   assert.equal(stored?.revision, 1);
+});
+
+test("material amount corrections enter the immutable review queue", async () => {
+  const booking = await createBooking({ amount: 4000 });
+  const transactionId = String(booking.transactions[0]._id);
+  const result = await callCorrection({
+    transactionId,
+    overrides: {
+      correctedAmount: 2000,
+      correctedPaymentMethod: "Unpaid",
+    },
+  });
+
+  assert.equal(result.statusCode, 200);
+  const stored = await Booking.findById(booking._id).lean();
+  assert.equal(stored?.transactions[0].amount, 4000);
+  assert.equal(stored?.transactionCorrections[0].reviewStatus, "needs_review");
+  assert.deepEqual(stored?.transactionCorrections[0].reviewFlags, [
+    "transaction_correction",
+    "material_amount_correction",
+  ]);
+  const correctionId = String(stored?.transactionCorrections[0]._id);
+  await Booking.updateOne(
+    { _id: booking._id, "transactionCorrections._id": correctionId },
+    {
+      $unset: {
+        "transactionCorrections.$.reviewFlags": "",
+        "transactionCorrections.$.reviewStatus": "",
+      },
+    },
+  );
+
+  const queueResponse = response();
+  await getReviewEvents(
+    {
+      query: { date: businessDateKey() },
+      user: { username: "admin", admin: true },
+    } as any,
+    queueResponse as any,
+  );
+  assert.equal(queueResponse.statusCode, 200);
+  assert.equal(queueResponse.body.transactions.length, 1);
+  assert.equal(
+    queueResponse.body.transactions[0].reviewEventKind,
+    "transactionCorrection",
+  );
+  assert.deepEqual(queueResponse.body.transactions[0].reviewFlags, [
+    "transaction_correction",
+    "material_amount_correction",
+  ]);
+
+  const approvalResponse = response();
+  await approveReviewEvent(
+    {
+      params: { bookingId: booking.bookingId, transactionId },
+      query: { correctionId },
+      user: { username: "admin", admin: true },
+    } as any,
+    approvalResponse as any,
+  );
+  assert.equal(approvalResponse.statusCode, 200);
+
+  const approved = await Booking.findById(booking._id).lean();
+  assert.equal(
+    approved?.transactionCorrections[0].reviewStatus,
+    "reviewed",
+  );
 });
 
 test("cash correction in an open shift remains attached to that shift", async () => {

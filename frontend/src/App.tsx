@@ -16,10 +16,12 @@ import Main from "./pages/Main";
 import Documents from "./pages/Documents";
 import Manage from "./pages/Manage";
 import { CommandPaletteProvider } from "./context/CommandPaletteContext";
+import { useModalInputAutofocus } from "./hooks/useModalInputAutofocus";
 
 function App() {
   const { isAuthenticated, login, user } = useAuth();
   const [checkingAuth, setCheckingAuth] = useState(true);
+  useModalInputAutofocus();
 
   useEffect(() => {
     const fetchUser = async () => {

@@ -216,6 +216,14 @@ const transactionCorrectionSchema = new mongoose_1.default.Schema({
     financialChange: { type: Boolean, required: true },
     originalBusinessDate: { type: String, required: true },
     affectedCashShiftId: { type: String },
+    reviewFlags: [{ type: String }],
+    reviewStatus: {
+        type: String,
+        enum: ["none", "needs_review", "reviewed"],
+        default: "none",
+    },
+    reviewedBy: { type: String },
+    reviewedAt: { type: Date },
 });
 const cancellationSchema = new mongoose_1.default.Schema({
     cancellationType: {

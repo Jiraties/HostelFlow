@@ -14,6 +14,7 @@ const bookingConcurrency_1 = require("../services/bookingConcurrency");
 const cashLedgerTransaction_1 = require("../services/cashLedgerTransaction");
 const mutationIdempotency_1 = require("../services/mutationIdempotency");
 const transactionCorrections_1 = require("../services/transactionCorrections");
+const financeHelpers_1 = require("../helpers/financeHelpers");
 const PAYMENT_METHODS = [
     "OTA",
     "Cash",
@@ -64,7 +65,7 @@ const findLinkedCardSurcharge = (transactions, targetTransactionId) => {
         (transaction.relatedTransactionId === targetTransactionId ||
             (!transaction.relatedTransactionId && index === targetIndex + 1)));
 };
-const correctionRecord = ({ targetTransactionId, before, after, correctionType, reasonCode, note, correctedBy, correctedByName, originalBusinessDate, }) => ({
+const correctionRecord = ({ targetTransactionId, before, after, correctionType, reasonCode, note, correctedBy, correctedByName, originalBusinessDate, reviewFlags = [], }) => ({
     _id: String(new mongoose_1.default.Types.ObjectId()),
     targetTransactionId,
     before,
@@ -78,6 +79,8 @@ const correctionRecord = ({ targetTransactionId, before, after, correctionType, 
     financialChange: (0, transactionCorrections_1.correctionChangesFinancialFields)(before, after),
     originalBusinessDate,
     affectedCashShiftId: before.cashShiftId || after.cashShiftId,
+    reviewFlags,
+    reviewStatus: reviewFlags.length ? "needs_review" : "none",
 });
 const correctTransaction = async (req, res) => {
     try {
@@ -236,6 +239,7 @@ const correctTransaction = async (req, res) => {
             });
         }
         const originalBusinessDate = businessDateKey(new Date(current.createdAt || booking.checkIn));
+        const correctionReviewFlags = (0, financeHelpers_1.transactionCorrectionNeedsReview)(before, after, current.correctionCount || 0);
         if (financialChange) {
             if (current.type !== "deposit") {
                 const [cashShift, dailyClose, finalDayClose] = await Promise.all([
@@ -303,6 +307,7 @@ const correctTransaction = async (req, res) => {
                     correctedBy: req.user?.username || "system",
                     correctedByName,
                     originalBusinessDate,
+                    reviewFlags: correctionReviewFlags,
                 }),
             ];
             const generatedTransactions = [];

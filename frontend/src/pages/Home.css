@@ -473,13 +473,13 @@
     border-radius: var(--mobile-card-radius, 1.25rem);
   }
 
-  .home--master {
+  .home {
     height: 100%;
     min-height: 0;
     overflow: hidden;
   }
 
-  .home--master .home__gridArea {
+  .home .home__gridArea {
     flex: 1 1 0;
     height: auto;
     min-height: 0;

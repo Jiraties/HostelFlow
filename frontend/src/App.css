@@ -43,6 +43,12 @@
     -webkit-overflow-scrolling: touch;
   }
 
+  .app > main.home {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
   .home__modalCenter {
     align-items: flex-end;
     padding: 0.5rem 0 0;

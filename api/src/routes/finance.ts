@@ -10,6 +10,7 @@ import {
   getTodayRevenueBreakdown,
   getTodayRevenueSummary,
   getReconciliation,
+  getReviewEventCount,
   getReviewEvents,
   resolveCashShiftAudit,
   reopenFinalCashShift,
@@ -38,6 +39,7 @@ financeRouter.get(
 financeRouter.get("/today-revenue-breakdown", getTodayRevenueBreakdown);
 financeRouter.get("/today-revenue-summary", getTodayRevenueSummary);
 financeRouter.get("/review-events", getReviewEvents);
+financeRouter.get("/review-events/count", getReviewEventCount);
 financeRouter.patch(
   "/review-events/:bookingId/:transactionId/approve",
   approveReviewEvent,

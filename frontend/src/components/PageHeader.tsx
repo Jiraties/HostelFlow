@@ -8,7 +8,6 @@ import { API_URL } from "../config/api";
 
 import "./PageHeader.css";
 import { profilePictureUrl } from "../helpers/profilePictureUrl";
-import { useCommandPalette } from "../context/commandPalette";
 
 type RefreshMessages = {
   loading: string;
@@ -49,7 +48,6 @@ const PageHeader = ({
   meta,
 }: PageHeaderProps) => {
   const { user, logout } = useAuth();
-  const { openPalette } = useCommandPalette();
   const navigate = useNavigate();
   const profileRef = useRef<HTMLDivElement>(null);
   const profileButtonRef = useRef<HTMLButtonElement>(null);
@@ -141,17 +139,6 @@ const PageHeader = ({
       </div>
 
       <div className="pageHeader__actions">
-        <button
-          className="pageHeader__searchAction"
-          type="button"
-          aria-label="เปิดค้นหาทั่วทั้งระบบ"
-          aria-keyshortcuts="Control+K Meta+K"
-          onClick={() => openPalette()}
-        >
-          <i className="bx bx-search" aria-hidden="true" />
-          <span>ค้นหา</span>
-          <kbd>⌘ K</kbd>
-        </button>
         <div ref={profileRef} className="pageHeader__profile">
           <p>
             {user?.name} {user?.admin && <strong>Admin</strong>}

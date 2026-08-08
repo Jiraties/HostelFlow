@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.approveStandaloneReviewEvent = exports.approveReviewEvent = exports.getReviewEvents = exports.upsertDailyClose = exports.closeCashShift = exports.reopenFinalCashShift = exports.startCashShift = exports.resolveCashShiftAudit = exports.getCashShiftAudit = exports.getDepositReturnReminder = exports.getCashPosition = exports.getReconciliation = exports.getTodayRevenueSummary = exports.getTodayRevenueBreakdown = exports.getExpectedStayRevenueBreakdown = void 0;
+exports.approveStandaloneReviewEvent = exports.approveReviewEvent = exports.getReviewEventCount = exports.getReviewEvents = exports.upsertDailyClose = exports.closeCashShift = exports.reopenFinalCashShift = exports.startCashShift = exports.resolveCashShiftAudit = exports.getCashShiftAudit = exports.getDepositReturnReminder = exports.getCashPosition = exports.getReconciliation = exports.getTodayRevenueSummary = exports.getTodayRevenueBreakdown = exports.getExpectedStayRevenueBreakdown = void 0;
 const crypto_1 = __importDefault(require("crypto"));
 const mongoose_1 = __importDefault(require("mongoose"));
 const booking_1 = __importDefault(require("../models/booking"));
@@ -263,6 +263,63 @@ const getTransactionsForBusinessDate = async (businessDate, staffUsername) => {
         transactions,
         summary: (0, financeHelpers_1.summarizeTransactions)(transactions),
     };
+};
+const getCorrectionReviewEventsForBusinessDate = async (businessDate) => {
+    const bounds = getBusinessDayBoundsFromKey(businessDate);
+    if (!bounds)
+        return null;
+    const bookings = await booking_1.default.find({
+        transactionCorrections: {
+            $elemMatch: {
+                correctedAt: { $gte: bounds.start, $lt: bounds.end },
+                reviewStatus: { $ne: "reviewed" },
+            },
+        },
+    })
+        .select("bookingId name staffUsername transactions transactionCorrections")
+        .lean();
+    const transactions = bookings.flatMap((sourceBooking) => {
+        const effectiveBooking = (0, transactionCorrections_1.withEffectiveTransactions)(sourceBooking);
+        return (sourceBooking.transactionCorrections || []).flatMap((correction, correctionIndex, corrections) => {
+            const priorCorrectionCount = corrections
+                .slice(0, correctionIndex)
+                .filter((candidate) => candidate.targetTransactionId ===
+                correction.targetTransactionId && candidate.financialChange).length;
+            const reviewFlags = (correction.reviewFlags || []).length
+                ? correction.reviewFlags || []
+                : (0, financeHelpers_1.transactionCorrectionNeedsReview)(correction.before, correction.after, priorCorrectionCount);
+            if (correction.reviewStatus === "reviewed" ||
+                reviewFlags.length === 0 ||
+                new Date(correction.correctedAt) < bounds.start ||
+                new Date(correction.correctedAt) >= bounds.end) {
+                return [];
+            }
+            const transaction = effectiveBooking.transactions.find((candidate) => String(candidate._id) === correction.targetTransactionId);
+            if (!transaction)
+                return [];
+            return [
+                {
+                    ...transaction,
+                    _id: correction._id ? String(correction._id) : undefined,
+                    transactionId: correction.targetTransactionId,
+                    correctionId: correction._id ? String(correction._id) : undefined,
+                    reviewEventKind: "transactionCorrection",
+                    reviewFlags,
+                    reviewStatus: correction.reviewStatus || "needs_review",
+                    createdAt: correction.correctedAt,
+                    createdBy: correction.correctedBy,
+                    staffUsername: correction.correctedBy,
+                    bookingId: sourceBooking.bookingId,
+                    sourceType: "booking",
+                    guestName: sourceBooking.name,
+                    note: correction.note,
+                    correctionBeforeAmount: correction.before.amount,
+                    correctionAmountDelta: Number((correction.after.amount - correction.before.amount).toFixed(2)),
+                },
+            ];
+        });
+    });
+    return { ...bounds, transactions };
 };
 const attachDailyCloseStaffProfiles = async (dailyCloses) => {
     const usernames = [
@@ -1896,11 +1953,18 @@ const getReviewEvents = async (req, res) => {
                 message: "เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถดูรายการตรวจสอบได้",
             });
         }
-        const reconciliation = await getTransactionsForBusinessDate(req.query.date);
-        if (!reconciliation) {
+        const requestedDate = req.query.date;
+        const [reconciliation, correctionReviews] = await Promise.all([
+            getTransactionsForBusinessDate(requestedDate),
+            getCorrectionReviewEventsForBusinessDate(requestedDate),
+        ]);
+        if (!reconciliation || !correctionReviews) {
             return res.status(400).json({ message: "Invalid date format" });
         }
-        const transactions = reconciliation.transactions.filter((transaction) => (0, financeHelpers_1.transactionRequiresReview)(transaction));
+        const transactions = [
+            ...reconciliation.transactions.filter((transaction) => (0, financeHelpers_1.transactionRequiresReview)(transaction)),
+            ...correctionReviews.transactions,
+        ];
         res.status(200).json({
             businessDate: reconciliation.businessDate,
             transactions,
@@ -1911,6 +1975,52 @@ const getReviewEvents = async (req, res) => {
     }
 };
 exports.getReviewEvents = getReviewEvents;
+const getReviewEventCount = async (req, res) => {
+    try {
+        if (!req.user?.admin) {
+            return res.status(403).json({
+                message: "เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถดูรายการตรวจสอบได้",
+            });
+        }
+        const [reconciliation, correctionReviews] = await Promise.all([
+            getTransactionsForBusinessDate(),
+            getCorrectionReviewEventsForBusinessDate(),
+        ]);
+        if (!reconciliation || !correctionReviews) {
+            return res.status(500).json({ message: "Unable to resolve business date" });
+        }
+        const transactionReviewCount = reconciliation.transactions.reduce((total, transaction) => total + ((0, financeHelpers_1.transactionRequiresReview)(transaction) ? 1 : 0), 0);
+        const cashAuditReviewCount = await cashShift_1.default.countDocuments({
+            businessDate: reconciliation.businessDate,
+            status: "closed",
+            $and: [
+                {
+                    $or: [
+                        { operatingVariance: { $gt: financeHelpers_1.CASH_VARIANCE_THRESHOLD } },
+                        { operatingVariance: { $lt: -financeHelpers_1.CASH_VARIANCE_THRESHOLD } },
+                    ],
+                },
+                {
+                    $or: [
+                        { auditResolution: { $exists: false } },
+                        { auditResolution: null },
+                    ],
+                },
+            ],
+        });
+        const count = transactionReviewCount +
+            correctionReviews.transactions.length +
+            cashAuditReviewCount;
+        return res.status(200).json({
+            businessDate: reconciliation.businessDate,
+            count,
+        });
+    }
+    catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+};
+exports.getReviewEventCount = getReviewEventCount;
 const approveReviewEvent = async (req, res) => {
     try {
         if (!req.user?.admin || !req.user.username) {
@@ -1920,9 +2030,60 @@ const approveReviewEvent = async (req, res) => {
         }
         const bookingId = String(req.params.bookingId);
         const transactionId = String(req.params.transactionId);
+        const correctionId = typeof req.query.correctionId === "string"
+            ? req.query.correctionId
+            : "";
         const booking = await booking_1.default.findOne({ bookingId });
         if (!booking) {
             return res.status(404).json({ message: "ไม่พบ Booking" });
+        }
+        if (correctionId) {
+            const correction = booking.transactionCorrections.find((existingCorrection) => String(existingCorrection._id) === correctionId &&
+                existingCorrection.targetTransactionId === transactionId);
+            if (!correction) {
+                return res.status(404).json({ message: "ไม่พบรายการแก้ไขธุรกรรม" });
+            }
+            if (correction.reviewStatus === "reviewed") {
+                return res.status(200).json({
+                    message: "รายการแก้ไขนี้ได้รับการอนุมัติแล้ว",
+                    correction,
+                });
+            }
+            const correctionIndex = booking.transactionCorrections.findIndex((candidate) => String(candidate._id) === correctionId);
+            const priorCorrectionCount = booking.transactionCorrections
+                .slice(0, correctionIndex)
+                .filter((candidate) => candidate.targetTransactionId === transactionId &&
+                candidate.financialChange).length;
+            const reviewFlags = (correction.reviewFlags || []).length
+                ? correction.reviewFlags || []
+                : (0, financeHelpers_1.transactionCorrectionNeedsReview)(correction.before, correction.after, priorCorrectionCount);
+            if (!reviewFlags.length) {
+                return res.status(400).json({
+                    message: "รายการแก้ไขนี้ไม่จำเป็นต้องตรวจสอบ",
+                });
+            }
+            const reviewedAt = new Date();
+            correction.reviewFlags = reviewFlags;
+            correction.reviewStatus = "reviewed";
+            correction.reviewedBy = req.user.username;
+            correction.reviewedAt = reviewedAt;
+            booking.markModified("transactionCorrections");
+            await booking.save();
+            await (0, activityServices_1.logActivity)(req.user.username, "REVIEW_TRANSACTION", {
+                summary: {
+                    reviewEventKind: "transactionCorrection",
+                    bookingId,
+                    transactionId,
+                    correctionId,
+                    guestName: booking.name,
+                    before: correction.before,
+                    after: correction.after,
+                    flags: reviewFlags,
+                    reviewedBy: correction.reviewedBy,
+                    reviewedAt,
+                },
+            }, bookingId);
+            return res.status(200).json({ correction });
         }
         const transaction = booking.transactions.find((existingTransaction) => String(existingTransaction._id) === transactionId);
         if (!transaction) {
