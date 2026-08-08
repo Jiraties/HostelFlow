@@ -33,6 +33,8 @@ import {
   transactionRequiresReview,
 } from "../../helpers/bookingHelpers.ts";
 import { requestUnsavedModalClose } from "../../helpers/modalGuards.ts";
+import { rememberBooking } from "../../helpers/recentBookings.ts";
+import { transactionMap } from "../../helpers/transactionDisplay.ts";
 import {
   statusCorrectionActionLabel,
   statusCorrectionForStatus,
@@ -62,66 +64,6 @@ const paymentMethodIconMap = {
   Card: "bx-credit-card-alt",
   Transfer: "bx-arrow-right-left",
   Unpaid: "bx-alert-triangle",
-};
-
-const transactionMap = {
-  roomCharge: { icon: "bx-bed-alt", name: "ค่าห้อง", color: "#51d1dc" },
-  deposit: { icon: "bx-wallet", name: "รับมัดจำ", color: "#facc15" },
-  adjustment: { icon: "bx-edit-alt", name: "ปรับราคา", color: "#a78bfa" },
-  depositRefund: { icon: "bx-undo", name: "คืนมัดจำ", color: "#f87171" },
-  cancellationRefund: {
-    icon: "bx-calendar-x",
-    name: "คืนเงินยกเลิก",
-    color: "#fb7185",
-  },
-  roomRefund: { icon: "bx-undo", name: "คืนค่าห้อง", color: "#fb7185" },
-  roomChargeWriteOff: {
-    icon: "bx-calendar-x",
-    name: "ปิดยอดค่าห้องที่เหลือ",
-    color: "#94a3b8",
-  },
-  settlementCharge: {
-    icon: "bx-receipt",
-    name: "เก็บเงินเพิ่ม",
-    color: "#22c55e",
-  },
-  compensation: { icon: "bx-gift", name: "ชดเชยลูกค้า", color: "#38bdf8" },
-  depositKept: {
-    icon: "bx-lock-keyhole",
-    name: "เก็บมัดจำเป็นรายได้",
-    color: "#facc15",
-  },
-  paymentCorrection: {
-    icon: "bx-arrow-right-left",
-    name: "แก้ไขการชำระเงิน",
-    color: "#a78bfa",
-  },
-  towel: { icon: "bx-bath", name: "Towel", color: "#38bdf8" },
-  motorbike: { icon: "bx-cycling", name: "Motorbike", color: "#fb923c" },
-  slowBoat: { icon: "bx-water", name: "Slow Boat", color: "#2dd4bf" },
-  joinTour: { icon: "bx-map", name: "Join Tour", color: "#22c55e" },
-  extraBed: { icon: "bx-bed", name: "Extra Bed", color: "#ec4899" },
-  pickACraft: { icon: "bx-palette", name: "Pick A Craft", color: "#f59e0b" },
-  trek2D: { icon: "bx-map-alt", name: "Trek 2D", color: "#16a34a" },
-  setMenu: { icon: "bx-food-menu", name: "Set Menu", color: "#84cc16" },
-  sleeperBus: { icon: "bx-bus", name: "Sleeper Bus", color: "#6366f1" },
-  onlyWalk: { icon: "bx-walking", name: "Only Walk", color: "#14b8a6" },
-  laundry: { icon: "bx-washer", name: "Laundry", color: "#60a5fa" },
-  bicycle: { icon: "bx-cycling", name: "Bicycle", color: "#fb923c" },
-  car: { icon: "bx-car", name: "Car", color: "#64748b" },
-  misc: {
-    icon: "bx-dots-horizontal-rounded",
-    name: "Misc",
-    color: "#94a3b8",
-  },
-  rainCoat: { icon: "bx-cloud-rain", name: "Rain Coat", color: "#0ea5e9" },
-  passwordLock: { icon: "bx-lock", name: "Password Lock", color: "#8b5cf6" },
-  cooking: { icon: "bx-food-menu", name: "Cooking", color: "#f97316" },
-  cardSurcharge: {
-    icon: "bx-credit-card-alt",
-    name: "ค่าธรรมเนียมบัตร 3%",
-    color: "#94a3b8",
-  },
 };
 
 const correctableTransactionTypes = new Set<
@@ -203,12 +145,18 @@ const ViewBooking = ({
   onClose,
   onUpdated,
   removeBookingHandler,
+  highlightTransactionId,
+  initialAction,
+  onInitialActionConsumed,
 }: {
   booking: booking | null;
   bookingId?: string;
   onClose?: () => void;
   onUpdated?: (booking: booking) => void;
   removeBookingHandler: (booking: booking) => void;
+  highlightTransactionId?: string;
+  initialAction?: "addTransaction";
+  onInitialActionConsumed?: () => void;
 }) => {
   const [data, setData] = useState<booking | null>(
     booking ? formatBookingDates(booking) : null,
@@ -277,11 +225,15 @@ const ViewBooking = ({
   const [moreActionsIsOpen, setMoreActionsIsOpen] = useState(false);
   const [showTransactionOverflowAlert, setShowTransactionOverflowAlert] =
     useState(false);
+  const [highlightedTransactionId, setHighlightedTransactionId] = useState("");
+  const [searchAnnouncement, setSearchAnnouncement] = useState("");
   const [
     transactionOverflowAlertDismissed,
     setTransactionOverflowAlertDismissed,
   ] = useState(false);
   const priceListRef = useRef<HTMLDivElement | null>(null);
+  const handledHighlightRef = useRef("");
+  const handledInitialActionRef = useRef("");
   const { user, resolveStaffName } = useAuth();
   const isMobileView = useMediaQuery("(max-width:760px)");
   const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
@@ -537,6 +489,62 @@ const ViewBooking = ({
 
     return () => cancelAnimationFrame(animationFrame);
   }, [data?.transactions.length, updateTransactionOverflowAlert]);
+
+  useEffect(() => {
+    if (!data) return;
+    rememberBooking(user?.userId, data.bookingId);
+  }, [data, user?.userId]);
+
+  useEffect(() => {
+    if (
+      !data ||
+      initialAction !== "addTransaction" ||
+      handledInitialActionRef.current === data.bookingId
+    ) {
+      return;
+    }
+    handledInitialActionRef.current = data.bookingId;
+    setAddTransactionIsOpen(true);
+    onInitialActionConsumed?.();
+  }, [data, initialAction, onInitialActionConsumed]);
+
+  useEffect(() => {
+    if (
+      !data ||
+      !highlightTransactionId ||
+      handledHighlightRef.current === highlightTransactionId
+    ) {
+      return;
+    }
+    handledHighlightRef.current = highlightTransactionId;
+    let highlightTimeoutId = 0;
+    const animationFrame = requestAnimationFrame(() => {
+      const target = Array.from(
+        priceListRef.current?.querySelectorAll<HTMLElement>(
+          "[data-search-transaction-id]",
+        ) || [],
+      ).find(
+        (element) =>
+          element.dataset.searchTransactionId === highlightTransactionId,
+      );
+      if (!target) {
+        setSearchAnnouncement("ไม่พบรายการที่ตรงกันใน Booking นี้");
+        toast.error("ไม่พบรายการที่ตรงกัน");
+        return;
+      }
+      setHighlightedTransactionId(highlightTransactionId);
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      setSearchAnnouncement("เลื่อนไปยังรายการที่ค้นหาแล้ว");
+      highlightTimeoutId = window.setTimeout(
+        () => setHighlightedTransactionId(""),
+        4000,
+      );
+    });
+    return () => {
+      cancelAnimationFrame(animationFrame);
+      window.clearTimeout(highlightTimeoutId);
+    };
+  }, [data, highlightTransactionId]);
 
   if (!loading && loadError && !data) {
     return (
@@ -1286,7 +1294,14 @@ const ViewBooking = ({
           (transaction.type === "roomCharge" &&
           transaction.sourceAction === "EXTEND_BOOKING"
             ? " viewBooking__priceChild--extension"
+            : "") +
+          (transaction._id === highlightedTransactionId
+            ? " viewBooking__priceChild--searchHighlight"
             : "")
+        }
+        data-search-transaction-id={transaction._id}
+        aria-current={
+          transaction._id === highlightedTransactionId ? "true" : undefined
         }
         key={
           transaction._id ||
@@ -1729,6 +1744,9 @@ const ViewBooking = ({
           booking ? "" : " viewBooking__wrapper--replacedSkeleton"
         }`}
       >
+        <p className="viewBooking__searchAnnouncement" aria-live="polite">
+          {searchAnnouncement}
+        </p>
         <div className="viewBooking__top">
           {onClose && <ModalCloseButton onClick={onClose} />}
           <h1 className="viewBooking__name">
@@ -2036,7 +2054,17 @@ const ViewBooking = ({
                   {groupedTransactions.map(
                     ({ transaction, children }, index) => (
                       <div
-                        className="viewBooking__transactionGroup"
+                        className={`viewBooking__transactionGroup${
+                          transaction._id === highlightedTransactionId
+                            ? " viewBooking__transactionGroup--searchHighlight"
+                            : ""
+                        }`}
+                        data-search-transaction-id={transaction._id}
+                        aria-current={
+                          transaction._id === highlightedTransactionId
+                            ? "true"
+                            : undefined
+                        }
                         style={
                           index === groupedTransactions.length - 1
                             ? {}

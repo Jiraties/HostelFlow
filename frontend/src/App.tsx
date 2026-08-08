@@ -15,6 +15,7 @@ import Calendar from "./pages/Calendar";
 import Main from "./pages/Main";
 import Documents from "./pages/Documents";
 import Manage from "./pages/Manage";
+import { CommandPaletteProvider } from "./context/CommandPaletteContext";
 
 function App() {
   const { isAuthenticated, login, user } = useAuth();
@@ -66,18 +67,20 @@ function App() {
       />
       {isAuthenticated ? (
         <div className="app">
-          <Sidebar />
-          <Routes>
-            <Route path="/" element={<Main />} />
-            {user?.admin && <Route path="/manage" element={<Manage />} />}
-            <Route path="/arrivals" element={<Home status="arrivals" />} />
-            <Route path="/departures" element={<Home status="departures" />} />
-            <Route path="/master" element={<Home status="master" />} />
-            <Route path="/calendar" element={<Calendar />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/documents" element={<Documents />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <CommandPaletteProvider>
+            <Sidebar />
+            <Routes>
+              <Route path="/" element={<Main />} />
+              {user?.admin && <Route path="/manage" element={<Manage />} />}
+              <Route path="/arrivals" element={<Home status="arrivals" />} />
+              <Route path="/departures" element={<Home status="departures" />} />
+              <Route path="/master" element={<Home status="master" />} />
+              <Route path="/calendar" element={<Calendar />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/documents" element={<Documents />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </CommandPaletteProvider>
         </div>
       ) : (
         <Routes>

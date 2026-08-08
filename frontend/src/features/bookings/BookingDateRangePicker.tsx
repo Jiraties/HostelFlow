@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   dateFormatPlaceholder,
   formatDateInputValue,
+  formatNumericDateDraft,
   parseDateInputValue,
 } from "../../helpers/displayDate";
 import type { DateFormatPreference } from "../../types/userSettings";
@@ -21,13 +22,6 @@ type BookingDateRangePickerProps = {
 const weekdayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const toDateKey = (date: Dayjs) => date.format("YYYY-MM-DD");
-
-const maskNumericDate = (value: string) => {
-  const digits = value.replace(/\D/g, "").slice(0, 8);
-  if (digits.length <= 2) return digits;
-  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
-};
 
 export function BookingDateRangePicker({
   checkIn,
@@ -162,7 +156,7 @@ export function BookingDateRangePicker({
             setCheckInDraft(
               dateFormat === "d MMM yyyy"
                 ? event.target.value
-                : maskNumericDate(event.target.value),
+                : formatNumericDateDraft(event.target.value, checkInDraft),
             )
           }
           onBlur={() =>
@@ -184,7 +178,7 @@ export function BookingDateRangePicker({
             setCheckOutDraft(
               dateFormat === "d MMM yyyy"
                 ? event.target.value
-                : maskNumericDate(event.target.value),
+                : formatNumericDateDraft(event.target.value, checkOutDraft),
             )
           }
           onBlur={() =>

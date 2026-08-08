@@ -16,7 +16,7 @@ import {
   calculateNights,
   roomChargeDisplayPaymentMethod,
 } from "../helpers/bookingHelpers";
-import { useLocation } from "react-router";
+import { useLocation, useSearchParams } from "react-router";
 import { formatBookingDates } from "../helpers/bookingHelpers";
 import { API_URL } from "../config/api.ts";
 import { requestUnsavedModalClose } from "../helpers/modalGuards";
@@ -156,6 +156,13 @@ const Calendar = () => {
   const timelineRef = useRef<HTMLDivElement>(null);
   const monthPickerRef = useRef<HTMLSpanElement>(null);
   const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const targetRoomId = searchParams.get("room")?.trim() || "";
+  const targetDate = searchParams.get("date")?.trim() || "";
+  const targetDateParts = useMemo(
+    () => targetDate.match(/^(\d{4})-(\d{2})-(\d{2})$/),
+    [targetDate],
+  );
   const [addBookingIsOpen, setAddBookingIsOpen] = useState(false);
   const [addBookingIsDirty, setAddBookingIsDirty] = useState(false);
   const [pendingUnsavedClose, setPendingUnsavedClose] = useState<
@@ -173,6 +180,9 @@ const Calendar = () => {
   const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
   const [isCalendarDensitySaving, setIsCalendarDensitySaving] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [highlightedRoomDate, setHighlightedRoomDate] = useState("");
+  const [searchAnnouncement, setSearchAnnouncement] = useState("");
+  const handledRoomDateRef = useRef("");
   const [viewBookingBooking, setViewBookingBooking] = useState<booking | null>(
     null,
   );
@@ -307,11 +317,22 @@ const Calendar = () => {
     // Empty clickable cells
     calendarDays.forEach((day, dayIndex) => {
       const isToday = isSameDay(day, today);
+      const dateKey = formatLocalDate(day);
+      const roomDateKey = `${room.roomId}::${dateKey}`;
 
       roomRow.push(
         <div
           key={`empty-${room.roomId}-${dayIndex}`}
-          className="timeline__item timeline__emptyCell"
+          className={`timeline__item timeline__emptyCell${
+            highlightedRoomDate === roomDateKey
+              ? " timeline__emptyCell--searchHighlight"
+              : ""
+          }`}
+          data-search-room-id={room.roomId}
+          data-search-date={dateKey}
+          aria-current={
+            highlightedRoomDate === roomDateKey ? "true" : undefined
+          }
           style={{
             gridColumn: `${dayIndex + 2}`,
             gridRow,
@@ -578,6 +599,69 @@ const Calendar = () => {
     isfirstRun.current = false;
   }, [month, todayIndex, year]);
 
+  useEffect(() => {
+    if (!targetDateParts) return;
+    const targetYear = Number(targetDateParts[1]);
+    const targetMonth = Number(targetDateParts[2]) - 1;
+    const targetDay = Number(targetDateParts[3]);
+    const validationDate = new Date(targetYear, targetMonth, targetDay);
+    if (
+      validationDate.getFullYear() !== targetYear ||
+      validationDate.getMonth() !== targetMonth ||
+      validationDate.getDate() !== targetDay
+    ) {
+      return;
+    }
+    const timeoutId = window.setTimeout(() => {
+      setYear(targetYear);
+      setMonth(targetMonth);
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [targetDateParts]);
+
+  useEffect(() => {
+    const targetKey = `${targetRoomId}::${targetDate}`;
+    if (
+      !targetRoomId ||
+      !targetDateParts ||
+      rooms.length === 0 ||
+      handledRoomDateRef.current === targetKey ||
+      year !== Number(targetDateParts[1]) ||
+      month !== Number(targetDateParts[2]) - 1
+    ) {
+      return;
+    }
+    handledRoomDateRef.current = targetKey;
+    let highlightTimeoutId = 0;
+    const animationFrame = requestAnimationFrame(() => {
+      const target = Array.from(
+        timelineRef.current?.querySelectorAll<HTMLElement>(
+          "[data-search-room-id][data-search-date]",
+        ) || [],
+      ).find(
+        (element) =>
+          element.dataset.searchRoomId === targetRoomId &&
+          element.dataset.searchDate === targetDate,
+      );
+      if (!target) {
+        setSearchAnnouncement("ไม่พบห้องหรือวันที่ที่ตรงกัน");
+        toast.error("ไม่พบห้องหรือวันที่ที่ตรงกัน");
+        return;
+      }
+      setHighlightedRoomDate(targetKey);
+      target.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+      setSearchAnnouncement(`เลื่อนไปยัง ${targetRoomId} วันที่ ${targetDate} แล้ว`);
+      highlightTimeoutId = window.setTimeout(
+        () => setHighlightedRoomDate(""),
+        4000,
+      );
+    });
+    return () => {
+      cancelAnimationFrame(animationFrame);
+      window.clearTimeout(highlightTimeoutId);
+    };
+  }, [month, rooms, targetDate, targetDateParts, targetRoomId, year]);
+
   const closeAllModals = () => {
     setViewBookingBooking(null);
     setConfirmationModalIsOpen({ isOpen: false, booking: null });
@@ -598,6 +682,9 @@ const Calendar = () => {
 
   return (
     <main className="calendar__main">
+      <p className="calendar__searchAnnouncement" aria-live="polite">
+        {searchAnnouncement}
+      </p>
       <Modal
         open={!!viewBookingBooking}
         onClose={() => setViewBookingBooking(null)}

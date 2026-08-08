@@ -1,0 +1,390 @@
+.globalSearch {
+  --global-search-room-color: #5fa8d3;
+  --global-search-transaction-action-color: #22c55e;
+  --global-search-sale-action-color: #ffb171;
+  --global-search-navigation-action-color: #fa6f60;
+  --global-search-date-action-color: #2dd4bf;
+}
+
+.globalSearch .MuiDialog-paper {
+  background: var(--background);
+  border-radius: 1.15rem;
+  box-shadow: var(--main-shadow);
+  margin: 1rem;
+  max-height: min(44rem, calc(100dvh - 2rem));
+  overflow: hidden;
+  width: min(50rem, calc(100vw - 2rem));
+  max-width: min(50rem, calc(100vw - 2rem));
+}
+
+.globalSearch__title {
+  color: var(--text);
+  font-family: "IBM Plex Sans Thai", sans-serif !important;
+  font-size: 1rem !important;
+  font-weight: 600 !important;
+  padding: 1rem 1rem 0.65rem !important;
+}
+
+.globalSearch__content {
+  padding: 0 0 1rem !important;
+}
+
+.globalSearch__combobox {
+  align-items: center;
+  border-bottom: 1px solid #0000000d;
+  border-top: 1px solid #0000000d;
+  display: flex;
+  gap: 0.7rem;
+  min-height: 3.5rem;
+  padding: 1.5rem;
+}
+
+.globalSearch__combobox > i {
+  color: #7a7f87;
+  font-size: 1.35rem;
+}
+
+.globalSearch__modeTag {
+  align-items: center;
+  background: var(--background);
+  border: 0;
+  box-shadow: var(--light-shadow);
+  border-radius: 0.5rem;
+  color: var(--primary-color);
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 600;
+  gap: 0.3rem;
+  padding: 0.3rem 0.45rem;
+  white-space: nowrap;
+}
+
+.globalSearch__modeTag:hover,
+.globalSearch__modeTag:focus-visible {
+  background: var(--light-background);
+  outline: 0;
+}
+
+.globalSearch__modeTag--transaction {
+  background: color-mix(
+    in srgb,
+    var(--global-search-transaction-action-color) 12%,
+    var(--background)
+  );
+  color: var(--global-search-transaction-action-color);
+}
+
+.globalSearch__modeTag--transaction:hover,
+.globalSearch__modeTag--transaction:focus-visible {
+  background: color-mix(
+    in srgb,
+    var(--global-search-transaction-action-color) 18%,
+    var(--background)
+  );
+}
+
+.globalSearch__modeTag--date {
+  background: color-mix(
+    in srgb,
+    var(--global-search-date-action-color) 12%,
+    var(--background)
+  );
+  color: var(--global-search-date-action-color);
+}
+
+.globalSearch__modeTag--date:hover,
+.globalSearch__modeTag--date:focus-visible {
+  background: color-mix(
+    in srgb,
+    var(--global-search-date-action-color) 18%,
+    var(--background)
+  );
+}
+
+.globalSearch__modeTag i {
+  font-size: 0.95rem;
+}
+
+.globalSearch__datePicker {
+  align-items: center;
+  color: var(--primary-color);
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 2.25rem;
+  justify-content: center;
+  position: relative;
+  width: 2.25rem;
+}
+
+.globalSearch__datePicker > i {
+  font-size: 1.2rem;
+}
+
+.globalSearch__datePicker input {
+  cursor: pointer;
+  height: 100%;
+  inset: 0;
+  opacity: 0;
+  position: absolute;
+  width: 100%;
+}
+
+.globalSearch__combobox input {
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  flex: 1;
+  font: inherit;
+  min-width: 0;
+  outline: 0;
+}
+
+.globalSearch__combobox kbd,
+.globalSearch__hint span {
+  background: var(--light-background);
+  /* border: 1px solid #0000000d; */
+  border-radius: 0.35rem;
+  color: #777;
+  font: inherit;
+  font-size: 0.72rem;
+  padding: 0.3rem 0.4rem;
+}
+
+.globalSearch__spinner {
+  animation: globalSearchSpin 0.75s linear infinite;
+  border: 2px solid #dceff1;
+  border-radius: 50%;
+  border-top-color: var(--primary-color);
+  height: 1rem;
+  width: 1rem;
+}
+
+.globalSearch__list {
+  list-style: none;
+  margin: 0;
+  max-height: min(30rem, calc(100dvh - 13rem));
+  overflow-y: auto;
+  padding: 0.35rem 0.55rem;
+}
+
+.globalSearch__groupLabel {
+  color: #858991;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.65rem 0.55rem 0.35rem;
+  /* text-transform: uppercase; */
+}
+
+.globalSearch__option {
+  align-items: center;
+  border-radius: 0.75rem;
+  cursor: pointer;
+  display: flex;
+  gap: 0.75rem;
+  min-height: 3.5rem;
+  padding: 0.55rem 0.65rem;
+}
+
+.globalSearch__option[aria-selected="true"],
+.globalSearch__option.Mui-focused,
+.globalSearch__option.Mui-focusVisible,
+.globalSearch__option:hover {
+  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+}
+
+.globalSearch__option.Mui-focusVisible {
+  outline: 2px solid color-mix(in srgb, var(--primary-color) 45%, transparent);
+  outline-offset: -2px;
+}
+
+.globalSearch__option--command.Mui-focused,
+.globalSearch__option--command.Mui-focusVisible,
+.globalSearch__option--command:hover {
+  background: color-mix(
+    in srgb,
+    var(--global-search-action-color) 12%,
+    transparent
+  );
+}
+
+.globalSearch__option--command.Mui-focusVisible {
+  outline: 2px solid
+    color-mix(in srgb, var(--global-search-action-color) 55%, transparent);
+  outline-offset: -2px;
+}
+
+.globalSearch__option--action-booking {
+  --global-search-action-color: var(--primary-color);
+}
+
+.globalSearch__option--action-transaction {
+  --global-search-action-color: var(--global-search-transaction-action-color);
+}
+
+.globalSearch__option--action-sale {
+  --global-search-action-color: var(--global-search-sale-action-color);
+}
+
+.globalSearch__option--action-navigation {
+  --global-search-action-color: var(--global-search-navigation-action-color);
+}
+
+.globalSearch__option--action-date {
+  --global-search-action-color: var(--global-search-date-action-color);
+}
+
+.globalSearch__option--room[aria-selected="true"],
+.globalSearch__option--room.Mui-focused,
+.globalSearch__option--room.Mui-focusVisible,
+.globalSearch__option--room:hover {
+  background: color-mix(
+    in srgb,
+    var(--global-search-room-color) 12%,
+    transparent
+  );
+}
+
+.globalSearch__option--room.Mui-focusVisible {
+  outline: 2px solid
+    color-mix(in srgb, var(--global-search-room-color) 55%, transparent);
+  outline-offset: -2px;
+}
+
+.globalSearch__optionIcon {
+  align-items: center;
+  box-shadow: var(--light-shadow);
+  background-color: var(--background);
+  border-radius: 0.65rem;
+  color: var(--primary-color);
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 2.25rem;
+  justify-content: center;
+  width: 2.25rem;
+}
+
+.globalSearch__optionIcon i {
+  font-size: 1.2rem;
+}
+
+.globalSearch__optionIcon--command {
+  color: var(--global-search-action-color);
+}
+
+.globalSearch__optionIcon--room,
+.globalSearch__option--room .globalSearch__optionCopy strong {
+  color: var(--global-search-room-color);
+}
+
+.globalSearch__optionCopy {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.globalSearch__optionCopy strong,
+.globalSearch__optionCopy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.globalSearch__optionCopy strong {
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.globalSearch__optionCopy small {
+  color: #777;
+  font-size: 0.78rem;
+}
+
+.globalSearch__badge {
+  background: var(--light-red);
+  border-radius: 10rem;
+  color: var(--red);
+  font-size: 0.7rem;
+  padding: 0.25rem 0.45rem;
+}
+
+.globalSearch__showMore {
+  padding: 0.2rem 0.65rem 0.45rem;
+}
+
+.globalSearch__showMore button,
+.globalSearch__message button {
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.globalSearch__message {
+  color: #777;
+  padding: 1.5rem 1rem;
+  text-align: center;
+}
+
+.globalSearch__message--error {
+  align-items: center;
+  display: flex;
+  gap: 0.7rem;
+  justify-content: center;
+}
+
+.globalSearch__hint {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  padding: 0.55rem 1rem 0;
+}
+
+@keyframes globalSearchSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 760px) {
+  .globalSearch .MuiDialog-container {
+    align-items: flex-end;
+  }
+
+  .globalSearch .MuiDialog-paper {
+    border-radius: 1.25rem 1.25rem 0 0;
+    margin: 0;
+    max-width: none;
+    max-height: calc(100dvh - max(0.5rem, env(safe-area-inset-top)));
+    width: 100%;
+  }
+
+  .globalSearch__combobox {
+    min-height: 3.75rem;
+  }
+
+  .globalSearch__combobox kbd,
+  .globalSearch__hint {
+    display: none;
+  }
+
+  .globalSearch__list {
+    max-height: calc(100dvh - 9rem - env(safe-area-inset-top));
+    overscroll-behavior: contain;
+  }
+
+  .globalSearch__option {
+    min-height: 3.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .globalSearch__spinner {
+    animation: none;
+  }
+}

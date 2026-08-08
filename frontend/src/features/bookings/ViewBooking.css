@@ -626,6 +626,20 @@
   /* padding: 0.4rem 0; */
 }
 
+.viewBooking__transactionGroup--searchHighlight,
+.viewBooking__priceChild--searchHighlight {
+  background: color-mix(in srgb, var(--primary-color) 18%, transparent);
+  box-shadow: inset 3px 0 var(--primary-color);
+}
+
+.viewBooking__searchAnnouncement {
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  width: 1px;
+}
+
 .viewBooking__priceChild {
   position: relative;
   display: flex;

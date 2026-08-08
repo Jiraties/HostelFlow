@@ -337,6 +337,20 @@
   background-color: #00000005;
 }
 
+.timeline__emptyCell--searchHighlight {
+  background: color-mix(in srgb, var(--primary-color) 22%, white) !important;
+  box-shadow: inset 0 0 0 3px var(--primary-color);
+  z-index: 3;
+}
+
+.calendar__searchAnnouncement {
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  width: 1px;
+}
+
 .timeline__bookedRoomItem {
   z-index: 2;
   position: relative;

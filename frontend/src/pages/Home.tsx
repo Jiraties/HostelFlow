@@ -134,6 +134,11 @@ const Home = ({ status }: { status: HomeStatus }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const isMaster = status === "master";
   const bookingIdQuery = searchParams.get("bookingId")?.trim() || "";
+  const transactionIdQuery = searchParams.get("transactionId")?.trim() || "";
+  const searchActionQuery =
+    searchParams.get("action") === "addTransaction"
+      ? "addTransaction"
+      : undefined;
   const [addBookingIsOpen, setAddBookingIsOpen] = useState(false);
   const [addBookingIsDirty, setAddBookingIsDirty] = useState(false);
   const [pendingUnsavedClose, setPendingUnsavedClose] = useState<
@@ -351,6 +356,15 @@ const Home = ({ status }: { status: HomeStatus }) => {
 
     const nextSearchParams = new URLSearchParams(searchParams);
     nextSearchParams.delete("bookingId");
+    nextSearchParams.delete("transactionId");
+    nextSearchParams.delete("action");
+    setSearchParams(nextSearchParams, { replace: true });
+  };
+
+  const consumeSearchAction = () => {
+    if (!searchParams.has("action")) return;
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.delete("action");
     setSearchParams(nextSearchParams, { replace: true });
   };
 
@@ -745,6 +759,9 @@ const Home = ({ status }: { status: HomeStatus }) => {
       >
         <ViewBooking
           booking={viewBookingBooking as booking}
+          highlightTransactionId={transactionIdQuery || undefined}
+          initialAction={searchActionQuery}
+          onInitialActionConsumed={consumeSearchAction}
           onClose={closeViewBookingModal}
           onUpdated={handleViewBookingUpdated}
           removeBookingHandler={removeBookingHandler}

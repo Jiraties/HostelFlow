@@ -9,6 +9,7 @@ import bookingsRouter from "./routes/bookings";
 import activitiesRouter from "./routes/activities";
 import documentsRouter from "./routes/documents";
 import financeRouter from "./routes/finance";
+import searchRouter from "./routes/search";
 import path from "path";
 import {
   trustProxyHops,
@@ -98,6 +99,7 @@ export const createApp = (
   app.use("/documents", authMiddleware, documentsRouter);
   app.use("/activities", authMiddleware, activitiesRouter);
   app.use("/finance", authMiddleware, financeRouter);
+  app.use("/search", authMiddleware, searchRouter);
 
   return app;
 };

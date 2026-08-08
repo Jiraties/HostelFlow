@@ -15,6 +15,7 @@ const bookings_1 = __importDefault(require("./routes/bookings"));
 const activities_1 = __importDefault(require("./routes/activities"));
 const documents_1 = __importDefault(require("./routes/documents"));
 const finance_1 = __importDefault(require("./routes/finance"));
+const search_1 = __importDefault(require("./routes/search"));
 const path_1 = __importDefault(require("path"));
 const runtimeSecurity_1 = require("./config/runtimeSecurity");
 dotenv_1.default.config();
@@ -76,6 +77,7 @@ const createApp = (environment = process.env) => {
     app.use("/documents", authMiddleware_1.default, documents_1.default);
     app.use("/activities", authMiddleware_1.default, activities_1.default);
     app.use("/finance", authMiddleware_1.default, finance_1.default);
+    app.use("/search", authMiddleware_1.default, search_1.default);
     return app;
 };
 exports.createApp = createApp;

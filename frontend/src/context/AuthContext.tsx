@@ -12,6 +12,7 @@ import {
   normalizeUserSettings,
   type UserSettings,
 } from "../types/userSettings";
+import { clearRecentBookings } from "../helpers/recentBookings";
 
 interface userType {
   userId?: string;
@@ -81,6 +82,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const logout = () => {
+    clearRecentBookings(user?.userId);
     setUser(null);
     setStaffNames({});
   };

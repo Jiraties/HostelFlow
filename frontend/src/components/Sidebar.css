@@ -6,7 +6,7 @@
   width: 17rem;
   height: 100dvh;
   min-height: 0;
-  padding: 2.5rem;
+  padding: 2rem;
   overflow: hidden;
   transition:
     width 0.25s ease,
@@ -58,12 +58,64 @@
   font-size: 1.4rem;
 }
 
+.sidebar__searchAction {
+  align-items: center;
+  background: var(--background);
+  border: 1px solid #0000000d;
+  border-radius: 0.85rem;
+  box-shadow: var(--main-shadow);
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  flex: 0 0 auto;
+  font: inherit;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+  min-height: 3.25rem;
+  padding: 0.7rem 0.85rem;
+  text-align: left;
+  width: 100%;
+}
+
+.sidebar__searchAction:hover,
+.sidebar__searchAction:focus-visible {
+  color: var(--primary-color);
+  outline: 0;
+  transform: scale(1.03);
+}
+
+.sidebar__searchAction i {
+  flex: 0 0 auto;
+  font-size: 1.25rem;
+}
+
+.sidebar__searchAction kbd {
+  background: var(--light-background);
+  border-radius: 0.3rem;
+  color: #888;
+  font: inherit;
+  font-size: 0.68rem;
+  margin-left: auto;
+  padding: 0.15rem 0.3rem;
+}
+
+.sidebar--collapsed .sidebar__searchAction {
+  height: 3.25rem;
+  justify-content: center;
+  margin-inline: auto;
+  padding: 0;
+  width: 3.25rem;
+}
+
+.sidebar--collapsed .sidebar__searchAction kbd {
+  display: none;
+}
+
 .sidebar__navList {
   flex: 1 1 auto;
   min-height: 0;
-  list-style: none;
-  padding: 0.75rem;
-  margin: 1.25rem -0.75rem -0.75rem;
+  padding: 0.25rem 0.5rem 0.75rem;
+  margin: 1rem -0.5rem 0;
   overflow-y: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -78,21 +130,46 @@
   text-decoration: none;
 }
 
+.sidebar__navGroup {
+  margin-bottom: 0.75rem;
+}
+
+.sidebar__navGroup ul {
+  background: color-mix(in srgb, var(--background) 94%, transparent);
+  border: 1px solid #00000008;
+  border-radius: 1rem;
+  box-shadow: var(--light-shadow);
+  display: grid;
+  gap: 0.15rem;
+  list-style: none;
+  margin: 0;
+  padding: 0.3rem;
+}
+
+.sidebar__groupLabel {
+  color: #858991;
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  margin: 0 0 0.35rem;
+  padding: 0 0.45rem;
+  white-space: nowrap;
+}
+
 .mobileNav,
 .mobileMore {
   display: none;
 }
 
 .sidebar__navItem {
-  margin-bottom: 1.5rem;
-  padding: 1rem;
+  min-height: 2.8rem;
+  padding: 0.65rem 0.7rem;
   color: var(--text);
   text-decoration: none;
   /* font-size: 1.2rem; */
   cursor: pointer;
-  border-radius: 1rem;
-  background-color: var(--background);
-  box-shadow: var(--main-shadow);
+  border-radius: 0.75rem;
+  background-color: transparent;
   display: flex;
   gap: 0.5rem;
   align-items: center;
@@ -108,6 +185,29 @@
   padding: 0;
   margin-inline: auto;
   border-radius: 0.85rem;
+  background-color: var(--background);
+  box-shadow: var(--light-shadow);
+}
+
+.sidebar--collapsed .sidebar__navList {
+  padding-inline: 0;
+  margin-inline: 0;
+}
+
+.sidebar--collapsed .sidebar__navGroup {
+  margin-bottom: 0.65rem;
+}
+
+.sidebar--collapsed .sidebar__navGroup ul {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  gap: 0.5rem;
+  padding: 0;
+}
+
+.sidebar--collapsed .sidebar__groupLabel {
+  display: none;
 }
 
 .sidebar__navItem i {
@@ -129,13 +229,106 @@
 }
 
 .sidebar__navItem--active {
+  background: color-mix(in srgb, var(--primary-color) 11%, var(--background));
   color: var(--primary-color) !important;
   font-weight: 600;
 }
 
 .sidebar__navItem:hover {
   transition-duration: 0.2s;
-  transform: scale(1.05);
+  background: color-mix(in srgb, var(--primary-color) 7%, var(--background));
+  transform: scale(1.02);
+}
+
+.sidebar__settingsAction {
+  align-items: center;
+  background: var(--background);
+  border: 1px solid #0000000d;
+  border-radius: 1rem;
+  box-shadow: var(--main-shadow);
+  color: var(--text);
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.65rem;
+  min-height: 3.65rem;
+  padding: 0.55rem 0.65rem;
+  text-decoration: none;
+  transition:
+    background-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.sidebar__settingsAction:hover,
+.sidebar__settingsAction:focus-visible {
+  background: color-mix(in srgb, var(--primary-color) 7%, var(--background));
+  outline: 0;
+  transform: translateY(-1px);
+}
+
+.sidebar__settingsIcon {
+  align-items: center;
+  background: color-mix(in srgb, var(--primary-color) 13%, var(--background));
+  border-radius: 0.8rem;
+  color: var(--primary-color);
+  display: inline-flex;
+  flex: 0 0 2.4rem;
+  height: 2.4rem;
+  justify-content: center;
+  width: 2.4rem;
+}
+
+.sidebar__settingsIcon i {
+  font-size: 1.25rem;
+}
+
+.sidebar__settingsCopy {
+  display: grid;
+  flex: 1;
+  line-height: 1.2;
+  min-width: 0;
+}
+
+.sidebar__settingsCopy strong {
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.sidebar__settingsCopy small {
+  color: #858991;
+  font-size: 0.66rem;
+  margin-top: 0.16rem;
+}
+
+.sidebar__settingsChevron {
+  color: #9ba0a7;
+  flex: 0 0 auto;
+  font-size: 1.15rem;
+}
+
+.sidebar__settingsAction--active {
+  background: color-mix(in srgb, var(--primary-color) 11%, var(--background));
+}
+
+.sidebar__settingsAction--active .sidebar__settingsCopy strong,
+.sidebar__settingsAction--active .sidebar__settingsChevron {
+  color: var(--primary-color);
+}
+
+.sidebar--collapsed .sidebar__settingsAction {
+  height: 3.25rem;
+  justify-content: center;
+  margin-inline: auto;
+  min-height: 3.25rem;
+  padding: 0;
+  width: 3.25rem;
+}
+
+.sidebar--collapsed .sidebar__settingsIcon {
+  background: transparent;
+}
+
+.sidebar--collapsed .sidebar__settingsChevron {
+  display: none;
 }
 
 .sidebar__navItem:active {
@@ -161,7 +354,15 @@
     display: none;
   }
 
+  .sidebar__searchAction {
+    display: none;
+  }
+
   .sidebar__navList--desktop {
+    display: none;
+  }
+
+  .sidebar__settingsAction {
     display: none;
   }
 
@@ -246,8 +447,7 @@
     border-radius: 1rem 1rem 0 0;
     background-color: var(--background);
     box-shadow: 0 -0.7rem 1.8rem rgba(96, 105, 112, 0.18);
-    animation: mobileModalSlideUp 320ms cubic-bezier(0.22, 0.72, 0.3, 1)
-      both;
+    animation: mobileModalSlideUp 320ms cubic-bezier(0.22, 0.72, 0.3, 1) both;
     transform-origin: bottom center;
     will-change: transform, opacity;
   }

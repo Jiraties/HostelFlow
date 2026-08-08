@@ -32,10 +32,7 @@ import { profilePictureUrl } from "../helpers/profilePictureUrl";
 import { requestUnsavedModalClose } from "../helpers/modalGuards";
 import { formatRoomStayRooms } from "../helpers/roomStayHelpers";
 import usePageTitle from "../hooks/useTitle";
-import {
-  formatDisplayDate as formatPreferredDate,
-  formatHeaderDate,
-} from "../helpers/displayDate";
+import { formatDisplayDate as formatPreferredDate } from "../helpers/displayDate";
 
 import type {
   booking,
@@ -60,6 +57,15 @@ const getFetchErrorMessage = (err: unknown) => {
 
   return "เกิดข้อผิดพลาดในการโหลดข้อมูล";
 };
+
+const formatDashboardHeaderDate = (date: Date) =>
+  new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "long",
+    timeZone: "Asia/Bangkok",
+    weekday: "long",
+    year: "numeric",
+  }).format(date);
 
 const startOfDate = (date: Date) =>
   new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -492,6 +498,7 @@ const TodayList = ({
 const Main = () => {
   usePageTitle("HostelFlow · หน้าแรก");
   const { user, resolveStaffName } = useAuth();
+  const currentUsername = user?.username;
   const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
   const navigate = useNavigate();
   const location = useLocation();
@@ -509,8 +516,8 @@ const Main = () => {
   const [adminStats, setAdminStats] = useState<AdminDashboardStats | null>(
     null,
   );
-  const [revenueRange, setRevenueRange] = useState<RevenueRange>("mtd");
-  const [chartMetric, setChartMetric] = useState<ChartMetric>("revenue");
+  const [revenueRange, setRevenueRange] = useState<RevenueRange>("1m");
+  const [chartMetric, setChartMetric] = useState<ChartMetric>("occupancy");
   const [cashCloseLoading, setCashCloseLoading] = useState(false);
   const [cashCloseSaving, setCashCloseSaving] = useState(false);
   const [cashPosition, setCashPosition] = useState<CashPositionData | null>(
@@ -535,8 +542,14 @@ const Main = () => {
     (() => void) | null
   >(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [headerNow, setHeaderNow] = useState(() => new Date());
 
-  const fullFormattedDate = formatHeaderDate(new Date(), dateFormat);
+  const fullFormattedDate = formatDashboardHeaderDate(headerNow);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setHeaderNow(new Date()), 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   const fetchDailyOps = useCallback(async () => {
     setLoading(true);
@@ -649,7 +662,7 @@ const Main = () => {
       setCloseNote("");
       setRecountHandoff(false);
       const previousShiftBelongsToCurrentStaff =
-        nextPosition.previousShift?.staffUsername === user?.username;
+        nextPosition.previousShift?.staffUsername === currentUsername;
       setCashCloseExpanded(
         !nextPosition.previousShift ||
           Boolean(nextPosition.activeShift) ||
@@ -661,7 +674,7 @@ const Main = () => {
     } finally {
       setCashCloseLoading(false);
     }
-  }, [user?.username]);
+  }, [currentUsername]);
 
   const refreshDashboard = useCallback(async () => {
     await fetchDailyOps();
@@ -705,11 +718,11 @@ const Main = () => {
   const finalCloseRecovery = cashPosition?.finalCloseRecovery || null;
   const canCloseActiveShift = Boolean(
     activeCashShift &&
-    (user?.admin || activeCashShift.staffUsername === user?.username),
+    (user?.admin || activeCashShift.staffUsername === currentUsername),
   );
   const hasPreviousCashShift = Boolean(previousCashShift);
   const previousShiftBelongsToCurrentStaff =
-    previousCashShift?.staffUsername === user?.username;
+    previousCashShift?.staffUsername === currentUsername;
   const cashCloseIsComplete =
     !activeCashShift &&
     hasPreviousCashShift &&
@@ -1053,7 +1066,7 @@ const Main = () => {
         />
       </Modal>
       <PageHeader
-        title={`หน้าแรก | ${fullFormattedDate}`}
+        title={fullFormattedDate}
         lastUpdated={lastUpdated}
         onRefresh={refreshDashboard}
       />
@@ -1071,21 +1084,6 @@ const Main = () => {
           onClick={() => setStandaloneSaleIsOpen(true)}
           // highlight
         />
-        {/* <ActionButton
-          text="Arrivals"
-          icon="bx-arrow-to-left"
-          onClick={() => navigate("/arrivals")}
-        />
-        <ActionButton
-          text="Departures"
-          icon="bx-arrow-from-left"
-          onClick={() => navigate("/departures")}
-        />
-        <ActionButton
-          text="รายการจองทั้งหมด"
-          icon="bx-table"
-          onClick={() => navigate("/master")}
-        /> */}
       </section>
 
       <section className="main__statsGrid">
@@ -1492,39 +1490,40 @@ const Main = () => {
                     />
                   </label>
                 ) : null}
-                {!cashDayIsFinalized && (ordinaryCloseVarianceNeedsNote ||
-                  openingVarianceNeedsNote) && (
-                  <label className="main__cashCloseNote">
-                    <span>หมายเหตุยอดต่าง</span>
-                    <input
-                      className="boxInput"
-                      type="text"
-                      value={closeNote}
-                      placeholder="เช่น รับส่งเงินไม่ตรง / พบเงินเกิน"
-                      onChange={(event) => setCloseNote(event.target.value)}
-                    />
-                  </label>
-                )}
+                {!cashDayIsFinalized &&
+                  (ordinaryCloseVarianceNeedsNote ||
+                    openingVarianceNeedsNote) && (
+                    <label className="main__cashCloseNote">
+                      <span>หมายเหตุยอดต่าง</span>
+                      <input
+                        className="boxInput"
+                        type="text"
+                        value={closeNote}
+                        placeholder="เช่น รับส่งเงินไม่ตรง / พบเงินเกิน"
+                        onChange={(event) => setCloseNote(event.target.value)}
+                      />
+                    </label>
+                  )}
                 {!activeCashShift &&
                   !cashDayIsFinalized &&
                   hasPreviousCashShift && (
-                  <label className="checkbox main__cashCloseToggle">
-                    นับใหม่แทนรับส่ง
-                    <input
-                      type="checkbox"
-                      checked={recountHandoff}
-                      onChange={(event) => {
-                        setRecountHandoff(event.target.checked);
-                        if (!event.target.checked && cashPosition) {
-                          setOperatingOpeningCash(
-                            String(cashPosition.handoff.operatingCash || 0),
-                          );
-                        }
-                      }}
-                    />
-                    <span className="box"></span>
-                  </label>
-                )}
+                    <label className="checkbox main__cashCloseToggle">
+                      นับใหม่แทนรับส่ง
+                      <input
+                        type="checkbox"
+                        checked={recountHandoff}
+                        onChange={(event) => {
+                          setRecountHandoff(event.target.checked);
+                          if (!event.target.checked && cashPosition) {
+                            setOperatingOpeningCash(
+                              String(cashPosition.handoff.operatingCash || 0),
+                            );
+                          }
+                        }}
+                      />
+                      <span className="box"></span>
+                    </label>
+                  )}
                 <div className="main__cashCloseActions">
                   <ActionButton
                     text={

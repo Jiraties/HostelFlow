@@ -3,11 +3,13 @@ import { useEffect, useRef, useState } from "react";
 import Logo from "./Logo";
 import "./Sidebar.css";
 import { useAuth } from "../context/AuthContext";
+import { useCommandPalette } from "../context/commandPalette";
 import { navigationItems } from "./navigationItems";
 
 const Sidebar = () => {
   const location = useLocation();
   const { user } = useAuth();
+  const { openPalette } = useCommandPalette();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -15,6 +17,30 @@ const Sidebar = () => {
   const sidebarItems = navigationItems.filter(
     (item) => !item.adminOnly || user?.admin,
   );
+  const settingsItem = sidebarItems.find((item) => item.link === "/settings");
+  const desktopGroups = [
+    {
+      id: "overview",
+      label: "ภาพรวม",
+      items: sidebarItems.filter((item) => item.link === "/"),
+    },
+    {
+      id: "stays",
+      label: "Operations",
+      items: sidebarItems.filter((item) =>
+        ["/arrivals", "/departures", "/calendar", "/master"].includes(
+          item.link,
+        ),
+      ),
+    },
+    {
+      id: "tools",
+      label: "Workspace",
+      items: sidebarItems.filter((item) =>
+        ["/documents", "/manage"].includes(item.link),
+      ),
+    },
+  ].filter((group) => group.items.length > 0);
   const sidebarItemByLink = new Map(
     sidebarItems.map((item) => [item.link, item]),
   );
@@ -28,7 +54,9 @@ const Sidebar = () => {
   const moreItems = sidebarItems.filter(
     (item) => !mobileItemLinks.has(item.link),
   );
-  const moreIsActive = moreItems.some((item) => item.link === location.pathname);
+  const moreIsActive = moreItems.some(
+    (item) => item.link === location.pathname,
+  );
 
   useEffect(() => {
     if (!isMoreOpen) return;
@@ -72,25 +100,76 @@ const Sidebar = () => {
         </button>
       </div>
 
-      <ul className="sidebar__navList sidebar__navList--desktop">
-        {sidebarItems.map((item) => (
-          <li key={item.id}>
-            <Link
-              to={item.link}
-              title={item.label}
-              aria-current={location.pathname === item.link ? "page" : undefined}
-              className={
-                location.pathname === item.link
-                  ? "sidebar__navItem sidebar__navItem--active"
-                  : "sidebar__navItem"
-              }
-            >
-              <i className={`bx ${item.icon}`} />
-              <span className="sidebar__navLabel">{item.label}</span>
-            </Link>
-          </li>
+      <button
+        className="sidebar__searchAction"
+        type="button"
+        aria-label="เปิดค้นหาทั่วทั้งระบบ"
+        aria-keyshortcuts="Control+K Meta+K"
+        title="ค้นหา"
+        onClick={() => openPalette()}
+      >
+        <i className="bx bx-search" aria-hidden="true" />
+        <span className="sidebar__navLabel">ค้นหา</span>
+        <kbd>⌘ K</kbd>
+      </button>
+
+      <nav
+        className="sidebar__navList sidebar__navList--desktop"
+        aria-label="เมนูหลัก"
+      >
+        {desktopGroups.map((group) => (
+          <section className="sidebar__navGroup" key={group.id}>
+            <h2 className="sidebar__groupLabel">{group.label}</h2>
+            <ul>
+              {group.items.map((item) => (
+                <li key={item.id}>
+                  <Link
+                    to={item.link}
+                    title={item.label}
+                    aria-current={
+                      location.pathname === item.link ? "page" : undefined
+                    }
+                    className={
+                      location.pathname === item.link
+                        ? "sidebar__navItem sidebar__navItem--active"
+                        : "sidebar__navItem"
+                    }
+                  >
+                    <i className={`bx ${item.icon}`} aria-hidden="true" />
+                    <span className="sidebar__navLabel">{item.label}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
         ))}
-      </ul>
+      </nav>
+
+      {settingsItem && (
+        <Link
+          to={settingsItem.link}
+          title={settingsItem.label}
+          aria-current={
+            location.pathname === settingsItem.link ? "page" : undefined
+          }
+          className={
+            location.pathname === settingsItem.link
+              ? "sidebar__settingsAction sidebar__settingsAction--active"
+              : "sidebar__settingsAction"
+          }
+        >
+          <span className="sidebar__settingsIcon" aria-hidden="true">
+            <i className={`bx ${settingsItem.icon}`} />
+          </span>
+          <span className="sidebar__settingsCopy sidebar__navLabel">
+            <strong>ตั้งค่า</strong>
+          </span>
+          <i
+            className="bx bx-chevron-right sidebar__settingsChevron"
+            aria-hidden="true"
+          />
+        </Link>
+      )}
 
       <nav className="mobileNav" aria-label="เมนูหลัก">
         {mobileItems.map((item) => (

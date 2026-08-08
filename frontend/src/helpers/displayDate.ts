@@ -90,6 +90,56 @@ export const formatDateInputValue = (
   dateFormat: DateFormatPreference,
 ) => (value ? formatDisplayDate(value, dateFormat) : "");
 
+export const formatNumericDateDraft = (
+  value: string,
+  previousValue = "",
+) => {
+  if (value.length < previousValue.length) {
+    return value.replace(/[^\d/]/g, "").slice(0, 10);
+  }
+
+  const firstSlash = value.indexOf("/");
+  if (firstSlash > 0) {
+    const dayDigits = value.slice(0, firstSlash).replace(/\D/g, "").slice(0, 2);
+    if (dayDigits) {
+      const day = dayDigits.padStart(2, "0");
+      const remainingDigits = value
+        .slice(firstSlash + 1)
+        .replace(/\D/g, "")
+        .slice(0, 6);
+      if (!remainingDigits) return `${day}/`;
+
+      const firstMonthDigit = remainingDigits[0];
+      if (remainingDigits.length === 1) {
+        return /^[2-9]$/.test(firstMonthDigit)
+          ? `${day}/0${firstMonthDigit}/`
+          : `${day}/${firstMonthDigit}`;
+      }
+
+      const month = remainingDigits.slice(0, 2);
+      return remainingDigits.length === 2
+        ? `${day}/${month}/`
+        : `${day}/${month}/${remainingDigits.slice(2)}`;
+    }
+  }
+
+  const digits = value.replace(/\D/g, "").slice(0, 8);
+  if (digits.length <= 2) return digits;
+
+  const day = digits.slice(0, 2);
+  const firstMonthDigit = digits[2];
+  if (digits.length === 3) {
+    return /^[2-9]$/.test(firstMonthDigit)
+      ? `${day}/0${firstMonthDigit}/`
+      : `${day}/${firstMonthDigit}`;
+  }
+
+  const month = digits.slice(2, 4);
+  return digits.length === 4
+    ? `${day}/${month}/`
+    : `${day}/${month}/${digits.slice(4)}`;
+};
+
 export const parseDateInputValue = (
   value: string,
   dateFormat: DateFormatPreference,
