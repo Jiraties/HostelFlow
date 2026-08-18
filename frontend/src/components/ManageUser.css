@@ -1,145 +1,196 @@
 .manageUser__wrapper {
   position: relative;
-  width: min(50rem, calc(100vw - 2rem));
-  max-height: calc(100vh - 2rem);
-  overflow-y: auto;
-  padding: 2rem;
-  border-radius: 1rem;
-  background-color: var(--background);
-  scrollbar-color: #d4d4d4 transparent;
-  scrollbar-width: thin;
-}
-
-.manageUser__wrapper::-webkit-scrollbar {
-  width: 0.5rem;
-}
-
-.manageUser__wrapper::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.manageUser__wrapper::-webkit-scrollbar-thumb {
-  background-color: #d4d4d4;
-  border-radius: 999rem;
-}
-
-.manageUserModal {
-  max-width: 34rem;
-  gap: 2rem;
-}
-
-.manageUserModal__header {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  width: min(50rem, calc(100vw - 2rem));
+  height: min(44rem, calc(100dvh - 2rem));
+  max-height: calc(100dvh - 2rem);
+  padding: 2rem;
+  overflow: hidden;
+  border-radius: 1rem;
+  background-color: var(--background);
 }
 
-.manageUser__top {
+.manageUser__hero {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  flex: 0 0 auto;
   gap: 1rem;
-  margin-bottom: 2rem;
+  min-width: 0;
+  margin-bottom: 1.5rem;
+  padding-right: 3rem;
 }
 
-.manageUser__name {
-  font-weight: 500;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 0.5rem;
+.manageUser__avatar {
+  flex: 0 0 5.75rem;
+  width: 5.75rem;
+  height: 5.75rem;
+  border-radius: 100rem;
+  object-fit: cover;
+  box-shadow: var(--main-shadow);
 }
 
-.manageUser__nameRow {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.6rem;
+.manageUser__identity {
+  min-width: 0;
 }
 
-.manageUser__selfTag {
-  line-height: 1;
-}
-
-.manageUser__selfTag {
-  color: #2f6fd6;
-  background-color: #2f6fd615;
-}
-
-.manageUser__username {
-  color: #666;
-}
-
+.manageUser__nameRow,
 .manageUser__usernameRow {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.75rem;
 }
 
-.manageUser__statusArea {
-  display: flex;
-  align-items: flex-end;
-  flex-direction: column;
-  gap: 0.6rem;
+.manageUser__nameRow {
+  gap: 0.55rem;
 }
 
-.manageUser__avatar {
-  width: 5.5rem;
-  height: 5.5rem;
-  object-fit: cover;
-  border-radius: 1rem;
-  box-shadow: var(--main-shadow);
-}
-
-.manageUser__main {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.5rem;
+.manageUser__name {
   min-width: 0;
-}
-
-.manageUser__activeStatus {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  color: #666;
-  font-size: 0.9rem;
-}
-
-.manageUser__activeDot {
-  width: 0.65rem;
-  height: 0.65rem;
-  border-radius: 50%;
-  background-color: var(--red);
-}
-
-.manageUser__activeDot--active {
-  background-color: var(--green);
-}
-
-.manageUser__mainLeft {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  padding: 1rem;
-  border-radius: 1rem;
-  box-shadow: var(--main-shadow);
-}
-
-.manageUser__mainLeft .viewBooking__infoText {
+  font-weight: 500;
+  line-height: 1.2;
   overflow-wrap: anywhere;
 }
 
-.manageUser__mainRight {
+.manageUser__selfTag {
+  font-size: 0.8rem;
+  padding: 0.4rem 0.75rem;
+  font-weight: 600;
+  border-radius: 10rem;
+  margin-left: 0.2rem;
+  color: var(--primary-color);
+  background-color: #51d1dc20;
+}
+
+.manageUser__usernameRow {
+  gap: 0.8rem;
+  margin-top: 0.4rem;
+}
+
+.manageUser__username {
+  color: #6f747c;
+}
+
+.manageUser__chip {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 10rem;
+  margin-left: 0.2rem;
+  font-size: 0.8rem;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.manageUser__chip--admin {
+  color: var(--primary-color);
+  background-color: #51d1dc20;
+}
+
+.manageUser__chip--admin {
+  font-weight: 700;
+}
+
+.manageUser__chip--active {
+  color: var(--green);
+  background-color: color-mix(in srgb, var(--green) 12%, #ffffff);
+}
+
+.manageUser__chip--inactive {
+  color: var(--red);
+  background-color: color-mix(in srgb, var(--red) 12%, #ffffff);
+}
+
+.manageUser__workspace {
+  display: grid;
+  grid-template-columns: minmax(17rem, 0.82fr) minmax(0, 1.35fr);
+  flex: 1 1 auto;
+  gap: 1.25rem;
+  min-height: 0;
+}
+
+.manageUser__accountColumn {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1rem;
+  min-width: 0;
+  margin: -0.75rem;
+  padding: 0.75rem;
+  overflow-y: auto;
+  scrollbar-color: #d4d4d4 transparent;
+  scrollbar-width: thin;
+}
+
+.manageUser__accountSection,
+.manageUser__history {
+  border-radius: 1rem;
+  background-color: var(--background);
+  box-shadow: var(--light-shadow);
+}
+
+.manageUser__accountSection {
+  padding: 1rem;
+}
+
+.manageUser__sectionTitle {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.manageUser__sectionTitle > i {
+  display: grid;
+  place-items: center;
+  color: var(--primary-color);
+  font-size: 1.2rem;
+}
+
+.manageUser__sectionTitle h2 {
+  font-size: 1.1rem;
+  font-weight: 500;
+}
+
+.manageUser__facts {
+  margin-top: 0.85rem;
+}
+
+.manageUser__facts > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem 0;
+}
+
+.manageUser__facts > div:last-child {
+  padding-bottom: 0;
+}
+
+.manageUser__facts dt {
+  color: #777c84;
+  font-size: 1rem;
+}
+
+.manageUser__facts dd {
+  min-width: 0;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.manageUser__controlsSection {
+  padding: 0;
+  overflow: hidden;
 }
 
 .manageUser__actionPanel {
-  overflow: hidden;
-  border-radius: 1rem;
-  box-shadow: var(--main-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
 }
 
 .manageUser__actionPanel button {
@@ -147,61 +198,101 @@
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  gap: 1rem;
-  padding: 1rem;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
   border: 0;
-  border-bottom: 1px solid #eee;
-  background-color: var(--background);
-  font-family: "IBM Plex Sans Thai", sans-serif;
-  text-align: left;
+  background: transparent;
+  color: var(--text);
   cursor: pointer;
-  transition-duration: 0.2s;
+  font: inherit;
+  text-align: left;
 }
 
-.manageUser__actionPanel button:last-child {
-  border-bottom: 0;
-}
-
-.manageUser__actionPanel button:hover {
-  background-color: #f6f6f6;
+.manageUser__actionPanel button:hover,
+.manageUser__actionPanel button:focus-visible {
+  background-color: color-mix(in srgb, var(--primary-color) 5%, #ffffff);
+  outline: none;
 }
 
 .manageUser__actionMain {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.7rem;
+  min-width: 0;
 }
 
-.manageUser__actionMain .viewBooking__bedIcon {
-  flex: 0 0 3.25rem;
+.manageUser__actionMain > i {
+  flex: 0 0 auto;
+  color: var(--primary-color);
+  font-size: 1.2rem;
 }
 
-.manageUser__actionMain .viewBooking__infoText {
-  font-size: 1.15rem;
+.manageUser__actionMain strong {
+  font-size: 1rem;
+  font-weight: 400;
 }
 
-.manageUser__actionMain p:last-child {
-  color: #666;
-}
-
-.manageUserModal__form {
+.manageUser__history {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.manageUser__history .settings__activities {
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 1rem;
+  padding: 1rem;
+  overflow-y: auto;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.manageUser__history .settings__activity {
+  gap: 0.7rem;
+  padding: 1rem;
+  border: 0;
+  border-radius: 1rem;
+  background-color: var(--background);
+  box-shadow: var(--light-shadow);
+}
+
+.manageUser__history .settings__activityDetails {
+  grid-template-columns: 1fr;
+  padding: 0;
+  border-radius: 0;
+  background-color: transparent;
+  box-shadow: none;
+}
+
+.manageUser__history .settings__activity,
+.manageUser__history .settings__activityDetails,
+.manageUser__history .settings__activityStatus,
+.manageUser__history .settings__activity time {
+  font-size: 1rem;
+}
+
+.manageUserModal {
+  width: min(50rem, calc(100vw - 2rem));
+  max-width: none;
   gap: 2rem;
 }
 
-.manageUserModal__target {
-  padding: 1rem;
-  border-radius: 1rem;
-  box-shadow: var(--main-shadow);
+.manageUserModal__header,
+.manageUserModal__form {
+  display: flex;
+  flex-direction: column;
 }
 
-.manageUserModal__target p {
-  font-weight: 600;
+.manageUserModal__header {
+  gap: 0.5rem;
 }
 
-.manageUserModal__target span {
-  color: #666;
+.manageUserModal__form {
+  gap: 2rem;
 }
 
 .manageUser__toggle button:disabled {
@@ -213,11 +304,11 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  color: #b45309;
-  background-color: #fef3c7;
-  border-radius: 1rem;
   padding: 1rem;
-  font-size: 0.9rem;
+  border-radius: 1rem;
+  background-color: #fef3c7;
+  color: #b45309;
+  font-size: 1rem;
 }
 
 .manageUser__guardNote i {
@@ -232,26 +323,52 @@
 
 @media (max-width: 760px) {
   .manageUser__wrapper {
-    width: calc(100vw - 1.5rem);
-    max-height: calc(100vh - 1.5rem);
-    padding: 1.25rem;
+    height: auto;
+    max-height: calc(100dvh - 0.5rem - env(safe-area-inset-top));
+    padding: 1.1rem;
+    overflow-y: auto;
   }
 
-  .manageUser__top {
+  .manageUser__hero {
+    align-items: flex-start;
+    gap: 0.85rem;
+    margin-bottom: 1.15rem;
+    padding-right: 2.8rem;
+  }
+
+  .manageUser__avatar {
+    flex-basis: 4.5rem;
+    width: 4.5rem;
+    height: 4.5rem;
+    border-radius: 100rem;
+  }
+
+  .manageUser__name {
+    font-size: 1.35rem;
+  }
+
+  .manageUser__workspace {
+    display: flex;
     flex-direction: column;
     gap: 1rem;
+    overflow: visible;
   }
 
-  .manageUser__statusArea {
-    align-items: flex-start;
+  .manageUser__accountColumn {
+    overflow: visible;
+    margin: 0;
+    padding: 0;
   }
 
-  .manageUser__main {
+  .manageUser__history {
+    overflow: visible;
+  }
+
+  .manageUser__history .settings__activities {
+    overflow: visible;
+  }
+
+  .manageUser__history .settings__activityDetails {
     grid-template-columns: 1fr;
-  }
-
-  .manageUser__mainLeft .viewBooking__infoText,
-  .manageUser__actionMain .viewBooking__infoText {
-    font-size: 1.15rem;
   }
 }

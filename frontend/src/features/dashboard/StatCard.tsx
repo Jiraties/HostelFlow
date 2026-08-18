@@ -10,6 +10,7 @@ interface StatCardProps {
   loading: boolean;
   suffix?: string;
   helperText?: string;
+  valueColor?: string;
 }
 
 function AnimatedDigit({
@@ -94,6 +95,7 @@ export default function StatCard({
   loading,
   suffix = "",
   helperText,
+  valueColor,
 }: StatCardProps) {
   const prevValue = useRef<number>(0); // ✅ start from 0
   const [direction, setDirection] = useState<"up" | "down">("up");
@@ -168,7 +170,7 @@ export default function StatCard({
         style={{
           fontSize: "2.5rem",
           fontWeight: 400,
-          color: flashColor,
+          color: valueColor || flashColor,
           display: "flex",
           alignItems: "baseline",
           transition: "color 0.4s",

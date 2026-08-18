@@ -24,9 +24,6 @@ import {
   CashShiftLedgerConflictError,
 } from "../services/cashLedgerTransaction";
 import { logActivityStrict } from "../services/activityServices";
-import {
-  canonicalTransactionDirection,
-} from "../services/financialTransactionPolicy";
 import { normalizeTransaction } from "../helpers/financeHelpers";
 import {
   effectiveBookingTransactions,
@@ -34,6 +31,7 @@ import {
 } from "../services/transactionCorrections";
 import { getRoomStayRoomIds } from "../helpers/roomStayHelpers";
 import { resolveRetirementFlags } from "../config/resolveRetirement";
+import { ordinaryRefundEntitlementFor } from "../services/refundEntitlement";
 
 type BookingParams = { bookingId: string };
 type NoShowBody = {
@@ -557,37 +555,6 @@ export const correctClosedRoomAvailability = async (
   }
 };
 
-const refundEntitlement = (
-  transactions: transcation[],
-  relatedTransactionId: string,
-) => {
-  const original = transactions.find(
-    (transaction) =>
-      String(transaction._id || "") === relatedTransactionId,
-  );
-  if (
-    !original ||
-    original.paymentMethod === "Unpaid" ||
-    canonicalTransactionDirection(original) !== "in" ||
-    ["deposit", "depositRefund", "roomRefund", "cancellationRefund", "compensation", "cardSurcharge"].includes(
-      original.type,
-    )
-  ) {
-    return null;
-  }
-  const alreadyRefunded = transactions
-    .filter(
-      (transaction) =>
-        ["roomRefund", "cancellationRefund"].includes(transaction.type) &&
-        transaction.relatedTransactionId === relatedTransactionId,
-    )
-    .reduce((total, transaction) => total + Math.abs(transaction.amount || 0), 0);
-  return {
-    original,
-    remaining: Math.max(Number(original.amount || 0) - alreadyRefunded, 0),
-  };
-};
-
 export const recordFinancialAction = async (
   req: Request<BookingParams, {}, FinancialActionBody>,
   res: Response,
@@ -654,7 +621,7 @@ export const recordFinancialAction = async (
     let relatedTransactionId: string | undefined;
     if (action === "refund") {
       relatedTransactionId = String(req.body.relatedTransactionId || "");
-      const entitlement = refundEntitlement(
+      const entitlement = ordinaryRefundEntitlementFor(
         effectiveTransactions,
         relatedTransactionId,
       );
@@ -664,11 +631,11 @@ export const recordFinancialAction = async (
           message: "กรุณาเลือกรายการรับเงินเดิมที่ต้องการคืน",
         });
       }
-      if (amount > entitlement.remaining) {
+      if (amount > entitlement.remainingAmount) {
         return res.status(409).json({
           error: "REFUND_EXCEEDS_AVAILABLE_BALANCE",
-          message: `คืนได้ไม่เกิน ${entitlement.remaining.toLocaleString("th-TH")} บาท`,
-          remainingRefundableAmount: entitlement.remaining,
+          message: `คืนได้ไม่เกิน ${entitlement.remainingAmount.toLocaleString("th-TH")} บาท`,
+          remainingRefundableAmount: entitlement.remainingAmount,
         });
       }
     }

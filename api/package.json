@@ -18,6 +18,7 @@
     "migrate:focused-booking-action-indexes": "ts-node src/scripts/migrateFocusedBookingActionIndexes.ts",
     "release:resolve-retirement-baseline": "ts-node src/scripts/captureResolveRetirementBaseline.ts",
     "migrate:master-search-indexes": "node dist/scripts/migrateMasterSearchIndexes.js",
+    "migrate:commercial-segment-placement": "node dist/scripts/migrateCommercialSegmentPlacement.js",
     "migrate:pinned-bookings": "ts-node src/scripts/migratePinnedBookings.ts",
     "verify:restore": "ts-node src/scripts/verifyRestoredData.ts",
     "seed:demo": "ts-node src/scripts/seedDemoData.ts",

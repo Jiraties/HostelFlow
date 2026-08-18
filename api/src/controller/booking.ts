@@ -100,6 +100,7 @@ import {
   expectedStayRevenueBookingQuery,
   summarizeExpectedStayRevenue,
 } from "../helpers/expectedStayRevenueHelpers";
+import { assessOrdinaryRefundEntitlements } from "../services/refundEntitlement";
 
 dotenv.config();
 
@@ -1174,13 +1175,14 @@ export const editBooking = async (
     );
     if (
       hasExtensionSegments &&
-      (toInputDate(existingBooking.checkOut) !== booking.checkOut ||
+      (toInputDate(existingBooking.checkIn) !== booking.checkIn ||
+        toInputDate(existingBooking.checkOut) !== booking.checkOut ||
         existingBooking.platformId !== booking.platformId)
     ) {
       return res.status(400).json({
         error: "EXTENDED_BOOKING_COMMERCIAL_FIELDS_LOCKED",
         message:
-          "Booking ที่เพิ่มคืนแล้วต้องเปลี่ยนวันเช็คเอาท์ผ่าน Add Nights และไม่สามารถเปลี่ยนช่องทางเดิมได้",
+          "Booking ที่เพิ่มคืนแล้วต้องเปลี่ยนวันเข้าพักผ่าน Add Nights และไม่สามารถเปลี่ยนช่องทางเดิมได้",
       });
     }
 
@@ -1912,12 +1914,32 @@ export const getMasterBookings = async (req: Request, res: Response) => {
     }
 
     if (typeof channel === "string" && channel.trim()) {
-      andFilters.push({
-        $or: [
-          { platformId: channel.trim() },
-          { "commercialSegments.platformId": channel.trim() },
-        ],
-      });
+      if (fromDate && endOfToDate) {
+        andFilters.push({
+          $or: [
+            {
+              commercialSegments: {
+                $elemMatch: {
+                  platformId: channel.trim(),
+                  from: { $lt: endOfToDate },
+                  to: { $gt: fromDate },
+                },
+              },
+            },
+            {
+              platformId: channel.trim(),
+              commercialSegments: { $size: 0 },
+            },
+          ],
+        });
+      } else {
+        andFilters.push({
+          $or: [
+            { platformId: channel.trim() },
+            { "commercialSegments.platformId": channel.trim() },
+          ],
+        });
+      }
     }
 
     if (
@@ -3435,11 +3457,17 @@ export const cancelBooking = async (req: Request, res: Response) => {
         message: "สามารถยกเลิกได้เฉพาะ Booking ที่ยังไม่ได้ Check-In",
       });
 
-    const paidByMethod = summarizeReceivedPaymentsByMethod(
-      effectiveBookingTransactions(existingBooking),
-    );
+    const effectiveTransactions = effectiveBookingTransactions(existingBooking);
+    const paidByMethod = summarizeReceivedPaymentsByMethod(effectiveTransactions);
     const paidAmount = Array.from(paidByMethod.values()).reduce(
       (sum, amount) => sum + amount,
+      0,
+    );
+    const refundEntitlements = assessOrdinaryRefundEntitlements(
+      effectiveTransactions,
+    ).entitlements;
+    const remainingRefundableAmount = refundEntitlements.reduce(
+      (sum, entitlement) => sum + entitlement.remainingAmount,
       0,
     );
     const hasReceivedPayment = paidAmount > 0;
@@ -3464,29 +3492,52 @@ export const cancelBooking = async (req: Request, res: Response) => {
 
     const refundAmount =
       hasReceivedPayment && effectiveCancellationType === "refundable"
-        ? paidAmount
+        ? Math.min(paidAmount, remainingRefundableAmount)
         : 0;
     const keptAmount =
       hasReceivedPayment && effectiveCancellationType === "non_refundable"
         ? paidAmount
         : 0;
 
-    const refundTransactions: transcation[] =
-      refundAmount > 0
-        ? Array.from(paidByMethod.entries()).map(([paymentMethod, amount]) =>
-            normalizeTransaction(
-              {
-                type: "cancellationRefund",
-                paymentMethod,
-                amount,
-              },
-              {
-                createdBy: cancelledByStaffUsername,
-                sourceAction: "CANCEL_BOOKING",
-              },
-            ),
-          )
-        : [];
+    let unallocatedCancellationRefund = refundAmount;
+    const cancellationRefundByMethod = new Map<PaymentMethod, number>();
+    refundEntitlements.forEach((entitlement) => {
+      const entitlementRefundAmount = Math.min(
+        entitlement.remainingAmount,
+        unallocatedCancellationRefund,
+      );
+      if (entitlementRefundAmount <= 0) return;
+      unallocatedCancellationRefund = Number(
+        (unallocatedCancellationRefund - entitlementRefundAmount).toFixed(2),
+      );
+      cancellationRefundByMethod.set(
+        entitlement.paymentMethod,
+        Number(
+          (
+            (cancellationRefundByMethod.get(entitlement.paymentMethod) || 0) +
+            entitlementRefundAmount
+          ).toFixed(2),
+        ),
+      );
+    });
+    // Keep cancellation's existing one-row-per-payment-method shape. The
+    // entitlement service deterministically allocates these legacy-compatible
+    // unlinked rows across the underlying receipts.
+    const refundTransactions: transcation[] = Array.from(
+      cancellationRefundByMethod.entries(),
+    ).map(([paymentMethod, amount]) =>
+      normalizeTransaction(
+        {
+          type: "cancellationRefund",
+          paymentMethod,
+          amount,
+        },
+        {
+          createdBy: cancelledByStaffUsername,
+          sourceAction: "CANCEL_BOOKING",
+        },
+      ),
+    );
     const originalUnpaidRoomCharge = existingBooking.transactions.find(
       (transaction) =>
         transaction.type === "roomCharge" &&
@@ -3921,6 +3972,28 @@ export const resolveBooking = async (
         message: "ยอดคืนมัดจำเกินยอดคงเหลือ",
       });
     }
+    const currentEffectiveTransactions = effectiveBookingTransactions(booking);
+    const currentRefundAssessment = assessOrdinaryRefundEntitlements(
+      currentEffectiveTransactions,
+    );
+    const previewRefundAssessment = assessOrdinaryRefundEntitlements([
+      ...currentEffectiveTransactions,
+      ...normalizedTransactions,
+    ]);
+    if (
+      previewRefundAssessment.excessRefundAmount >
+      currentRefundAssessment.excessRefundAmount
+    ) {
+      const remainingRefundableAmount = currentRefundAssessment.entitlements.reduce(
+        (sum, entitlement) => sum + entitlement.remainingAmount,
+        0,
+      );
+      return res.status(409).json({
+        error: "REFUND_EXCEEDS_AVAILABLE_BALANCE",
+        message: `คืนได้ไม่เกิน ${remainingRefundableAmount.toLocaleString("th-TH")} บาท`,
+        remainingRefundableAmount,
+      });
+    }
     const now = new Date();
     const updateSet: Record<string, unknown> = {
       status: finalStatus,
@@ -4050,26 +4123,56 @@ export const resolveBooking = async (
   }
 };
 
-export const getNeedsReviewBookings = async (req: Request, res: Response) => {
-  try {
-    const { start: todayStart } = getBusinessDayBounds();
-    const thirtyDaysAgo = new Date(todayStart);
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+const needsReviewBookingFilters = () => {
+  const { start: todayStart } = getBusinessDayBounds();
+  const thirtyDaysAgo = new Date(todayStart);
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const lateCheckInBookings = await Booking.find({
+  return {
+    lateCheckIns: {
       status: "booked",
       checkIn: { $gte: thirtyDaysAgo, $lt: todayStart },
+    },
+    lateCheckOuts: {
+      status: "checkedIn",
+      checkOut: { $gte: thirtyDaysAgo, $lt: todayStart },
+    },
+  };
+};
+
+export const getNeedsReviewBookings = async (req: Request, res: Response) => {
+  try {
+    const filters = needsReviewBookingFilters();
+
+    const lateCheckInBookings = await Booking.find({
+      ...filters.lateCheckIns,
     }).sort({ checkIn: 1, name: 1 });
 
     const lateCheckOutBookings = await Booking.find({
-      status: "checkedIn",
-      checkOut: { $gte: thirtyDaysAgo, $lt: todayStart },
+      ...filters.lateCheckOuts,
     }).sort({ checkOut: 1, name: 1 });
 
     res.status(200).json({
       lateCheckIns: lateCheckInBookings,
       lateCheckOuts: lateCheckOutBookings,
     });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+};
+
+export const getNeedsReviewBookingCount = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const filters = needsReviewBookingFilters();
+    const [lateCheckInCount, lateCheckOutCount] = await Promise.all([
+      Booking.countDocuments(filters.lateCheckIns),
+      Booking.countDocuments(filters.lateCheckOuts),
+    ]);
+
+    res.status(200).json({ count: lateCheckInCount + lateCheckOutCount });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

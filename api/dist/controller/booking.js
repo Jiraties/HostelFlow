@@ -36,7 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getNeedsReviewBookings = exports.resolveBooking = exports.cancelBooking = exports.getPassportData = exports.addTransaction = exports.extendBooking = exports.manageRoomStays = exports.getBookingById = exports.getMonthCalendar = exports.checkOut = exports.checkIn = exports.removeBooking = exports.getMasterBookings = exports.getAdminDashboardStats = exports.getTodayBookings = exports.pinBooking = exports.updateBookingNote = exports.editBooking = exports.getRoomAvailability = exports.newBooking = exports.occupancySummaryForRange = exports.occupiedCapacityOnDate = void 0;
+exports.getNeedsReviewBookingCount = exports.getNeedsReviewBookings = exports.resolveBooking = exports.cancelBooking = exports.getPassportData = exports.addTransaction = exports.extendBooking = exports.manageRoomStays = exports.getBookingById = exports.getMonthCalendar = exports.checkOut = exports.checkIn = exports.removeBooking = exports.getMasterBookings = exports.getAdminDashboardStats = exports.getTodayBookings = exports.pinBooking = exports.updateBookingNote = exports.editBooking = exports.getRoomAvailability = exports.newBooking = exports.occupancySummaryForRange = exports.occupiedCapacityOnDate = void 0;
 const booking_1 = __importStar(require("../models/booking"));
 const standaloneSale_1 = __importDefault(require("../models/standaloneSale"));
 const dotenv_1 = __importDefault(require("dotenv"));
@@ -59,6 +59,7 @@ const transactionCorrections_1 = require("../services/transactionCorrections");
 const passportData_1 = require("../services/passportData");
 const resolveRetirement_1 = require("../config/resolveRetirement");
 const expectedStayRevenueHelpers_1 = require("../helpers/expectedStayRevenueHelpers");
+const refundEntitlement_1 = require("../services/refundEntitlement");
 dotenv_1.default.config();
 const ACTIVE_ROOM_INVENTORY = (0, roomInventory_1.activeRoomInventory)();
 const ACTIVE_ROOM_IDS = new Set(ACTIVE_ROOM_INVENTORY.map((room) => room.id));
@@ -806,11 +807,12 @@ const editBooking = async (req, res) => {
         }
         const hasExtensionSegments = (existingBooking.commercialSegments || []).some((segment) => segment.kind === "extension");
         if (hasExtensionSegments &&
-            ((0, dateHelpers_1.toInputDate)(existingBooking.checkOut) !== booking.checkOut ||
+            ((0, dateHelpers_1.toInputDate)(existingBooking.checkIn) !== booking.checkIn ||
+                (0, dateHelpers_1.toInputDate)(existingBooking.checkOut) !== booking.checkOut ||
                 existingBooking.platformId !== booking.platformId)) {
             return res.status(400).json({
                 error: "EXTENDED_BOOKING_COMMERCIAL_FIELDS_LOCKED",
-                message: "Booking ที่เพิ่มคืนแล้วต้องเปลี่ยนวันเช็คเอาท์ผ่าน Add Nights และไม่สามารถเปลี่ยนช่องทางเดิมได้",
+                message: "Booking ที่เพิ่มคืนแล้วต้องเปลี่ยนวันเข้าพักผ่าน Add Nights และไม่สามารถเปลี่ยนช่องทางเดิมได้",
             });
         }
         const originalRoomStays = [...existingBooking.roomStays].sort((a, b) => new Date(a.from).getTime() - new Date(b.from).getTime());
@@ -1327,12 +1329,33 @@ const getMasterBookings = async (req, res) => {
             });
         }
         if (typeof channel === "string" && channel.trim()) {
-            andFilters.push({
-                $or: [
-                    { platformId: channel.trim() },
-                    { "commercialSegments.platformId": channel.trim() },
-                ],
-            });
+            if (fromDate && endOfToDate) {
+                andFilters.push({
+                    $or: [
+                        {
+                            commercialSegments: {
+                                $elemMatch: {
+                                    platformId: channel.trim(),
+                                    from: { $lt: endOfToDate },
+                                    to: { $gt: fromDate },
+                                },
+                            },
+                        },
+                        {
+                            platformId: channel.trim(),
+                            commercialSegments: { $size: 0 },
+                        },
+                    ],
+                });
+            }
+            else {
+                andFilters.push({
+                    $or: [
+                        { platformId: channel.trim() },
+                        { "commercialSegments.platformId": channel.trim() },
+                    ],
+                });
+            }
         }
         if (typeof status === "string" &&
             status.trim() &&
@@ -2453,8 +2476,11 @@ const cancelBooking = async (req, res) => {
             return res.status(409).json({
                 message: "สามารถยกเลิกได้เฉพาะ Booking ที่ยังไม่ได้ Check-In",
             });
-        const paidByMethod = (0, financeHelpers_1.summarizeReceivedPaymentsByMethod)((0, transactionCorrections_1.effectiveBookingTransactions)(existingBooking));
+        const effectiveTransactions = (0, transactionCorrections_1.effectiveBookingTransactions)(existingBooking);
+        const paidByMethod = (0, financeHelpers_1.summarizeReceivedPaymentsByMethod)(effectiveTransactions);
         const paidAmount = Array.from(paidByMethod.values()).reduce((sum, amount) => sum + amount, 0);
+        const refundEntitlements = (0, refundEntitlement_1.assessOrdinaryRefundEntitlements)(effectiveTransactions).entitlements;
+        const remainingRefundableAmount = refundEntitlements.reduce((sum, entitlement) => sum + entitlement.remainingAmount, 0);
         const hasReceivedPayment = paidAmount > 0;
         const hasNonRefundableAdvance = existingBooking.advancePayment?.nonRefundableOnCancellation === true;
         const effectiveCancellationType = hasNonRefundableAdvance
@@ -2471,21 +2497,32 @@ const cancelBooking = async (req, res) => {
                 message: "กรุณาระบุประเภทการยกเลิกให้ถูกต้อง",
             });
         const refundAmount = hasReceivedPayment && effectiveCancellationType === "refundable"
-            ? paidAmount
+            ? Math.min(paidAmount, remainingRefundableAmount)
             : 0;
         const keptAmount = hasReceivedPayment && effectiveCancellationType === "non_refundable"
             ? paidAmount
             : 0;
-        const refundTransactions = refundAmount > 0
-            ? Array.from(paidByMethod.entries()).map(([paymentMethod, amount]) => (0, financeHelpers_1.normalizeTransaction)({
-                type: "cancellationRefund",
-                paymentMethod,
-                amount,
-            }, {
-                createdBy: cancelledByStaffUsername,
-                sourceAction: "CANCEL_BOOKING",
-            }))
-            : [];
+        let unallocatedCancellationRefund = refundAmount;
+        const cancellationRefundByMethod = new Map();
+        refundEntitlements.forEach((entitlement) => {
+            const entitlementRefundAmount = Math.min(entitlement.remainingAmount, unallocatedCancellationRefund);
+            if (entitlementRefundAmount <= 0)
+                return;
+            unallocatedCancellationRefund = Number((unallocatedCancellationRefund - entitlementRefundAmount).toFixed(2));
+            cancellationRefundByMethod.set(entitlement.paymentMethod, Number(((cancellationRefundByMethod.get(entitlement.paymentMethod) || 0) +
+                entitlementRefundAmount).toFixed(2)));
+        });
+        // Keep cancellation's existing one-row-per-payment-method shape. The
+        // entitlement service deterministically allocates these legacy-compatible
+        // unlinked rows across the underlying receipts.
+        const refundTransactions = Array.from(cancellationRefundByMethod.entries()).map(([paymentMethod, amount]) => (0, financeHelpers_1.normalizeTransaction)({
+            type: "cancellationRefund",
+            paymentMethod,
+            amount,
+        }, {
+            createdBy: cancelledByStaffUsername,
+            sourceAction: "CANCEL_BOOKING",
+        }));
         const originalUnpaidRoomCharge = existingBooking.transactions.find((transaction) => transaction.type === "roomCharge" &&
             transaction.sourceAction !== "EXTEND_BOOKING" &&
             transaction.paymentMethod === "Unpaid");
@@ -2794,6 +2831,21 @@ const resolveBooking = async (req, res) => {
                 message: "ยอดคืนมัดจำเกินยอดคงเหลือ",
             });
         }
+        const currentEffectiveTransactions = (0, transactionCorrections_1.effectiveBookingTransactions)(booking);
+        const currentRefundAssessment = (0, refundEntitlement_1.assessOrdinaryRefundEntitlements)(currentEffectiveTransactions);
+        const previewRefundAssessment = (0, refundEntitlement_1.assessOrdinaryRefundEntitlements)([
+            ...currentEffectiveTransactions,
+            ...normalizedTransactions,
+        ]);
+        if (previewRefundAssessment.excessRefundAmount >
+            currentRefundAssessment.excessRefundAmount) {
+            const remainingRefundableAmount = currentRefundAssessment.entitlements.reduce((sum, entitlement) => sum + entitlement.remainingAmount, 0);
+            return res.status(409).json({
+                error: "REFUND_EXCEEDS_AVAILABLE_BALANCE",
+                message: `คืนได้ไม่เกิน ${remainingRefundableAmount.toLocaleString("th-TH")} บาท`,
+                remainingRefundableAmount,
+            });
+        }
         const now = new Date();
         const updateSet = {
             status: finalStatus,
@@ -2891,18 +2943,29 @@ const resolveBooking = async (req, res) => {
     }
 };
 exports.resolveBooking = resolveBooking;
-const getNeedsReviewBookings = async (req, res) => {
-    try {
-        const { start: todayStart } = getBusinessDayBounds();
-        const thirtyDaysAgo = new Date(todayStart);
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        const lateCheckInBookings = await booking_1.default.find({
+const needsReviewBookingFilters = () => {
+    const { start: todayStart } = getBusinessDayBounds();
+    const thirtyDaysAgo = new Date(todayStart);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    return {
+        lateCheckIns: {
             status: "booked",
             checkIn: { $gte: thirtyDaysAgo, $lt: todayStart },
-        }).sort({ checkIn: 1, name: 1 });
-        const lateCheckOutBookings = await booking_1.default.find({
+        },
+        lateCheckOuts: {
             status: "checkedIn",
             checkOut: { $gte: thirtyDaysAgo, $lt: todayStart },
+        },
+    };
+};
+const getNeedsReviewBookings = async (req, res) => {
+    try {
+        const filters = needsReviewBookingFilters();
+        const lateCheckInBookings = await booking_1.default.find({
+            ...filters.lateCheckIns,
+        }).sort({ checkIn: 1, name: 1 });
+        const lateCheckOutBookings = await booking_1.default.find({
+            ...filters.lateCheckOuts,
         }).sort({ checkOut: 1, name: 1 });
         res.status(200).json({
             lateCheckIns: lateCheckInBookings,
@@ -2914,4 +2977,18 @@ const getNeedsReviewBookings = async (req, res) => {
     }
 };
 exports.getNeedsReviewBookings = getNeedsReviewBookings;
+const getNeedsReviewBookingCount = async (req, res) => {
+    try {
+        const filters = needsReviewBookingFilters();
+        const [lateCheckInCount, lateCheckOutCount] = await Promise.all([
+            booking_1.default.countDocuments(filters.lateCheckIns),
+            booking_1.default.countDocuments(filters.lateCheckOuts),
+        ]);
+        res.status(200).json({ count: lateCheckInCount + lateCheckOutCount });
+    }
+    catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+exports.getNeedsReviewBookingCount = getNeedsReviewBookingCount;
 //# sourceMappingURL=booking.js.map

@@ -423,6 +423,13 @@
   white-space: nowrap;
 }
 
+.viewBooking__channelPlacement {
+  color: #777;
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 400;
+}
+
 .viewBooking__channelDates {
   background: rgba(247, 247, 247, 0.8);
   border-radius: 999rem;
@@ -710,6 +717,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.viewBooking__priceChildAmount--payment {
+  color: var(--green);
 }
 
 .viewBooking__priceChildSummary {

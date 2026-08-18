@@ -109,6 +109,45 @@
   grid-column: 1 / -1;
 }
 
+.extendBooking__placement {
+  background: #f3f3f3;
+  border-radius: 0.55rem;
+  display: grid;
+  gap: 0.25rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 0.25rem;
+}
+
+.extendBooking__placement button {
+  background: transparent;
+  border: 0;
+  border-radius: 0.4rem;
+  color: #666;
+  cursor: pointer;
+  font: inherit;
+  min-height: 2.75rem;
+}
+
+.extendBooking__placement button.active {
+  background: #fff;
+  box-shadow: var(--main-shadow);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.extendBooking__placement button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.extendBooking__anchorNotice {
+  background: color-mix(in srgb, var(--primary-color) 8%, #fff);
+  border-radius: 0.55rem;
+  color: #555;
+  margin: 1.25rem 0 0;
+  padding: 0.85rem 1rem;
+}
+
 .extendBooking__platformOption {
   align-items: center;
   display: flex;
@@ -156,6 +195,13 @@
   font-weight: 400;
   padding: 0.25rem 0.55rem;
   white-space: nowrap;
+}
+
+.extendBooking__originalReservation {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
 }
 
 .extendBooking__actions {

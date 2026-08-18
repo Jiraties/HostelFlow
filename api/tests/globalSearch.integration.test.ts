@@ -362,6 +362,44 @@ test("can scope a booking date search to check-out only", async () => {
   );
 });
 
+test("channel and booking date must match the same commercial segment", async () => {
+  const mixed = bookingDocument({
+    bookingId: "HF-MIXED-CHANNEL",
+    name: "Mixed Channel Guest",
+    checkIn: new Date("2026-08-08T00:00:00.000Z"),
+    checkOut: new Date("2026-08-10T00:00:00.000Z"),
+  });
+  mixed.commercialSegments[0].to = new Date("2026-08-09T00:00:00.000Z");
+  mixed.commercialSegments.push({
+    _id: new mongoose.Types.ObjectId(),
+    kind: "extension",
+    from: new Date("2026-08-09T00:00:00.000Z"),
+    to: new Date("2026-08-10T00:00:00.000Z"),
+    platformId: "HOST",
+    channelBookingId: "HOST-MIXED",
+    amount: 250,
+    transactionId: String(new mongoose.Types.ObjectId()),
+    createdBy: "test",
+    createdAt: new Date("2026-08-08T03:00:00.000Z"),
+  });
+  await Booking.collection.insertOne(mixed);
+
+  const originalDate = await searchEntities(
+    parseSearchIntent("host 08/08/2026"),
+    normalizeSearchPagination({ group: "bookings" }),
+  );
+  assert.deepEqual(originalDate.groups.bookings?.items, []);
+
+  const extensionDate = await searchEntities(
+    parseSearchIntent("host 09/08/2026"),
+    normalizeSearchPagination({ group: "bookings" }),
+  );
+  assert.deepEqual(
+    extensionDate.groups.bookings?.items.map((item) => item.bookingId),
+    ["HF-MIXED-CHANNEL"],
+  );
+});
+
 test("validates, deduplicates, caps, orders, and safely ignores recent IDs", async () => {
   await Booking.collection.insertMany([
     bookingDocument({ bookingId: "HF-FIRST", name: "First Guest" }),

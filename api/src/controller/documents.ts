@@ -546,7 +546,9 @@ export const getBookingsReport = async (req: Request, res: Response) => {
       effectiveCommercialSegments(financialBooking)
         .filter(
           (segment) =>
-            !bookingChannel || segment.platformId === bookingChannel,
+            new Date(segment.from) < firstDayOfNextMonth &&
+            new Date(segment.to) > firstDayOfMonth &&
+            (!bookingChannel || segment.platformId === bookingChannel),
         )
         .forEach((segment) => {
           const platform = platformMap[segment.platformId] || {

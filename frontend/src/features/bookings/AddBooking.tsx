@@ -42,9 +42,7 @@ interface BookingFormData {
 
 type BookingFormErrors = Partial<
   Record<
-    | keyof BookingFormData
-    | "advancePaymentPercentage"
-    | "advancePaymentAmount",
+    keyof BookingFormData | "advancePaymentPercentage" | "advancePaymentAmount",
     string
   >
 >;
@@ -109,6 +107,12 @@ const AddBooking = ({
   const { user } = useAuth();
   const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
   const isEditMode = mode === "edit" && !!editModeBooking;
+  const commercialFieldsLocked = Boolean(
+    isEditMode &&
+      editModeBooking?.commercialSegments?.some(
+        (segment) => segment.kind === "extension",
+      ),
+  );
   const [submitting, setSubmitting] = useState(false);
   const [occupiedRoomIds, setOccupiedRoomIds] = useState<string[]>([]);
   const [availabilityStatus, setAvailabilityStatus] =
@@ -152,8 +156,7 @@ const AddBooking = ({
         defaultPlatform === "TRAV"
           ? "OTA"
           : user?.settings.defaultPaymentMethod || "",
-      bookingId:
-        defaultPlatform === "WALK" ? generateWalkInBookingId() : "",
+      bookingId: defaultPlatform === "WALK" ? generateWalkInBookingId() : "",
       staffUsername: user?.username || "",
       note: "",
     };
@@ -193,10 +196,9 @@ const AddBooking = ({
       : Number.isFinite(roomChargeAmount) &&
           Number.isFinite(parsedAdvancePaymentPercentage)
         ? Number(
-            (
-              (roomChargeAmount * parsedAdvancePaymentPercentage) /
-              100
-            ).toFixed(2),
+            ((roomChargeAmount * parsedAdvancePaymentPercentage) / 100).toFixed(
+              2,
+            ),
           )
         : 0;
   const visiblePaymentMethodOptions = advancePaymentEnabled
@@ -226,42 +228,39 @@ const AddBooking = ({
         ? "loading"
         : "idle";
 
-  const roomOptions = useMemo<RoomOptionWithReason[]>(
-    () => {
-      const wholeRoomGroupByFirstUnit = new Map(
-        wholeRoomGroups.map((group) => [group.roomIds[0], group]),
+  const roomOptions = useMemo<RoomOptionWithReason[]>(() => {
+    const wholeRoomGroupByFirstUnit = new Map(
+      wholeRoomGroups.map((group) => [group.roomIds[0], group]),
+    );
+
+    return roomIdOptions.flatMap((option) => {
+      const group = wholeRoomGroupByFirstUnit.get(option.value);
+      const individualOption: RoomOptionWithReason = {
+        ...option,
+        isDisabled: occupiedRoomIds.includes(option.value),
+        disabledReason: occupiedRoomIds.includes(option.value)
+          ? "ไม่ว่างในช่วงวันที่เลือก"
+          : undefined,
+      };
+
+      if (!group) return [individualOption];
+
+      const hasOccupiedUnit = group.roomIds.some((roomId) =>
+        occupiedRoomIds.includes(roomId),
       );
+      const wholeRoomOption: RoomOptionWithReason = {
+        value: group.value,
+        label: group.label,
+        expandedRoomIds: group.roomIds,
+        isDisabled: hasOccupiedUnit,
+        disabledReason: hasOccupiedUnit
+          ? "มีบางเตียงไม่ว่างในช่วงวันที่เลือก"
+          : undefined,
+      };
 
-      return roomIdOptions.flatMap((option) => {
-        const group = wholeRoomGroupByFirstUnit.get(option.value);
-        const individualOption: RoomOptionWithReason = {
-          ...option,
-          isDisabled: occupiedRoomIds.includes(option.value),
-          disabledReason: occupiedRoomIds.includes(option.value)
-            ? "ไม่ว่างในช่วงวันที่เลือก"
-            : undefined,
-        };
-
-        if (!group) return [individualOption];
-
-        const hasOccupiedUnit = group.roomIds.some((roomId) =>
-          occupiedRoomIds.includes(roomId),
-        );
-        const wholeRoomOption: RoomOptionWithReason = {
-          value: group.value,
-          label: group.label,
-          expandedRoomIds: group.roomIds,
-          isDisabled: hasOccupiedUnit,
-          disabledReason: hasOccupiedUnit
-            ? "มีบางเตียงไม่ว่างในช่วงวันที่เลือก"
-            : undefined,
-        };
-
-        return [wholeRoomOption, individualOption];
-      });
-    },
-    [occupiedRoomIds],
-  );
+      return [wholeRoomOption, individualOption];
+    });
+  }, [occupiedRoomIds]);
   const selectedRoomOptions = useMemo<RoomOptionWithReason[]>(() => {
     const selectedRoomIds = new Set(formData.roomIds);
     const representedRoomIds = new Set<string>();
@@ -845,6 +844,7 @@ const AddBooking = ({
                 checkOut={formData.checkOut}
                 dateFormat={dateFormat}
                 hasError={Boolean(formErrors.checkIn || formErrors.checkOut)}
+                disabled={commercialFieldsLocked}
                 onChange={dateRangeChangeHandler}
                 onCheckInChange={checkInInputChangeHandler}
                 onCheckOutChange={checkOutInputChangeHandler}
@@ -858,6 +858,7 @@ const AddBooking = ({
                 min="1"
                 step="1"
                 value={nights}
+                disabled={commercialFieldsLocked}
                 onChange={(e) => nightsChangeHandler(e.target.value)}
                 className="boxInput addBooking__nightsInput"
                 aria-label="Number of nights"
@@ -913,8 +914,7 @@ const AddBooking = ({
                       options
                         .filter((option) => option.isDisabled !== true)
                         .flatMap(
-                          (option) =>
-                            option.expandedRoomIds || [option.value],
+                          (option) => option.expandedRoomIds || [option.value],
                         ),
                     ),
                   ),
@@ -942,6 +942,7 @@ const AddBooking = ({
         <div>
           <p className="addBooking__label">ช่องทางการจอง</p>
           <Select<OptionType>
+            isDisabled={commercialFieldsLocked}
             styles={customStyles<OptionType>()}
             className={formErrors.platformId ? "formField--error" : undefined}
             classNamePrefix="rs"
@@ -960,6 +961,11 @@ const AddBooking = ({
           />
           {formErrors.platformId && (
             <p className="formField__error">{formErrors.platformId}</p>
+          )}
+          {commercialFieldsLocked && (
+            <p className="addBooking__fieldHelper">
+              Booking นี้เพิ่มคืนแล้ว กรุณาเปลี่ยนช่วงพักผ่าน เพิ่มคืน
+            </p>
           )}
         </div>
 
@@ -980,17 +986,10 @@ const AddBooking = ({
               {formErrors.price && (
                 <p className="formField__error">{formErrors.price}</p>
               )}
-              {!formErrors.price && (
-                <p className="addBooking__fieldHelper">
-                  กรอกยอดรวมทุกคืน ไม่ใช่ราคาต่อคืน
-                </p>
-              )}
             </div>
             <div>
               <p className="addBooking__label">
-                {advancePaymentEnabled
-                  ? "ช่องทางรับเงินล่วงหน้า"
-                  : "จ่ายผ่าน"}
+                {advancePaymentEnabled ? "ช่องทางรับเงินล่วงหน้า" : "จ่ายผ่าน"}
               </p>
               <Select<OptionType>
                 styles={customStyles<OptionType>()}
@@ -1012,9 +1011,7 @@ const AddBooking = ({
                 }
               />
               {formErrors.paymentMethod && (
-                <p className="formField__error">
-                  {formErrors.paymentMethod}
-                </p>
+                <p className="formField__error">{formErrors.paymentMethod}</p>
               )}
               {formData.platformId === "WALK" && (
                 <div className="addBooking__advanceWrap">
@@ -1084,9 +1081,11 @@ const AddBooking = ({
                         <span className="addBooking__advancePercentageInput">
                           <input
                             className={`boxInput ${
-                              (advancePaymentCalculationMode === "amount"
-                                ? formErrors.advancePaymentAmount
-                                : formErrors.advancePaymentPercentage)
+                              (
+                                advancePaymentCalculationMode === "amount"
+                                  ? formErrors.advancePaymentAmount
+                                  : formErrors.advancePaymentPercentage
+                              )
                                 ? "boxInput--error"
                                 : ""
                             }`}
@@ -1110,10 +1109,10 @@ const AddBooking = ({
                                 : advancePaymentPercentage
                             }
                             onChange={(event) => {
-                              if (
-                                advancePaymentCalculationMode === "amount"
-                              ) {
-                                setAdvancePaymentAmountInput(event.target.value);
+                              if (advancePaymentCalculationMode === "amount") {
+                                setAdvancePaymentAmountInput(
+                                  event.target.value,
+                                );
                               } else {
                                 setAdvancePaymentPercentage(event.target.value);
                               }
@@ -1148,7 +1147,9 @@ const AddBooking = ({
                           <div className="addBooking__advanceSummary">
                             <div>
                               <span>รับตอนนี้</span>
-                              <span>{formatCurrency(advancePaymentAmount)}</span>
+                              <span>
+                                {formatCurrency(advancePaymentAmount)}
+                              </span>
                             </div>
                             <div>
                               <span>เหลือชำระตอนเช็คอิน</span>
@@ -1177,7 +1178,9 @@ const AddBooking = ({
                   formErrors.bookingId ? "boxInput--error" : ""
                 }`}
                 type="text"
-                inputMode={formData.platformId === "WALK" ? "numeric" : undefined}
+                inputMode={
+                  formData.platformId === "WALK" ? "numeric" : undefined
+                }
                 aria-invalid={Boolean(formErrors.bookingId)}
                 value={formData.bookingId}
                 placeholder={

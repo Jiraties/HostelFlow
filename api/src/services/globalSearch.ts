@@ -102,6 +102,8 @@ type BookingCandidate = {
   commercialSegments?: Array<{
     platformId: PlatformId;
     channelBookingId?: string;
+    from?: Date;
+    to?: Date;
   }>;
 };
 
@@ -567,7 +569,26 @@ const bookingBaseClauses = (intent: SearchIntent) => {
       ],
     });
   }
-  if (intent.channels.length) {
+  if (intent.channels.length && intent.bookingDate) {
+    const dateCondition = {
+      $gte: intent.bookingDate.start,
+      $lt: intent.bookingDate.end,
+    };
+    const segmentDateCondition = intent.bookingDateField
+      ? {
+          [intent.bookingDateField === "checkIn" ? "from" : "to"]:
+            dateCondition,
+        }
+      : { $or: [{ from: dateCondition }, { to: dateCondition }] };
+    clauses.push({
+      commercialSegments: {
+        $elemMatch: {
+          platformId: { $in: intent.channels },
+          ...segmentDateCondition,
+        },
+      },
+    });
+  } else if (intent.channels.length) {
     clauses.push({
       $or: [
         { platformId: { $in: intent.channels } },
@@ -575,7 +596,7 @@ const bookingBaseClauses = (intent: SearchIntent) => {
       ],
     });
   }
-  if (intent.bookingDate) {
+  if (intent.bookingDate && !intent.channels.length) {
     const dateCondition = {
       $gte: intent.bookingDate.start,
       $lt: intent.bookingDate.end,

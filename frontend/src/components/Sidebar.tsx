@@ -9,6 +9,14 @@ import { navigationItems } from "./navigationItems";
 import { API_URL } from "../config/api";
 import { REVIEW_QUEUE_UPDATED_EVENT } from "../helpers/reviewQueue";
 
+const usesAppleKeyboard = () => {
+  if (typeof navigator === "undefined") return false;
+
+  return /Mac|iPhone|iPad|iPod/i.test(
+    `${navigator.platform || ""} ${navigator.userAgent || ""}`,
+  );
+};
+
 const Sidebar = () => {
   const location = useLocation();
   const { user } = useAuth();
@@ -16,6 +24,8 @@ const Sidebar = () => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [reviewQueueCount, setReviewQueueCount] = useState(0);
+  const [bookingReviewCount, setBookingReviewCount] = useState(0);
+  const [isAppleKeyboard] = useState(usesAppleKeyboard);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const moreSheetRef = useRef<HTMLElement>(null);
   const sidebarItems = navigationItems.filter(
@@ -61,6 +71,42 @@ const Sidebar = () => {
   const moreIsActive = moreItems.some(
     (item) => item.link === location.pathname,
   );
+  const searchShortcutLabel = isAppleKeyboard ? "⌘ K" : "Ctrl K";
+
+  useEffect(() => {
+    let active = true;
+    const refreshBookingReviewCount = async () => {
+      try {
+        const response = await axios.get<{ count: number }>(
+          `${API_URL}/bookings/getNeedsReviewBookings/count`,
+          { withCredentials: true },
+        );
+        if (active && Number.isFinite(response.data.count)) {
+          setBookingReviewCount(Math.max(0, response.data.count));
+        }
+      } catch {
+        // The badge is supplementary; keep the last known count on failure.
+      }
+    };
+    const refresh = () => void refreshBookingReviewCount();
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+
+    refresh();
+    const interval = window.setInterval(refresh, 60_000);
+    window.addEventListener("focus", refresh);
+    window.addEventListener(REVIEW_QUEUE_UPDATED_EVENT, refresh);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener(REVIEW_QUEUE_UPDATED_EVENT, refresh);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, []);
 
   useEffect(() => {
     if (!user?.admin) return;
@@ -146,12 +192,12 @@ const Sidebar = () => {
         type="button"
         aria-label="เปิดค้นหาทั่วทั้งระบบ"
         aria-keyshortcuts="Control+K Meta+K"
-        title="ค้นหา"
+        title={`ค้นหา (${searchShortcutLabel})`}
         onClick={() => openPalette()}
       >
         <i className="bx bx-search" aria-hidden="true" />
         <span className="sidebar__navLabel">ค้นหา</span>
-        <kbd>⌘ K</kbd>
+        <kbd aria-hidden="true">{searchShortcutLabel}</kbd>
       </button>
 
       <nav
@@ -184,7 +230,20 @@ const Sidebar = () => {
                         aria-label={`${reviewQueueCount} รายการรออนุมัติ`}
                         title={`${reviewQueueCount} รายการรออนุมัติ`}
                       >
-                        {reviewQueueCount > 99 ? "99+" : reviewQueueCount}
+                        <span className="sidebar__notificationBadgeValue">
+                          {reviewQueueCount > 99 ? "99+" : reviewQueueCount}
+                        </span>
+                      </span>
+                    )}
+                    {item.link === "/" && bookingReviewCount > 0 && (
+                      <span
+                        className="sidebar__notificationBadge"
+                        aria-label={`${bookingReviewCount} รายการจองที่ต้องตรวจสอบ`}
+                        title={`${bookingReviewCount} รายการจองที่ต้องตรวจสอบ`}
+                      >
+                        <span className="sidebar__notificationBadgeValue">
+                          {bookingReviewCount > 99 ? "99+" : bookingReviewCount}
+                        </span>
                       </span>
                     )}
                   </Link>
@@ -235,14 +294,27 @@ const Sidebar = () => {
             onClick={() => setIsMoreOpen(false)}
           >
             <i className={`bx ${item.icon}`} aria-hidden="true" />
-            <span>{item.label}</span>
+            <span>{item.mobileLabel || item.label}</span>
             {item.link === "/manage" && reviewQueueCount > 0 && (
               <span
                 className="sidebar__notificationBadge sidebar__notificationBadge--mobileNav"
                 aria-label={`${reviewQueueCount} รายการที่ต้องตรวจสอบ`}
                 title={`${reviewQueueCount} รายการที่ต้องตรวจสอบ`}
               >
-                {reviewQueueCount > 99 ? "99+" : reviewQueueCount}
+                <span className="sidebar__notificationBadgeValue">
+                  {reviewQueueCount > 99 ? "99+" : reviewQueueCount}
+                </span>
+              </span>
+            )}
+            {item.link === "/" && bookingReviewCount > 0 && (
+              <span
+                className="sidebar__notificationBadge sidebar__notificationBadge--mobileNav"
+                aria-label={`${bookingReviewCount} รายการจองที่ต้องตรวจสอบ`}
+                title={`${bookingReviewCount} รายการจองที่ต้องตรวจสอบ`}
+              >
+                <span className="sidebar__notificationBadgeValue">
+                  {bookingReviewCount > 99 ? "99+" : bookingReviewCount}
+                </span>
               </span>
             )}
           </Link>

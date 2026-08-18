@@ -12,11 +12,11 @@ const bookingConcurrency_1 = require("../services/bookingConcurrency");
 const roomMutationLocks_1 = require("../services/roomMutationLocks");
 const cashLedgerTransaction_1 = require("../services/cashLedgerTransaction");
 const activityServices_1 = require("../services/activityServices");
-const financialTransactionPolicy_1 = require("../services/financialTransactionPolicy");
 const financeHelpers_1 = require("../helpers/financeHelpers");
 const transactionCorrections_1 = require("../services/transactionCorrections");
 const roomStayHelpers_1 = require("../helpers/roomStayHelpers");
 const resolveRetirement_1 = require("../config/resolveRetirement");
+const refundEntitlement_1 = require("../services/refundEntitlement");
 const OTA_PLATFORMS = new Set(["BOOK", "HOST", "TRAV", "AGOD"]);
 const CLOSED_STATUSES = new Set(["checkedOut", "cancelled", "noShow"]);
 const PAYMENT_METHODS = ["Cash", "Card", "Transfer", "OTA"];
@@ -433,23 +433,6 @@ const correctClosedRoomAvailability = async (req, res) => {
     }
 };
 exports.correctClosedRoomAvailability = correctClosedRoomAvailability;
-const refundEntitlement = (transactions, relatedTransactionId) => {
-    const original = transactions.find((transaction) => String(transaction._id || "") === relatedTransactionId);
-    if (!original ||
-        original.paymentMethod === "Unpaid" ||
-        (0, financialTransactionPolicy_1.canonicalTransactionDirection)(original) !== "in" ||
-        ["deposit", "depositRefund", "roomRefund", "cancellationRefund", "compensation", "cardSurcharge"].includes(original.type)) {
-        return null;
-    }
-    const alreadyRefunded = transactions
-        .filter((transaction) => ["roomRefund", "cancellationRefund"].includes(transaction.type) &&
-        transaction.relatedTransactionId === relatedTransactionId)
-        .reduce((total, transaction) => total + Math.abs(transaction.amount || 0), 0);
-    return {
-        original,
-        remaining: Math.max(Number(original.amount || 0) - alreadyRefunded, 0),
-    };
-};
 const recordFinancialAction = async (req, res) => {
     try {
         const validated = validateMutation(req);
@@ -512,18 +495,18 @@ const recordFinancialAction = async (req, res) => {
         let relatedTransactionId;
         if (action === "refund") {
             relatedTransactionId = String(req.body.relatedTransactionId || "");
-            const entitlement = refundEntitlement(effectiveTransactions, relatedTransactionId);
+            const entitlement = (0, refundEntitlement_1.ordinaryRefundEntitlementFor)(effectiveTransactions, relatedTransactionId);
             if (!entitlement) {
                 return res.status(400).json({
                     error: "REFUND_ORIGINAL_TRANSACTION_REQUIRED",
                     message: "กรุณาเลือกรายการรับเงินเดิมที่ต้องการคืน",
                 });
             }
-            if (amount > entitlement.remaining) {
+            if (amount > entitlement.remainingAmount) {
                 return res.status(409).json({
                     error: "REFUND_EXCEEDS_AVAILABLE_BALANCE",
-                    message: `คืนได้ไม่เกิน ${entitlement.remaining.toLocaleString("th-TH")} บาท`,
-                    remainingRefundableAmount: entitlement.remaining,
+                    message: `คืนได้ไม่เกิน ${entitlement.remainingAmount.toLocaleString("th-TH")} บาท`,
+                    remainingRefundableAmount: entitlement.remainingAmount,
                 });
             }
         }

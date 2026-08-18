@@ -425,7 +425,9 @@ const getBookingsReport = async (req, res) => {
             const financialBooking = { ...booking.toObject(), transactions };
             const roomSlices = (0, commercialSegmentHelpers_1.commercialRoomSlices)(financialBooking);
             (0, commercialSegmentHelpers_1.effectiveCommercialSegments)(financialBooking)
-                .filter((segment) => !bookingChannel || segment.platformId === bookingChannel)
+                .filter((segment) => new Date(segment.from) < firstDayOfNextMonth &&
+                new Date(segment.to) > firstDayOfMonth &&
+                (!bookingChannel || segment.platformId === bookingChannel))
                 .forEach((segment) => {
                 const platform = platformMap[segment.platformId] || {
                     label: segment.platformId,

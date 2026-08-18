@@ -172,6 +172,105 @@ test("correction appends audit history and never mutates the original transactio
   assert.equal(stored?.revision, 1);
 });
 
+test("refund correction upward succeeds within the original entitlement", async () => {
+  const booking = await createBooking({ paymentMethod: "Transfer", amount: 1000 });
+  const originalTransactionId = String(booking.transactions[0]._id);
+  booking.transactions.push({
+    type: "roomRefund",
+    paymentMethod: "Transfer",
+    amount: 400,
+    direction: "out",
+    relatedTransactionId: originalTransactionId,
+    createdBy: "admin",
+    createdAt: new Date(),
+  });
+  await booking.save();
+  const refundTransactionId = String(booking.transactions[1]._id);
+
+  const result = await callCorrection({
+    transactionId: refundTransactionId,
+    overrides: {
+      correctedAmount: 600,
+      correctedPaymentMethod: "Transfer",
+      correctedCategory: "roomRefund",
+      correctedNote: "Correct refund amount",
+    },
+  });
+
+  assert.equal(result.statusCode, 200, JSON.stringify(result.body));
+  assert.equal(result.body.effectiveTransaction.amount, 600);
+  const stored = await Booking.findById(booking._id).lean();
+  assert.equal(stored?.transactions[1].amount, 400);
+  assert.equal(stored?.transactionCorrections[0].after.amount, 600);
+});
+
+test("refund correction upward fails beyond the original entitlement", async () => {
+  const booking = await createBooking({ paymentMethod: "Transfer", amount: 1000 });
+  const originalTransactionId = String(booking.transactions[0]._id);
+  booking.transactions.push({
+    type: "roomRefund",
+    paymentMethod: "Transfer",
+    amount: 400,
+    direction: "out",
+    relatedTransactionId: originalTransactionId,
+    createdBy: "admin",
+    createdAt: new Date(),
+  });
+  await booking.save();
+  const refundTransactionId = String(booking.transactions[1]._id);
+
+  const result = await callCorrection({
+    transactionId: refundTransactionId,
+    overrides: {
+      correctedAmount: 1001,
+      correctedPaymentMethod: "Transfer",
+      correctedCategory: "roomRefund",
+      correctedNote: "Impossible refund amount",
+    },
+  });
+
+  assert.equal(result.statusCode, 409);
+  assert.equal(result.body.error, "REFUND_EXCEEDS_AVAILABLE_BALANCE");
+  assert.equal(result.body.maximumRefundAmount, 1000);
+  const stored = await Booking.findById(booking._id).lean();
+  assert.equal(stored?.transactionCorrections.length, 0);
+});
+
+test("original payment cannot be corrected below refunds already issued", async () => {
+  const booking = await createBooking({ paymentMethod: "Transfer", amount: 1000 });
+  const originalTransactionId = String(booking.transactions[0]._id);
+  booking.transactions.push({
+    type: "roomRefund",
+    paymentMethod: "Cash",
+    amount: 400,
+    direction: "out",
+    relatedTransactionId: originalTransactionId,
+    createdBy: "admin",
+    createdAt: new Date(),
+  });
+  await booking.save();
+
+  const result = await callCorrection({
+    transactionId: originalTransactionId,
+    overrides: {
+      correctedAmount: 300,
+      correctedPaymentMethod: "Transfer",
+      correctedCategory: "roomCharge",
+      correctedNote: "Correct received amount",
+    },
+  });
+
+  assert.equal(result.statusCode, 409);
+  assert.equal(
+    result.body.error,
+    "PAYMENT_CORRECTION_CONFLICTS_WITH_REFUNDS",
+  );
+  assert.equal(result.body.alreadyRefundedAmount, 400);
+  assert.equal(result.body.minimumReceivedAmount, 400);
+  const stored = await Booking.findById(booking._id).lean();
+  assert.equal(stored?.transactionCorrections.length, 0);
+});
+
 test("material amount corrections enter the immutable review queue", async () => {
   const booking = await createBooking({ amount: 4000 });
   const transactionId = String(booking.transactions[0]._id);
@@ -233,9 +332,92 @@ test("material amount corrections enter the immutable review queue", async () =>
   assert.equal(approvalResponse.statusCode, 200);
 
   const approved = await Booking.findById(booking._id).lean();
+  assert.equal(approved?.revision, 2);
   assert.equal(
     approved?.transactionCorrections[0].reviewStatus,
     "reviewed",
+  );
+});
+
+test("review approval conflicts without erasing a concurrently appended correction", async () => {
+  const booking = await createBooking({ amount: 4000 });
+  const transactionId = String(booking.transactions[0]._id);
+  const correctionResult = await callCorrection({
+    transactionId,
+    overrides: {
+      correctedAmount: 2000,
+      correctedPaymentMethod: "Unpaid",
+    },
+  });
+  assert.equal(correctionResult.statusCode, 200);
+
+  const beforeApproval = await Booking.findById(booking._id).lean();
+  assert.ok(beforeApproval);
+  const correctionToReview = beforeApproval.transactionCorrections[0];
+  const correctionId = String(correctionToReview._id);
+  const concurrentCorrectionId = new mongoose.Types.ObjectId();
+  const concurrentCorrection = {
+    ...correctionToReview,
+    _id: concurrentCorrectionId,
+    before: { ...correctionToReview.after },
+    after: { ...correctionToReview.after, amount: 1900 },
+    note: "Concurrent correction appended after approval read",
+    correctedAt: new Date(),
+    reviewStatus: "needs_review" as const,
+  };
+
+  const originalFindOne = (Booking as any).findOne;
+  let appendedConcurrently = false;
+  (Booking as any).findOne = function (...args: any[]) {
+    const query = originalFindOne.apply(this, args);
+    return query.then(async (staleBooking: any) => {
+      if (
+        !appendedConcurrently &&
+        staleBooking?.bookingId === booking.bookingId
+      ) {
+        appendedConcurrently = true;
+        const appendResult = await Booking.updateOne(
+          { bookingId: booking.bookingId, revision: beforeApproval.revision },
+          {
+            $push: { transactionCorrections: concurrentCorrection },
+            $inc: { revision: 1 },
+          },
+        );
+        assert.equal(appendResult.modifiedCount, 1);
+      }
+      return staleBooking;
+    });
+  };
+
+  const approvalResponse = response();
+  try {
+    await approveReviewEvent(
+      {
+        params: { bookingId: booking.bookingId, transactionId },
+        query: { correctionId },
+        user: { username: "admin", admin: true },
+      } as any,
+      approvalResponse as any,
+    );
+  } finally {
+    (Booking as any).findOne = originalFindOne;
+  }
+
+  assert.equal(appendedConcurrently, true);
+  assert.equal(approvalResponse.statusCode, 409);
+  assert.equal(approvalResponse.body.error, "BOOKING_REVISION_CONFLICT");
+
+  const afterApproval = await Booking.findById(booking._id).lean();
+  assert.equal(afterApproval?.revision, 2);
+  assert.deepEqual(
+    afterApproval?.transactionCorrections.map((correction) =>
+      String(correction._id),
+    ),
+    [correctionId, String(concurrentCorrectionId)],
+  );
+  assert.equal(
+    afterApproval?.transactionCorrections[0].reviewStatus,
+    "needs_review",
   );
 });
 

@@ -43,9 +43,16 @@ export const effectiveCommercialSegments = (
       const linkedTransaction = (currentBooking.transactions || []).find(
         (transaction) => String(transaction._id) === segment.transactionId,
       );
+      const normalizedSegment =
+        plainSegment.kind === "extension" && !plainSegment.placement
+          ? { ...plainSegment, placement: "after" as const }
+          : plainSegment;
       return linkedTransaction
-        ? { ...plainSegment, amount: Math.abs(linkedTransaction.amount || 0) }
-        : plainSegment;
+        ? {
+            ...normalizedSegment,
+            amount: Math.abs(linkedTransaction.amount || 0),
+          }
+        : normalizedSegment;
     });
   }
 
@@ -77,6 +84,11 @@ export const effectiveCommercialSegments = (
     ...storedSegments,
   ];
 };
+
+export const commercialSegmentPlacement = (
+  segment: commercialSegment,
+): "before" | "after" | undefined =>
+  segment.kind === "extension" ? segment.placement || "after" : undefined;
 
 export const transactionPlatformId = (
   currentBooking: CommercialBooking,

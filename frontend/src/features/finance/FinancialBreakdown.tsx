@@ -171,12 +171,14 @@ const BreakdownSection = ({
   title,
   emptyText,
   groups,
+  groupUnit,
   dateFormat,
   negative = false,
 }: {
   title: string;
   emptyText: string;
   groups: BreakdownDisplayGroup[];
+  groupUnit: "แหล่ง" | "ช่องทาง";
   dateFormat: DateFormatPreference;
   negative?: boolean;
 }) => {
@@ -195,7 +197,9 @@ const BreakdownSection = ({
     <section className="financialBreakdown__section">
       <div className="financialBreakdown__sectionHeader">
         <h2>{title}</h2>
-        <span>{groups.length} groups</span>
+        <span>
+          {groups.length} {groupUnit}
+        </span>
       </div>
 
       {groups.length === 0 ? (
@@ -683,12 +687,14 @@ const FinancialBreakdown = ({
                 title={activeTitle}
                 emptyText={activeEmptyText}
                 groups={activeGroups}
+                groupUnit={breakdownMode === "type" ? "แหล่ง" : "ช่องทาง"}
                 dateFormat={dateFormat}
               />
               <BreakdownSection
                 title="Reductions"
                 emptyText="ยังไม่มีรายการลดรายได้ในช่วงนี้"
                 groups={reductionGroups}
+                groupUnit="แหล่ง"
                 dateFormat={dateFormat}
                 negative
               />

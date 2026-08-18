@@ -8,6 +8,7 @@ import toast from "react-hot-toast";
 
 import type { booking, PlatformId } from "../types/bookingTypes";
 import { platformMap } from "../helpers/maps.ts";
+import { getApiErrorMessage } from "../helpers/apiErrorMessage";
 
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { Modal } from "@mui/material";
@@ -567,13 +568,12 @@ const Calendar = () => {
   }, [month, setLastUpdated, setRooms, year]);
 
   const showCalendarLoadError = useCallback((err: unknown) => {
-    const message = axios.isAxiosError<{ message?: string; error?: string }>(
-      err,
-    )
-      ? err.response?.data.message || err.response?.data.error
-      : null;
-
-    toast.error(message || "ไม่สามารถโหลดตารางห้องได้ กรุณาลองใหม่อีกครั้ง");
+    toast.error(
+      getApiErrorMessage(
+        err,
+        "ไม่สามารถโหลดตารางห้องได้ กรุณาลองใหม่อีกครั้ง",
+      ),
+    );
   }, []);
 
   useEffect(() => {

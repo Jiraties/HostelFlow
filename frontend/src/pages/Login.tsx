@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 import { API_URL } from "../config/api";
 import axios from "axios";
 import usePageTitle from "../hooks/useTitle";
+import { getApiErrorMessage } from "../helpers/apiErrorMessage";
 
 import "./Login.css";
 
@@ -51,12 +52,12 @@ const Login = () => {
       login(sessionResponse.data.user);
     } catch (err: unknown) {
       const status = axios.isAxiosError(err) ? err.response?.status || 0 : 0;
-      const responseMessage = axios.isAxiosError(err)
-        ? err.response?.data?.error || err.response?.data?.message
-        : undefined;
       setError({
-        code: status,
-        message: responseMessage || "ไม่สามารถเข้าสู่ระบบได้ กรุณาลองอีกครั้ง",
+        code: status || -1,
+        message: getApiErrorMessage(
+          err,
+          "ไม่สามารถเข้าสู่ระบบได้ กรุณาลองอีกครั้ง",
+        ),
       });
       triggerShake();
     } finally {
@@ -74,7 +75,11 @@ const Login = () => {
           <form className="login__form" onSubmit={submitLoginHandler}>
             <h1>เข้าสู่ระบบ</h1>
             {error.code !== 0 && (
-              <div className={shake ? "login__error shake" : "login__error"}>
+              <div
+                className={shake ? "login__error shake" : "login__error"}
+                role="alert"
+                aria-live="polite"
+              >
                 <i className="bx bx-alert-triangle"></i>
                 <p>{error.message}</p>
               </div>

@@ -6,6 +6,7 @@ import ModalCloseButton from "./ModalCloseButton";
 import UnsavedChangesModal from "./UnsavedChangesModal";
 import { profilePictureUrl } from "../helpers/profilePictureUrl";
 import { requestUnsavedModalClose } from "../helpers/modalGuards";
+import RecentActivities from "../features/activities/RecentActivities";
 import "../features/bookings/AddBooking.css";
 import "../features/bookings/Cancellation.css";
 import "../features/bookings/ViewBooking.css";
@@ -36,11 +37,6 @@ type ManageUserProps = {
   resettingPassword: boolean;
 };
 
-const userStatusText = (user: ManagedStaffUser) => {
-  if (!user.active) return "Inactive";
-  return "Active";
-};
-
 const EditUserModal = ({
   user,
   isSelf,
@@ -59,12 +55,6 @@ const EditUserModal = ({
   const [name, setName] = useState(user.name);
   const [admin, setAdmin] = useState(user.admin);
   const [active, setActive] = useState(user.active);
-
-  useEffect(() => {
-    setName(user.name);
-    setAdmin(user.admin);
-    setActive(user.active);
-  }, [user]);
 
   useEffect(() => {
     onDirtyChange?.(
@@ -196,13 +186,11 @@ const EditUserModal = ({
 };
 
 const ResetPasswordModal = ({
-  user,
   onClose,
   onResetPassword,
   resettingPassword,
   onDirtyChange,
 }: {
-  user: ManagedStaffUser;
   onClose: () => void;
   onResetPassword: (password: string) => Promise<void>;
   resettingPassword: boolean;
@@ -210,11 +198,6 @@ const ResetPasswordModal = ({
 }) => {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-
-  useEffect(() => {
-    setPassword("");
-    setConfirmPassword("");
-  }, [user]);
 
   useEffect(() => {
     onDirtyChange?.(Boolean(password || confirmPassword));
@@ -310,94 +293,100 @@ const ManageUser = ({
     <>
       <div className="manageUser__wrapper">
         <ModalCloseButton onClick={onClose} />
-        <div className="manageUser__top">
-          <div className="manageUser__nameAndUsername">
+        <header className="manageUser__hero">
+          <img
+            className="manageUser__avatar"
+            src={profilePictureUrl(user.profilePictureUrl)}
+            alt=""
+          />
+          <div className="manageUser__identity">
             <div className="manageUser__nameRow">
-              <h1 className="manageUser__name">
-                {user.name}{" "}
-                {user.admin && (
-                  <span className="settings__adminTag">Admin</span>
-                )}
-              </h1>
-              {isSelf && (
-                <span className="settings__adminTag manageUser__selfTag">
-                  You
+              <h1 className="manageUser__name">{user.name}</h1>
+              {user.admin && (
+                <span className="manageUser__chip manageUser__chip--admin">
+                  Admin
                 </span>
               )}
+              {isSelf && <span className="manageUser__selfTag">คุณ</span>}
             </div>
             <div className="manageUser__usernameRow">
               <p className="manageUser__username">@{user.username}</p>
-              <div className="manageUser__activeStatus">
-                <span
-                  className={
-                    "manageUser__activeDot" +
-                    (user.active ? " manageUser__activeDot--active" : "")
-                  }
-                />
-                <p>{userStatusText(user)}</p>
+              {!user.active && (
+                <span className="manageUser__chip manageUser__chip--inactive">
+                  Inactive
+                </span>
+              )}
+            </div>
+          </div>
+        </header>
+
+        <div className="manageUser__workspace">
+          <aside className="manageUser__accountColumn">
+            <section className="manageUser__accountSection">
+              <div className="manageUser__sectionTitle">
+                <i className="bx bx-user-square" aria-hidden="true" />
+                <h2>ข้อมูลบัญชี</h2>
               </div>
-            </div>
-          </div>
-          <div className="manageUser__statusArea">
-            <img
-              className="manageUser__avatar"
-              src={profilePictureUrl(user.profilePictureUrl)}
-              alt=""
-            />
-          </div>
-        </div>
-
-        <div className="manageUser__main">
-          <div className="manageUser__mainLeft">
-            <div className="viewBooking__item">
-              <span className="viewBooking__label">Username: </span>
-              <p className="viewBooking__infoText">{user.username}</p>
-            </div>
-            <div className="viewBooking__item">
-              <span className="viewBooking__label">ชื่อ Staff: </span>
-              <p className="viewBooking__infoText">{user.name}</p>
-            </div>
-            <div className="viewBooking__item">
-              <span className="viewBooking__label">สิทธิ์: </span>
-              <p className="viewBooking__infoText">
-                {user.admin ? "Admin" : "Staff"}
-              </p>
-            </div>
-            <div className="viewBooking__item">
-              <span className="viewBooking__label">สถานะบัญชี: </span>
-              <p className="viewBooking__infoText">
-                {user.active ? "Active" : "Inactive"}
-              </p>
-            </div>
-          </div>
-
-          <div className="manageUser__mainRight">
-            <div className="manageUser__actionPanel">
-              <button type="button" onClick={() => setEditModalIsOpen(true)}>
-                <div className="manageUser__actionMain">
-                  <i className="bx bx-cog viewBooking__bedIcon" />
-                  <div>
-                    <p className="viewBooking__infoText">แก้ไขข้อมูลผู้ใช้</p>
-                    <p>{userStatusText(user)}</p>
-                  </div>
+              <dl className="manageUser__facts">
+                <div>
+                  <dt>Username</dt>
+                  <dd className="manageUser__factUsername">@{user.username}</dd>
                 </div>
-                <i className="bx bx-chevron-right" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setPasswordModalIsOpen(true)}
-              >
-                <div className="manageUser__actionMain">
-                  <i className="bx bx-key viewBooking__bedIcon" />
-                  <div>
-                    <p className="viewBooking__infoText">รีเซ็ตรหัสผ่าน</p>
-                    <p>กำหนดรหัสผ่านใหม่ให้บัญชีนี้</p>
-                  </div>
+                <div>
+                  <dt>สิทธิ์ผู้ใช้</dt>
+                  <dd>
+                    {user.admin ? (
+                      <span className="manageUser__chip manageUser__chip--admin">
+                        Admin
+                      </span>
+                    ) : (
+                      "Staff"
+                    )}
+                  </dd>
                 </div>
-                <i className="bx bx-chevron-right" />
-              </button>
-            </div>
-          </div>
+                <div>
+                  <dt>สถานะบัญชี</dt>
+                  <dd>
+                    <span
+                      className={`manageUser__chip ${
+                        user.active
+                          ? "manageUser__chip--active"
+                          : "manageUser__chip--inactive"
+                      }`}
+                    >
+                      {user.active ? "Active" : "Inactive"}
+                    </span>
+                  </dd>
+                </div>
+              </dl>
+            </section>
+
+            <section className="manageUser__accountSection manageUser__controlsSection">
+              <div className="manageUser__actionPanel">
+                <button type="button" onClick={() => setEditModalIsOpen(true)}>
+                  <div className="manageUser__actionMain">
+                    <i className="bx bx-cog" aria-hidden="true" />
+                    <strong>แก้ไขข้อมูลผู้ใช้</strong>
+                  </div>
+                  <i className="bx bx-chevron-right" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPasswordModalIsOpen(true)}
+                >
+                  <div className="manageUser__actionMain">
+                    <i className="bx bx-key" aria-hidden="true" />
+                    <strong>รีเซ็ตรหัสผ่าน</strong>
+                  </div>
+                  <i className="bx bx-chevron-right" aria-hidden="true" />
+                </button>
+              </div>
+            </section>
+          </aside>
+
+          <section className="manageUser__history">
+            <RecentActivities userId={user.userId} />
+          </section>
         </div>
       </div>
 
@@ -412,14 +401,18 @@ const ManageUser = ({
           )
         }
       >
-        <EditUserModal
-          user={user}
-          isSelf={isSelf}
-          onClose={() => setEditModalIsOpen(false)}
-          onSave={onSave}
-          saving={saving}
-          onDirtyChange={setEditModalIsDirty}
-        />
+        <>
+          {editModalIsOpen ? (
+            <EditUserModal
+              user={user}
+              isSelf={isSelf}
+              onClose={() => setEditModalIsOpen(false)}
+              onSave={onSave}
+              saving={saving}
+              onDirtyChange={setEditModalIsDirty}
+            />
+          ) : null}
+        </>
       </Modal>
 
       <Modal
@@ -434,13 +427,16 @@ const ManageUser = ({
           )
         }
       >
-        <ResetPasswordModal
-          user={user}
-          onClose={() => setPasswordModalIsOpen(false)}
-          onResetPassword={onResetPassword}
-          resettingPassword={resettingPassword}
-          onDirtyChange={setPasswordModalIsDirty}
-        />
+        <>
+          {passwordModalIsOpen ? (
+            <ResetPasswordModal
+              onClose={() => setPasswordModalIsOpen(false)}
+              onResetPassword={onResetPassword}
+              resettingPassword={resettingPassword}
+              onDirtyChange={setPasswordModalIsDirty}
+            />
+          ) : null}
+        </>
       </Modal>
       <Modal
         open={!!pendingUnsavedClose}

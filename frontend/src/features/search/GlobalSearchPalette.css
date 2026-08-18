@@ -298,6 +298,28 @@
   font-weight: 500;
 }
 
+.globalSearch__optionTitle {
+  align-items: center;
+  display: flex;
+  gap: 0.42rem;
+  min-width: 0;
+}
+
+.globalSearch__optionTitleText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.globalSearch__bookingStatusDot {
+  border-radius: 100%;
+  box-shadow: 0 0 0 2px var(--background);
+  /* flex: 0 0 0.48rem; */
+  height: 0.35rem;
+  width: 0.35rem;
+}
+
 .globalSearch__optionCopy small {
   color: #777;
   font-size: 0.78rem;

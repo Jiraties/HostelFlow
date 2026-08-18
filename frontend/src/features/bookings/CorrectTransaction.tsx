@@ -11,6 +11,7 @@ import { formatBookingDates } from "../../helpers/bookingHelpers";
 import { paymentMethodOptions } from "../../helpers/options";
 import { customStyles, type OptionType } from "../../helpers/selectStyling";
 import { transactionTypeOptions } from "../../helpers/transactionFormOptions";
+import { getApiErrorMessage } from "../../helpers/apiErrorMessage";
 import type {
   booking,
   TransactionCorrectionReason,
@@ -247,12 +248,9 @@ const CorrectTransaction = ({
       onUpdated?.(formatBookingDates(response.data.booking));
       onClose();
     } catch (error) {
-      const message = axios.isAxiosError<{ message?: string; error?: string }>(
-        error,
-      )
-        ? error.response?.data.message || error.response?.data.error
-        : null;
-      throw new Error(message || "ไม่สามารถแก้ไขรายการได้");
+      throw new Error(
+        getApiErrorMessage(error, "ไม่สามารถแก้ไขรายการได้"),
+      );
     } finally {
       setSubmitting(false);
     }

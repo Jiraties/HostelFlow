@@ -352,13 +352,8 @@
   font-weight: 500;
 }
 
-.depositReminder__finalAcknowledgement input {
-  width: 1.2rem;
-  height: 1.2rem;
+.depositReminder__finalAcknowledgement > .box {
   margin: 0 0 0 auto;
-  flex: 0 0 auto;
-  accent-color: var(--primary-color);
-  cursor: pointer;
 }
 
 @media (max-width: 760px) {

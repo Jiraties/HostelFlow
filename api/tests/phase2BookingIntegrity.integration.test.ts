@@ -9,6 +9,7 @@ import Booking from "../src/models/booking";
 import CashShift from "../src/models/cashShift";
 import MutationIdempotencyKey from "../src/models/mutationIdempotencyKey";
 import RoomMutationLock from "../src/models/roomMutationLock";
+import { recordFinancialAction } from "../src/controller/focusedBookingActions";
 
 type BookingController = typeof import("../src/controller/booking");
 type CapturedResponse = {
@@ -555,6 +556,138 @@ test("staff can submit a refund above THB 2,000 for admin review", async () => {
   assert.equal(refund?.amount, 2500);
   assert.equal(refund?.reviewStatus, "needs_review");
   assert.deepEqual(refund?.reviewFlags, ["refund", "large_refund"]);
+});
+
+test("automatic cancellation refund exhausts later focused refund entitlement", async () => {
+  const created = await Booking.create({
+    revision: 0,
+    name: "Cancellation Entitlement Guest",
+    bookingId: "CANCEL-ENTITLEMENT",
+    status: "booked",
+    platformId: "WALK",
+    staffUsername: "admin",
+    checkIn: new Date(`${localDate(1)}T00:00:00`),
+    checkOut: new Date(`${localDate(2)}T00:00:00`),
+    nights: 1,
+    roomStays: [
+      {
+        roomIds: ["Balcony"],
+        from: new Date(`${localDate(1)}T00:00:00`),
+        to: new Date(`${localDate(2)}T00:00:00`),
+      },
+    ],
+    transactions: [
+      {
+        type: "roomCharge",
+        paymentMethod: "Transfer",
+        amount: 1000,
+        direction: "in",
+        createdBy: "admin",
+        createdAt: new Date(),
+      },
+    ],
+  });
+  const originalTransactionId = String(created.transactions[0]._id);
+  const cancellationResponse = response();
+
+  await controller.cancelBooking(
+    request({
+      body: {
+        expectedRevision: 0,
+        reopenRoom: true,
+        cancellationType: "refundable",
+      },
+      params: { bookingId: "CANCEL-ENTITLEMENT" },
+      url: "/bookings/cancelBooking/CANCEL-ENTITLEMENT",
+      key: "cancel-entitlement",
+    }),
+    cancellationResponse as any,
+  );
+
+  assert.equal(cancellationResponse.statusCode, 200, JSON.stringify(cancellationResponse.body));
+  const cancelled = await Booking.findOne({
+    bookingId: "CANCEL-ENTITLEMENT",
+  }).lean();
+  const automaticRefund = cancelled?.transactions.find(
+    (transaction) => transaction.type === "cancellationRefund",
+  );
+  assert.equal(automaticRefund?.amount, 1000);
+
+  const focusedResponse = response();
+  await recordFinancialAction(
+    request({
+      body: {
+        expectedRevision: 1,
+        action: "refund",
+        amount: 1,
+        paymentMethod: "Transfer",
+        reason: "Second refund attempt",
+        note: "Must be rejected after automatic refund",
+        relatedTransactionId: originalTransactionId,
+      },
+      params: { bookingId: "CANCEL-ENTITLEMENT" },
+      method: "POST",
+      url: "/bookings/CANCEL-ENTITLEMENT/financial-actions",
+      key: "refund-after-cancellation",
+    }),
+    focusedResponse as any,
+  );
+
+  assert.equal(focusedResponse.statusCode, 409);
+  assert.equal(focusedResponse.body.error, "REFUND_EXCEEDS_AVAILABLE_BALANCE");
+  assert.equal(focusedResponse.body.remainingRefundableAmount, 0);
+});
+
+test("legacy Resolve fallback cannot append an excess ordinary refund", async () => {
+  const booking = await bookingFixture("RESOLVE-REFUND-ENTITLEMENT");
+  booking.transactions[0].paymentMethod = "Transfer";
+  booking.transactions[0].amount = 1000;
+  booking.transactions[0].direction = "in";
+  const originalTransactionId = String(booking.transactions[0]._id);
+  booking.transactions.push({
+    type: "roomRefund",
+    paymentMethod: "Transfer",
+    amount: 400,
+    direction: "out",
+    relatedTransactionId: originalTransactionId,
+    createdBy: "admin",
+    createdAt: new Date(),
+  });
+  await booking.save();
+  const res = response();
+
+  await controller.resolveBooking(
+    request({
+      body: {
+        expectedRevision: 0,
+        outcome: "cancelled_before_arrival",
+        finalStatus: "cancelled",
+        roomReleaseStatus: "released",
+        reasonCode: "guest_request",
+        note: "Legacy fallback entitlement check",
+        transactions: [
+          {
+            type: "cancellationRefund",
+            paymentMethod: "Transfer",
+            amount: 601,
+            direction: "out",
+            relatedTransactionId: originalTransactionId,
+          },
+        ],
+      },
+      params: { bookingId: "RESOLVE-REFUND-ENTITLEMENT" },
+      url: "/bookings/resolveBooking/RESOLVE-REFUND-ENTITLEMENT",
+      key: "resolve-refund-entitlement",
+    }),
+    res as any,
+  );
+
+  assert.equal(res.statusCode, 409);
+  assert.equal(res.body.error, "REFUND_EXCEEDS_AVAILABLE_BALANCE");
+  assert.equal(res.body.remainingRefundableAmount, 600);
+  const stored = await Booking.findById(booking._id).lean();
+  assert.equal(stored?.revision, 0);
+  assert.equal(stored?.transactions.length, 2);
 });
 
 test("add transaction rejects deposits before check-in", async () => {

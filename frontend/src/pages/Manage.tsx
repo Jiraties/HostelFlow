@@ -4,7 +4,6 @@ import axios from "axios";
 import toast from "react-hot-toast";
 import ActionButton from "../components/ActionButton";
 import PageHeader from "../components/PageHeader";
-import ViewActivities from "../features/activities/ViewActivities";
 
 import { useEffect, useMemo, useState } from "react";
 import { API_URL } from "../config/api";
@@ -864,7 +863,6 @@ const Manage = () => {
   const [creatingUser, setCreatingUser] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [newUserForm, setNewUserForm] = useState<NewUserForm>(emptyNewUserForm);
-  const [user, setUser] = useState<StaffUser | null>(null);
   const [managedUser, setManagedUser] = useState<StaffUser | null>(null);
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
   const [resettingPasswordUserId, setResettingPasswordUserId] = useState<
@@ -1119,21 +1117,6 @@ const Manage = () => {
   return (
     <main className="manage">
       <Modal
-        open={!!user}
-        className="home__modalCenter"
-        onClose={() => setUser(null)}
-      >
-        <>
-          {user && (
-            <ViewActivities
-              userId={user.userId}
-              name={user.name}
-              onClose={() => setUser(null)}
-            />
-          )}
-        </>
-      </Modal>
-      <Modal
         open={!!managedUser}
         className="home__modalCenter"
         onClose={() => setManagedUser(null)}
@@ -1239,12 +1222,15 @@ const Manage = () => {
         </div>
         <div className="manage__users">
           {users.map((staffUser) => (
-            <div
+            <button
+              type="button"
               className={
                 "manage__user" +
                 (!staffUser.active ? " manage__user--inactive" : "")
               }
               key={staffUser.userId}
+              onClick={() => setManagedUser(staffUser)}
+              aria-label={`ดูข้อมูลและประวัติของ ${staffUser.name}`}
             >
               <img src={profilePictureUrl(staffUser.profilePictureUrl)} alt="" />
               <div className="manage__userInfo">
@@ -1252,28 +1238,20 @@ const Manage = () => {
                   <h3>
                     <span className="manage__userName">{staffUser.name}</span>
                     {staffUser.admin && (
-                      <span className="settings__adminTag">Admin</span>
+                      <span className="manageUser__chip manageUser__chip--admin">
+                        Admin
+                      </span>
                     )}
                     {!staffUser.active && (
-                      <span className="manage__inactiveTag">Inactive</span>
+                      <span className="manageUser__chip manageUser__chip--inactive">
+                        Inactive
+                      </span>
                     )}
                   </h3>
                   <p>@{staffUser.username}</p>
                 </div>
-                <div className="manage__userActions">
-                  <ActionButton
-                    text=""
-                    icon="bx-cog"
-                    onClick={() => setManagedUser(staffUser)}
-                  />
-                  <ActionButton
-                    text="ประวัติ"
-                    icon="bx-history"
-                    onClick={() => setUser(staffUser)}
-                  />
-                </div>
               </div>
-            </div>
+            </button>
           ))}
         </div>
       </section>

@@ -1,6 +1,7 @@
 export type NavigationItem = {
   id: number;
   label: string;
+  mobileLabel?: string;
   link: string;
   icon: string;
   adminOnly?: boolean;
@@ -16,7 +17,13 @@ export const navigationItems: NavigationItem[] = [
     icon: "bx-arrow-from-left",
   },
   { id: 5, label: "ปฏิทิน", link: "/calendar", icon: "bx-calendar" },
-  { id: 4, label: "รายการทั้งหมด", link: "/master", icon: "bx-table" },
+  {
+    id: 4,
+    label: "รายการทั้งหมด",
+    mobileLabel: "ทั้งหมด",
+    link: "/master",
+    icon: "bx-table",
+  },
   { id: 6, label: "เอกสาร", link: "/documents", icon: "bx-article" },
   {
     id: 99,

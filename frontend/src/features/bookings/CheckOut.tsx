@@ -12,6 +12,7 @@ import { formatRoomStayRooms } from "../../helpers/roomStayHelpers";
 import { useAuth } from "../../context/AuthContext";
 import { formatDisplayDate } from "../../helpers/displayDate";
 
+import "./BookingCheckbox.css";
 import "./CheckIn.css";
 import "./Cancellation.css";
 import "./CheckOut.css";

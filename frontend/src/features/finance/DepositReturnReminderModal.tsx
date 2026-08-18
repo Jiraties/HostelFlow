@@ -15,6 +15,7 @@ import type { DateFormatPreference } from "../../types/userSettings";
 import { DepositReminderGuestList } from "./DepositReminderGuestList";
 import { OverdueDepositCategory } from "./OverdueDepositCategory";
 
+import "../bookings/BookingCheckbox.css";
 import "../bookings/ResolveBooking.css";
 import "./DepositReturnReminderModal.css";
 
@@ -199,7 +200,7 @@ export function DepositReturnReminderModal({
         </div>
       )}
 
-      <label className="resolveBooking__depositNotice depositReminder__finalAcknowledgement">
+      <label className="checkbox resolveBooking__depositNotice depositReminder__finalAcknowledgement">
         <i className="bx bx-error-circle" aria-hidden="true" />
         <div>
           <strong>ยืนยันการปิดยอดสุดท้าย</strong>
@@ -215,6 +216,7 @@ export function DepositReturnReminderModal({
             setFinalCloseAcknowledged(event.target.checked)
           }
         />
+        <span className="box" aria-hidden="true" />
       </label>
 
       <div className="depositReminder__actions">

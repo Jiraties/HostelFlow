@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import type { booking } from "../../types/bookingTypes";
+import "./BookingCheckbox.css";
 import "./CheckIn.css";
 import Select from "react-select";
 import countries from "i18n-iso-countries";
@@ -13,6 +14,7 @@ import type { OptionType } from "../../helpers/selectStyling";
 import axios from "axios";
 import toast from "react-hot-toast";
 import { API_URL } from "../../config/api";
+import { getApiErrorMessage } from "../../helpers/apiErrorMessage";
 import "./CheckOut.css";
 
 countries.registerLocale(en);
@@ -640,10 +642,10 @@ const CheckIn = ({
               loading: `กำลังเช็คอิน ${booking.name}`,
               success: `เช็คอิน ${booking.name} สำเร็จ`,
               error: (err) =>
-                err.response?.data?.message ||
-                err.response?.data?.error ||
-                err.message ||
-                "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง",
+                getApiErrorMessage(
+                  err,
+                  "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง",
+                ),
             })
           }
           className="checkIn__confirmAction"

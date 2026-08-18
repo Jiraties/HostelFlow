@@ -35,7 +35,10 @@ import {
   type DepositReturnReminder,
 } from "../helpers/depositReturnReminderHelpers";
 import { nextBusinessDateKey } from "../helpers/depositPreparationHelpers";
-import { transactionPlatformId } from "../helpers/commercialSegmentHelpers";
+import {
+  effectiveCommercialSegments,
+  transactionPlatformId,
+} from "../helpers/commercialSegmentHelpers";
 import {
   IdempotencyConflictError,
   withMutationIdempotency,
@@ -46,6 +49,10 @@ import {
 } from "../services/cashShiftMutationLock";
 import { CashShiftLedgerConflictError } from "../services/cashLedgerTransaction";
 import { withEffectiveTransactions } from "../services/transactionCorrections";
+import {
+  bookingRevisionPredicate,
+  sendBookingRevisionConflict,
+} from "../services/bookingConcurrency";
 import {
   EXPECTED_STAY_REVENUE_SERVICE_TYPES,
   expectedStayRevenueBookingQuery,
@@ -1497,6 +1504,11 @@ export const getTodayRevenueBreakdown = async (req: Request, res: Response) => {
       Booking.find({
         $or: [
           { checkIn: { $gte: bounds.start, $lt: bounds.end } },
+          {
+            commercialSegments: {
+              $elemMatch: { from: { $gte: bounds.start, $lt: bounds.end } },
+            },
+          },
           { "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end } },
         ],
       }).lean<booking[]>(),
@@ -1531,7 +1543,10 @@ export const getTodayRevenueBreakdown = async (req: Request, res: Response) => {
         new Date(booking.checkIn) >= bounds.start &&
         new Date(booking.checkIn) < bounds.end;
 
-      if (isTodayArrival) {
+      if (
+        isTodayArrival &&
+        ["cancelled", "noShow"].includes(booking.status)
+      ) {
         const arrivalAmount = bookingTodayArrivalRevenueAmount(booking);
         const roomCharge = (booking.transactions || []).find(
           (transaction) => transaction.type === "roomCharge",
@@ -1560,6 +1575,42 @@ export const getTodayRevenueBreakdown = async (req: Request, res: Response) => {
             direction,
           );
         }
+      }
+
+      if (!["cancelled", "noShow"].includes(booking.status)) {
+        effectiveCommercialSegments(booking)
+          .filter((segment) => {
+            const segmentStart = new Date(segment.from);
+            return segmentStart >= bounds.start && segmentStart < bounds.end;
+          })
+          .forEach((segment) => {
+            const roomCharge = (booking.transactions || []).find(
+              (transaction) =>
+                String(transaction._id) === segment.transactionId,
+            );
+            if (!roomCharge) return;
+            const amount = Math.abs(roomCharge.amount || segment.amount || 0);
+            const segmentTransaction = {
+              ...roomCharge,
+              amount,
+              createdAt: segment.from,
+            };
+            const direction = transactionDirection(segmentTransaction);
+            addBreakdownTransaction(
+              categories,
+              segmentTransaction,
+              booking,
+              amount,
+              direction,
+            );
+            addPaymentMethodBreakdownTransaction(
+              paymentMethods,
+              segmentTransaction,
+              booking,
+              amount,
+              direction,
+            );
+          });
       }
 
       (booking.transactions || []).forEach((transaction) => {
@@ -1640,7 +1691,7 @@ export const getTodayRevenueBreakdown = async (req: Request, res: Response) => {
       period: {
         startDate: formatBusinessDateKey(bounds.start),
         endDate: formatBusinessDateKey(bounds.end),
-        basis: "checkInAndTransactionCreatedAt",
+        basis: "commercialSegmentStartAndServiceCreatedAt",
       },
       totals: {
         grossStayCharges: Number(grossStayCharges.toFixed(2)),
@@ -1694,6 +1745,11 @@ export const getTodayRevenueSummary = async (req: Request, res: Response) => {
       Booking.find({
         $or: [
           { checkIn: { $gte: bounds.start, $lt: bounds.end } },
+          {
+            commercialSegments: {
+              $elemMatch: { from: { $gte: bounds.start, $lt: bounds.end } },
+            },
+          },
           { "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end } },
         ],
       }).lean<booking[]>(),
@@ -2908,13 +2964,40 @@ export const approveReviewEvent = async (req: Request, res: Response) => {
         });
       }
 
+      const expectedRevision = Number(booking.revision || 0);
       const reviewedAt = new Date();
-      correction.reviewFlags = reviewFlags;
-      correction.reviewStatus = "reviewed";
-      correction.reviewedBy = req.user.username;
-      correction.reviewedAt = reviewedAt;
-      booking.markModified("transactionCorrections");
-      await booking.save();
+      const updatedBooking = await Booking.findOneAndUpdate(
+        {
+          bookingId,
+          ...bookingRevisionPredicate(expectedRevision),
+          transactionCorrections: {
+            $elemMatch: {
+              _id: correctionId,
+              targetTransactionId: transactionId,
+              reviewStatus: { $ne: "reviewed" },
+            },
+          },
+        },
+        {
+          $set: {
+            "transactionCorrections.$.reviewFlags": reviewFlags,
+            "transactionCorrections.$.reviewStatus": "reviewed",
+            "transactionCorrections.$.reviewedBy": req.user.username,
+            "transactionCorrections.$.reviewedAt": reviewedAt,
+          },
+          $inc: { revision: 1 },
+        },
+        { returnDocument: "after", runValidators: true },
+      );
+      if (!updatedBooking) {
+        return sendBookingRevisionConflict(res, bookingId);
+      }
+      const reviewedCorrection = updatedBooking.transactionCorrections.find(
+        (candidate) => String(candidate._id) === correctionId,
+      );
+      if (!reviewedCorrection) {
+        return sendBookingRevisionConflict(res, bookingId);
+      }
 
       await logActivity(
         req.user.username,
@@ -2929,14 +3012,14 @@ export const approveReviewEvent = async (req: Request, res: Response) => {
             before: correction.before,
             after: correction.after,
             flags: reviewFlags,
-            reviewedBy: correction.reviewedBy,
+            reviewedBy: reviewedCorrection.reviewedBy,
             reviewedAt,
           },
         },
         bookingId,
       );
 
-      return res.status(200).json({ correction });
+      return res.status(200).json({ correction: reviewedCorrection });
     }
 
     const transaction = booking.transactions.find(
@@ -2963,13 +3046,39 @@ export const approveReviewEvent = async (req: Request, res: Response) => {
       });
     }
 
+    const expectedRevision = Number(booking.revision || 0);
     const reviewedAt = transaction.reviewedAt || new Date();
-    transaction.reviewStatus = "reviewed";
-    transaction.reviewedBy = transaction.reviewedBy || req.user.username;
-    transaction.reviewedAt = reviewedAt;
-
-    booking.markModified("transactions");
-    await booking.save();
+    const reviewedBy = transaction.reviewedBy || req.user.username;
+    const updatedBooking = await Booking.findOneAndUpdate(
+      {
+        bookingId,
+        ...bookingRevisionPredicate(expectedRevision),
+        transactions: {
+          $elemMatch: {
+            _id: transactionId,
+            reviewStatus: { $ne: "reviewed" },
+          },
+        },
+      },
+      {
+        $set: {
+          "transactions.$.reviewStatus": "reviewed",
+          "transactions.$.reviewedBy": reviewedBy,
+          "transactions.$.reviewedAt": reviewedAt,
+        },
+        $inc: { revision: 1 },
+      },
+      { returnDocument: "after", runValidators: true },
+    );
+    if (!updatedBooking) {
+      return sendBookingRevisionConflict(res, bookingId);
+    }
+    const reviewedTransaction = updatedBooking.transactions.find(
+      (candidate) => String(candidate._id) === transactionId,
+    );
+    if (!reviewedTransaction) {
+      return sendBookingRevisionConflict(res, bookingId);
+    }
 
     await logActivity(
       req.user.username,
@@ -2983,7 +3092,7 @@ export const approveReviewEvent = async (req: Request, res: Response) => {
           paymentMethod: transaction.paymentMethod,
           amount: transaction.amount,
           flags: transaction.reviewFlags || [],
-          reviewedBy: transaction.reviewedBy,
+          reviewedBy: reviewedTransaction.reviewedBy,
           reviewedAt,
         },
       },
@@ -2991,7 +3100,7 @@ export const approveReviewEvent = async (req: Request, res: Response) => {
     );
 
     res.status(200).json({
-      transaction,
+      transaction: reviewedTransaction,
     });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });

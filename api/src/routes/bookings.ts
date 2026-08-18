@@ -8,6 +8,7 @@ import {
   getBookingById,
   getMasterBookings,
   getMonthCalendar,
+  getNeedsReviewBookingCount,
   getNeedsReviewBookings,
   getRoomAvailability,
   getTodayBookings,
@@ -59,6 +60,7 @@ bookingsRouter.post(
   correctTransaction,
 );
 bookingsRouter.get("/getTodayBookings/:type", getTodayBookings);
+bookingsRouter.get("/getNeedsReviewBookings/count", getNeedsReviewBookingCount);
 bookingsRouter.get("/getNeedsReviewBookings", getNeedsReviewBookings);
 bookingsRouter.get("/getAdminDashboardStats", getAdminDashboardStats);
 bookingsRouter.get("/getMasterBookings", getMasterBookings);

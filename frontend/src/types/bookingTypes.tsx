@@ -55,6 +55,7 @@ export interface roomStay {
 export interface commercialSegment {
   _id?: string;
   kind: "original" | "extension";
+  placement?: "before" | "after";
   from: string | Date;
   to: string | Date;
   platformId: PlatformId;

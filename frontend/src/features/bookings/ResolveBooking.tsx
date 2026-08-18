@@ -13,6 +13,7 @@ import { customStyles, type OptionType } from "../../helpers/selectStyling";
 import { useAuth } from "../../context/AuthContext";
 import type { booking, ResolutionOutcome } from "../../types/bookingTypes";
 import "./AddBooking.css";
+import "./BookingCheckbox.css";
 import "./Cancellation.css";
 import "./ResolveBooking.css";
 

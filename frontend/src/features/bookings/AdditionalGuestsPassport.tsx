@@ -10,6 +10,7 @@ import ModalCloseButton from "../../components/ModalCloseButton";
 import { API_URL } from "../../config/api";
 import { customStyles } from "../../helpers/selectStyling";
 import type { OptionType } from "../../helpers/selectStyling";
+import { getApiErrorMessage } from "../../helpers/apiErrorMessage";
 import "./AdditionalGuestsPassport.css";
 
 countries.registerLocale(en);
@@ -69,11 +70,6 @@ const emptyPassport: PassportData = {
   passportName: "",
 };
 
-const errorMessage = (err: unknown, fallback: string) =>
-  axios.isAxiosError<{ error?: string; message?: string }>(err)
-    ? err.response?.data.message || err.response?.data.error || fallback
-    : fallback;
-
 const AdditionalGuestsPassport = ({
   bookingId,
   revision,
@@ -120,7 +116,7 @@ const AdditionalGuestsPassport = ({
       } catch (err) {
         if (!ignore) {
           toast.error(
-            errorMessage(err, "ไม่สามารถโหลด Passport ผู้เข้าพักได้"),
+            getApiErrorMessage(err, "ไม่สามารถโหลด Passport ผู้เข้าพักได้"),
           );
         }
       } finally {
@@ -166,7 +162,7 @@ const AdditionalGuestsPassport = ({
       setRevealedGuestId(guestId);
       setRevealedPassport(response.data.passportData);
     } catch (err) {
-      toast.error(errorMessage(err, "ไม่สามารถเปิดดู Passport ได้"));
+      toast.error(getApiErrorMessage(err, "ไม่สามารถเปิดดู Passport ได้"));
     } finally {
       setRevealingGuestId(null);
     }
@@ -254,7 +250,7 @@ const AdditionalGuestsPassport = ({
           : "เพิ่ม Passport ผู้เข้าพักแล้ว",
       );
     } catch (err) {
-      toast.error(errorMessage(err, "ไม่สามารถบันทึก Passport ได้"));
+      toast.error(getApiErrorMessage(err, "ไม่สามารถบันทึก Passport ได้"));
     } finally {
       setSubmitting(false);
     }
@@ -285,7 +281,7 @@ const AdditionalGuestsPassport = ({
       hidePassport();
       toast.success("ลบ Passport ผู้เข้าพักแล้ว");
     } catch (err) {
-      toast.error(errorMessage(err, "ไม่สามารถลบ Passport ได้"));
+      toast.error(getApiErrorMessage(err, "ไม่สามารถลบ Passport ได้"));
     } finally {
       setSubmitting(false);
     }

@@ -22,6 +22,7 @@ import ClosedRoomAvailability from "./ClosedRoomAvailability.tsx";
 import { useCallback, useState, useEffect, useRef } from "react";
 import { API_URL } from "../../config/api.ts";
 import { platformMap } from "../../helpers/maps.ts";
+import { getApiErrorMessage } from "../../helpers/apiErrorMessage";
 import {
   advanceRoomPaymentTransaction,
   bookingFinancialPosition,
@@ -217,6 +218,7 @@ const ViewBooking = ({
   const [noteIsEditing, setNoteIsEditing] = useState(false);
   const [noteDraft, setNoteDraft] = useState(booking?.note || "");
   const [noteSaving, setNoteSaving] = useState(false);
+  const [pdfExporting, setPdfExporting] = useState(false);
   const [pinSaving, setPinSaving] = useState(false);
   const [pendingUnsavedClose, setPendingUnsavedClose] = useState<
     (() => void) | null
@@ -363,10 +365,7 @@ const ViewBooking = ({
           message: eligibility.message,
         });
 
-        if (
-          eligibility.sameBusinessDate &&
-          eligibility.affectedShiftsOpen
-        ) {
+        if (eligibility.sameBusinessDate && eligibility.affectedShiftsOpen) {
           refreshTimer = window.setTimeout(loadEligibility, 15_000);
         }
       } catch (error) {
@@ -464,15 +463,11 @@ const ViewBooking = ({
         setData(formattedBooking);
         setNoteDraft(formattedBooking.note || "");
       } catch (err) {
-        const message = axios.isAxiosError<{
-          error?: string;
-          message?: string;
-        }>(err)
-          ? err.response?.data.message || err.response?.data.error
-          : null;
-
         setLoadError(
-          message || "ไม่สามารถโหลดข้อมูลการจองได้ กรุณาลองอีกครั้ง",
+          getApiErrorMessage(
+            err,
+            "ไม่สามารถโหลดข้อมูลการจองได้ กรุณาลองอีกครั้ง",
+          ),
         );
       } finally {
         setLoading(false);
@@ -788,6 +783,7 @@ const ViewBooking = ({
         data.checkOut,
       channelBookingId:
         storedOriginalSegment?.channelBookingId || data.bookingId,
+      placement: undefined as "before" | "after" | undefined,
     },
     ...extensionSegments.map((segment) => ({
       key: segment._id || segment.transactionId,
@@ -795,13 +791,25 @@ const ViewBooking = ({
       from: segment.from,
       to: segment.to,
       channelBookingId: segment.channelBookingId,
+      placement: segment.placement || "after",
     })),
-  ];
+  ].sort(
+    (left, right) =>
+      new Date(left.from).getTime() - new Date(right.from).getTime(),
+  );
+
+  const isFolioPaymentPosting = (
+    transaction: booking["transactions"][number],
+  ) =>
+    ["settlementCharge", "paymentCorrection"].includes(transaction.type) &&
+    transaction.paymentMethod !== "Unpaid" &&
+    transaction.direction !== "out";
 
   const formatTransactionAmount = (
     transaction: booking["transactions"][number],
   ) => {
     const amountText = transaction.amount.toLocaleString("th-TH");
+    if (isFolioPaymentPosting(transaction)) return `ชำระ ${amountText} THB`;
     return transaction.direction === "out" ||
       transaction.type === "depositRefund" ||
       transaction.type === "cancellationRefund"
@@ -859,7 +867,7 @@ const ViewBooking = ({
     }
 
     if (isRoomChargeSettlementTransaction(data, transaction)) {
-      return "ชำระค่าห้องส่วนที่เหลือ";
+      return "รับชำระค่าห้อง";
     }
 
     return transactionMap[transaction.type].name;
@@ -1313,7 +1321,14 @@ const ViewBooking = ({
           <div className="viewBooking__priceChildDetails">
             <div className="viewBooking__priceChildSummary">
               <p className="viewBooking__priceChildText">
-                <span className="viewBooking__priceChildAmount">
+                <span
+                  className={
+                    "viewBooking__priceChildAmount" +
+                    (isFolioPaymentPosting(transaction)
+                      ? " viewBooking__priceChildAmount--payment"
+                      : "")
+                  }
+                >
                   {formatTransactionAmount(transaction)}
                 </span>
                 <span>{transactionName(transaction)}</span>
@@ -1372,6 +1387,37 @@ const ViewBooking = ({
       setNoteIsEditing(false);
     } finally {
       setNoteSaving(false);
+    }
+  };
+
+  const downloadPdfHandler = async () => {
+    if (pdfExporting) return;
+
+    setPdfExporting(true);
+    setMoreActionsIsOpen(false);
+    try {
+      const response = await axios.get<booking>(
+        `${API_URL}/bookings/getBookingById/${data.bookingId}`,
+        { withCredentials: true },
+      );
+      const latestBooking = formatBookingDates(response.data);
+      const { downloadBookingSummaryPdf } =
+        await import("./bookingSummaryPdf.ts");
+
+      await downloadBookingSummaryPdf({
+        booking: latestBooking,
+        resolveStaffName,
+      });
+      toast.success("ดาวน์โหลด PDF แล้ว");
+    } catch (error) {
+      toast.error(
+        getApiErrorMessage(
+          error,
+          "ไม่สามารถสร้าง Booking Summary PDF ได้ กรุณาลองอีกครั้ง",
+        ),
+      );
+    } finally {
+      setPdfExporting(false);
     }
   };
 
@@ -1882,6 +1928,13 @@ const ViewBooking = ({
                       <div className="viewBooking__channelTopline">
                         <p className="viewBooking__channelName">
                           {platformMap[channel.platformId]?.label || "ไม่ทราบ"}
+                          {channel.placement && (
+                            <span className="viewBooking__channelPlacement">
+                              {channel.placement === "before"
+                                ? "เพิ่มก่อนวันเข้า"
+                                : "เพิ่มหลังวันออก"}
+                            </span>
+                          )}
                         </p>
                         <span
                           className="viewBooking__channelDates"
@@ -2220,226 +2273,234 @@ const ViewBooking = ({
                     />
                   )}
                   <div className="viewBooking__moreActionsMenu">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditBookingIsOpen(true);
-                      setMoreActionsIsOpen(false);
-                    }}
-                  >
-                    <i className="bx bx-edit" />
-                    แก้ไข
-                  </button>
-                  {!data.voided &&
-                    (data.status === "booked" ||
-                      data.status === "checkedIn") && (
-                      <button
-                        type="button"
-                        className="viewBooking__mobileMoreAction"
-                        onClick={() => {
-                          setExtendBookingIsOpen(true);
-                          setMoreActionsIsOpen(false);
-                        }}
-                      >
-                        <i className="bx bx-calendar-plus" />
-                        เพิ่มจำนวนคืน
-                      </button>
-                    )}
-                  <button
-                    type="button"
-                    className="viewBooking__mobileMoreAction"
-                    disabled={pinSaving}
-                    onClick={() => {
-                      setMoreActionsIsOpen(false);
-                      toast.promise(togglePinHandler(), {
-                        loading: data.pinned
-                          ? "กำลังยกเลิกปัก Booking..."
-                          : "กำลังปัก Booking...",
-                        success: data.pinned
-                          ? "ยกเลิกปัก Booking แล้ว"
-                          : "ปัก Booking แล้ว",
-                        error: (err) =>
-                          err.response?.data?.message ||
-                          "เกิดข้อผิดพลาดในการปัก Booking",
-                      });
-                    }}
-                  >
-                    <i
-                      className={
-                        data.pinned ? "bxf bx-pin-alt" : "bx bx-pin-alt"
-                      }
-                    />
-                    {data.pinned ? "ยกเลิกปัก Booking" : "ปัก Booking"}
-                  </button>
-                  <button
-                    type="button"
-                    className={
-                      transactionEditMode
-                        ? "viewBooking__moreActionsMenuToggle--active"
-                        : ""
-                    }
-                    onClick={() => {
-                      setTransactionEditMode((active) => !active);
-                      setMoreActionsIsOpen(false);
-                    }}
-                  >
-                    <i className="bx bx-edit-alt" />
-                    {transactionEditMode
-                      ? "ซ่อนปุ่มแก้ไขรายการ"
-                      : "แก้ไขรายการใช้จ่าย"}
-                  </button>
-                  {user?.admin &&
-                    (data.status === "checkedOut" ||
-                      data.status === "cancelled" ||
-                      data.status === "noShow") && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setClosedRoomAvailabilityIsOpen(true);
-                          setMoreActionsIsOpen(false);
-                        }}
-                      >
-                        <i className="bx bx-bed" />
-                        แก้ไขการเปิดห้อง
-                        <span className="viewBooking__adminTag">Admin</span>
-                      </button>
-                    )}
-                  {data.status === "checkedIn" && (
-                    <button
-                      type="button"
-                      disabled={
-                        checkInCorrectionEligibility.loading ||
-                        !checkInCorrectionEligibility.allowed
-                      }
-                      title={
-                        checkInCorrectionEligibility.loading
-                          ? "กำลังตรวจสอบสิทธิ์..."
-                          : checkInCorrectionEligibility.message || undefined
-                      }
-                      onClick={() => {
-                        void openCheckInCorrection("undo_check_in");
-                      }}
-                    >
-                      <i
-                        className={`bx bx-undo${
-                          checkInCorrectionEligibility.allowed
-                            ? " viewBooking__temporaryActionIcon"
-                            : ""
-                        }`}
-                      />
-                      <span>Undo Check-In</span>
-                      {!checkInCorrectionEligibility.allowed ? (
-                        <span className="viewBooking__adminTag">Admin</span>
-                      ) : (
-                        <i className="viewBooking__beforeCashCloseTag bx-clock-dashed-half" />
-                      )}
-                    </button>
-                  )}
-                  {statusCorrectionType && (
-                    <button
-                      type="button"
-                      disabled={
-                        statusCorrectionEligibility.loading ||
-                        !statusCorrectionEligibility.allowed
-                      }
-                      title={
-                        statusCorrectionEligibility.loading
-                          ? "กำลังตรวจสอบสิทธิ์..."
-                          : statusCorrectionEligibility.message || undefined
-                      }
-                      onClick={() => {
-                        void openStatusCorrection();
-                      }}
-                    >
-                      <i
-                        className={`bx bx-undo${
-                          statusCorrectionEligibility.allowed
-                            ? " viewBooking__temporaryActionIcon"
-                            : ""
-                        }`}
-                      />
-                      <span>{statusCorrectionLabel}</span>
-                      {!statusCorrectionEligibility.allowed ? (
-                        <span className="viewBooking__adminTag">Admin</span>
-                      ) : (
-                        <i className="viewBooking__beforeCashCloseTag bx-clock-dashed-half" />
-                      )}
-                    </button>
-                  )}
-                  {user?.admin && data.status === "checkedIn" && (
                     <button
                       type="button"
                       onClick={() => {
-                        setResolveVariant("specialCase");
-                        setResolveBookingIsOpen(true);
+                        setEditBookingIsOpen(true);
                         setMoreActionsIsOpen(false);
                       }}
                     >
-                      <i className="bx bx-receipt" />
-                      Resolve สำรอง
-                      <span className="viewBooking__adminTag">Admin</span>
+                      <i className="bx bx-edit" />
+                      แก้ไข
                     </button>
-                  )}
-                  {user?.admin &&
-                    (data.status === "checkedOut" ||
-                      data.status === "cancelled" ||
-                      data.status === "noShow") && (
+                    <button
+                      type="button"
+                      disabled={pdfExporting}
+                      onClick={() => void downloadPdfHandler()}
+                    >
+                      <i className="bx bx-arrow-to-bottom" />
+                      {pdfExporting ? "กำลังสร้าง PDF..." : "ดาวน์โหลด PDF"}
+                    </button>
+                    {!data.voided &&
+                      (data.status === "booked" ||
+                        data.status === "checkedIn") && (
+                        <button
+                          type="button"
+                          className="viewBooking__mobileMoreAction"
+                          onClick={() => {
+                            setExtendBookingIsOpen(true);
+                            setMoreActionsIsOpen(false);
+                          }}
+                        >
+                          <i className="bx bx-calendar-plus" />
+                          เพิ่มจำนวนคืน
+                        </button>
+                      )}
+                    <button
+                      type="button"
+                      className="viewBooking__mobileMoreAction"
+                      disabled={pinSaving}
+                      onClick={() => {
+                        setMoreActionsIsOpen(false);
+                        toast.promise(togglePinHandler(), {
+                          loading: data.pinned
+                            ? "กำลังยกเลิกปัก Booking..."
+                            : "กำลังปัก Booking...",
+                          success: data.pinned
+                            ? "ยกเลิกปัก Booking แล้ว"
+                            : "ปัก Booking แล้ว",
+                          error: (err) =>
+                            err.response?.data?.message ||
+                            "เกิดข้อผิดพลาดในการปัก Booking",
+                        });
+                      }}
+                    >
+                      <i
+                        className={
+                          data.pinned ? "bxf bx-pin-alt" : "bx bx-pin-alt"
+                        }
+                      />
+                      {data.pinned ? "ยกเลิกปัก Booking" : "ปัก Booking"}
+                    </button>
+                    <button
+                      type="button"
+                      className={
+                        transactionEditMode
+                          ? "viewBooking__moreActionsMenuToggle--active"
+                          : ""
+                      }
+                      onClick={() => {
+                        setTransactionEditMode((active) => !active);
+                        setMoreActionsIsOpen(false);
+                      }}
+                    >
+                      <i className="bx bx-edit-alt" />
+                      {transactionEditMode
+                        ? "ซ่อนปุ่มแก้ไขรายการ"
+                        : "แก้ไขรายการใช้จ่าย"}
+                    </button>
+                    {user?.admin &&
+                      (data.status === "checkedOut" ||
+                        data.status === "cancelled" ||
+                        data.status === "noShow") && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setClosedRoomAvailabilityIsOpen(true);
+                            setMoreActionsIsOpen(false);
+                          }}
+                        >
+                          <i className="bx bx-bed" />
+                          แก้ไขการเปิดห้อง
+                          <span className="viewBooking__adminTag">Admin</span>
+                        </button>
+                      )}
+                    {data.status === "checkedIn" && (
+                      <button
+                        type="button"
+                        disabled={
+                          checkInCorrectionEligibility.loading ||
+                          !checkInCorrectionEligibility.allowed
+                        }
+                        title={
+                          checkInCorrectionEligibility.loading
+                            ? "กำลังตรวจสอบสิทธิ์..."
+                            : checkInCorrectionEligibility.message || undefined
+                        }
+                        onClick={() => {
+                          void openCheckInCorrection("undo_check_in");
+                        }}
+                      >
+                        <i
+                          className={`bx bx-undo${
+                            checkInCorrectionEligibility.allowed
+                              ? " viewBooking__temporaryActionIcon"
+                              : ""
+                          }`}
+                        />
+                        <span>Undo Check-In</span>
+                        {!checkInCorrectionEligibility.allowed ? (
+                          <span className="viewBooking__adminTag">Admin</span>
+                        ) : (
+                          <i className="viewBooking__beforeCashCloseTag bx-clock-dashed-half" />
+                        )}
+                      </button>
+                    )}
+                    {statusCorrectionType && (
+                      <button
+                        type="button"
+                        disabled={
+                          statusCorrectionEligibility.loading ||
+                          !statusCorrectionEligibility.allowed
+                        }
+                        title={
+                          statusCorrectionEligibility.loading
+                            ? "กำลังตรวจสอบสิทธิ์..."
+                            : statusCorrectionEligibility.message || undefined
+                        }
+                        onClick={() => {
+                          void openStatusCorrection();
+                        }}
+                      >
+                        <i
+                          className={`bx bx-undo${
+                            statusCorrectionEligibility.allowed
+                              ? " viewBooking__temporaryActionIcon"
+                              : ""
+                          }`}
+                        />
+                        <span>{statusCorrectionLabel}</span>
+                        {!statusCorrectionEligibility.allowed ? (
+                          <span className="viewBooking__adminTag">Admin</span>
+                        ) : (
+                          <i className="viewBooking__beforeCashCloseTag bx-clock-dashed-half" />
+                        )}
+                      </button>
+                    )}
+                    {user?.admin && data.status === "checkedIn" && (
                       <button
                         type="button"
                         onClick={() => {
-                          setResolveVariant("postClose");
+                          setResolveVariant("specialCase");
                           setResolveBookingIsOpen(true);
                           setMoreActionsIsOpen(false);
                         }}
                       >
-                        <i className="bx bx-history" />
-                        แก้ไขหลังปิด
+                        <i className="bx bx-receipt" />
+                        Resolve สำรอง
                         <span className="viewBooking__adminTag">Admin</span>
                       </button>
                     )}
-                  {user?.admin &&
-                    data.status === "booked" &&
-                    checkInIsBeforeToday && (
+                    {user?.admin &&
+                      (data.status === "checkedOut" ||
+                        data.status === "cancelled" ||
+                        data.status === "noShow") && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setResolveVariant("postClose");
+                            setResolveBookingIsOpen(true);
+                            setMoreActionsIsOpen(false);
+                          }}
+                        >
+                          <i className="bx bx-history" />
+                          แก้ไขหลังปิด
+                          <span className="viewBooking__adminTag">Admin</span>
+                        </button>
+                      )}
+                    {user?.admin &&
+                      data.status === "booked" &&
+                      checkInIsBeforeToday && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAdminHistoricalCheckIn(true);
+                            setCheckInIsOpen(true);
+                            setMoreActionsIsOpen(false);
+                          }}
+                        >
+                          <i className="bx bx-history" />
+                          <span>Onboard Existing Stay</span>
+                          <span className="viewBooking__adminTag">Admin</span>
+                        </button>
+                      )}
+                    {data.status === "booked" && (
                       <button
                         type="button"
                         onClick={() => {
-                          setAdminHistoricalCheckIn(true);
-                          setCheckInIsOpen(true);
+                          setCancellationIsOpen(true);
                           setMoreActionsIsOpen(false);
                         }}
                       >
-                        <i className="bx bx-history" />
-                        <span>Onboard Existing Stay</span>
-                        <span className="viewBooking__adminTag">Admin</span>
+                        <i className="bx bx-calendar-x" />
+                        ยกเลิกการจอง
                       </button>
                     )}
-                  {data.status === "booked" && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCancellationIsOpen(true);
-                        setMoreActionsIsOpen(false);
-                      }}
-                    >
-                      <i className="bx bx-calendar-x" />
-                      ยกเลิกการจอง
-                    </button>
-                  )}
-                  {user?.admin && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        removeBookingHandler(data);
-                        setMoreActionsIsOpen(false);
-                      }}
-                    >
-                      <i
-                        className="bx bx-trash"
-                        style={{ color: "var(--red)" }}
-                      />
-                      ลบ
-                    </button>
-                  )}
+                    {user?.admin && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          removeBookingHandler(data);
+                          setMoreActionsIsOpen(false);
+                        }}
+                      >
+                        <i
+                          className="bx bx-trash"
+                          style={{ color: "var(--red)" }}
+                        />
+                        ลบ
+                      </button>
+                    )}
                   </div>
                 </>
               )}
@@ -2536,9 +2597,7 @@ const ViewBooking = ({
                 icon="bx-door-open"
                 className={
                   "viewBooking__primaryAction" +
-                  (isEarlyCheckOut
-                    ? " viewBooking__earlyCheckOutAction"
-                    : "")
+                  (isEarlyCheckOut ? " viewBooking__earlyCheckOutAction" : "")
                 }
                 highlight={!isEarlyCheckOut}
               />

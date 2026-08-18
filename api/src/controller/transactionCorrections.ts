@@ -36,6 +36,11 @@ import {
   transactionIsCharge,
 } from "../services/transactionCorrections";
 import { transactionCorrectionNeedsReview } from "../helpers/financeHelpers";
+import {
+  assessOrdinaryRefundEntitlements,
+  isOrdinaryRefund,
+  isOrdinaryRefundableReceipt,
+} from "../services/refundEntitlement";
 
 const PAYMENT_METHODS: PaymentMethod[] = [
   "OTA",
@@ -330,6 +335,64 @@ export const correctTransaction = async (
         ? { ...transaction, ...after, _id: transaction._id }
         : transaction,
     );
+    const currentRefundAssessment = assessOrdinaryRefundEntitlements(
+      effectiveTransactions,
+    );
+    const previewRefundAssessment = assessOrdinaryRefundEntitlements(
+      previewTransactions,
+    );
+    if (
+      previewRefundAssessment.excessRefundAmount >
+      currentRefundAssessment.excessRefundAmount
+    ) {
+      if (isOrdinaryRefund(current)) {
+        const linkedEntitlement = current.relatedTransactionId
+          ? currentRefundAssessment.entitlements.find(
+              (entitlement) =>
+                entitlement.originalTransactionId ===
+                current.relatedTransactionId,
+            )
+          : undefined;
+        const maximumRefundAmount = Number(
+          (
+            Math.abs(current.amount || 0) +
+            (linkedEntitlement?.remainingAmount ??
+              currentRefundAssessment.entitlements.reduce(
+                (sum, entitlement) => sum + entitlement.remainingAmount,
+                0,
+              ))
+          ).toFixed(2),
+        );
+        return res.status(409).json({
+          error: "REFUND_EXCEEDS_AVAILABLE_BALANCE",
+          message: `แก้ยอดคืนได้ไม่เกิน ${maximumRefundAmount.toLocaleString("th-TH")} บาท`,
+          remainingRefundableAmount: Math.max(
+            Number((maximumRefundAmount - Math.abs(current.amount || 0)).toFixed(2)),
+            0,
+          ),
+          maximumRefundAmount,
+        });
+      }
+
+      if (isOrdinaryRefundableReceipt(current)) {
+        const currentEntitlement = currentRefundAssessment.entitlements.find(
+          (entitlement) =>
+            entitlement.originalTransactionId === transactionId,
+        );
+        return res.status(409).json({
+          error: "PAYMENT_CORRECTION_CONFLICTS_WITH_REFUNDS",
+          message:
+            "ยอดรับเงินที่แก้ไขต่ำกว่ายอดที่คืนไปแล้ว กรุณาตรวจสอบประวัติการคืนเงิน",
+          alreadyRefundedAmount: currentEntitlement?.consumedAmount || 0,
+          minimumReceivedAmount: currentEntitlement?.consumedAmount || 0,
+        });
+      }
+
+      return res.status(409).json({
+        error: "REFUND_ENTITLEMENT_CONFLICT",
+        message: "การแก้ไขนี้ทำให้ยอดคืนเงินเกินยอดรับเงิน กรุณาตรวจสอบประวัติ",
+      });
+    }
     const depositCollected = previewTransactions.reduce(
       (total, transaction) =>
         transaction.type === "deposit"

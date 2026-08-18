@@ -261,14 +261,25 @@ const currentEnglishMonthLabel = () =>
     calendar: "gregory",
   }).format(new Date());
 
+const formatTrendAxisLabel = (
+  label: string,
+  metric: ChartMetric,
+  range: RevenueRange,
+) =>
+  metric === "occupancy" && range === "1y"
+    ? label.replace(/^\d+\s+/, "")
+    : label;
+
 const TrendLineChart = ({
   series,
   metric,
+  range,
 }: {
   series:
     | AdminDashboardStats["revenueSeries"]
     | AdminDashboardStats["esrSeries"];
   metric: ChartMetric;
+  range: RevenueRange;
 }) => (
   <div className="main__chartWrapper">
     <ResponsiveContainer width="100%" height={260}>
@@ -300,6 +311,9 @@ const TrendLineChart = ({
           tickLine={false}
           minTickGap={18}
           tick={{ fill: "#777777", fontSize: 12 }}
+          tickFormatter={(label) =>
+            formatTrendAxisLabel(String(label), metric, range)
+          }
         />
         <YAxis
           axisLine={false}
@@ -915,6 +929,7 @@ const Main = () => {
     {
       label: "ต้องตรวจสอบ",
       value: bookingsThatNeedReview.length,
+      valueColor: "var(--red)",
     },
   ];
   const revenueChartSeries = adminStats
@@ -1094,6 +1109,7 @@ const Main = () => {
               value={stat.value}
               loading={loading}
               helperText={stat.helperText}
+              valueColor={stat.valueColor}
             />
           </div>
         ))}
@@ -1286,6 +1302,7 @@ const Main = () => {
                   </div>
                   <TrendLineChart
                     metric={chartMetric}
+                    range={revenueRange}
                     series={
                       chartMetric === "revenue"
                         ? revenueChartSeries

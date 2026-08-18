@@ -406,7 +406,7 @@
 @media (max-width: 760px) {
   .calendar__main {
     padding: var(--mobile-page-padding, 1rem);
-    padding-bottom: 0;
+    padding-bottom: 0 !important;
     gap: var(--mobile-section-gap, 1rem);
     overflow: hidden;
   }

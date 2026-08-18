@@ -123,6 +123,7 @@ export interface roomStay {
 export interface commercialSegment {
   _id?: string;
   kind: "original" | "extension";
+  placement?: "before" | "after";
   from: Date;
   to: Date;
   platformId: PlatformId;
@@ -330,6 +331,10 @@ const commercialSegmentSchema = new mongoose.Schema({
     type: String,
     enum: ["original", "extension"],
     required: true,
+  },
+  placement: {
+    type: String,
+    enum: ["before", "after"],
   },
   from: { type: Date, required: true },
   to: { type: Date, required: true },

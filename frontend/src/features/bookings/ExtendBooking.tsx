@@ -49,6 +49,9 @@ const currency = (amount: number) =>
     maximumFractionDigits: 2,
   }).format(amount || 0)}`;
 
+const backwardAddNightsEnabled =
+  import.meta.env.VITE_BACKWARD_ADD_NIGHTS_ENABLED !== "false";
+
 const formatPlatformOptionLabel = ({ label, color }: OptionType) => (
   <div className="extendBooking__platformOption">
     <span style={{ backgroundColor: color || "transparent" }} />
@@ -64,7 +67,11 @@ const ExtendBooking = ({
 }: ExtendBookingProps) => {
   const { user } = useAuth();
   const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
+  const currentCheckIn = formatLocalDate(new Date(booking.checkIn));
   const currentCheckOut = formatLocalDate(new Date(booking.checkOut));
+  const initialNewCheckIn = formatLocalDate(
+    addDays(new Date(booking.checkIn), -1),
+  );
   const initialNewCheckOut = formatLocalDate(
     addDays(new Date(booking.checkOut), 1),
   );
@@ -80,13 +87,27 @@ const ExtendBooking = ({
         ) || booking.roomStays[booking.roomStays.length - 1],
     [booking.roomStays, currentCheckOut],
   );
-  const currentRoomIds = useMemo(
+  const earliestStay = useMemo(
+    () =>
+      [...booking.roomStays].sort(
+        (left, right) =>
+          new Date(left.from).getTime() - new Date(right.from).getTime(),
+      )[0],
+    [booking.roomStays],
+  );
+  const finalRoomIds = useMemo(
     () => getRoomStayRoomIds(finalStay || { roomIds: [] }),
     [finalStay],
   );
+  const earliestRoomIds = useMemo(
+    () => getRoomStayRoomIds(earliestStay || { roomIds: [] }),
+    [earliestStay],
+  );
+  const [placement, setPlacement] = useState<"before" | "after">("after");
+  const [newCheckIn, setNewCheckIn] = useState(initialNewCheckIn);
   const [newCheckOut, setNewCheckOut] = useState(initialNewCheckOut);
   const [addedNightsInput, setAddedNightsInput] = useState("1");
-  const [roomIds, setRoomIds] = useState<string[]>(currentRoomIds);
+  const [roomIds, setRoomIds] = useState<string[]>(finalRoomIds);
   const [platformId, setPlatformId] = useState<PlatformId>("WALK");
   const [initialWalkInBookingId] = useState(() => generateWalkInBookingId());
   const [channelBookingId, setChannelBookingId] = useState(
@@ -101,11 +122,18 @@ const ExtendBooking = ({
   const [submitting, setSubmitting] = useState(false);
   const [idempotencyKey] = useState(() => crypto.randomUUID());
 
-  const addedNightsDifference = Math.round(
-    (new Date(`${newCheckOut}T00:00:00`).getTime() -
-      new Date(`${currentCheckOut}T00:00:00`).getTime()) /
-      86400000,
-  );
+  const addedNightsDifference =
+    placement === "before"
+      ? Math.round(
+          (new Date(`${currentCheckIn}T00:00:00`).getTime() -
+            new Date(`${newCheckIn}T00:00:00`).getTime()) /
+            86400000,
+        )
+      : Math.round(
+          (new Date(`${newCheckOut}T00:00:00`).getTime() -
+            new Date(`${currentCheckOut}T00:00:00`).getTime()) /
+            86400000,
+        );
   const addedNights = Number.isFinite(addedNightsDifference)
     ? Math.max(addedNightsDifference, 0)
     : 0;
@@ -125,12 +153,17 @@ const ExtendBooking = ({
   const platformLabel =
     platformOptions.find((option) => option.value === platformId)?.label ||
     platformId;
+  const originalPlatformLabel =
+    platformOptions.find((option) => option.value === booking.platformId)
+      ?.label || booking.platformId;
   const paymentMethodLabel =
     paidPaymentOptions.find((option) => option.value === paymentMethod)
       ?.label || "ยังไม่ได้เลือก";
   const unavailableSelection = selectedRooms.some((roomId) =>
     occupiedRoomIds.includes(roomId),
   );
+  const segmentFrom = placement === "before" ? newCheckIn : currentCheckOut;
+  const segmentTo = placement === "before" ? currentCheckIn : newCheckOut;
 
   const addedNightsChangeHandler = (value: string) => {
     setAddedNightsInput(value);
@@ -139,11 +172,19 @@ const ExtendBooking = ({
       return;
     }
 
-    setNewCheckOut(
-      formatLocalDate(
-        addDays(new Date(`${currentCheckOut}T00:00:00`), nextAddedNights),
-      ),
-    );
+    if (placement === "before") {
+      setNewCheckIn(
+        formatLocalDate(
+          addDays(new Date(`${currentCheckIn}T00:00:00`), -nextAddedNights),
+        ),
+      );
+    } else {
+      setNewCheckOut(
+        formatLocalDate(
+          addDays(new Date(`${currentCheckOut}T00:00:00`), nextAddedNights),
+        ),
+      );
+    }
   };
 
   const clampAddedNights = () => {
@@ -153,17 +194,28 @@ const ExtendBooking = ({
     }
 
     setAddedNightsInput("1");
-    setNewCheckOut(initialNewCheckOut);
+    if (placement === "before") setNewCheckIn(initialNewCheckIn);
+    else setNewCheckOut(initialNewCheckOut);
   };
 
   const stepAddedNights = (change: number) => {
     const nextAddedNights = Math.max(1, addedNights + change);
     setAddedNightsInput(String(nextAddedNights));
-    setNewCheckOut(
-      formatLocalDate(
-        addDays(new Date(`${currentCheckOut}T00:00:00`), nextAddedNights),
-      ),
-    );
+    addedNightsChangeHandler(String(nextAddedNights));
+  };
+
+  const placementChangeHandler = (nextPlacement: "before" | "after") => {
+    setPlacement(nextPlacement);
+    setAddedNightsInput("1");
+    setNewCheckIn(initialNewCheckIn);
+    setNewCheckOut(initialNewCheckOut);
+    setRoomIds(nextPlacement === "before" ? earliestRoomIds : finalRoomIds);
+    if (nextPlacement === "before") {
+      const walkInBookingId = generateWalkInBookingId();
+      generatedWalkInBookingIdRef.current = walkInBookingId;
+      setPlatformId("WALK");
+      setChannelBookingId(walkInBookingId);
+    }
   };
 
   const platformChangeHandler = (nextPlatformId: PlatformId) => {
@@ -198,9 +250,11 @@ const ExtendBooking = ({
 
   useEffect(() => {
     onDirtyChange?.(
-      newCheckOut !== initialNewCheckOut ||
+      placement !== "after" ||
+        newCheckIn !== initialNewCheckIn ||
+        newCheckOut !== initialNewCheckOut ||
         addedNightsInput !== "1" ||
-        roomIds.join(",") !== currentRoomIds.join(",") ||
+        roomIds.join(",") !== finalRoomIds.join(",") ||
         platformId !== "WALK" ||
         channelBookingId !== initialWalkInBookingId ||
         paymentMethod !== "" ||
@@ -212,14 +266,17 @@ const ExtendBooking = ({
     amount,
     addedNightsInput,
     channelBookingId,
-    currentRoomIds,
+    finalRoomIds,
+    initialNewCheckIn,
     initialNewCheckOut,
     initialWalkInBookingId,
     newCheckOut,
+    newCheckIn,
     note,
     onDirtyChange,
     paymentMethod,
     platformId,
+    placement,
     roomIds,
   ]);
 
@@ -234,8 +291,8 @@ const ExtendBooking = ({
     axios
       .get(`${API_URL}/bookings/getRoomAvailability`, {
         params: {
-          checkIn: currentCheckOut,
-          checkOut: newCheckOut,
+          checkIn: segmentFrom,
+          checkOut: segmentTo,
           excludeBookingId: booking.bookingId,
         },
         signal: controller.signal,
@@ -258,7 +315,7 @@ const ExtendBooking = ({
       });
 
     return () => controller.abort();
-  }, [addedNights, booking.bookingId, currentCheckOut, newCheckOut]);
+  }, [addedNights, booking.bookingId, segmentFrom, segmentTo]);
 
   const availableRoomOptions = useMemo(
     () =>
@@ -289,10 +346,10 @@ const ExtendBooking = ({
         `${API_URL}/bookings/${booking.bookingId}/extensions`,
         {
           expectedRevision: booking.revision,
-          startDate: currentCheckOut,
-          newCheckOut,
+          placement,
+          nights: addedNights,
           roomIds: selectedRooms,
-          platformId,
+          platformId: placement === "before" ? "WALK" : platformId,
           channelBookingId: channelBookingId.trim(),
           amount: numericAmount,
           paymentMethod,
@@ -307,7 +364,11 @@ const ExtendBooking = ({
       if (response.data.booking) {
         onUpdated?.(formatBookingDates(response.data.booking));
       }
-      toast.success("เพิ่มคืนให้ Booking สำเร็จ");
+      toast.success(
+        placement === "before"
+          ? "เพิ่มคืนก่อนวันเข้าให้ Booking สำเร็จ"
+          : "เพิ่มคืนให้ Booking สำเร็จ",
+      );
     } catch (error) {
       if (axios.isAxiosError<{ message?: string }>(error)) {
         if (error.response?.status === 409) {
@@ -333,6 +394,35 @@ const ExtendBooking = ({
       </header>
 
       <div className="extendBooking__contentGrid">
+        {backwardAddNightsEnabled && (
+          <div className="extendBooking__field extendBooking__field--full">
+          <p className="addBooking__label">ตำแหน่งคืนที่เพิ่ม</p>
+          <div
+            className="extendBooking__placement"
+            role="group"
+            aria-label="ตำแหน่งคืนที่เพิ่ม"
+          >
+            <button
+              type="button"
+              className={placement === "before" ? "active" : ""}
+              disabled={submitting || booking.status !== "booked"}
+              aria-pressed={placement === "before"}
+              onClick={() => placementChangeHandler("before")}
+            >
+              ก่อนวันเข้า
+            </button>
+            <button
+              type="button"
+              className={placement === "after" ? "active" : ""}
+              disabled={submitting}
+              aria-pressed={placement === "after"}
+              onClick={() => placementChangeHandler("after")}
+            >
+              หลังวันออก
+            </button>
+          </div>
+          </div>
+        )}
         <div className="extendBooking__roomFields">
           <div className="extendBooking__field">
             <p className="addBooking__label">ห้องสำหรับคืนที่เพิ่ม</p>
@@ -360,7 +450,11 @@ const ExtendBooking = ({
             )}
           </div>
           <div className="extendBooking__field">
-            <p className="addBooking__label">เพิ่มอีกกี่คืน?</p>
+            <p className="addBooking__label">
+              {placement === "before"
+                ? "เพิ่มก่อนวันเข้าอีกกี่คืน?"
+                : "เพิ่มอีกกี่คืน?"}
+            </p>
             <div className="extendBooking__nightsStepper">
               <button
                 type="button"
@@ -398,7 +492,7 @@ const ExtendBooking = ({
         <div className="extendBooking__field">
           <p className="addBooking__label">ช่องทางสำหรับคืนที่เพิ่ม</p>
           <Select<OptionType>
-            isDisabled={submitting}
+            isDisabled={submitting || placement === "before"}
             styles={customStyles<OptionType>()}
             classNamePrefix="rs"
             options={platformOptions}
@@ -423,7 +517,7 @@ const ExtendBooking = ({
             placeholder={
               platformId === "WALK" ? "เช่น 170720261819" : "เช่น 4012345678"
             }
-            disabled={submitting}
+            disabled={submitting || placement === "before"}
             onChange={(event) =>
               channelBookingIdChangeHandler(event.target.value)
             }
@@ -475,6 +569,12 @@ const ExtendBooking = ({
         </label>
       </div>
 
+      {placement === "before" && (
+        <p className="extendBooking__anchorNotice">
+          คืนที่เพิ่มจะเป็น Walk-in ใหม่ ส่วนวันที่ OTA และ Booking No. เดิมจะไม่เปลี่ยน
+        </p>
+      )}
+
       <div className="extendBooking__summarySection">
         <p className="addBooking__label">สรุปก่อนยืนยัน</p>
         <section
@@ -487,12 +587,12 @@ const ExtendBooking = ({
               <div className="extendBooking__summaryVisual">
                 <div className="viewBooking__roomStay--dates">
                   <p className="viewBooking__roomStay--from">
-                    {formatDisplayDate(currentCheckOut, dateFormat, {
+                    {formatDisplayDate(segmentFrom, dateFormat, {
                       includeYear: false,
                     })}
                   </p>
                   <p className="viewBooking__roomStay--to">
-                    {formatDisplayDate(newCheckOut, dateFormat, {
+                    {formatDisplayDate(segmentTo, dateFormat, {
                       includeYear: false,
                     })}
                   </p>
@@ -523,6 +623,24 @@ const ExtendBooking = ({
               <p>ช่องทาง</p>
               <p>{platformLabel}</p>
             </div>
+            {placement === "before" && (
+              <div className="addTransaction__cardPreviewRow">
+                <p>การจองเดิม (ไม่เปลี่ยน)</p>
+                <p className="extendBooking__originalReservation">
+                  <span>{originalPlatformLabel}</span>
+                  <span>
+                    {formatDisplayDate(currentCheckIn, dateFormat, {
+                      includeYear: false,
+                    })}
+                    {" - "}
+                    {formatDisplayDate(currentCheckOut, dateFormat, {
+                      includeYear: false,
+                    })}
+                  </span>
+                  <span>No. {booking.bookingId}</span>
+                </p>
+              </div>
+            )}
             <div className="addTransaction__cardPreviewRow">
               <p>
                 ค่าห้อง
@@ -561,7 +679,13 @@ const ExtendBooking = ({
 
       <div className="extendBooking__actions">
         <ActionButton
-          text={submitting ? "กำลังบันทึก..." : "ยืนยันเพิ่มคืน"}
+          text={
+            submitting
+              ? "กำลังบันทึก..."
+              : placement === "before"
+                ? "ยืนยันเพิ่มคืนก่อนวันเข้า"
+                : "ยืนยันเพิ่มคืน"
+          }
           icon="bx-calendar-plus"
           highlight
           disabled={submitting || checkingAvailability}

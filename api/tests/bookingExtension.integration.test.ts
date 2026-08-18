@@ -203,6 +203,28 @@ const extensionBody = ({
   note: "Synthetic extension",
 });
 
+const backwardExtensionBody = ({
+  expectedRevision = 0,
+  nights = 1,
+  roomIds = ["Balcony"],
+  platformId = "WALK",
+}: {
+  expectedRevision?: number;
+  nights?: number;
+  roomIds?: string[];
+  platformId?: string;
+} = {}) => ({
+  expectedRevision,
+  placement: "before",
+  nights,
+  roomIds,
+  platformId,
+  channelBookingId: `WALK-${crypto.randomUUID()}`,
+  paymentMethod: "Transfer",
+  amount: 250,
+  note: "Synthetic preceding night",
+});
+
 let replicaSet: MongoMemoryReplSet;
 let controller: BookingController;
 
@@ -268,6 +290,182 @@ test("future booking extends in the same room with mixed platform and one paymen
     String(stored?.commercialSegments[1]._id),
   );
   assert.equal(await Activity.countDocuments({ action: "EXTEND_BOOKING" }), 1);
+});
+
+test("backward addition preserves every anchor source and prepends a WALK segment", async () => {
+  for (const platformId of ["HOST", "BOOK", "AGOD", "TRAV", "WALK"] as const) {
+    const bookingId = `PREPEND-${platformId}`;
+    await bookingFixture({
+      bookingId,
+      platformId,
+      checkInOffset: 2,
+      checkOutOffset: 4,
+    });
+    const original = (await Booking.findOne({ bookingId }).lean())!;
+    const originalSegment = original.commercialSegments[0];
+    const res = response();
+    await controller.extendBooking(
+      request({ bookingId, body: backwardExtensionBody() }),
+      res as any,
+    );
+
+    assert.equal(res.statusCode, 200);
+    const stored = (await Booking.findOne({ bookingId }).lean())!;
+    assert.equal(stored.bookingId, bookingId);
+    assert.equal(stored.platformId, platformId);
+    assert.equal(toInputDate(stored.checkIn), localDate(1));
+    assert.equal(toInputDate(stored.checkOut), localDate(4));
+    assert.equal(stored.nights, 3);
+    assert.deepEqual(
+      stored.commercialSegments.map((segment) => [
+        segment.kind,
+        segment.placement,
+        segment.platformId,
+        toInputDate(segment.from),
+        toInputDate(segment.to),
+      ]),
+      [
+        ["extension", "before", "WALK", localDate(1), localDate(2)],
+        ["original", undefined, platformId, localDate(2), localDate(4)],
+      ],
+    );
+    const preservedOriginal = stored.commercialSegments[1];
+    assert.equal(
+      preservedOriginal.channelBookingId,
+      originalSegment.channelBookingId,
+    );
+    assert.equal(preservedOriginal.transactionId, originalSegment.transactionId);
+    assert.equal(preservedOriginal.amount, originalSegment.amount);
+    await Booking.deleteOne({ bookingId });
+  }
+});
+
+test("backward addition changes rooms, materializes legacy history, and validates source", async () => {
+  await bookingFixture({
+    bookingId: "PREPEND-LEGACY",
+    platformId: "HOST",
+    roomId: "Balcony",
+    checkInOffset: 2,
+    checkOutOffset: 4,
+    withCommercialSegment: false,
+  });
+  const success = response();
+  await controller.extendBooking(
+    request({
+      bookingId: "PREPEND-LEGACY",
+      body: backwardExtensionBody({ roomIds: ["Window"] }),
+    }),
+    success as any,
+  );
+  assert.equal(success.statusCode, 200);
+  const stored = (await Booking.findOne({ bookingId: "PREPEND-LEGACY" }).lean())!;
+  assert.deepEqual(stored.roomStays.map((stay) => stay.roomIds), [
+    ["Window"],
+    ["Balcony"],
+  ]);
+  assert.deepEqual(stored.commercialSegments.map((segment) => segment.kind), [
+    "extension",
+    "original",
+  ]);
+
+  await bookingFixture({
+    bookingId: "PREPEND-SOURCE",
+    platformId: "HOST",
+    checkInOffset: 2,
+    checkOutOffset: 4,
+  });
+  const invalidSource = response();
+  await controller.extendBooking(
+    request({
+      bookingId: "PREPEND-SOURCE",
+      body: backwardExtensionBody({ platformId: "HOST" }),
+    }),
+    invalidSource as any,
+  );
+  assert.equal(invalidSource.statusCode, 400);
+  assert.equal(invalidSource.body.error, "INVALID_BACKWARD_EXTENSION_SOURCE");
+});
+
+test("repeated backward additions remain contiguous and recognize revenue on segment start", async () => {
+  await bookingFixture({
+    bookingId: "PREPEND-REPEAT",
+    platformId: "HOST",
+    checkInOffset: 2,
+    checkOutOffset: 4,
+  });
+  const first = response();
+  await controller.extendBooking(
+    request({
+      bookingId: "PREPEND-REPEAT",
+      body: backwardExtensionBody(),
+    }),
+    first as any,
+  );
+  assert.equal(first.statusCode, 200);
+
+  const second = response();
+  await controller.extendBooking(
+    request({
+      bookingId: "PREPEND-REPEAT",
+      body: backwardExtensionBody({ expectedRevision: 1 }),
+    }),
+    second as any,
+  );
+  assert.equal(second.statusCode, 200);
+  const stored = (await Booking.findOne({ bookingId: "PREPEND-REPEAT" }).lean())!;
+  assert.equal(toInputDate(stored.checkIn), localDate());
+  assert.equal(toInputDate(stored.checkOut), localDate(4));
+  assert.deepEqual(
+    stored.commercialSegments.map((segment) => toInputDate(segment.from)),
+    [localDate(), localDate(1), localDate(2)],
+  );
+
+  const todaySummary = calculateTodayRevenueSummary(
+    [stored as any],
+    new Date(`${localDate()}T00:00:00`),
+    new Date(`${localDate(1)}T00:00:00`),
+  );
+  assert.equal(todaySummary.todayArrivalRevenue, 250);
+  assert.equal(todaySummary.todayExtrasRevenue, 0);
+  assert.equal(todaySummary.todayCollectedRevenue, 250);
+});
+
+test("backward addition requires booked status and cannot precede Bangkok today", async () => {
+  await bookingFixture({
+    bookingId: "PREPEND-CHECKED-IN",
+    status: "checkedIn",
+    checkInOffset: 2,
+    checkOutOffset: 4,
+  });
+  const checkedIn = response();
+  await controller.extendBooking(
+    request({
+      bookingId: "PREPEND-CHECKED-IN",
+      body: backwardExtensionBody(),
+    }),
+    checkedIn as any,
+  );
+  assert.equal(checkedIn.statusCode, 400);
+  assert.equal(checkedIn.body.error, "BOOKING_NOT_ELIGIBLE");
+
+  await bookingFixture({
+    bookingId: "PREPEND-HISTORICAL",
+    checkInOffset: 1,
+    checkOutOffset: 3,
+  });
+  const historical = response();
+  await controller.extendBooking(
+    request({
+      bookingId: "PREPEND-HISTORICAL",
+      body: backwardExtensionBody({ nights: 2 }),
+    }),
+    historical as any,
+  );
+  assert.equal(historical.statusCode, 400);
+  assert.equal(
+    historical.body.error,
+    "BACKWARD_EXTENSION_BEFORE_BUSINESS_DATE",
+  );
 });
 
 test("checked-in guest moves rooms without changing passport or check-in event", async () => {
@@ -376,6 +574,62 @@ test("same idempotency key replays once and rejects a different payload", async 
   );
   assert.equal(conflict.statusCode, 409);
   assert.equal(conflict.body.error, "IDEMPOTENCY_KEY_REUSED");
+});
+
+test("generic edit locks aggregate dates and platform after an extension but keeps name and note editable", async () => {
+  await bookingFixture({ bookingId: "EXT-EDIT-LOCK" });
+  const extension = response();
+  await controller.extendBooking(
+    request({ bookingId: "EXT-EDIT-LOCK", body: extensionBody() }),
+    extension as any,
+  );
+  assert.equal(extension.statusCode, 200);
+
+  const rejected = response();
+  await controller.editBooking(
+    request({
+      bookingId: "EXT-EDIT-LOCK",
+      url: "/bookings/editBooking/EXT-EDIT-LOCK",
+      body: {
+        expectedRevision: 1,
+        booking: {
+          name: "Synthetic Extension Guest",
+          checkIn: localDate(1),
+          checkOut: localDate(3),
+          platformId: "BOOK",
+          note: "",
+        },
+      },
+    }),
+    rejected as any,
+  );
+  assert.equal(rejected.statusCode, 400);
+  assert.equal(
+    rejected.body.error,
+    "EXTENDED_BOOKING_COMMERCIAL_FIELDS_LOCKED",
+  );
+
+  const allowed = response();
+  await controller.editBooking(
+    request({
+      bookingId: "EXT-EDIT-LOCK",
+      url: "/bookings/editBooking/EXT-EDIT-LOCK",
+      body: {
+        expectedRevision: 1,
+        booking: {
+          name: "Renamed Extension Guest",
+          checkIn: localDate(),
+          checkOut: localDate(3),
+          platformId: "BOOK",
+          note: "Name and note remain editable",
+        },
+      },
+    }),
+    allowed as any,
+  );
+  assert.equal(allowed.statusCode, 200);
+  assert.equal(allowed.body.booking.name, "Renamed Extension Guest");
+  assert.equal(allowed.body.booking.note, "Name and note remain editable");
 });
 
 test("validation rejects unpaid, invalid amount/date/status/revision/room", async () => {
@@ -613,9 +867,18 @@ test("calendar and daily revenue split the extension without a false arrival", a
   const end = new Date(`${localDate(1)}T00:00:00`);
   const summary = calculateTodayRevenueSummary([stored as any], start, end);
   assert.equal(summary.todayArrivalRevenue, 500);
-  assert.equal(summary.todayExtrasRevenue, 300);
-  assert.equal(summary.todayRevenue, 800);
-  assert.equal(summary.todayCollectedRevenue, 800);
+  assert.equal(summary.todayExtrasRevenue, 0);
+  assert.equal(summary.todayRevenue, 500);
+  assert.equal(summary.todayCollectedRevenue, 500);
+  const extensionDaySummary = calculateTodayRevenueSummary(
+    [stored as any],
+    new Date(`${localDate(1)}T00:00:00`),
+    new Date(`${localDate(2)}T00:00:00`),
+  );
+  assert.equal(extensionDaySummary.todayArrivalRevenue, 300);
+  assert.equal(extensionDaySummary.todayExtrasRevenue, 0);
+  assert.equal(extensionDaySummary.todayRevenue, 300);
+  assert.equal(extensionDaySummary.todayCollectedRevenue, 300);
 
   const today = new Date();
   const calendarResponse = response();

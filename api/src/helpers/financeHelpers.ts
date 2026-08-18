@@ -5,6 +5,7 @@ import type {
   TransactionCorrectionSnapshot,
   TransactionType,
 } from "../models/booking";
+import { effectiveCommercialSegments } from "./commercialSegmentHelpers";
 
 export type TransactionDirection = "in" | "out" | "neutral";
 export type CashStashSummary = {
@@ -288,12 +289,7 @@ export const transactionDashboardGrossRevenueAmount = (transaction: transcation)
 };
 
 export const transactionTodayExtrasRevenueAmount = (transaction: transcation) => {
-  if (
-    transaction.type === "roomCharge" &&
-    transaction.sourceAction !== "EXTEND_BOOKING"
-  ) {
-    return 0;
-  }
+  if (transaction.type === "roomCharge") return 0;
 
   const amount = transactionDashboardGrossRevenueAmount(transaction);
   return amount > 0 ? amount : 0;
@@ -391,10 +387,23 @@ export const calculateTodayRevenueSummary = (
   start: Date,
   end: Date,
 ) => {
-  const arrivals = bookings.filter((booking) => {
+  const aggregateArrivals = bookings.filter((booking) => {
     const checkIn = new Date(booking.checkIn);
     return checkIn >= start && checkIn < end;
   });
+  const retainedValueArrivals = aggregateArrivals.filter((booking) =>
+    ["cancelled", "noShow"].includes(booking.status),
+  );
+  const activeSegmentCohorts = bookings.flatMap((booking) =>
+    ["cancelled", "noShow"].includes(booking.status)
+      ? []
+      : effectiveCommercialSegments(booking)
+          .filter((segment) => {
+            const segmentStart = new Date(segment.from);
+            return segmentStart >= start && segmentStart < end;
+          })
+          .map((segment) => ({ booking, segment })),
+  );
   const todayTransactions = bookings.flatMap((booking) =>
     (booking.transactions || [])
       .filter((transaction) => {
@@ -404,10 +413,19 @@ export const calculateTodayRevenueSummary = (
       })
       .map((transaction) => ({ booking, transaction })),
   );
-  const todayArrivalRevenue = arrivals.reduce(
+  const todayArrivalRevenue = retainedValueArrivals.reduce(
     (sum, booking) => sum + bookingTodayArrivalRevenueAmount(booking),
     0,
-  );
+  ) +
+    activeSegmentCohorts.reduce(
+      (sum, { booking, segment }) => {
+        const charge = (booking.transactions || []).find(
+          (transaction) => String(transaction._id) === segment.transactionId,
+        );
+        return sum + Math.abs(charge?.amount ?? segment.amount ?? 0);
+      },
+      0,
+    );
   const todayExtrasRevenue = todayTransactions.reduce(
     (sum, { transaction }) =>
       sum + transactionTodayExtrasRevenueAmount(transaction),
@@ -438,7 +456,7 @@ export const calculateTodayRevenueSummary = (
   const todayReductions = todayTransactions.reduce(
     (sum, { booking, transaction }) => {
       const alreadyNetted =
-        arrivals.includes(booking) &&
+        retainedValueArrivals.includes(booking) &&
         ["cancelled", "noShow"].includes(booking.status) &&
         ["roomRefund", "roomChargeWriteOff", "cancellationRefund"].includes(
           transaction.type,
@@ -450,7 +468,7 @@ export const calculateTodayRevenueSummary = (
     },
     0,
   );
-  const todayCollectedRevenue = arrivals.reduce(
+  const todayCollectedRevenue = retainedValueArrivals.reduce(
     (sum, booking) =>
       sum +
       (booking.transactions || []).reduce(
@@ -466,9 +484,34 @@ export const calculateTodayRevenueSummary = (
       ),
     0,
   ) +
+    activeSegmentCohorts.reduce((sum, { booking, segment }) => {
+      const segmentTransactions = (booking.transactions || []).filter(
+        (transaction) =>
+          transaction.type !== "cardSurcharge" &&
+          (String(transaction._id) === segment.transactionId ||
+            transaction.commercialSegmentId === String(segment._id) ||
+            transaction.relatedTransactionId === segment.transactionId ||
+            (segment.kind === "original" &&
+              segment.transactionId === "legacy-room-charge" &&
+              transaction.type === "roomCharge" &&
+              transaction.sourceAction !== "EXTEND_BOOKING")),
+      );
+      return (
+        sum +
+        segmentTransactions.reduce(
+          (segmentSum, transaction) =>
+            segmentSum +
+            transactionDashboardCollectedRevenueAmount(
+              transaction,
+              booking.transactions || [],
+            ),
+          0,
+        )
+      );
+    }, 0) +
     todayTransactions.reduce(
       (sum, { booking, transaction }) =>
-        transaction.sourceAction === "EXTEND_BOOKING"
+        transactionTodayExtrasRevenueAmount(transaction) > 0
           ? sum +
             transactionDashboardCollectedRevenueAmount(
               transaction,

@@ -343,6 +343,149 @@ test("refunds are linked and cannot exceed cumulative entitlement", async () => 
   assert.equal(excessive.body.remainingRefundableAmount, 400);
 });
 
+test("partial cancellation refund leaves the valid focused refund remainder", async () => {
+  const created = await Booking.findOne({ bookingId: "FOCUSED-1" });
+  created!.transactions.push(
+    {
+      type: "roomCharge",
+      paymentMethod: "Transfer",
+      amount: 1000,
+      direction: "in",
+      sourceAction: "NEW_BOOKING",
+    },
+    {
+      type: "cancellationRefund",
+      paymentMethod: "Transfer",
+      amount: 400,
+      direction: "out",
+      sourceAction: "CANCEL_BOOKING",
+    },
+  );
+  await created!.save();
+  const transactionId = String(created!.transactions[0]._id);
+
+  const res = response();
+  await recordFinancialAction(
+    request(
+      {
+        expectedRevision: 1,
+        action: "refund",
+        amount: 600,
+        paymentMethod: "Card",
+        reason: "Remaining cancellation refund",
+        note: "Returned the remaining valid amount",
+        relatedTransactionId: transactionId,
+      },
+      {
+        key: "partial-cancellation-remaining-refund",
+        path: "/bookings/FOCUSED-1/financial-actions",
+      },
+    ),
+    res,
+  );
+
+  assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+  const stored = await Booking.findOne({ bookingId: "FOCUSED-1" }).lean();
+  assert.equal(
+    stored?.transactions
+      .filter((transaction) =>
+        ["roomRefund", "cancellationRefund"].includes(transaction.type),
+      )
+      .reduce((total, transaction) => total + transaction.amount, 0),
+    1000,
+  );
+});
+
+test("simultaneous refunds cannot jointly exceed one entitlement", async () => {
+  const created = await Booking.findOne({ bookingId: "FOCUSED-1" });
+  created!.transactions.push({
+    type: "roomCharge",
+    paymentMethod: "Transfer",
+    amount: 1000,
+    direction: "in",
+    sourceAction: "NEW_BOOKING",
+  });
+  await created!.save();
+  const transactionId = String(created!.transactions[0]._id);
+  const first = response();
+  const second = response();
+  const body = {
+    expectedRevision: 1,
+    action: "refund",
+    amount: 600,
+    paymentMethod: "Transfer",
+    reason: "Concurrent refund",
+    note: "Only one request may consume the balance",
+    relatedTransactionId: transactionId,
+  };
+
+  await Promise.all([
+    recordFinancialAction(
+      request(body, {
+        key: "concurrent-refund-1",
+        path: "/bookings/FOCUSED-1/financial-actions",
+      }),
+      first,
+    ),
+    recordFinancialAction(
+      request(body, {
+        key: "concurrent-refund-2",
+        path: "/bookings/FOCUSED-1/financial-actions",
+      }),
+      second,
+    ),
+  ]);
+
+  assert.deepEqual([first.statusCode, second.statusCode].sort(), [200, 409]);
+  const stored = await Booking.findOne({ bookingId: "FOCUSED-1" }).lean();
+  assert.equal(
+    stored?.transactions.filter((transaction) => transaction.type === "roomRefund")
+      .length,
+    1,
+  );
+});
+
+test("retrying the same refund operation replays without another refund", async () => {
+  const created = await Booking.findOne({ bookingId: "FOCUSED-1" });
+  created!.transactions.push({
+    type: "roomCharge",
+    paymentMethod: "Transfer",
+    amount: 1000,
+    direction: "in",
+    sourceAction: "NEW_BOOKING",
+  });
+  await created!.save();
+  const transactionId = String(created!.transactions[0]._id);
+  const body = {
+    expectedRevision: 1,
+    action: "refund",
+    amount: 400,
+    paymentMethod: "Transfer",
+    reason: "Retry-safe refund",
+    note: "Same operation sent twice",
+    relatedTransactionId: transactionId,
+  };
+  const options = {
+    key: "refund-replay",
+    path: "/bookings/FOCUSED-1/financial-actions",
+  };
+  const first = response();
+  const retry = response();
+
+  await recordFinancialAction(request(body, options), first);
+  await recordFinancialAction(request(body, options), retry);
+
+  assert.equal(first.statusCode, 200, JSON.stringify(first.body));
+  assert.equal(retry.statusCode, 200, JSON.stringify(retry.body));
+  assert.equal(retry.body.duplicate, true);
+  const stored = await Booking.findOne({ bookingId: "FOCUSED-1" }).lean();
+  assert.equal(
+    stored?.transactions.filter((transaction) => transaction.type === "roomRefund")
+      .length,
+    1,
+  );
+});
+
 test("staff financial boundary is inclusive at 2,000 and escalates at 2,001", async () => {
   const allowed = response();
   await recordFinancialAction(

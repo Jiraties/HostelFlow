@@ -10,7 +10,6 @@ const activity_1 = __importDefault(require("../models/activity"));
 const booking_1 = __importDefault(require("../models/booking"));
 const roomInventory_1 = require("../config/roomInventory");
 const dateHelpers_1 = require("../helpers/dateHelpers");
-const commercialSegmentHelpers_1 = require("../helpers/commercialSegmentHelpers");
 const bookingSearchHelpers_1 = require("../helpers/bookingSearchHelpers");
 const roomStayHelpers_1 = require("../helpers/roomStayHelpers");
 const bookingConcurrency_1 = require("./bookingConcurrency");
@@ -25,6 +24,7 @@ const EXTENSION_PAYMENT_METHODS = [
     "Transfer",
 ];
 const CARD_SURCHARGE_RATE = 0.03;
+const BACKWARD_ADD_NIGHTS_ENABLED = process.env.BACKWARD_ADD_NIGHTS_ENABLED !== "false";
 const ROOM_BLOCKING_BOOKING_FILTER = {
     voided: { $ne: true },
     $or: [
@@ -61,6 +61,21 @@ const parseDateOnly = (value) => /^\d{4}-\d{2}-\d{2}$/.test(value)
 const sameRoomSet = (left, right) => left.length === right.length &&
     [...left].sort().every((roomId, index) => roomId === [...right].sort()[index]);
 const calculateNights = (from, to) => Math.round((to.getTime() - from.getTime()) / 86400000);
+const shiftDate = (date, nights) => {
+    const shifted = new Date(date);
+    shifted.setDate(shifted.getDate() + nights);
+    return shifted;
+};
+const bangkokBusinessDate = () => {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Bangkok",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+    }).formatToParts(new Date());
+    const value = (type) => parts.find((part) => part.type === type)?.value;
+    return `${value("year")}-${value("month")}-${value("day")}`;
+};
 const requestHashes = (bookingId, idempotencyKey, input) => ({
     operationKeyHash: hash(`${bookingId}:${idempotencyKey}`),
     requestHash: hash(stableStringify(input)),
@@ -87,8 +102,12 @@ const extensionResult = async (bookingId, segmentId) => {
         extension: {
             segmentId,
             transactionId: segment.transactionId,
+            placement: segment.placement || "after",
+            segmentFrom: segment.from,
+            segmentTo: segment.to,
+            newCheckIn: cleanBooking.checkIn,
             previousCheckOut: segment.from,
-            newCheckOut: segment.to,
+            newCheckOut: cleanBooking.checkOut,
             addedNights: calculateNights(new Date(segment.from), new Date(segment.to)),
         },
     };
@@ -131,35 +150,83 @@ const validateInput = (input) => {
     if (invalidRooms.length > 0) {
         throw new BookingExtensionError(400, "INVALID_ROOM_ID", `ไม่พบห้องที่เปิดใช้งาน: ${invalidRooms.join(", ")}`);
     }
-    const start = parseDateOnly(input.startDate);
-    const end = parseDateOnly(input.newCheckOut);
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    if (input.placement !== undefined) {
+        if (!["before", "after"].includes(input.placement)) {
+            throw new BookingExtensionError(400, "INVALID_EXTENSION_PLACEMENT", "ตำแหน่งคืนที่เพิ่มไม่ถูกต้อง");
+        }
+        if (!Number.isInteger(input.nights) || Number(input.nights) < 1) {
+            throw new BookingExtensionError(400, "INVALID_EXTENSION_NIGHTS", "จำนวนคืนที่เพิ่มต้องเป็นจำนวนเต็มอย่างน้อย 1 คืน");
+        }
+        if (input.placement === "before" && input.platformId !== "WALK") {
+            throw new BookingExtensionError(400, "INVALID_BACKWARD_EXTENSION_SOURCE", "คืนที่เพิ่มก่อนวันเข้าพักต้องเป็น Walk-in");
+        }
+        if (input.placement === "before" && !BACKWARD_ADD_NIGHTS_ENABLED) {
+            throw new BookingExtensionError(403, "BACKWARD_EXTENSION_DISABLED", "การเพิ่มคืนก่อนวันเข้ายังไม่เปิดใช้งาน");
+        }
+        return;
+    }
+    const start = parseDateOnly(input.startDate || "");
+    const end = parseDateOnly(input.newCheckOut || "");
+    if (Number.isNaN(start.getTime()) ||
+        Number.isNaN(end.getTime()) ||
+        end <= start ||
+        calculateNights(start, end) < 1) {
         throw new BookingExtensionError(400, "INVALID_EXTENSION_DATES", "วันที่สำหรับคืนที่เพิ่มไม่ถูกต้อง");
     }
-    if (end <= start || calculateNights(start, end) < 1) {
-        throw new BookingExtensionError(400, "INVALID_EXTENSION_DATES", "วันเช็คเอาท์ใหม่ต้องเพิ่มอย่างน้อย 1 คืน");
-    }
-    return { start, end };
 };
-const validateBooking = (currentBooking, input, start) => {
+const deriveExtensionDates = (currentBooking, input) => {
+    if (input.placement === "before") {
+        const end = parseDateOnly((0, dateHelpers_1.toInputDate)(currentBooking.checkIn));
+        const start = shiftDate(end, -Number(input.nights));
+        if ((0, dateHelpers_1.toInputDate)(start) < bangkokBusinessDate()) {
+            throw new BookingExtensionError(400, "BACKWARD_EXTENSION_BEFORE_BUSINESS_DATE", "ไม่สามารถเพิ่มคืนก่อนวันทำการปัจจุบันของกรุงเทพฯ", currentBooking);
+        }
+        return { start, end, placement: "before" };
+    }
+    if (input.placement === "after") {
+        const start = parseDateOnly((0, dateHelpers_1.toInputDate)(currentBooking.checkOut));
+        return {
+            start,
+            end: shiftDate(start, Number(input.nights)),
+            placement: "after",
+        };
+    }
+    return {
+        start: parseDateOnly(input.startDate || ""),
+        end: parseDateOnly(input.newCheckOut || ""),
+        placement: "after",
+    };
+};
+const validateBooking = (currentBooking, input, start, placement) => {
     if (currentBooking.voided) {
         throw new BookingExtensionError(409, "BOOKING_LIFECYCLE_CONFLICT", "ไม่สามารถเพิ่มคืนให้ booking ที่ถูก void", currentBooking);
     }
-    if (!["booked", "checkedIn"].includes(currentBooking.status)) {
-        throw new BookingExtensionError(400, "BOOKING_NOT_ELIGIBLE", "Add Nights ได้เฉพาะ booking ที่ยังไม่ check-in หรือกำลังเข้าพัก", currentBooking);
+    const eligibleStatuses = placement === "before" ? ["booked"] : ["booked", "checkedIn"];
+    if (!eligibleStatuses.includes(currentBooking.status)) {
+        throw new BookingExtensionError(400, "BOOKING_NOT_ELIGIBLE", placement === "before"
+            ? "เพิ่มคืนก่อนวันเข้าได้เฉพาะ booking ที่ยังไม่ check-in"
+            : "Add Nights ได้เฉพาะ booking ที่ยังไม่ check-in หรือกำลังเข้าพัก", currentBooking);
     }
     if ((currentBooking.revision || 0) !== input.expectedRevision) {
         throw new BookingExtensionError(409, "BOOKING_REVISION_CONFLICT", "ข้อมูลการจองถูกเปลี่ยนแล้ว กรุณารีเฟรชและลองใหม่", currentBooking);
     }
-    if ((0, dateHelpers_1.toInputDate)(currentBooking.checkOut) !== input.startDate) {
-        throw new BookingExtensionError(400, "NON_CONTIGUOUS_EXTENSION", "คืนที่เพิ่มต้องเริ่มต่อจากวันเช็คเอาท์ปัจจุบัน", currentBooking);
+    const expectedBoundary = placement === "before"
+        ? (0, dateHelpers_1.toInputDate)(currentBooking.checkIn)
+        : (0, dateHelpers_1.toInputDate)(currentBooking.checkOut);
+    const actualBoundary = placement === "before"
+        ? (0, dateHelpers_1.toInputDate)(shiftDate(start, Number(input.nights)))
+        : (0, dateHelpers_1.toInputDate)(start);
+    if (expectedBoundary !== actualBoundary) {
+        throw new BookingExtensionError(400, "NON_CONTIGUOUS_EXTENSION", placement === "before"
+            ? "คืนที่เพิ่มต้องสิ้นสุดตรงวันเช็คอินปัจจุบัน"
+            : "คืนที่เพิ่มต้องเริ่มต่อจากวันเช็คเอาท์ปัจจุบัน", currentBooking);
     }
     const existingRooms = (currentBooking.roomStays || []).flatMap(roomStayHelpers_1.getRoomStayRoomIds);
     const invalidExistingRooms = (0, roomInventory_1.invalidRoomIds)(existingRooms);
     if (invalidExistingRooms.length > 0) {
         throw new BookingExtensionError(400, "INVALID_EXISTING_ROOM_ID", `booking มีห้องที่ไม่เปิดใช้งาน: ${invalidExistingRooms.join(", ")}`, currentBooking);
     }
-    if (start.getTime() !== new Date(`${input.startDate}T00:00:00`).getTime()) {
+    if (Number.isNaN(start.getTime())) {
         throw new BookingExtensionError(400, "INVALID_EXTENSION_DATES", "วันที่สำหรับคืนที่เพิ่มไม่ถูกต้อง");
     }
 };
@@ -191,12 +258,86 @@ const hasRoomConflict = async (bookingId, roomIds, from, to, session) => Boolean
         },
     ],
 }).session(session));
+const materializeCommercialSegments = (currentBooking) => {
+    const storedSegments = [...(currentBooking.commercialSegments || [])];
+    if (storedSegments.some((segment) => segment.kind === "original")) {
+        return storedSegments;
+    }
+    const originalCharges = (currentBooking.transactions || []).filter((transaction) => transaction.type === "roomCharge" &&
+        transaction.sourceAction !== "EXTEND_BOOKING");
+    if (originalCharges.length !== 1 || !originalCharges[0]._id) {
+        throw new BookingExtensionError(409, "COMMERCIAL_HISTORY_INCOMPLETE", "ประวัติค่าห้องเดิมไม่ชัดเจน จึงไม่สามารถเพิ่มคืนได้", currentBooking);
+    }
+    const firstExtension = storedSegments
+        .filter((segment) => segment.kind === "extension")
+        .sort((left, right) => new Date(left.from).getTime() - new Date(right.from).getTime())[0];
+    const originalCharge = originalCharges[0];
+    return [
+        {
+            _id: String(new mongoose_1.default.Types.ObjectId()),
+            kind: "original",
+            from: currentBooking.checkIn,
+            to: firstExtension?.from || currentBooking.checkOut,
+            platformId: currentBooking.platformId,
+            channelBookingId: currentBooking.bookingId,
+            amount: Math.abs(originalCharge.amount || 0),
+            transactionId: String(originalCharge._id),
+            createdBy: originalCharge.createdBy || currentBooking.staffUsername || "system",
+            createdAt: originalCharge.createdAt || currentBooking.checkIn,
+        },
+        ...storedSegments,
+    ];
+};
+const assertAggregateIntegrity = ({ segments, roomStays, transactions, checkIn, checkOut, currentBooking, }) => {
+    const chronologicalSegments = [...segments].sort((left, right) => new Date(left.from).getTime() - new Date(right.from).getTime());
+    const originals = chronologicalSegments.filter((segment) => segment.kind === "original");
+    const roomChargeLinkCounts = transactions
+        .filter((transaction) => transaction.type === "roomCharge")
+        .reduce((counts, transaction) => {
+        const transactionId = String(transaction._id);
+        counts.set(transactionId, (counts.get(transactionId) || 0) + 1);
+        return counts;
+    }, new Map());
+    const linkedTransactionIds = new Set();
+    const segmentCoverageIsValid = chronologicalSegments.every((segment, index) => {
+        const transactionIsUnique = roomChargeLinkCounts.get(segment.transactionId) === 1 &&
+            !linkedTransactionIds.has(segment.transactionId);
+        linkedTransactionIds.add(segment.transactionId);
+        return (new Date(segment.from) < new Date(segment.to) &&
+            transactionIsUnique &&
+            (segment.kind !== "original" || segment.placement === undefined) &&
+            (index === 0 ||
+                new Date(chronologicalSegments[index - 1].to).getTime() ===
+                    new Date(segment.from).getTime()));
+    });
+    const chronologicalRoomStays = [...roomStays].sort((left, right) => new Date(left.from).getTime() - new Date(right.from).getTime());
+    const roomCoverageIsValid = chronologicalRoomStays.every((stay, index) => new Date(stay.from) < new Date(stay.to) &&
+        (index === 0 ||
+            new Date(chronologicalRoomStays[index - 1].to).getTime() ===
+                new Date(stay.from).getTime()));
+    const boundsAreValid = chronologicalSegments.length > 0 &&
+        chronologicalRoomStays.length > 0 &&
+        new Date(chronologicalSegments[0].from).getTime() === checkIn.getTime() &&
+        new Date(chronologicalSegments[chronologicalSegments.length - 1].to).getTime() ===
+            checkOut.getTime() &&
+        new Date(chronologicalRoomStays[0].from).getTime() === checkIn.getTime() &&
+        new Date(chronologicalRoomStays[chronologicalRoomStays.length - 1].to).getTime() ===
+            checkOut.getTime();
+    if (originals.length !== 1 ||
+        !segmentCoverageIsValid ||
+        !roomCoverageIsValid ||
+        !boundsAreValid) {
+        throw new BookingExtensionError(409, "COMMERCIAL_HISTORY_INCOMPLETE", "ช่วงวันที่เชิงพาณิชย์หรือการจัดห้องไม่ต่อเนื่อง", currentBooking);
+    }
+    return { chronologicalSegments, chronologicalRoomStays };
+};
 const extendBooking = async ({ bookingId, input, idempotencyKey, staffUsername, }) => {
     if (!idempotencyKey || idempotencyKey.length > 200) {
         throw new BookingExtensionError(400, "IDEMPOTENCY_KEY_REQUIRED", "กรุณาส่ง Idempotency-Key สำหรับ Add Nights");
     }
     const normalizedInput = {
         ...input,
+        nights: input.nights === undefined ? undefined : Number(input.nights),
         roomIds: Array.isArray(input.roomIds)
             ? input.roomIds.map((roomId) => String(roomId).trim()).filter(Boolean)
             : input.roomIds,
@@ -206,7 +347,7 @@ const extendBooking = async ({ bookingId, input, idempotencyKey, staffUsername, 
             : "",
         note: typeof input.note === "string" ? input.note.trim() : undefined,
     };
-    const { start, end } = validateInput(normalizedInput);
+    validateInput(normalizedInput);
     const { operationKeyHash, requestHash } = requestHashes(bookingId, idempotencyKey, normalizedInput);
     const replay = await replayExistingOperation(bookingId, operationKeyHash, requestHash);
     if (replay)
@@ -215,13 +356,20 @@ const extendBooking = async ({ bookingId, input, idempotencyKey, staffUsername, 
     if (!initialBooking) {
         throw new BookingExtensionError(404, "BOOKING_NOT_FOUND", "ไม่พบ booking นี้");
     }
-    validateBooking(initialBooking, normalizedInput, start);
+    const initialDates = deriveExtensionDates(initialBooking, normalizedInput);
+    validateBooking(initialBooking, normalizedInput, initialDates.start, initialDates.placement);
     const segmentId = new mongoose_1.default.Types.ObjectId();
     const transactionId = new mongoose_1.default.Types.ObjectId();
     const surchargeTransactionId = new mongoose_1.default.Types.ObjectId();
     const createdAt = new Date();
     try {
-        await (0, roomMutationLocks_1.withRoomMutationLocks)([{ roomIds: normalizedInput.roomIds, from: start, to: end }], async () => {
+        await (0, roomMutationLocks_1.withRoomMutationLocks)([
+            {
+                roomIds: normalizedInput.roomIds,
+                from: initialDates.start,
+                to: initialDates.end,
+            },
+        ], async () => {
             const session = await mongoose_1.default.startSession();
             try {
                 await session.withTransaction(async () => {
@@ -238,7 +386,8 @@ const extendBooking = async ({ bookingId, input, idempotencyKey, staffUsername, 
                         }
                         return;
                     }
-                    validateBooking(currentBooking, normalizedInput, start);
+                    const { start, end, placement } = deriveExtensionDates(currentBooking, normalizedInput);
+                    validateBooking(currentBooking, normalizedInput, start, placement);
                     if (await hasRoomConflict(bookingId, normalizedInput.roomIds, start, end, session)) {
                         throw new BookingExtensionError(409, "ROOM_CONFLICT", "ห้องถูกจองในคืนที่ต้องการเพิ่มแล้ว");
                     }
@@ -278,27 +427,40 @@ const extendBooking = async ({ bookingId, input, idempotencyKey, staffUsername, 
                     }
                     const assignedTransactions = await (0, cashLedgerTransaction_1.assignCashTransactionsInSession)(transactions, session);
                     const sortedRoomStays = [...currentBooking.roomStays].sort((left, right) => new Date(left.from).getTime() - new Date(right.from).getTime());
-                    const finalStay = sortedRoomStays[sortedRoomStays.length - 1];
-                    if (finalStay &&
-                        (0, dateHelpers_1.toInputDate)(finalStay.to) === normalizedInput.startDate &&
-                        sameRoomSet((0, roomStayHelpers_1.getRoomStayRoomIds)(finalStay), normalizedInput.roomIds)) {
-                        finalStay.to = end;
-                        finalStay.roomIds = normalizedInput.roomIds;
-                        finalStay.roomId = undefined;
+                    const boundaryStay = placement === "before"
+                        ? sortedRoomStays[0]
+                        : sortedRoomStays[sortedRoomStays.length - 1];
+                    const previousRooms = boundaryStay
+                        ? (0, roomStayHelpers_1.getRoomStayRoomIds)(boundaryStay)
+                        : [];
+                    if (boundaryStay &&
+                        (placement === "before"
+                            ? (0, dateHelpers_1.toInputDate)(boundaryStay.from) === (0, dateHelpers_1.toInputDate)(end)
+                            : (0, dateHelpers_1.toInputDate)(boundaryStay.to) === (0, dateHelpers_1.toInputDate)(start)) &&
+                        sameRoomSet(previousRooms, normalizedInput.roomIds)) {
+                        if (placement === "before")
+                            boundaryStay.from = start;
+                        else
+                            boundaryStay.to = end;
+                        boundaryStay.roomIds = normalizedInput.roomIds;
+                        boundaryStay.roomId = undefined;
                     }
                     else {
-                        sortedRoomStays.push({
+                        const addedStay = {
                             roomIds: normalizedInput.roomIds,
                             from: start,
                             to: end,
-                        });
+                        };
+                        if (placement === "before")
+                            sortedRoomStays.unshift(addedStay);
+                        else
+                            sortedRoomStays.push(addedStay);
                     }
-                    const previousSegments = (0, commercialSegmentHelpers_1.effectiveCommercialSegments)(currentBooking);
-                    const originalPlatform = previousSegments[previousSegments.length - 1]?.platformId ||
-                        currentBooking.platformId;
+                    const previousSegments = materializeCommercialSegments(currentBooking);
                     const segment = {
                         _id: String(segmentId),
                         kind: "extension",
+                        placement,
                         from: start,
                         to: end,
                         platformId: normalizedInput.platformId,
@@ -311,6 +473,19 @@ const extendBooking = async ({ bookingId, input, idempotencyKey, staffUsername, 
                         operationKeyHash,
                         requestHash,
                     };
+                    const aggregateCheckIn = placement === "before" ? start : new Date(currentBooking.checkIn);
+                    const aggregateCheckOut = placement === "after" ? end : new Date(currentBooking.checkOut);
+                    const integrity = assertAggregateIntegrity({
+                        segments: [...previousSegments, segment],
+                        roomStays: sortedRoomStays,
+                        transactions: [
+                            ...(currentBooking.transactions || []),
+                            ...assignedTransactions,
+                        ],
+                        checkIn: aggregateCheckIn,
+                        checkOut: aggregateCheckOut,
+                        currentBooking,
+                    });
                     const newSearchBookingIds = (0, bookingSearchHelpers_1.buildBookingIdSearchValues)(normalizedInput.channelBookingId);
                     const updatedBooking = await booking_1.default.findOneAndUpdate({
                         bookingId,
@@ -320,12 +495,13 @@ const extendBooking = async ({ bookingId, input, idempotencyKey, staffUsername, 
                         "commercialSegments.operationKeyHash": { $ne: operationKeyHash },
                     }, {
                         $set: {
-                            checkOut: end,
-                            nights: calculateNights(new Date(currentBooking.checkIn), end),
-                            roomStays: sortedRoomStays,
+                            checkIn: aggregateCheckIn,
+                            checkOut: aggregateCheckOut,
+                            nights: calculateNights(aggregateCheckIn, aggregateCheckOut),
+                            roomStays: integrity.chronologicalRoomStays,
+                            commercialSegments: integrity.chronologicalSegments,
                         },
                         $push: {
-                            commercialSegments: segment,
                             transactions: { $each: assignedTransactions },
                         },
                         $addToSet: {
@@ -347,18 +523,21 @@ const extendBooking = async ({ bookingId, input, idempotencyKey, staffUsername, 
                             summary: {
                                 segmentId: String(segmentId),
                                 transactionId: String(transactionId),
+                                placement,
+                                previousCheckIn: currentBooking.checkIn,
+                                newCheckIn: aggregateCheckIn,
                                 originalCheckOut: currentBooking.checkOut,
-                                newCheckOut: end,
+                                newCheckOut: aggregateCheckOut,
+                                segmentFrom: start,
+                                segmentTo: end,
                                 addedNights: calculateNights(start, end),
-                                originalPlatform,
+                                originalPlatform: currentBooking.platformId,
                                 extensionPlatform: normalizedInput.platformId,
                                 extensionBookingId: normalizedInput.channelBookingId,
-                                previousRooms: finalStay
-                                    ? (0, roomStayHelpers_1.getRoomStayRoomIds)(finalStay)
-                                    : [],
+                                previousRooms,
                                 extensionRooms: normalizedInput.roomIds,
-                                roomChanged: finalStay
-                                    ? !sameRoomSet((0, roomStayHelpers_1.getRoomStayRoomIds)(finalStay), normalizedInput.roomIds)
+                                roomChanged: boundaryStay
+                                    ? !sameRoomSet(previousRooms, normalizedInput.roomIds)
                                     : true,
                                 amount: normalizedInput.amount,
                                 paymentMethod: normalizedInput.paymentMethod,

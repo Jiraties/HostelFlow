@@ -20,6 +20,7 @@ bookingsRouter.patch("/pinBooking/:bookingId", booking_1.pinBooking);
 bookingsRouter.post("/addTransaction/:bookingId", booking_1.addTransaction);
 bookingsRouter.post("/:bookingId/transactions/:transactionId/corrections", transactionCorrections_1.correctTransaction);
 bookingsRouter.get("/getTodayBookings/:type", booking_1.getTodayBookings);
+bookingsRouter.get("/getNeedsReviewBookings/count", booking_1.getNeedsReviewBookingCount);
 bookingsRouter.get("/getNeedsReviewBookings", booking_1.getNeedsReviewBookings);
 bookingsRouter.get("/getAdminDashboardStats", booking_1.getAdminDashboardStats);
 bookingsRouter.get("/getMasterBookings", booking_1.getMasterBookings);

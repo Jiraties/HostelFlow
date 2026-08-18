@@ -194,6 +194,20 @@ const optionLabel = (option: PaletteOption) => {
   return option.result.label;
 };
 
+const bookingStatusDisplay: Record<string, { label: string; color: string }> = {
+  booked: { label: "รอ Check-In", color: "#00adef" },
+  checkedIn: { label: "Check-In แล้ว", color: "var(--green)" },
+  checkedOut: { label: "Check-Out แล้ว", color: "#f59e0b" },
+  cancelled: { label: "ยกเลิก", color: "#dc2626" },
+  noShow: { label: "No-Show", color: "#6b7280" },
+};
+
+const bookingStatusMeta = (status: string) =>
+  bookingStatusDisplay[status] || {
+    label: "ไม่ทราบสถานะ",
+    color: "#9ca3af",
+  };
+
 const commandColorClass = (command: PaletteCommand) => {
   if (command.action === "addBooking") return "booking";
   if (command.action === "addTransaction") return "transaction";
@@ -935,7 +949,29 @@ const GlobalSearchPaletteContent = ({
                         />
                       </span>
                       <span className="globalSearch__optionCopy">
-                        <strong>{optionLabel(option)}</strong>
+                        <strong className="globalSearch__optionTitle">
+                          <span className="globalSearch__optionTitleText">
+                            {optionLabel(option)}
+                          </span>
+                          {option.type === "data" &&
+                            option.result.kind === "booking" && (
+                              <span
+                                className="globalSearch__bookingStatusDot"
+                                role="img"
+                                aria-label={
+                                  bookingStatusMeta(option.result.status).label
+                                }
+                                title={
+                                  bookingStatusMeta(option.result.status).label
+                                }
+                                style={{
+                                  backgroundColor: bookingStatusMeta(
+                                    option.result.status,
+                                  ).color,
+                                }}
+                              />
+                            )}
+                        </strong>
                         <small>
                           {option.type === "command"
                             ? option.command.description

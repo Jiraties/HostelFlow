@@ -6,6 +6,7 @@ import axios from "axios";
 import toast from "react-hot-toast";
 import { API_URL } from "../config/api";
 import { useState } from "react";
+import { getApiErrorMessage } from "../helpers/apiErrorMessage";
 
 const ConfirmationModal = ({
   booking,
@@ -55,14 +56,10 @@ const ConfirmationModal = ({
       // toast.success("ลบการจองของ " + booking.name + " สำเร็จ");
       closeAllModals?.();
     } catch (err: unknown) {
-      const message = axios.isAxiosError<{
-        error?: string;
-        message?: string;
-      }>(err)
-        ? err.response?.data.message ||
-          err.response?.data.error ||
-          "เกิดข้อผิดพลาดในการ void การจอง"
-        : "เกิดข้อผิดพลาดในการ void การจอง";
+      const message = getApiErrorMessage(
+        err,
+        "เกิดข้อผิดพลาดในการ void การจอง",
+      );
 
       throw new Error(message);
     } finally {

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.commercialRoomSlices = exports.transactionPlatformId = exports.effectiveCommercialSegments = void 0;
+exports.commercialRoomSlices = exports.transactionPlatformId = exports.commercialSegmentPlacement = exports.effectiveCommercialSegments = void 0;
 const roomStayHelpers_1 = require("./roomStayHelpers");
 const effectiveCommercialSegments = (currentBooking) => {
     const storedSegments = [...(currentBooking.commercialSegments || [])].sort((left, right) => new Date(left.from).getTime() - new Date(right.from).getTime());
@@ -10,9 +10,15 @@ const effectiveCommercialSegments = (currentBooking) => {
                 ? segment.toObject()
                 : segment;
             const linkedTransaction = (currentBooking.transactions || []).find((transaction) => String(transaction._id) === segment.transactionId);
-            return linkedTransaction
-                ? { ...plainSegment, amount: Math.abs(linkedTransaction.amount || 0) }
+            const normalizedSegment = plainSegment.kind === "extension" && !plainSegment.placement
+                ? { ...plainSegment, placement: "after" }
                 : plainSegment;
+            return linkedTransaction
+                ? {
+                    ...normalizedSegment,
+                    amount: Math.abs(linkedTransaction.amount || 0),
+                }
+                : normalizedSegment;
         });
     }
     const firstExtension = storedSegments.find((segment) => segment.kind === "extension");
@@ -37,6 +43,8 @@ const effectiveCommercialSegments = (currentBooking) => {
     ];
 };
 exports.effectiveCommercialSegments = effectiveCommercialSegments;
+const commercialSegmentPlacement = (segment) => segment.kind === "extension" ? segment.placement || "after" : undefined;
+exports.commercialSegmentPlacement = commercialSegmentPlacement;
 const transactionPlatformId = (currentBooking, transaction) => {
     if (transaction.platformId)
         return transaction.platformId;

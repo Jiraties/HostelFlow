@@ -20,6 +20,9 @@ test("global palette uses desktop sidebar and mobile More triggers with MUI acce
   assert.doesNotMatch(header, /pageHeader__searchAction/);
   assert.match(sidebar, /sidebar__searchAction/);
   assert.match(sidebar, /aria-keyshortcuts="Control\+K Meta\+K"/);
+  assert.match(sidebar, /Mac\|iPhone\|iPad\|iPod/);
+  assert.match(sidebar, /isAppleKeyboard \? "⌘ K" : "Ctrl K"/);
+  assert.doesNotMatch(sidebar, /<kbd>⌘ K<\/kbd>/);
   assert.match(sidebar, /mobileMore__item--search/);
   assert.match(sidebar, /requestAnimationFrame\(\(\) => openPalette\(\)\)/);
   assert.match(sidebarStyles, /\.sidebar__searchAction/);
@@ -69,7 +72,24 @@ test("desktop sidebar groups related workflows and anchors settings separately",
   assert.doesNotMatch(expandedGroupRule, /box-shadow/);
   assert.match(styles, /\.sidebar__settingsAction/);
   assert.match(styles, /\.sidebar--collapsed \.sidebar__settingsAction/);
+  assert.match(
+    styles,
+    /\.sidebar--collapsed \.sidebar__searchAction \.sidebar__navLabel \{[\s\S]{0,40}display: none;/,
+  );
+  assert.match(
+    styles,
+    /\.sidebar--collapsed \.sidebar__settingsCopy \{[\s\S]{0,40}display: none;/,
+  );
   assert.match(styles, /@media \(max-width: 760px\)[\s\S]*\.sidebar__settingsAction/);
+});
+
+test("mobile Master navigation uses its compact label", () => {
+  const navigation = source("components/navigationItems.ts");
+  const sidebar = source("components/Sidebar.tsx");
+
+  assert.match(navigation, /label: "รายการทั้งหมด"/);
+  assert.match(navigation, /mobileLabel: "ทั้งหมด"/);
+  assert.match(sidebar, /item\.mobileLabel \|\| item\.label/);
 });
 
 test("admin Manage navigation shows the canonical review queue badge", () => {
@@ -98,6 +118,15 @@ test("admin Manage navigation shows the canonical review queue badge", () => {
   assert.match(manage, /material_amount_correction/);
 });
 
+test("Home navigation shows the booking review queue badge", () => {
+  const sidebar = source("components/Sidebar.tsx");
+
+  assert.match(sidebar, /bookings\/getNeedsReviewBookings\/count/);
+  assert.match(sidebar, /item\.link === "\/" && bookingReviewCount > 0/);
+  assert.match(sidebar, /bookingReviewCount > 99 \? "99\+"/);
+  assert.match(sidebar, /รายการจองที่ต้องตรวจสอบ/);
+});
+
 test("dashboard header always shows the full Bangkok date", () => {
   const dashboard = source("pages/Main.tsx");
 
@@ -109,6 +138,14 @@ test("dashboard header always shows the full Bangkok date", () => {
   assert.match(dashboard, /year: "numeric"/);
   assert.match(dashboard, /title=\{fullFormattedDate\}/);
   assert.match(dashboard, /setInterval\([\s\S]{0,80}60_000/);
+});
+
+test("yearly occupancy axis labels show months without day numbers", () => {
+  const dashboard = source("pages/Main.tsx");
+
+  assert.match(dashboard, /metric === "occupancy" && range === "1y"/);
+  assert.match(dashboard, /label\.replace\(\/\^\\d\+\\s\+\//);
+  assert.match(dashboard, /range=\{revenueRange\}/);
 });
 
 test("palette protects IME input and controls request timing and stale responses", () => {
@@ -251,6 +288,24 @@ test("global search and AddBooking share the numeric date draft formatter", () =
   assert.match(bookingDates, /formatNumericDateDraft\(event\.target\.value, checkOutDraft\)/);
 });
 
+test("AddBooking date range preserves efficient form tab order and keyboard calendar navigation", () => {
+  const bookingDates = source("features/bookings/BookingDateRangePicker.tsx");
+
+  assert.doesNotMatch(bookingDates, /onFocus=\{openPicker\}/);
+  assert.match(bookingDates, /event\.key === "Tab"/);
+  assert.match(bookingDates, /setIsOpen\(false\)/);
+  assert.match(bookingDates, /event\.altKey && event\.key === "ArrowDown"/);
+  assert.match(bookingDates, /event\.key !== "F4"/);
+  assert.match(bookingDates, /tabIndex=\{dateKey === keyboardFocusDate \? 0 : -1\}/);
+  assert.match(bookingDates, /event\.key === "ArrowLeft"/);
+  assert.match(bookingDates, /event\.key === "ArrowRight"/);
+  assert.match(bookingDates, /event\.key === "ArrowUp"/);
+  assert.match(bookingDates, /event\.key === "ArrowDown"/);
+  assert.match(bookingDates, /event\.key === "PageUp"/);
+  assert.match(bookingDates, /event\.key === "PageDown"/);
+  assert.match(bookingDates, /checkOutInputRef\.current\?\.focus/);
+});
+
 test("Tab toggles an actions-only command mode without clearing the query", () => {
   const palette = source("features/search/GlobalSearchPalette.tsx");
   const context = source("context/CommandPaletteContext.tsx");
@@ -316,4 +371,17 @@ test("room results use a distinct room accent", () => {
     styles,
     /\.globalSearch__option--room\.Mui-focusVisible \{[\s\S]{0,100}outline: 2px solid/,
   );
+});
+
+test("booking search results show an accessible status-colored dot", () => {
+  const palette = source("features/search/GlobalSearchPalette.tsx");
+  const styles = source("features/search/GlobalSearchPalette.css");
+
+  assert.match(palette, /bookingStatusDisplay/);
+  assert.match(palette, /booked: \{ label: "รอ Check-In", color: "#00adef" \}/);
+  assert.match(palette, /checkedIn: \{ label: "Check-In แล้ว", color: "var\(--green\)" \}/);
+  assert.match(palette, /globalSearch__bookingStatusDot/);
+  assert.match(palette, /aria-label=\{/);
+  assert.match(styles, /\.globalSearch__bookingStatusDot/);
+  assert.match(styles, /border-radius: 50%/);
 });

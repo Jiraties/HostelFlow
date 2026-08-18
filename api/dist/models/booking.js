@@ -38,6 +38,10 @@ const commercialSegmentSchema = new mongoose_1.default.Schema({
         enum: ["original", "extension"],
         required: true,
     },
+    placement: {
+        type: String,
+        enum: ["before", "after"],
+    },
     from: { type: Date, required: true },
     to: { type: Date, required: true },
     platformId: { type: String, required: true },

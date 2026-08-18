@@ -21,6 +21,7 @@ const mutationIdempotency_1 = require("../services/mutationIdempotency");
 const cashShiftMutationLock_1 = require("../services/cashShiftMutationLock");
 const cashLedgerTransaction_1 = require("../services/cashLedgerTransaction");
 const transactionCorrections_1 = require("../services/transactionCorrections");
+const bookingConcurrency_1 = require("../services/bookingConcurrency");
 const expectedStayRevenueHelpers_1 = require("../helpers/expectedStayRevenueHelpers");
 const sendDuplicateMutationResponse = (res) => res.status(409).json({
     error: "DUPLICATE_REQUEST",
@@ -1016,6 +1017,11 @@ const getTodayRevenueBreakdown = async (req, res) => {
             booking_1.default.find({
                 $or: [
                     { checkIn: { $gte: bounds.start, $lt: bounds.end } },
+                    {
+                        commercialSegments: {
+                            $elemMatch: { from: { $gte: bounds.start, $lt: bounds.end } },
+                        },
+                    },
                     { "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end } },
                 ],
             }).lean(),
@@ -1034,7 +1040,8 @@ const getTodayRevenueBreakdown = async (req, res) => {
         bookings.forEach((booking) => {
             const isTodayArrival = new Date(booking.checkIn) >= bounds.start &&
                 new Date(booking.checkIn) < bounds.end;
-            if (isTodayArrival) {
+            if (isTodayArrival &&
+                ["cancelled", "noShow"].includes(booking.status)) {
                 const arrivalAmount = (0, financeHelpers_1.bookingTodayArrivalRevenueAmount)(booking);
                 const roomCharge = (booking.transactions || []).find((transaction) => transaction.type === "roomCharge");
                 if (arrivalAmount > 0 && roomCharge) {
@@ -1048,6 +1055,27 @@ const getTodayRevenueBreakdown = async (req, res) => {
                     addBreakdownTransaction(categories, arrivalTransaction, booking, arrivalAmount, direction);
                     addPaymentMethodBreakdownTransaction(paymentMethods, arrivalTransaction, booking, arrivalAmount, direction);
                 }
+            }
+            if (!["cancelled", "noShow"].includes(booking.status)) {
+                (0, commercialSegmentHelpers_1.effectiveCommercialSegments)(booking)
+                    .filter((segment) => {
+                    const segmentStart = new Date(segment.from);
+                    return segmentStart >= bounds.start && segmentStart < bounds.end;
+                })
+                    .forEach((segment) => {
+                    const roomCharge = (booking.transactions || []).find((transaction) => String(transaction._id) === segment.transactionId);
+                    if (!roomCharge)
+                        return;
+                    const amount = Math.abs(roomCharge.amount || segment.amount || 0);
+                    const segmentTransaction = {
+                        ...roomCharge,
+                        amount,
+                        createdAt: segment.from,
+                    };
+                    const direction = (0, financeHelpers_1.transactionDirection)(segmentTransaction);
+                    addBreakdownTransaction(categories, segmentTransaction, booking, amount, direction);
+                    addPaymentMethodBreakdownTransaction(paymentMethods, segmentTransaction, booking, amount, direction);
+                });
             }
             (booking.transactions || []).forEach((transaction) => {
                 if (!transaction.createdAt)
@@ -1081,7 +1109,7 @@ const getTodayRevenueBreakdown = async (req, res) => {
             period: {
                 startDate: formatBusinessDateKey(bounds.start),
                 endDate: formatBusinessDateKey(bounds.end),
-                basis: "checkInAndTransactionCreatedAt",
+                basis: "commercialSegmentStartAndServiceCreatedAt",
             },
             totals: {
                 grossStayCharges: Number(grossStayCharges.toFixed(2)),
@@ -1116,6 +1144,11 @@ const getTodayRevenueSummary = async (req, res) => {
             booking_1.default.find({
                 $or: [
                     { checkIn: { $gte: bounds.start, $lt: bounds.end } },
+                    {
+                        commercialSegments: {
+                            $elemMatch: { from: { $gte: bounds.start, $lt: bounds.end } },
+                        },
+                    },
                     { "transactions.createdAt": { $gte: bounds.start, $lt: bounds.end } },
                 ],
             }).lean(),
@@ -2062,13 +2095,34 @@ const approveReviewEvent = async (req, res) => {
                     message: "รายการแก้ไขนี้ไม่จำเป็นต้องตรวจสอบ",
                 });
             }
+            const expectedRevision = Number(booking.revision || 0);
             const reviewedAt = new Date();
-            correction.reviewFlags = reviewFlags;
-            correction.reviewStatus = "reviewed";
-            correction.reviewedBy = req.user.username;
-            correction.reviewedAt = reviewedAt;
-            booking.markModified("transactionCorrections");
-            await booking.save();
+            const updatedBooking = await booking_1.default.findOneAndUpdate({
+                bookingId,
+                ...(0, bookingConcurrency_1.bookingRevisionPredicate)(expectedRevision),
+                transactionCorrections: {
+                    $elemMatch: {
+                        _id: correctionId,
+                        targetTransactionId: transactionId,
+                        reviewStatus: { $ne: "reviewed" },
+                    },
+                },
+            }, {
+                $set: {
+                    "transactionCorrections.$.reviewFlags": reviewFlags,
+                    "transactionCorrections.$.reviewStatus": "reviewed",
+                    "transactionCorrections.$.reviewedBy": req.user.username,
+                    "transactionCorrections.$.reviewedAt": reviewedAt,
+                },
+                $inc: { revision: 1 },
+            }, { returnDocument: "after", runValidators: true });
+            if (!updatedBooking) {
+                return (0, bookingConcurrency_1.sendBookingRevisionConflict)(res, bookingId);
+            }
+            const reviewedCorrection = updatedBooking.transactionCorrections.find((candidate) => String(candidate._id) === correctionId);
+            if (!reviewedCorrection) {
+                return (0, bookingConcurrency_1.sendBookingRevisionConflict)(res, bookingId);
+            }
             await (0, activityServices_1.logActivity)(req.user.username, "REVIEW_TRANSACTION", {
                 summary: {
                     reviewEventKind: "transactionCorrection",
@@ -2079,11 +2133,11 @@ const approveReviewEvent = async (req, res) => {
                     before: correction.before,
                     after: correction.after,
                     flags: reviewFlags,
-                    reviewedBy: correction.reviewedBy,
+                    reviewedBy: reviewedCorrection.reviewedBy,
                     reviewedAt,
                 },
             }, bookingId);
-            return res.status(200).json({ correction });
+            return res.status(200).json({ correction: reviewedCorrection });
         }
         const transaction = booking.transactions.find((existingTransaction) => String(existingTransaction._id) === transactionId);
         if (!transaction) {
@@ -2101,12 +2155,33 @@ const approveReviewEvent = async (req, res) => {
                 message: "รายการนี้ไม่จำเป็นต้องตรวจสอบ",
             });
         }
+        const expectedRevision = Number(booking.revision || 0);
         const reviewedAt = transaction.reviewedAt || new Date();
-        transaction.reviewStatus = "reviewed";
-        transaction.reviewedBy = transaction.reviewedBy || req.user.username;
-        transaction.reviewedAt = reviewedAt;
-        booking.markModified("transactions");
-        await booking.save();
+        const reviewedBy = transaction.reviewedBy || req.user.username;
+        const updatedBooking = await booking_1.default.findOneAndUpdate({
+            bookingId,
+            ...(0, bookingConcurrency_1.bookingRevisionPredicate)(expectedRevision),
+            transactions: {
+                $elemMatch: {
+                    _id: transactionId,
+                    reviewStatus: { $ne: "reviewed" },
+                },
+            },
+        }, {
+            $set: {
+                "transactions.$.reviewStatus": "reviewed",
+                "transactions.$.reviewedBy": reviewedBy,
+                "transactions.$.reviewedAt": reviewedAt,
+            },
+            $inc: { revision: 1 },
+        }, { returnDocument: "after", runValidators: true });
+        if (!updatedBooking) {
+            return (0, bookingConcurrency_1.sendBookingRevisionConflict)(res, bookingId);
+        }
+        const reviewedTransaction = updatedBooking.transactions.find((candidate) => String(candidate._id) === transactionId);
+        if (!reviewedTransaction) {
+            return (0, bookingConcurrency_1.sendBookingRevisionConflict)(res, bookingId);
+        }
         await (0, activityServices_1.logActivity)(req.user.username, "REVIEW_TRANSACTION", {
             summary: {
                 bookingId,
@@ -2116,12 +2191,12 @@ const approveReviewEvent = async (req, res) => {
                 paymentMethod: transaction.paymentMethod,
                 amount: transaction.amount,
                 flags: transaction.reviewFlags || [],
-                reviewedBy: transaction.reviewedBy,
+                reviewedBy: reviewedTransaction.reviewedBy,
                 reviewedAt,
             },
         }, bookingId);
         res.status(200).json({
-            transaction,
+            transaction: reviewedTransaction,
         });
     }
     catch (err) {
