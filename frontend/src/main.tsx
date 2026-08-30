@@ -4,6 +4,9 @@ import "./index.css";
 import App from "./App.tsx";
 import { AuthProvider } from "./context/AuthContext.tsx";
 import { BrowserRouter } from "react-router";
+import { setupDemoApi } from "./demo/demoApi.ts";
+
+setupDemoApi();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

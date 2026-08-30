@@ -17,6 +17,7 @@ import Documents from "./pages/Documents";
 import Manage from "./pages/Manage";
 import { CommandPaletteProvider } from "./context/CommandPaletteContext";
 import { useModalInputAutofocus } from "./hooks/useModalInputAutofocus";
+import DemoBanner from "./demo/DemoBanner";
 
 function App() {
   const { isAuthenticated, login, user } = useAuth();
@@ -67,6 +68,7 @@ function App() {
           },
         }}
       />
+      <DemoBanner />
       {isAuthenticated ? (
         <div className="app">
           <CommandPaletteProvider>

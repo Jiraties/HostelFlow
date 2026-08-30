@@ -13,6 +13,7 @@ import {
   type UserSettings,
 } from "../types/userSettings";
 import { clearRecentBookings } from "../helpers/recentBookings";
+import { IS_DEMO_MODE } from "../config/api";
 
 interface userType {
   userId?: string;
@@ -82,6 +83,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const logout = () => {
+    if (IS_DEMO_MODE) return;
     clearRecentBookings(user?.userId);
     setUser(null);
     setStaffNames({});

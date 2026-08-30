@@ -1,0 +1,71 @@
+.demoBanner {
+  align-items: center;
+  backdrop-filter: blur(12px);
+  background: color-mix(in srgb, #111827 94%, transparent);
+  border: 1px solid #ffffff1f;
+  border-radius: 1rem;
+  bottom: 1rem;
+  box-shadow: 0 0.75rem 2rem #0f172a2e;
+  color: white;
+  display: flex;
+  font-size: 0.78rem;
+  gap: 0.9rem;
+  justify-content: space-between;
+  left: 50%;
+  max-width: min(42rem, calc(100vw - 2rem));
+  padding: 0.55rem 0.65rem 0.55rem 0.85rem;
+  position: fixed;
+  transform: translateX(-50%);
+  width: max-content;
+  z-index: 9999;
+}
+
+.demoBanner__message,
+.demoBanner__reset {
+  align-items: center;
+  display: flex;
+}
+
+.demoBanner__message {
+  gap: 0.55rem;
+}
+
+.demoBanner__dot {
+  background: #51d1dc;
+  border-radius: 999px;
+  box-shadow: 0 0 0 0.22rem #51d1dc26;
+  flex: 0 0 auto;
+  height: 0.48rem;
+  width: 0.48rem;
+}
+
+.demoBanner__reset {
+  background: #ffffff14;
+  border: 1px solid #ffffff1f;
+  border-radius: 0.7rem;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  gap: 0.35rem;
+  padding: 0.42rem 0.62rem;
+  white-space: nowrap;
+}
+
+.demoBanner__reset:hover {
+  background: #ffffff24;
+}
+
+@media (max-width: 600px) {
+  .demoBanner {
+    align-items: stretch;
+    bottom: 0.65rem;
+    flex-direction: column;
+    gap: 0.5rem;
+    width: calc(100vw - 1.3rem);
+  }
+
+  .demoBanner__reset {
+    justify-content: center;
+  }
+}
