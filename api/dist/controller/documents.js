@@ -352,15 +352,17 @@ const getBookingsReport = async (req, res) => {
         const bookingChannel = req.query.bookingChannel;
         const bookingStatus = req.query.bookingStatus;
         const paymentMethod = req.query.paymentMethod;
-        if (!/^\d{4}-\d{2}$/.test(month)) {
+        const monthBounds = (0, bookingsReportHelpers_1.bookingsReportCheckInMonthBounds)(month);
+        if (!monthBounds) {
             return res.status(400).json({ message: "Invalid month format" });
         }
-        const [year, monthNumber] = month.split("-").map(Number);
-        const firstDayOfNextMonth = new Date(year, monthNumber, 1);
-        const firstDayOfMonth = new Date(year, monthNumber - 1, 1);
+        const firstDayOfMonth = monthBounds.start;
+        const firstDayOfNextMonth = monthBounds.end;
         const query = {
-            checkIn: { $lt: firstDayOfNextMonth },
-            checkOut: { $gt: firstDayOfMonth },
+            checkIn: {
+                $gte: firstDayOfMonth,
+                $lt: firstDayOfNextMonth,
+            },
         };
         if (bookingChannel) {
             query.$or = [

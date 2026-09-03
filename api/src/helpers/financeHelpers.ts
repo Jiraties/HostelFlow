@@ -22,6 +22,7 @@ export type SourceAction =
   | "ADD_TRANSACTION"
   | "CANCEL_BOOKING"
   | "MARK_NO_SHOW"
+  | "RECORD_PRE_ARRIVAL_ROOM_PAYMENT"
   | "RECORD_REFUND"
   | "RECORD_COMPENSATION"
   | "RESOLVE_STAY"
@@ -35,7 +36,7 @@ export type SourceAction =
 export const CASH_VARIANCE_THRESHOLD = 20;
 export const LARGE_CASH_TRANSACTION_THRESHOLD = 5000;
 export const LARGE_REFUND_THRESHOLD = 2000;
-export const ROUNDING_ADJUSTMENT_REVIEW_THRESHOLD = 10;
+export const ROUNDING_ADJUSTMENT_REVIEW_THRESHOLD = 5;
 export const MATERIAL_TRANSACTION_CORRECTION_DELTA = 2000;
 export const RELATIVE_TRANSACTION_CORRECTION_MIN_DELTA = 500;
 export const RELATIVE_TRANSACTION_CORRECTION_RATE = 0.25;
@@ -55,6 +56,12 @@ const moneyOutTransactionTypes: TransactionType[] = [
   "roomRefund",
   "compensation",
 ];
+
+const refundTransactionTypes = new Set<TransactionType>([
+  "depositRefund",
+  "cancellationRefund",
+  "roomRefund",
+]);
 
 const nonRevenueTransactionTypes: TransactionType[] = [
   "deposit",
@@ -602,10 +609,11 @@ export const transactionNeedsReview = (
   }
   if (
     direction === "out" &&
-    !["adjustment", "roomChargeWriteOff"].includes(transaction.type) &&
-    amount >= LARGE_REFUND_THRESHOLD
+    amount > 0 &&
+    refundTransactionTypes.has(transaction.type)
   ) {
-    flags.push("refund", "large_refund");
+    flags.push("refund");
+    if (amount >= LARGE_REFUND_THRESHOLD) flags.push("large_refund");
   }
   if (transaction.paymentMethod === "Cash" && amount >= LARGE_CASH_TRANSACTION_THRESHOLD) {
     flags.push("large_cash");

@@ -14,6 +14,7 @@ export type actionType =
   | "CANCEL_BOOKING"
   | "MARK_NO_SHOW"
   | "CORRECT_CLOSED_ROOM_AVAILABILITY"
+  | "RECORD_PRE_ARRIVAL_ROOM_PAYMENT"
   | "RECORD_REFUND"
   | "RECORD_COMPENSATION"
   | "RESOLVE_STAY"
@@ -60,6 +61,7 @@ export type activity =
         | "CANCEL_BOOKING"
         | "MARK_NO_SHOW"
         | "CORRECT_CLOSED_ROOM_AVAILABILITY"
+        | "RECORD_PRE_ARRIVAL_ROOM_PAYMENT"
         | "RECORD_REFUND"
         | "RECORD_COMPENSATION"
         | "RESOLVE_STAY"
@@ -121,6 +123,7 @@ const activitySchema = new mongoose.Schema({
       "CANCEL_BOOKING",
       "MARK_NO_SHOW",
       "CORRECT_CLOSED_ROOM_AVAILABILITY",
+      "RECORD_PRE_ARRIVAL_ROOM_PAYMENT",
       "RECORD_REFUND",
       "RECORD_COMPENSATION",
       "RESOLVE_STAY",

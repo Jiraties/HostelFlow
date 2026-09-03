@@ -232,15 +232,11 @@ test("minor rounding adjustments stay below review noise while material or repea
 
   assert.deepEqual(transactionNeedsReview(minorRounding), []);
   assert.deepEqual(
-    transactionNeedsReview({ ...minorRounding, amount: 6 }),
+    transactionNeedsReview({ ...minorRounding, amount: 5 }),
     [],
   );
   assert.deepEqual(
-    transactionNeedsReview({ ...minorRounding, amount: 10 }),
-    [],
-  );
-  assert.deepEqual(
-    transactionNeedsReview({ ...minorRounding, amount: 10.01 }),
+    transactionNeedsReview({ ...minorRounding, amount: 5.01 }),
     ["adjustment"],
   );
   assert.deepEqual(
@@ -255,14 +251,28 @@ test("minor rounding adjustments stay below review noise while material or repea
   ]);
 });
 
-test("large refund review starts at THB 2,000", () => {
-  const refund: transcation = {
-    type: "cancellationRefund",
+test("every refund needs review while THB 2,000 retains the large-refund flag", () => {
+  const refund = (type: transcation["type"], amount: number): transcation => ({
+    type,
     paymentMethod: "Transfer",
-    amount: 2000,
-  };
+    amount,
+  });
 
-  assert.deepEqual(transactionNeedsReview(refund), ["refund", "large_refund"]);
+  assert.deepEqual(transactionNeedsReview(refund("depositRefund", 1)), [
+    "refund",
+  ]);
+  assert.deepEqual(transactionNeedsReview(refund("cancellationRefund", 100)), [
+    "refund",
+  ]);
+  assert.deepEqual(transactionNeedsReview(refund("roomRefund", 1999.99)), [
+    "refund",
+  ]);
+  assert.deepEqual(transactionNeedsReview(refund("roomRefund", 2000)), [
+    "refund",
+    "large_refund",
+  ]);
+  assert.deepEqual(transactionNeedsReview(refund("roomRefund", 0)), []);
+  assert.deepEqual(transactionNeedsReview(refund("compensation", 100)), []);
 });
 
 test("transaction correction review is proportional to financial risk", () => {

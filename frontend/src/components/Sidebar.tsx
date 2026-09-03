@@ -255,29 +255,32 @@ const Sidebar = () => {
       </nav>
 
       {settingsItem && (
-        <Link
-          to={settingsItem.link}
-          title={settingsItem.label}
-          aria-current={
-            location.pathname === settingsItem.link ? "page" : undefined
-          }
-          className={
-            location.pathname === settingsItem.link
-              ? "sidebar__settingsAction sidebar__settingsAction--active"
-              : "sidebar__settingsAction"
-          }
-        >
-          <span className="sidebar__settingsIcon" aria-hidden="true">
-            <i className={`bx ${settingsItem.icon}`} />
-          </span>
-          <span className="sidebar__settingsCopy sidebar__navLabel">
-            <strong>ตั้งค่า</strong>
-          </span>
-          <i
-            className="bx bx-chevron-right sidebar__settingsChevron"
-            aria-hidden="true"
-          />
-        </Link>
+        <>
+          <p className="sidebar__version">HostelFlow v1.1</p>
+          <Link
+            to={settingsItem.link}
+            title={settingsItem.label}
+            aria-current={
+              location.pathname === settingsItem.link ? "page" : undefined
+            }
+            className={
+              location.pathname === settingsItem.link
+                ? "sidebar__settingsAction sidebar__settingsAction--active"
+                : "sidebar__settingsAction"
+            }
+          >
+            <span className="sidebar__settingsIcon" aria-hidden="true">
+              <i className={`bx ${settingsItem.icon}`} />
+            </span>
+            <span className="sidebar__settingsCopy sidebar__navLabel">
+              <strong>ตั้งค่า</strong>
+            </span>
+            <i
+              className="bx bx-chevron-right sidebar__settingsChevron"
+              aria-hidden="true"
+            />
+          </Link>
+        </>
       )}
 
       <nav className="mobileNav" aria-label="เมนูหลัก">
@@ -371,7 +374,7 @@ const Sidebar = () => {
           >
             <div className="mobileMore__handle" aria-hidden="true" />
             <div className="mobileMore__header">
-              <h2 id="mobile-more-title">เมนูเพิ่มเติม</h2>
+              <h2 id="mobile-more-title"></h2>
               <button
                 ref={closeButtonRef}
                 type="button"

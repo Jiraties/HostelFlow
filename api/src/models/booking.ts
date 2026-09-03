@@ -33,6 +33,7 @@ export type SourceAction =
   | "ADD_TRANSACTION"
   | "CANCEL_BOOKING"
   | "MARK_NO_SHOW"
+  | "RECORD_PRE_ARRIVAL_ROOM_PAYMENT"
   | "RECORD_REFUND"
   | "RECORD_COMPENSATION"
   | "RESOLVE_STAY"
@@ -448,6 +449,7 @@ export const transactionSchema = new mongoose.Schema({
       "ADD_TRANSACTION",
       "CANCEL_BOOKING",
       "MARK_NO_SHOW",
+      "RECORD_PRE_ARRIVAL_ROOM_PAYMENT",
       "RECORD_REFUND",
       "RECORD_COMPENSATION",
       "RESOLVE_STAY",

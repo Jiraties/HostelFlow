@@ -90,6 +90,17 @@ const roomTypeColorMap: Record<string, string> = {
   wicker: "#e8cf82",
 };
 
+const getRoomTypeKey = (roomId: string) => {
+  const roomType = roomId
+    .trim()
+    .toLowerCase()
+    .replace(/\s*\d+$/, "");
+
+  return roomType === "balcony" || roomType === "window"
+    ? "balcony-window"
+    : roomType;
+};
+
 const getRoomTypeColor = (roomId: string) => {
   const normalizedRoomId = roomId.trim().toLowerCase();
   const roomType = normalizedRoomId.replace(/\s+\d+$/, "");
@@ -213,6 +224,9 @@ const Calendar = () => {
 
   const roomRows: ReactNode[] = [];
   const mergedBookingBlocks: ReactNode[] = [];
+  const timelineGridRows: string[] = [roomRowHeight];
+  const roomGridRows: number[] = [];
+  let roomTypeSeparatorCount = 0;
 
   const renderedDayHeaders = calendarDays.map((day, i) => {
     const weekday = new Intl.DateTimeFormat("en-US", {
@@ -285,7 +299,30 @@ const Calendar = () => {
   >();
 
   rooms.forEach((room, roomIndex) => {
-    const gridRow = roomIndex + 2; // row 1 = header, rooms start at 2
+    const startsNewRoomType =
+      roomIndex > 0 &&
+      getRoomTypeKey(room.roomId) !==
+        getRoomTypeKey(rooms[roomIndex - 1].roomId);
+
+    if (startsNewRoomType) {
+      roomTypeSeparatorCount += 1;
+      timelineGridRows.push("1.1rem");
+      roomRows.push(
+        <div
+          className="timeline__roomTypeSeparator"
+          key={`room-type-separator-${room.roomId}`}
+          style={{
+            gridColumn: "1 / -1",
+            gridRow: roomIndex + 1 + roomTypeSeparatorCount,
+          }}
+          aria-hidden="true"
+        />,
+      );
+    }
+
+    timelineGridRows.push(roomRowHeight);
+    const gridRow = roomIndex + 2 + roomTypeSeparatorCount; // row 1 = header, rooms start at 2
+    roomGridRows.push(gridRow);
     const roomRow: ReactNode[] = [];
 
     // Room label
@@ -373,7 +410,11 @@ const Calendar = () => {
       const previousRoomIndex =
         currentGroup?.roomIndexes[currentGroup.roomIndexes.length - 1];
 
-      if (currentGroup && previousRoomIndex === item.roomIndex - 1) {
+      if (
+        currentGroup &&
+        previousRoomIndex !== undefined &&
+        roomGridRows[item.roomIndex] === roomGridRows[previousRoomIndex] + 1
+      ) {
         currentGroup.roomIndexes.push(item.roomIndex);
         return;
       }
@@ -386,7 +427,7 @@ const Calendar = () => {
       const position = getVisibleBookingPosition(booking);
       if (!position) return;
 
-      const gridRow = `${group.roomIndexes[0] + 2} / span ${
+      const gridRow = `${roomGridRows[group.roomIndexes[0]]} / span ${
         group.roomIndexes.length
       }`;
 
@@ -569,10 +610,7 @@ const Calendar = () => {
 
   const showCalendarLoadError = useCallback((err: unknown) => {
     toast.error(
-      getApiErrorMessage(
-        err,
-        "ไม่สามารถโหลดตารางห้องได้ กรุณาลองใหม่อีกครั้ง",
-      ),
+      getApiErrorMessage(err, "ไม่สามารถโหลดตารางห้องได้ กรุณาลองใหม่อีกครั้ง"),
     );
   }, []);
 
@@ -649,8 +687,14 @@ const Calendar = () => {
         return;
       }
       setHighlightedRoomDate(targetKey);
-      target.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
-      setSearchAnnouncement(`เลื่อนไปยัง ${targetRoomId} วันที่ ${targetDate} แล้ว`);
+      target.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+        inline: "center",
+      });
+      setSearchAnnouncement(
+        `เลื่อนไปยัง ${targetRoomId} วันที่ ${targetDate} แล้ว`,
+      );
       highlightTimeoutId = window.setTimeout(
         () => setHighlightedRoomDate(""),
         4000,
@@ -853,7 +897,7 @@ const Calendar = () => {
           className="timeline"
           style={{
             gridTemplateColumns: `var(--timeline-room-column-width, 10rem) repeat(${getDateInMonth(year, month)}, ${dayColumnWidth})`,
-            gridTemplateRows: `repeat(${rooms.length + 1}, ${roomRowHeight})`,
+            gridTemplateRows: timelineGridRows.join(" "),
           }}
         >
           <div

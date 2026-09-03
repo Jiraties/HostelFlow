@@ -5,7 +5,7 @@ const commercialSegmentHelpers_1 = require("./commercialSegmentHelpers");
 exports.CASH_VARIANCE_THRESHOLD = 20;
 exports.LARGE_CASH_TRANSACTION_THRESHOLD = 5000;
 exports.LARGE_REFUND_THRESHOLD = 2000;
-exports.ROUNDING_ADJUSTMENT_REVIEW_THRESHOLD = 10;
+exports.ROUNDING_ADJUSTMENT_REVIEW_THRESHOLD = 5;
 exports.MATERIAL_TRANSACTION_CORRECTION_DELTA = 2000;
 exports.RELATIVE_TRANSACTION_CORRECTION_MIN_DELTA = 500;
 exports.RELATIVE_TRANSACTION_CORRECTION_RATE = 0.25;
@@ -19,6 +19,11 @@ const moneyOutTransactionTypes = [
     "roomRefund",
     "compensation",
 ];
+const refundTransactionTypes = new Set([
+    "depositRefund",
+    "cancellationRefund",
+    "roomRefund",
+]);
 const nonRevenueTransactionTypes = [
     "deposit",
     "depositRefund",
@@ -386,9 +391,11 @@ const transactionNeedsReview = (transaction, sameTypeCount = 0) => {
         flags.push("negative_adjustment");
     }
     if (direction === "out" &&
-        !["adjustment", "roomChargeWriteOff"].includes(transaction.type) &&
-        amount >= exports.LARGE_REFUND_THRESHOLD) {
-        flags.push("refund", "large_refund");
+        amount > 0 &&
+        refundTransactionTypes.has(transaction.type)) {
+        flags.push("refund");
+        if (amount >= exports.LARGE_REFUND_THRESHOLD)
+            flags.push("large_refund");
     }
     if (transaction.paymentMethod === "Cash" && amount >= exports.LARGE_CASH_TRANSACTION_THRESHOLD) {
         flags.push("large_cash");

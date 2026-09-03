@@ -7,14 +7,26 @@ const frontendRoot = path.resolve(__dirname, "../../frontend/src");
 const source = (relativePath: string) =>
   readFileSync(path.join(frontendRoot, relativePath), "utf8");
 
-test("ViewBooking exposes a direct PDF download action backed by a fresh booking response", () => {
+test("ViewBooking exposes a standalone Booking Summary print action backed by fresh data", () => {
   const viewBooking = source("features/bookings/ViewBooking.tsx");
 
-  assert.match(viewBooking, /ดาวน์โหลด PDF/);
+  assert.match(viewBooking, /ปริ้น Booking Summary/);
+  assert.match(viewBooking, /icon=\{pdfExporting \? "bx-loader-alt bx-spin" : "bx-printer"\}/);
   assert.match(viewBooking, /getBookingById\/\$\{data\.bookingId\}/);
   assert.match(viewBooking, /import\(\s*"\.\/bookingSummaryPdf\.ts"\s*\)/);
-  assert.match(viewBooking, /downloadBookingSummaryPdf\(\{/);
+  assert.match(viewBooking, /printBookingSummaryPdf\(\{/);
   assert.match(viewBooking, /disabled=\{pdfExporting\}/);
+  assert.doesNotMatch(viewBooking, /ดาวน์โหลด PDF|bx-arrow-to-bottom/);
+});
+
+test("Booking Summary opens the browser print view without downloading a file", () => {
+  const pdf = source("features/bookings/bookingSummaryPdf.ts");
+
+  assert.match(pdf, /export const printBookingSummaryPdf/);
+  assert.match(pdf, /document\.createElement\("iframe"\)/);
+  assert.match(pdf, /printWindow\.print\(\)/);
+  assert.match(pdf, /printWindow\.addEventListener\("afterprint", cleanup/);
+  assert.doesNotMatch(pdf, /anchor\.download|anchor\.click\(\)/);
 });
 
 test("booking summary PDF uses authoritative projections and keeps deposits distinct", () => {
@@ -27,7 +39,7 @@ test("booking summary PDF uses authoritative projections and keeps deposits dist
   assert.match(pdf, /summary\.outstandingBalance/);
   assert.match(pdf, /summary\.guestCredit/);
   assert.match(pdf, /summary\.remainingDeposit/);
-  assert.match(pdf, /มัดจำคงเหลือ/);
+  assert.match(pdf, /remainingDeposit: "Remaining deposit \(separate\)"/);
   assert.doesNotMatch(pdf, /cashShiftId|correctionId|idempotency|revision/);
 });
 
@@ -39,20 +51,20 @@ test("booking summary PDF mirrors ViewBooking room-charge settlement presentatio
   assert.match(pdf, /roomChargeSettlementTransactions/);
   assert.match(pdf, /roomChargeOutstandingAmount/);
   assert.match(pdf, /isRoomChargeSettlementTransaction/);
-  assert.match(pdf, /return "ค่าห้องทั้งหมด"/);
-  assert.match(pdf, /return "รับชำระค่าห้อง"/);
+  assert.match(pdf, /return text\.totalRoomCharge/);
+  assert.match(pdf, /return text\.roomPayment/);
   assert.match(viewBooking, /return "รับชำระค่าห้อง"/);
   assert.doesNotMatch(pdf, /ชำระค่าห้องส่วนที่เหลือ/);
   assert.doesNotMatch(viewBooking, /ชำระค่าห้องส่วนที่เหลือ/);
   assert.match(pdf, /roomChargeOutstandingAmount\(currentBooking\) > 0 \? "Unpaid" : "Paid"/);
   assert.match(pdf, /transactionDescriptionWithMeta/);
-  assert.match(pdf, /transaction\.corrected \? " · มีการแก้ไข"/);
+  assert.match(pdf, /transaction\.corrected \? ` · \$\{text\.corrected\}`/);
   assert.match(pdf, /transaction\.reviewStatus === "needs_review"/);
-  assert.match(pdf, /label: "ยอดค้างชำระ"/);
+  assert.match(pdf, /label: text\.outstandingBalance/);
   assert.doesNotMatch(pdf, /summary\.outstandingBalance > 0\s*\? \[\{ label: "ยอดค้างชำระ"/);
-  assert.match(pdf, /header: "Charge"/);
-  assert.match(pdf, /header: "Payment"/);
-  assert.match(pdf, /header: "Deposit"/);
+  assert.match(pdf, /header: text\.charge/);
+  assert.match(pdf, /header: text\.payment/);
+  assert.match(pdf, /header: text\.deposit/);
   assert.match(pdf, /transactionFolioAmounts/);
   assert.match(pdf, /payment: isPaid \? signedAmount : undefined/);
   assert.match(pdf, /return \{ deposit: signedAmount \}/);
@@ -67,7 +79,8 @@ test("booking summary PDF paginates variable content and uses repository brandin
   assert.match(pdf, /import hostelFlowLogoUrl from "\.\.\/\.\.\/\.\.\/logo\.svg"/);
   assert.match(pdf, /platformMap\[platformId\]\.logo/);
   assert.match(pdf, /if \(cursorY \+ requiredHeight > CONTENT_BOTTOM\) addPage\(\)/);
-  assert.match(pdf, /รายการธุรกรรม/);
+  assert.match(pdf, /transactions: "Transactions"/);
+  assert.match(pdf, /transactions: "รายการธุรกรรม"/);
   assert.match(pdf, /if \(effectiveTransactions\.length\)/);
   assert.doesNotMatch(pdf, /ยังไม่มีรายการธุรกรรม|N\/A/);
   assert.match(pdf, /Booking summary - not a tax invoice/);
@@ -111,7 +124,7 @@ test("booking summary PDF status mirrors ViewBooking on the right with channels 
   assert.match(pdf, /channelLogoStartX =\s*statusX - 18/);
   assert.match(pdf, /channelLogos\.forEach/);
   assert.match(pdf, /drawStatusBadge\(context, status, statusX, 182\)/);
-  assert.match(pdf, /header: "Type"/);
+  assert.match(pdf, /header: text\.type/);
   assert.doesNotMatch(pdf, /header: "วิธี"/);
   const badgeRenderer = pdf.match(
     /const drawStatusBadge = \([\s\S]*?\n\};/,
@@ -125,7 +138,21 @@ test("booking summary PDF only shows guest count when passport data exists", () 
 
   assert.match(
     pdf,
-    /if \(currentBooking\.passport\) \{\s*guestRows\.push\(\{\s*label: "จำนวนแขก"/,
+    /if \(currentBooking\.passport\) \{\s*guestRows\.push\(\{\s*label: text\.guests/,
   );
   assert.match(pdf, /1 \+ \(currentBooking\.additionalGuests\?\.length \|\| 0\)/);
+});
+
+test("booking summary defaults to English and retains Thai as a supported fallback", () => {
+  const pdf = source("features/bookings/bookingSummaryPdf.ts");
+
+  assert.match(pdf, /DEFAULT_BOOKING_SUMMARY_LANGUAGE: BookingSummaryLanguage = "en"/);
+  assert.match(pdf, /language = DEFAULT_BOOKING_SUMMARY_LANGUAGE/);
+  assert.match(pdf, /guestInformation: "Guest Information"/);
+  assert.match(pdf, /financialSummary: "Financial Summary"/);
+  assert.match(pdf, /roomPayment: "Room payment"/);
+  assert.match(pdf, /guestInformation: "ข้อมูลผู้เข้าพัก"/);
+  assert.match(pdf, /financialSummary: "สรุปการเงิน"/);
+  assert.match(pdf, /roomPayment: "รับชำระค่าห้อง"/);
+  assert.match(pdf, /language\?: BookingSummaryLanguage/);
 });

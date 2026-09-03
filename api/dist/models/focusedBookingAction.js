@@ -13,6 +13,7 @@ const focusedBookingActionSchema = new mongoose_1.default.Schema({
         enum: [
             "MARK_NO_SHOW",
             "CORRECT_CLOSED_ROOM_AVAILABILITY",
+            "RECORD_PRE_ARRIVAL_ROOM_PAYMENT",
             "RECORD_REFUND",
             "RECORD_COMPENSATION",
         ],

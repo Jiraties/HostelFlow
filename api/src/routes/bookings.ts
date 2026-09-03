@@ -44,6 +44,7 @@ import {
 import {
   correctClosedRoomAvailability,
   markNoShow,
+  recordPreArrivalRoomPayment,
   recordFinancialAction,
 } from "../controller/focusedBookingActions";
 
@@ -100,6 +101,10 @@ bookingsRouter.patch(
   correctClosedRoomAvailability,
 );
 bookingsRouter.post("/:bookingId/financial-actions", recordFinancialAction);
+bookingsRouter.post(
+  "/:bookingId/pre-arrival-room-payments",
+  recordPreArrivalRoomPayment,
+);
 bookingsRouter.patch("/resolveBooking/:bookingId", resolveBooking);
 bookingsRouter.get("/getMonthCalendar", getMonthCalendar);
 bookingsRouter.get("/getBookingById/:bookingId", getBookingById);

@@ -135,6 +135,17 @@ const localDateKey = (date = new Date()) =>
     date.getDate(),
   ).padStart(2, "0")}`;
 
+const monthDateRange = (month: string) => {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const nextMonth = new Date(Date.UTC(year, monthNumber, 1));
+  return {
+    startDate: `${month}-01`,
+    endDate: `${nextMonth.getUTCFullYear()}-${String(
+      nextMonth.getUTCMonth() + 1,
+    ).padStart(2, "0")}-01`,
+  };
+};
+
 const paymentMethodLabel: Record<PaymentMethod, string> = {
   OTA: "OTA",
   Cash: "Cash",
@@ -383,10 +394,12 @@ const BreakdownSection = ({
 
 const FinancialBreakdown = ({
   mode = "monthly",
+  month,
   initialType = null,
   onClose,
 }: {
   mode?: "monthly" | "today";
+  month?: string;
   initialType?: TransactionType | null;
   onClose: () => void;
 }) => {
@@ -472,7 +485,9 @@ const FinancialBreakdown = ({
             params:
               mode === "today"
                 ? { businessDate: selectedBusinessDate }
-                : undefined,
+                : month
+                  ? monthDateRange(month)
+                  : undefined,
             withCredentials: true,
           },
         );
@@ -493,7 +508,7 @@ const FinancialBreakdown = ({
     return () => {
       ignore = true;
     };
-  }, [mode, selectedBusinessDate]);
+  }, [mode, month, selectedBusinessDate]);
 
   return (
     <div className="viewBooking__wrapper">

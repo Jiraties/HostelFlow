@@ -140,6 +140,72 @@ after(async () => {
   await replicaSet.stop();
 });
 
+test("booking export includes only bookings whose check-in starts in the selected Bangkok month", async () => {
+  const bookingAt = (
+    bookingId: string,
+    checkIn: string,
+    checkOut: string,
+  ) => ({
+    ...reportBooking(bookingId, bookingId, "LAO"),
+    checkIn: new Date(checkIn),
+    checkOut: new Date(checkOut),
+    roomStays: [
+      {
+        roomIds: ["Balcony"],
+        from: new Date(checkIn),
+        to: new Date(checkOut),
+      },
+    ],
+  });
+  await Booking.create([
+    bookingAt(
+      "JULY-OVERLAP",
+      "2026-07-31T23:59:59+07:00",
+      "2026-08-02T00:00:00+07:00",
+    ),
+    bookingAt(
+      "AUGUST-FIRST",
+      "2026-08-01T00:00:00+07:00",
+      "2026-08-02T00:00:00+07:00",
+    ),
+    bookingAt(
+      "AUGUST-LAST",
+      "2026-08-31T23:59:59+07:00",
+      "2026-09-02T00:00:00+07:00",
+    ),
+    bookingAt(
+      "SEPTEMBER-FIRST",
+      "2026-09-01T00:00:00+07:00",
+      "2026-09-02T00:00:00+07:00",
+    ),
+  ]);
+
+  const res = binaryResponse();
+  const chunks: Buffer[] = [];
+  res.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+  await documents.getBookingsReport(
+    {
+      query: {
+        month: "2026-08",
+        bookingStatus: "all",
+        paymentMethod: "all",
+      },
+      user: { username: "admin", admin: true },
+    } as any,
+    res as any,
+  );
+
+  assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+  const workbook = new ExcelJs.Workbook();
+  await workbook.xlsx.load(Buffer.concat(chunks) as any);
+  const sheet = workbook.getWorksheet("Bookings")!;
+  const bookingIds = sheet
+    .getColumn(1)
+    .values.slice(2)
+    .filter(Boolean);
+  assert.deepEqual(bookingIds, ["AUGUST-FIRST", "AUGUST-LAST"]);
+});
+
 test("hotel export uses each guest's stored destination exactly", async () => {
   await Booking.create([
     reportBooking("DEST-LAO", "Alice Example", "LAO"),

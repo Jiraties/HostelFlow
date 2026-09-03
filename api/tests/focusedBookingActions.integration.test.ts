@@ -8,8 +8,13 @@ import CashShift from "../src/models/cashShift";
 import FocusedBookingAction from "../src/models/focusedBookingAction";
 import RoomMutationLock from "../src/models/roomMutationLock";
 import {
+  effectiveBookingTransactions,
+  roomChargeFinancialPosition,
+} from "../src/services/transactionCorrections";
+import {
   correctClosedRoomAvailability,
   markNoShow,
+  recordPreArrivalRoomPayment,
   recordFinancialAction,
 } from "../src/controller/focusedBookingActions";
 
@@ -285,6 +290,221 @@ test("released-to-blocked correction detects a later room assignment", async () 
   );
   assert.equal(res.statusCode, 409);
   assert.equal(res.body.error, "ROOMS_ALREADY_ASSIGNED");
+});
+
+test("pre-arrival room payment is posted now without changing booking status", async () => {
+  const created = await Booking.findOne({ bookingId: "FOCUSED-1" });
+  created!.transactions.push({
+    type: "roomCharge",
+    paymentMethod: "Unpaid",
+    amount: 1000,
+    sourceAction: "NEW_BOOKING",
+  });
+  await created!.save();
+  const transactionId = String(created!.transactions[0]._id);
+  const before = Date.now();
+  const res = response();
+
+  await recordPreArrivalRoomPayment(
+    request(
+      {
+        expectedRevision: 1,
+        relatedTransactionId: transactionId,
+        amount: 1000,
+        paymentMethod: "Transfer",
+        reference: "SLIP-100",
+      },
+      {
+        key: "pre-arrival-transfer",
+        path: "/bookings/FOCUSED-1/pre-arrival-room-payments",
+      },
+    ),
+    res,
+  );
+
+  assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+  assert.equal(res.body.booking.status, "booked");
+  assert.equal(res.body.remainingAmount, 0);
+  const settlement = res.body.booking.transactions.at(-1);
+  assert.equal(settlement.type, "settlementCharge");
+  assert.equal(settlement.relatedTransactionId, transactionId);
+  assert.equal(settlement.sourceAction, "RECORD_PRE_ARRIVAL_ROOM_PAYMENT");
+  assert.ok(new Date(settlement.createdAt).getTime() >= before);
+  assert.ok(
+    new Date(settlement.createdAt).getTime() <
+      new Date(res.body.booking.checkIn).getTime(),
+  );
+  assert.equal(
+    await Activity.countDocuments({
+      action: "RECORD_PRE_ARRIVAL_ROOM_PAYMENT",
+    }),
+    1,
+  );
+  assert.equal(
+    roomChargeFinancialPosition(
+      effectiveBookingTransactions(res.body.booking),
+    ).outstanding,
+    0,
+  );
+});
+
+test("pre-arrival room payment supports partial payment and rejects overpayment", async () => {
+  const created = await Booking.findOne({ bookingId: "FOCUSED-1" });
+  created!.transactions.push({
+    type: "roomCharge",
+    paymentMethod: "Unpaid",
+    amount: 1000,
+    sourceAction: "NEW_BOOKING",
+  });
+  await created!.save();
+  const transactionId = String(created!.transactions[0]._id);
+  const partial = response();
+  await recordPreArrivalRoomPayment(
+    request(
+      {
+        expectedRevision: 1,
+        relatedTransactionId: transactionId,
+        amount: 400,
+        paymentMethod: "Transfer",
+      },
+      {
+        key: "pre-arrival-partial",
+        path: "/bookings/FOCUSED-1/pre-arrival-room-payments",
+      },
+    ),
+    partial,
+  );
+  assert.equal(partial.statusCode, 200, JSON.stringify(partial.body));
+  assert.equal(partial.body.remainingAmount, 600);
+
+  const excessive = response();
+  await recordPreArrivalRoomPayment(
+    request(
+      {
+        expectedRevision: 2,
+        relatedTransactionId: transactionId,
+        amount: 601,
+        paymentMethod: "Transfer",
+      },
+      {
+        key: "pre-arrival-excessive",
+        path: "/bookings/FOCUSED-1/pre-arrival-room-payments",
+      },
+    ),
+    excessive,
+  );
+  assert.equal(excessive.statusCode, 409);
+  assert.equal(excessive.body.error, "PAYMENT_EXCEEDS_ROOM_CHARGE_BALANCE");
+  assert.equal(excessive.body.remainingAmount, 600);
+});
+
+test("pre-arrival card payment adds a same-day three-percent surcharge", async () => {
+  const created = await Booking.findOne({ bookingId: "FOCUSED-1" });
+  created!.transactions.push({
+    type: "roomCharge",
+    paymentMethod: "Unpaid",
+    amount: 500,
+    sourceAction: "NEW_BOOKING",
+  });
+  await created!.save();
+  const transactionId = String(created!.transactions[0]._id);
+  const res = response();
+  await recordPreArrivalRoomPayment(
+    request(
+      {
+        expectedRevision: 1,
+        relatedTransactionId: transactionId,
+        amount: 500,
+        paymentMethod: "Card",
+      },
+      {
+        key: "pre-arrival-card",
+        path: "/bookings/FOCUSED-1/pre-arrival-room-payments",
+      },
+    ),
+    res,
+  );
+
+  assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+  const [settlement, surcharge] = res.body.booking.transactions.slice(-2);
+  assert.equal(settlement.type, "settlementCharge");
+  assert.equal(surcharge.type, "cardSurcharge");
+  assert.equal(surcharge.amount, 15);
+  assert.equal(surcharge.relatedTransactionId, String(settlement._id));
+  assert.equal(
+    new Date(surcharge.createdAt).getTime(),
+    new Date(settlement.createdAt).getTime(),
+  );
+});
+
+test("retrying a pre-arrival payment does not collect twice", async () => {
+  const created = await Booking.findOne({ bookingId: "FOCUSED-1" });
+  created!.transactions.push({
+    type: "roomCharge",
+    paymentMethod: "Unpaid",
+    amount: 700,
+    sourceAction: "NEW_BOOKING",
+  });
+  await created!.save();
+  const transactionId = String(created!.transactions[0]._id);
+  const body = {
+    expectedRevision: 1,
+    relatedTransactionId: transactionId,
+    amount: 700,
+    paymentMethod: "Transfer",
+  };
+  const options = {
+    key: "pre-arrival-replay",
+    path: "/bookings/FOCUSED-1/pre-arrival-room-payments",
+  };
+  const first = response();
+  const retry = response();
+  await recordPreArrivalRoomPayment(request(body, options), first);
+  await recordPreArrivalRoomPayment(request(body, options), retry);
+
+  assert.equal(first.statusCode, 200, JSON.stringify(first.body));
+  assert.equal(retry.statusCode, 200, JSON.stringify(retry.body));
+  assert.equal(retry.body.duplicate, true);
+  const stored = await Booking.findOne({ bookingId: "FOCUSED-1" }).lean();
+  assert.equal(
+    stored?.transactions.filter(
+      (transaction) => transaction.type === "settlementCharge",
+    ).length,
+    1,
+  );
+});
+
+test("pre-arrival cash payment is rejected when no cash shift is open", async () => {
+  const created = await Booking.findOne({ bookingId: "FOCUSED-1" });
+  created!.transactions.push({
+    type: "roomCharge",
+    paymentMethod: "Unpaid",
+    amount: 300,
+    sourceAction: "NEW_BOOKING",
+  });
+  await created!.save();
+  const transactionId = String(created!.transactions[0]._id);
+  const res = response();
+  await recordPreArrivalRoomPayment(
+    request(
+      {
+        expectedRevision: 1,
+        relatedTransactionId: transactionId,
+        amount: 300,
+        paymentMethod: "Cash",
+      },
+      {
+        key: "pre-arrival-cash-without-shift",
+        path: "/bookings/FOCUSED-1/pre-arrival-room-payments",
+      },
+    ),
+    res,
+  );
+
+  assert.equal(res.statusCode, 409);
+  assert.equal(res.body.error, "CASH_SHIFT_LEDGER_CONFLICT");
+  const stored = await Booking.findOne({ bookingId: "FOCUSED-1" }).lean();
+  assert.equal(stored?.transactions.length, 1);
 });
 
 test("refunds are linked and cannot exceed cumulative entitlement", async () => {

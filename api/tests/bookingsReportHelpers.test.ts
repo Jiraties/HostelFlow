@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  bookingsReportCheckInMonthBounds,
   bookingsReportDepositCollectedTotal,
   bookingsReportRoomChargeTotal,
   bookingsReportTransactionAmount,
@@ -21,6 +22,16 @@ const transactions: transcation[] = [
     amount: 200,
   },
 ];
+
+test("bookings report month uses inclusive Bangkok check-in dates", () => {
+  const bounds = bookingsReportCheckInMonthBounds("2026-08");
+
+  assert.deepEqual(bounds, {
+    start: new Date("2026-08-01T00:00:00+07:00"),
+    end: new Date("2026-09-01T00:00:00+07:00"),
+  });
+  assert.equal(bookingsReportCheckInMonthBounds("2026-13"), null);
+});
 
 test("bookings report keeps room charges and collected deposits on the booking row", () => {
   assert.equal(bookingsReportRoomChargeTotal(transactions), 1200);

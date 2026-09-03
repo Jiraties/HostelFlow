@@ -2,7 +2,7 @@ import axios from "axios";
 import { Modal } from "@mui/material";
 import { useLocation, useNavigate } from "react-router";
 import toast from "react-hot-toast";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Area,
   CartesianGrid,
@@ -133,6 +133,7 @@ const priorityTodayServiceTypes: TransactionType[] = [
 ];
 
 type AdminDashboardStats = {
+  selectedMonth: string;
   monthlyGrossRevenue: number;
   monthlyCollectedRevenue: number;
   monthBookings: number;
@@ -182,9 +183,9 @@ const chartMetricOptions: Array<{ value: ChartMetric; label: string }> = [
 
 const dashboardHelpText = {
   bookedRevenue:
-    "รายได้ค่าที่พักของการจองที่เริ่มเข้าพักเดือนนี้ และรายการต่อคืนที่เริ่มเดือนนี้ หลังหักรายการลด โดยนับเต็มยอดในเดือนที่เริ่มและไม่แบ่งข้ามเดือน",
+    "รายได้ค่าที่พักของการจองที่เริ่มเข้าพักในเดือนที่เลือก และรายการต่อคืนที่เริ่มในเดือนนั้น หลังหักรายการลด โดยนับเต็มยอดในเดือนที่เริ่มและไม่แบ่งข้ามเดือน",
   collectedRevenue:
-    "ส่วนของ ESR เดือนนี้ที่รับเงินแล้วจริง ไม่รวมยอดค้างชำระและค่าธรรมเนียมบัตร",
+    "ส่วนของ ESR เดือนที่เลือกที่รับเงินแล้วจริง ไม่รวมยอดค้างชำระและค่าธรรมเนียมบัตร",
   todayCollectedRevenue:
     "เงินที่รับแล้วสำหรับการจองที่เช็คอินวันนี้เท่านั้น ไม่ว่าจะรับชำระวันไหน",
   todayRevenue:
@@ -192,7 +193,7 @@ const dashboardHelpText = {
   unpaid: "ยอดจองที่ยังไม่ได้รับเงินจากลูกค้า",
   cashToday: "เงินสดรับ ลบ เงินสดจ่าย สำหรับวันที่เลือก",
   occupancy:
-    "เปอร์เซ็นต์เตียงที่ถูกจองตลอดทั้งเดือนเทียบกับเตียงที่เปิดขาย รวมการจองล่วงหน้า โดยห้องส่วนตัวที่ถูกจองจะนับเต็มความจุของห้อง",
+    "เปอร์เซ็นต์เตียงที่ถูกจองตลอดเดือนที่เลือกเทียบกับเตียงที่เปิดขาย รวมการจองล่วงหน้า โดยห้องส่วนตัวที่ถูกจองจะนับเต็มความจุของห้อง",
   checkedInBeds:
     "จำนวนเตียงที่เช็คอินอยู่ตอนนี้ โดยห้องส่วนตัวจะนับเต็มความจุของห้อง",
 };
@@ -255,11 +256,24 @@ const toCumulativeRevenueSeries = (
   });
 };
 
-const currentEnglishMonthLabel = () =>
+const bangkokMonthKey = (date = new Date()) => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(date);
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value;
+  return `${value("year")}-${value("month")}`;
+};
+
+const formatEnglishMonthLabel = (monthKey: string) =>
   new Intl.DateTimeFormat("en-GB", {
     month: "long",
     calendar: "gregory",
-  }).format(new Date());
+    year: "numeric",
+    timeZone: "Asia/Bangkok",
+  }).format(new Date(`${monthKey}-01T00:00:00+07:00`));
 
 const formatTrendAxisLabel = (
   label: string,
@@ -530,6 +544,10 @@ const Main = () => {
   const [adminStats, setAdminStats] = useState<AdminDashboardStats | null>(
     null,
   );
+  const adminRequestIdRef = useRef(0);
+  const dashboardMonthInputRef = useRef<HTMLInputElement>(null);
+  const currentDashboardMonth = bangkokMonthKey();
+  const [dashboardMonth, setDashboardMonth] = useState(currentDashboardMonth);
   const [revenueRange, setRevenueRange] = useState<RevenueRange>("1m");
   const [chartMetric, setChartMetric] = useState<ChartMetric>("occupancy");
   const [cashCloseLoading, setCashCloseLoading] = useState(false);
@@ -619,29 +637,35 @@ const Main = () => {
   }, []);
 
   const fetchAdminStats = useCallback(async () => {
+    const requestId = ++adminRequestIdRef.current;
     if (!user?.admin) {
       setAdminStats(null);
+      setAdminLoading(false);
       return;
     }
 
     setAdminLoading(true);
     try {
-      const response = await axios.get(
+      const response = await axios.get<AdminDashboardStats>(
         `${API_URL}/bookings/getAdminDashboardStats`,
         {
-          params: { revenueRange },
+          params: { revenueRange, month: dashboardMonth },
           withCredentials: true,
         },
       );
 
+      if (requestId !== adminRequestIdRef.current) return;
       setAdminStats(response.data);
     } catch (err) {
+      if (requestId !== adminRequestIdRef.current) return;
       setAdminStats(null);
       toast.error(getFetchErrorMessage(err));
     } finally {
-      setAdminLoading(false);
+      if (requestId === adminRequestIdRef.current) {
+        setAdminLoading(false);
+      }
     }
-  }, [revenueRange, user?.admin]);
+  }, [dashboardMonth, revenueRange, user?.admin]);
 
   const fetchTodayRevenue = useCallback(async () => {
     setTodayRevenueLoading(true);
@@ -956,10 +980,11 @@ const Main = () => {
     })
     .slice(0, 6);
   const occupancyFillPercent = Math.min(Math.max(occupancyRatePercent, 0), 100);
-  const thisMonthLabel = currentEnglishMonthLabel();
+  const dashboardMonthLabel = formatEnglishMonthLabel(dashboardMonth);
+  const dashboardMonthIsCurrent = dashboardMonth === currentDashboardMonth;
   const chartTitle =
     chartMetric === "revenue"
-      ? "ESR เดือนนี้"
+      ? "ESR เดือนที่เลือก"
       : occupancyRangeTitleMap[revenueRange];
   const chartSummary =
     chartMetric === "revenue"
@@ -1071,8 +1096,9 @@ const Main = () => {
         }}
       >
         <FinancialBreakdown
-          key={`${financialBreakdownMode}-${financialBreakdownType || "all"}`}
+          key={`${financialBreakdownMode}-${financialBreakdownType || "all"}-${dashboardMonth}`}
           mode={financialBreakdownMode || "monthly"}
+          month={dashboardMonth}
           initialType={financialBreakdownType}
           onClose={() => {
             setFinancialBreakdownMode(null);
@@ -1216,9 +1242,35 @@ const Main = () => {
           <div className="main__adminHeader">
             <div>
               <i className="bx bx-bar-chart-big" />
-              <h2>ผลการดำเนินงานเดือนนี้</h2>
+              <h2>ผลการดำเนินงานรายเดือน</h2>
             </div>
-            <span>{thisMonthLabel} (เดือนนี้)</span>
+            <label
+              className="main__adminMonthPicker"
+              onClick={(event) => {
+                const monthInput = dashboardMonthInputRef.current;
+                if (!monthInput || typeof monthInput.showPicker !== "function") {
+                  return;
+                }
+                event.preventDefault();
+                monthInput.focus();
+                monthInput.showPicker();
+              }}
+            >
+              <span>เลือกเดือน</span>
+              <input
+                ref={dashboardMonthInputRef}
+                type="month"
+                value={dashboardMonth}
+                max={currentDashboardMonth}
+                aria-label="เลือกเดือนสำหรับผลการดำเนินงาน"
+                onChange={(event) => {
+                  if (!event.target.value) return;
+                  setAdminLoading(true);
+                  setAdminStats(null);
+                  setDashboardMonth(event.target.value);
+                }}
+              />
+            </label>
           </div>
 
           <div className="main__adminDashboardGrid">
@@ -1234,7 +1286,7 @@ const Main = () => {
                       <ExpectedStayRevenueInfo />
                     </div>
                   </div>
-                  <p>เดือนนี้</p>
+                  <p>{dashboardMonthIsCurrent ? "เดือนนี้" : dashboardMonthLabel}</p>
                 </div>
                 <div className="main__revenueHeroValue">
                   <strong>
@@ -1352,7 +1404,7 @@ const Main = () => {
                     {adminStats.channelMix.length === 0 ? (
                       <div className="main__emptyState">
                         <i className="bx bx-info-circle" />
-                        <p>ยังไม่มีรายการจองเดือนนี้</p>
+                        <p>ยังไม่มีรายการจองในเดือนที่เลือก</p>
                       </div>
                     ) : (
                       adminStats.channelMix.map((channel) => {

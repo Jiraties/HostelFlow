@@ -39,6 +39,7 @@ bookingsRouter.patch("/cancelBooking/:bookingId", booking_1.cancelBooking);
 bookingsRouter.post("/:bookingId/no-show", focusedBookingActions_1.markNoShow);
 bookingsRouter.patch("/:bookingId/closed-room-availability", focusedBookingActions_1.correctClosedRoomAvailability);
 bookingsRouter.post("/:bookingId/financial-actions", focusedBookingActions_1.recordFinancialAction);
+bookingsRouter.post("/:bookingId/pre-arrival-room-payments", focusedBookingActions_1.recordPreArrivalRoomPayment);
 bookingsRouter.patch("/resolveBooking/:bookingId", booking_1.resolveBooking);
 bookingsRouter.get("/getMonthCalendar", booking_1.getMonthCalendar);
 bookingsRouter.get("/getBookingById/:bookingId", booking_1.getBookingById);

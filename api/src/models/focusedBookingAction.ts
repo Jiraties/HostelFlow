@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 export type FocusedBookingActionType =
   | "MARK_NO_SHOW"
   | "CORRECT_CLOSED_ROOM_AVAILABILITY"
+  | "RECORD_PRE_ARRIVAL_ROOM_PAYMENT"
   | "RECORD_REFUND"
   | "RECORD_COMPENSATION";
 
@@ -27,6 +28,7 @@ const focusedBookingActionSchema =
       enum: [
         "MARK_NO_SHOW",
         "CORRECT_CLOSED_ROOM_AVAILABILITY",
+        "RECORD_PRE_ARRIVAL_ROOM_PAYMENT",
         "RECORD_REFUND",
         "RECORD_COMPENSATION",
       ],

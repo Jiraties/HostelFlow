@@ -63,11 +63,19 @@
 .timeline__roomIdItem {
   position: sticky;
   left: 0;
-  border-right: 1px solid #eee;
-  border-bottom: 1px solid #eee;
+  border-right: 1px solid #e6e6e6;
+  border-bottom: 1px solid #e6e6e6;
 
   z-index: 4;
   background: white;
+}
+
+.timeline__roomTypeSeparator {
+  background: var(--background);
+  border-bottom: 1px solid #e6e6e6;
+  /* border-top: 0.5px solid #e6e6e6; */
+  pointer-events: none;
+  z-index: -1;
 }
 
 .timeline__roomColorTab {
@@ -86,8 +94,8 @@
   position: sticky;
   top: 0;
   scroll-margin-left: 12.5rem;
-  border-bottom: 1px solid #eee;
-  border-right: 1px solid #eee;
+  border-bottom: 1px solid #e6e6e6;
+  border-right: 1px solid #e6e6e6;
 
   z-index: 3;
   background: white;
@@ -327,8 +335,8 @@
 
 .timeline__emptyCell {
   cursor: pointer;
-  border-right: 1px solid #f5f5f5;
-  border-bottom: 1px solid #f5f5f5;
+  border-right: 1px solid #e6e6e6;
+  border-bottom: 1px solid #e6e6e6;
   transition: background-color 0.15s ease;
   z-index: 1;
 }

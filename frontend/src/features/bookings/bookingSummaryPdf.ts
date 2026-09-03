@@ -15,7 +15,11 @@ import {
   getRoomStayRoomIds,
 } from "../../helpers/roomStayHelpers";
 import { getTransactionDisplay } from "../../helpers/transactionDisplay";
-import type { booking, transcation } from "../../types/bookingTypes";
+import type {
+  booking,
+  transcation,
+  TransactionType,
+} from "../../types/bookingTypes";
 
 const PAGE_WIDTH = 1240;
 const PAGE_HEIGHT = 1754;
@@ -71,10 +75,158 @@ const ensurePdfFonts = () => {
 
 type ResolveStaffName = (username?: string | null) => string;
 
+type BookingSummaryLanguage = "en" | "th";
+
+const DEFAULT_BOOKING_SUMMARY_LANGUAGE: BookingSummaryLanguage = "en";
+
+const BOOKING_SUMMARY_COPY = {
+  en: {
+    statusWaitingCheckIn: "Waiting for Check-In",
+    statusBooked: "Booked",
+    statusCheckedIn: "Checked In",
+    statusCheckedOut: "Checked Out",
+    statusCancelled: "Cancelled",
+    statusNoShow: "No-Show",
+    addedDeposit: "Additional deposit",
+    cashRounding: "Cash rounding",
+    advanceRoomCharge: "Advance room payment",
+    extensionBefore: "Additional nights before check-in",
+    extensionAfter: "Additional nights after check-out",
+    totalRoomCharge: "Total room charge",
+    roomPayment: "Room payment",
+    writeOff: "Write-off",
+    corrected: "Corrected",
+    needsReview: "Needs review",
+    reviewed: "Reviewed",
+    continuation: "continued",
+    nationality: "Nationality",
+    guests: "Guests",
+    peopleUnit: "guests",
+    nights: "Nights",
+    nightsUnit: "nights",
+    room: "Room",
+    actualCheckIn: "Actual Check-In",
+    actualCheckOut: "Actual Check-Out",
+    guestInformation: "Guest Information",
+    stayInformation: "Stay Information",
+    addedBeforeCheckIn: "Added before check-in",
+    addedAfterCheckOut: "Added after check-out",
+    channel: "Channel",
+    extendedVia: "Extended via",
+    recordedBy: "Recorded by",
+    checkedInBy: "Checked in by",
+    bookingTotal: "Booking total",
+    amountReceived: "Amount received",
+    outstandingBalance: "Outstanding balance",
+    guestCredit: "Guest credit",
+    remainingDeposit: "Remaining deposit (separate)",
+    bookingDetails: "Booking Details",
+    financialSummary: "Financial Summary",
+    roomAssignments: "Room Assignments",
+    from: "From",
+    to: "To",
+    transactions: "Transactions",
+    date: "Date",
+    description: "Description",
+    type: "Type",
+    charge: "Charge",
+    payment: "Payment",
+    deposit: "Deposit",
+    note: "Note",
+  },
+  th: {
+    statusWaitingCheckIn: "รอ Check-In",
+    statusBooked: "จองแล้ว",
+    statusCheckedIn: "Check-In แล้ว",
+    statusCheckedOut: "Check-Out แล้ว",
+    statusCancelled: "ถูกยกเลิก",
+    statusNoShow: "No-Show",
+    addedDeposit: "รับมัดจำเพิ่ม",
+    cashRounding: "ปัดเศษยอดเงินสด",
+    advanceRoomCharge: "ค่าห้องล่วงหน้า",
+    extensionBefore: "ค่าเพิ่มคืนก่อนวันเข้า",
+    extensionAfter: "ค่าเพิ่มคืนหลังวันออก",
+    totalRoomCharge: "ค่าห้องทั้งหมด",
+    roomPayment: "รับชำระค่าห้อง",
+    writeOff: "ปิดยอด",
+    corrected: "มีการแก้ไข",
+    needsReview: "รอตรวจสอบ",
+    reviewed: "อนุมัติแล้ว",
+    continuation: "ต่อ",
+    nationality: "สัญชาติ",
+    guests: "จำนวนแขก",
+    peopleUnit: "คน",
+    nights: "จำนวนคืน",
+    nightsUnit: "คืน",
+    room: "ห้อง",
+    actualCheckIn: "Check-In จริง",
+    actualCheckOut: "Check-Out จริง",
+    guestInformation: "ข้อมูลผู้เข้าพัก",
+    stayInformation: "ข้อมูลการเข้าพัก",
+    addedBeforeCheckIn: "เพิ่มก่อนวันเข้า",
+    addedAfterCheckOut: "เพิ่มหลังวันออก",
+    channel: "ช่องทาง",
+    extendedVia: "ต่อคืนผ่าน",
+    recordedBy: "บันทึกโดย",
+    checkedInBy: "Check-In โดย",
+    bookingTotal: "ยอดรวม Booking",
+    amountReceived: "รับชำระแล้ว",
+    outstandingBalance: "ยอดค้างชำระ",
+    guestCredit: "เครดิตของแขก",
+    remainingDeposit: "มัดจำคงเหลือ (แยก)",
+    bookingDetails: "รายละเอียด Booking",
+    financialSummary: "สรุปการเงิน",
+    roomAssignments: "การจัดห้องพัก",
+    from: "จาก",
+    to: "ถึง",
+    transactions: "รายการธุรกรรม",
+    date: "วันที่",
+    description: "รายการ",
+    type: "Type",
+    charge: "Charge",
+    payment: "Payment",
+    deposit: "Deposit",
+    note: "หมายเหตุ",
+  },
+} as const;
+
+const ENGLISH_TRANSACTION_NAMES: Record<TransactionType, string> = {
+  roomCharge: "Room charge",
+  deposit: "Deposit received",
+  adjustment: "Price adjustment",
+  depositRefund: "Deposit refund",
+  cancellationRefund: "Cancellation refund",
+  roomRefund: "Room refund",
+  roomChargeWriteOff: "Room-charge write-off",
+  settlementCharge: "Additional charge",
+  compensation: "Guest compensation",
+  depositKept: "Deposit retained as revenue",
+  paymentCorrection: "Payment correction",
+  towel: "Towel",
+  motorbike: "Motorbike",
+  slowBoat: "Slow Boat",
+  joinTour: "Join Tour",
+  extraBed: "Extra Bed",
+  pickACraft: "Pick A Craft",
+  trek2D: "Trek 2D",
+  setMenu: "Set Menu",
+  sleeperBus: "Sleeper Bus",
+  onlyWalk: "Only Walk",
+  laundry: "Laundry",
+  bicycle: "Bicycle",
+  car: "Car",
+  misc: "Misc",
+  rainCoat: "Rain Coat",
+  passwordLock: "Password Lock",
+  cooking: "Cooking",
+  cardSurcharge: "3% card surcharge",
+};
+
 type PdfOptions = {
   booking: booking;
   generatedAt?: Date;
   resolveStaffName?: ResolveStaffName;
+  language?: BookingSummaryLanguage;
 };
 
 type CanvasPage = {
@@ -363,6 +515,7 @@ type StatusDetails = { label: string; color: string; background: string };
 const bookingStatusDetails = (
   currentBooking: booking,
   generatedAt: Date,
+  text: (typeof BOOKING_SUMMARY_COPY)[BookingSummaryLanguage],
 ): StatusDetails => {
   if (currentBooking.status === "booked") {
     const checkIn = new Date(currentBooking.checkIn);
@@ -372,27 +525,27 @@ const bookingStatusDetails = (
       checkIn.getDate() === generatedAt.getDate();
 
     return checkInIsToday
-      ? { label: "รอ Check-In", color: "#00adef", background: "#e0f5fc" }
-      : { label: "จองแล้ว", color: "#2a2a2a", background: "#f7f7f7" };
+      ? { label: text.statusWaitingCheckIn, color: "#00adef", background: "#e0f5fc" }
+      : { label: text.statusBooked, color: "#2a2a2a", background: "#f7f7f7" };
   }
 
   const details: Record<Exclude<booking["status"], "booked">, StatusDetails> = {
     checkedIn: {
-      label: "Check-In แล้ว",
+      label: text.statusCheckedIn,
       color: "rgb(30, 203, 131)",
       background: "#e8faf2",
     },
     checkedOut: {
-      label: "Check-Out แล้ว",
+      label: text.statusCheckedOut,
       color: "#ffa500",
       background: "rgb(255, 242, 230)",
     },
     cancelled: {
-      label: "ถูกยกเลิก",
+      label: text.statusCancelled,
       color: "#fd4169",
       background: "#fff2f5",
     },
-    noShow: { label: "No-Show", color: "#4b5563", background: "#f3f4f6" },
+    noShow: { label: text.statusNoShow, color: "#4b5563", background: "#f3f4f6" },
   };
 
   return details[currentBooking.status];
@@ -469,21 +622,23 @@ const buildChannelRows = (currentBooking: booking): ChannelRow[] => {
 const transactionDescription = (
   currentBooking: booking,
   transaction: transcation,
+  language: BookingSummaryLanguage,
+  text: (typeof BOOKING_SUMMARY_COPY)[BookingSummaryLanguage],
 ) => {
   if (transaction.type === "misc" && transaction.note?.trim()) {
     return `Misc · ${transaction.note.trim()}`;
   }
   if (transaction.type === "deposit" && transaction.sourceAction === "ADD_TRANSACTION") {
-    return "รับมัดจำเพิ่ม";
+    return text.addedDeposit;
   }
   if (transaction.type === "adjustment" && transaction.reasonOfAdjustment === "rounding") {
-    return "ปัดเศษยอดเงินสด";
+    return text.cashRounding;
   }
   const advancePayment = currentBooking.advancePayment;
   if (advancePayment && transaction._id === advancePayment.transactionId) {
     return advancePayment.calculationMode === "amount"
-      ? "ค่าห้องล่วงหน้า"
-      : `ค่าห้องล่วงหน้า ${advancePayment.percentage}%`;
+      ? text.advanceRoomCharge
+      : `${text.advanceRoomCharge} ${advancePayment.percentage}%`;
   }
   if (transaction.type === "roomCharge" && transaction.sourceAction === "EXTEND_BOOKING") {
     const platformId =
@@ -495,27 +650,31 @@ const transactionDescription = (
     const placement = (currentBooking.commercialSegments || []).find(
       (segment) => segment.transactionId === transaction._id,
     )?.placement;
-    const placementLabel = placement === "before" ? "ก่อนวันเข้า" : "หลังวันออก";
-    return `${platform ? `${platform} · ` : ""}ค่าเพิ่มคืน${placementLabel}`;
+    const extensionLabel =
+      placement === "before" ? text.extensionBefore : text.extensionAfter;
+    return `${platform ? `${platform} · ` : ""}${extensionLabel}`;
   }
   if (
     transaction.type === "roomCharge" &&
     transaction.sourceAction !== "EXTEND_BOOKING" &&
     roomChargeSettlementTransactions(currentBooking).length > 0
   ) {
-    return "ค่าห้องทั้งหมด";
+    return text.totalRoomCharge;
   }
   if (isRoomChargeSettlementTransaction(currentBooking, transaction)) {
-    return "รับชำระค่าห้อง";
+    return text.roomPayment;
   }
-  return getTransactionDisplay(transaction.type).name;
+  return language === "en"
+    ? ENGLISH_TRANSACTION_NAMES[transaction.type]
+    : getTransactionDisplay(transaction.type).name;
 };
 
 const transactionTypeLabel = (
   currentBooking: booking,
   transaction: transcation,
+  text: (typeof BOOKING_SUMMARY_COPY)[BookingSummaryLanguage],
 ) => {
-  if (transaction.type === "roomChargeWriteOff") return "ปิดยอด";
+  if (transaction.type === "roomChargeWriteOff") return text.writeOff;
   if (
     transaction.type === "roomCharge" &&
     transaction.sourceAction !== "EXTEND_BOOKING" &&
@@ -543,16 +702,23 @@ const isLinkedTransaction = (
 const transactionDescriptionWithMeta = (
   currentBooking: booking,
   transaction: transcation,
+  language: BookingSummaryLanguage,
+  text: (typeof BOOKING_SUMMARY_COPY)[BookingSummaryLanguage],
 ) => {
-  const description = transactionDescription(currentBooking, transaction);
+  const description = transactionDescription(
+    currentBooking,
+    transaction,
+    language,
+    text,
+  );
   const note = transaction.note?.trim() && transaction.type !== "misc"
     ? ` · ${transaction.note.trim()}`
     : "";
-  const correction = transaction.corrected ? " · มีการแก้ไข" : "";
+  const correction = transaction.corrected ? ` · ${text.corrected}` : "";
   const review = transaction.reviewStatus === "needs_review"
-    ? " · รอตรวจสอบ"
+    ? ` · ${text.needsReview}`
     : transaction.reviewStatus === "reviewed"
-      ? " · อนุมัติแล้ว"
+      ? ` · ${text.reviewed}`
       : "";
   return `${isLinkedTransaction(currentBooking, transaction) ? "- " : ""}${description}${note}${correction}${review}`;
 };
@@ -770,12 +936,14 @@ const renderPdfPages = async ({
   booking: currentBooking,
   generatedAt = new Date(),
   resolveStaffName = (username) => username || "",
+  language = DEFAULT_BOOKING_SUMMARY_LANGUAGE,
 }: PdfOptions) => {
   if (!currentBooking.financialSummary) {
     throw new Error("ไม่พบข้อมูลสรุปการเงินล่าสุด กรุณาโหลด Booking ใหม่แล้วลองอีกครั้ง");
   }
 
   await ensurePdfFonts();
+  const text = BOOKING_SUMMARY_COPY[language];
 
   const channelRows = buildChannelRows(currentBooking);
   const imageEntries = await Promise.all([
@@ -855,7 +1023,12 @@ const renderPdfPages = async ({
 
       if (cursorY + rowHeight > CONTENT_BOTTOM) {
         addPage();
-        drawSectionTitle(context, `${title} (ต่อ)`, PAGE_MARGIN + 15, cursorY);
+        drawSectionTitle(
+          context,
+          `${title} (${text.continuation})`,
+          PAGE_MARGIN + 15,
+          cursorY,
+        );
         cursorY += titleHeight;
         drawHeader();
       }
@@ -905,7 +1078,7 @@ const renderPdfPages = async ({
   setFont(context, 23, 700);
   context.fillStyle = TEAL;
   context.fillText(currentBooking.bookingId, PAGE_MARGIN + 132, 219);
-  const status = bookingStatusDetails(currentBooking, generatedAt);
+  const status = bookingStatusDetails(currentBooking, generatedAt, text);
   const statusX = PAGE_WIDTH - PAGE_MARGIN - statusBadgeWidth(context, status);
   const channelLogos = Array.from(
     new Set(channelRows.map((channel) => channel.platformId)),
@@ -934,12 +1107,15 @@ const renderPdfPages = async ({
 
   const guestRows: InfoRow[] = [];
   if (currentBooking.passport?.nationality) {
-    guestRows.push({ label: "สัญชาติ", value: currentBooking.passport.nationality });
+    guestRows.push({
+      label: text.nationality,
+      value: currentBooking.passport.nationality,
+    });
   }
   if (currentBooking.passport) {
     guestRows.push({
-      label: "จำนวนแขก",
-      value: `${1 + (currentBooking.additionalGuests?.length || 0)} คน`,
+      label: text.guests,
+      value: `${1 + (currentBooking.additionalGuests?.length || 0)} ${text.peopleUnit}`,
     });
   }
 
@@ -949,15 +1125,21 @@ const renderPdfPages = async ({
   const stayRows: InfoRow[] = [
     { label: "Check-In", value: formatDate(currentBooking.checkIn) },
     { label: "Check-Out", value: formatDate(currentBooking.checkOut) },
-    { label: "จำนวนคืน", value: `${currentBooking.nights} คืน` },
-    ...(rooms ? [{ label: "ห้อง", value: rooms }] : []),
+    { label: text.nights, value: `${currentBooking.nights} ${text.nightsUnit}` },
+    ...(rooms ? [{ label: text.room, value: rooms }] : []),
   ];
   if (currentBooking.checkedInAt) {
-    stayRows.push({ label: "Check-In จริง", value: formatDate(currentBooking.checkedInAt, true) });
+    stayRows.push({
+      label: text.actualCheckIn,
+      value: formatDate(currentBooking.checkedInAt, true),
+    });
   }
   const actualCheckout = currentBooking.checkout?.checkedOutAt || currentBooking.resolution?.resolvedAt;
   if (actualCheckout && currentBooking.status === "checkedOut") {
-    stayRows.push({ label: "Check-Out จริง", value: formatDate(actualCheckout, true) });
+    stayRows.push({
+      label: text.actualCheckOut,
+      value: formatDate(actualCheckout, true),
+    });
   }
 
   const gap = 20;
@@ -971,7 +1153,7 @@ const renderPdfPages = async ({
     cursorY,
     cardWidth,
     firstCardsHeight,
-    "ข้อมูลผู้เข้าพัก",
+    text.guestInformation,
     guestRows,
     currentBooking.name,
   );
@@ -981,7 +1163,7 @@ const renderPdfPages = async ({
     cursorY,
     cardWidth,
     firstCardsHeight,
-    "ข้อมูลการเข้าพัก",
+    text.stayInformation,
     stayRows,
   );
   cursorY += firstCardsHeight + 20;
@@ -992,41 +1174,44 @@ const renderPdfPages = async ({
     return {
       label:
         channel.placement === "before"
-          ? "เพิ่มก่อนวันเข้า"
+          ? text.addedBeforeCheckIn
           : channel.placement === "after"
-            ? "เพิ่มหลังวันออก"
+            ? text.addedAfterCheckOut
             : index === 0
-              ? "ช่องทาง"
-              : "ต่อคืนผ่าน",
+              ? text.channel
+              : text.extendedVia,
       value: `${label} · ${formatDate(channel.from)} - ${formatDate(channel.to)}${bookingNumber}`,
     };
   });
   const bookingRows: InfoRow[] = [
     ...channelInfoRows,
-    { label: "บันทึกโดย", value: resolveStaffName(currentBooking.staffUsername) },
+    {
+      label: text.recordedBy,
+      value: resolveStaffName(currentBooking.staffUsername),
+    },
   ];
   if (currentBooking.checkInByStaffUsername) {
     bookingRows.push({
-      label: "Check-In โดย",
+      label: text.checkedInBy,
       value: resolveStaffName(currentBooking.checkInByStaffUsername),
     });
   }
 
   const summary = currentBooking.financialSummary;
   const financialRows: InfoRow[] = [
-    { label: "ยอดรวม Booking", value: formatMoney(summary.bookingTotal) },
-    { label: "รับชำระแล้ว", value: formatMoney(summary.amountReceived) },
+    { label: text.bookingTotal, value: formatMoney(summary.bookingTotal) },
+    { label: text.amountReceived, value: formatMoney(summary.amountReceived) },
     {
-      label: "ยอดค้างชำระ",
+      label: text.outstandingBalance,
       value: formatMoney(summary.outstandingBalance),
       valueColor: summary.outstandingBalance > 0 ? RED : TEXT,
       strong: true,
     },
     ...(summary.guestCredit > 0
-      ? [{ label: "เครดิตของแขก", value: formatMoney(summary.guestCredit), valueColor: TEAL, strong: true }]
+      ? [{ label: text.guestCredit, value: formatMoney(summary.guestCredit), valueColor: TEAL, strong: true }]
       : []),
     ...(summary.remainingDeposit > 0
-      ? [{ label: "มัดจำคงเหลือ (แยก)", value: formatMoney(summary.remainingDeposit), valueColor: "#8a5a00", strong: true }]
+      ? [{ label: text.remainingDeposit, value: formatMoney(summary.remainingDeposit), valueColor: "#8a5a00", strong: true }]
       : []),
   ];
 
@@ -1040,7 +1225,7 @@ const renderPdfPages = async ({
     cursorY,
     cardWidth,
     secondCardsHeight,
-    "รายละเอียด Booking",
+    text.bookingDetails,
     bookingRows,
   );
   drawInfoCard(
@@ -1049,20 +1234,20 @@ const renderPdfPages = async ({
     cursorY,
     cardWidth,
     secondCardsHeight,
-    "สรุปการเงิน",
+    text.financialSummary,
     financialRows,
   );
   cursorY += secondCardsHeight + 28;
 
   drawTable(
-    "การจัดห้องพัก",
+    text.roomAssignments,
     currentBooking.roomStays,
     [
-      { header: "ห้อง", width: 400, value: (stay) => formatRoomStayRooms(stay) },
-      { header: "จาก", width: 260, value: (stay) => formatDate(stay.from) },
-      { header: "ถึง", width: 260, value: (stay) => formatDate(stay.to) },
+      { header: text.room, width: 400, value: (stay) => formatRoomStayRooms(stay) },
+      { header: text.from, width: 260, value: (stay) => formatDate(stay.from) },
+      { header: text.to, width: 260, value: (stay) => formatDate(stay.to) },
       {
-        header: "คืน",
+        header: text.nights,
         width: PAGE_WIDTH - PAGE_MARGIN * 2 - 920,
         align: "right",
         value: (stay) => roomStayNights(stay.from, stay.to),
@@ -1081,39 +1266,45 @@ const renderPdfPages = async ({
   };
   if (effectiveTransactions.length) {
     drawTable(
-      "รายการธุรกรรม",
+      text.transactions,
       effectiveTransactions,
       [
         {
-          header: "วันที่",
+          header: text.date,
           width: 200,
           value: (transaction) =>
             transaction.createdAt ? formatDate(transaction.createdAt, true) : "",
         },
         {
-          header: "รายการ",
+          header: text.description,
           width: 350,
           value: (transaction) =>
-            transactionDescriptionWithMeta(transactionDisplayBooking, transaction),
+            transactionDescriptionWithMeta(
+              transactionDisplayBooking,
+              transaction,
+              language,
+              text,
+            ),
         },
         {
-          header: "Type",
+          header: text.type,
           width: 130,
           value: (transaction) =>
-            transactionTypeLabel(transactionDisplayBooking, transaction),
+            transactionTypeLabel(transactionDisplayBooking, transaction, text),
           color: (transaction) => {
             const typeLabel = transactionTypeLabel(
               transactionDisplayBooking,
               transaction,
+              text,
             );
             if (typeLabel === "Unpaid") return RED;
             if (typeLabel === "Paid") return "rgb(30, 203, 131)";
-            if (typeLabel === "ปิดยอด") return MUTED;
+            if (typeLabel === text.writeOff) return MUTED;
             return TEXT;
           },
         },
         {
-          header: "Charge",
+          header: text.charge,
           width: 148,
           align: "right",
           value: (transaction) =>
@@ -1122,7 +1313,7 @@ const renderPdfPages = async ({
             folioAmountColor(transactionFolioAmounts(transaction).charge),
         },
         {
-          header: "Payment",
+          header: text.payment,
           width: 148,
           align: "right",
           value: (transaction) =>
@@ -1131,7 +1322,7 @@ const renderPdfPages = async ({
             folioAmountColor(transactionFolioAmounts(transaction).payment),
         },
         {
-          header: "Deposit",
+          header: text.deposit,
           width: PAGE_WIDTH - PAGE_MARGIN * 2 - 976,
           align: "right",
           value: (transaction) =>
@@ -1165,7 +1356,7 @@ const renderPdfPages = async ({
     );
     context.fill();
     context.stroke();
-    drawSectionTitle(context, "หมายเหตุ", PAGE_MARGIN + 18, cursorY + 14);
+    drawSectionTitle(context, text.note, PAGE_MARGIN + 18, cursorY + 14);
     setFont(context, 19, 400);
     context.fillStyle = TEXT;
     noteLines.forEach((line, index) => {
@@ -1178,16 +1369,42 @@ const renderPdfPages = async ({
   return pages;
 };
 
-export const downloadBookingSummaryPdf = async (options: PdfOptions) => {
+export const printBookingSummaryPdf = async (options: PdfOptions) => {
   const pages = await renderPdfPages(options);
   const pdf = buildPdf(await Promise.all(pages.map((page) => canvasToJpeg(page.canvas))));
   const url = URL.createObjectURL(pdf);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = createBookingSummaryFilename(options.booking);
-  anchor.style.display = "none";
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  const printFrame = document.createElement("iframe");
+  printFrame.title = `ปริ้น ${createBookingSummaryFilename(options.booking)}`;
+  printFrame.style.position = "fixed";
+  printFrame.style.right = "0";
+  printFrame.style.bottom = "0";
+  printFrame.style.width = "0";
+  printFrame.style.height = "0";
+  printFrame.style.border = "0";
+
+  let cleanedUp = false;
+  const cleanup = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    printFrame.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  printFrame.addEventListener(
+    "load",
+    () => {
+      const printWindow = printFrame.contentWindow;
+      if (!printWindow) {
+        cleanup();
+        return;
+      }
+      printWindow.addEventListener("afterprint", cleanup, { once: true });
+      printWindow.focus();
+      printWindow.print();
+    },
+    { once: true },
+  );
+  printFrame.src = url;
+  document.body.appendChild(printFrame);
+  window.setTimeout(cleanup, 120_000);
 };

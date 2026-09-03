@@ -404,6 +404,37 @@
   color: #777777;
 }
 
+.main__adminMonthPicker {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.35rem 0.45rem 0.35rem 0.75rem;
+  border-radius: 999rem;
+  background: var(--background);
+  box-shadow: var(--light-shadow);
+}
+
+.main__adminMonthPicker span {
+  white-space: nowrap;
+}
+
+.main__adminMonthPicker input {
+  min-height: 2rem;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid #e5e5e5;
+  border-radius: 999rem;
+  background: #ffffff;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.main__adminMonthPicker input:focus-visible {
+  border-color: var(--primary-color);
+  outline: 2px solid color-mix(in srgb, var(--primary-color) 22%, transparent);
+  outline-offset: 1px;
+}
+
 .main__cardHeader > div:first-child {
   min-width: 0;
 }
@@ -1306,6 +1337,16 @@
   .main__adminHeader div,
   .main__sectionHeader div {
     min-width: 0;
+  }
+
+  .main__adminHeader {
+    flex-direction: column;
+  }
+
+  .main__adminMonthPicker {
+    justify-content: space-between;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .main__adminHeader h2,

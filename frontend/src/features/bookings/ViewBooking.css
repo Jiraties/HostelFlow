@@ -778,6 +778,37 @@
   white-space: nowrap;
 }
 
+.viewBooking__receiveRoomPayment {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  width: fit-content;
+  margin-top: 0.4rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 999rem;
+  border: 1px solid #f3f3f3;
+  background: transparent;
+  color: #373737;
+  font: inherit;
+  font-size: 0.74rem;
+  line-height: 1.2;
+  cursor: pointer;
+  transition-duration: 0.2s;
+}
+
+.viewBooking__receiveRoomPayment i {
+  color: var(--primary-color);
+  font-size: 0.9rem;
+}
+
+.viewBooking__receiveRoomPayment:hover,
+.viewBooking__receiveRoomPayment:focus-visible {
+  border-color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 7%, transparent);
+  color: var(--text);
+  outline: none;
+}
+
 .viewBooking__transactionMeta {
   display: flex;
   flex-wrap: wrap;
@@ -1643,7 +1674,8 @@
     display: none;
   }
 
-  .viewBooking__secondaryActions > .viewBooking__noteAction {
+  .viewBooking__secondaryActions > .viewBooking__noteAction,
+  .viewBooking__secondaryActions > .viewBooking__printAction {
     width: 3.15rem;
     height: 3.15rem;
     min-width: 3.15rem;

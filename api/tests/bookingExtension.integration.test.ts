@@ -980,3 +980,84 @@ test("admin dashboard calculates ESR from MongoDB booking documents", async () =
     500,
   );
 });
+
+test("admin dashboard reports the selected historical Bangkok month", async () => {
+  await bookingFixture({ bookingId: "DASHBOARD-HISTORICAL-MONTH" });
+
+  const bangkokParts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(new Date());
+  const bangkokPart = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(bangkokParts.find((part) => part.type === type)?.value);
+  const historicalCheckIn = new Date(
+    Date.UTC(bangkokPart("year"), bangkokPart("month") - 2, 15, -7),
+  );
+  const historicalCheckOut = new Date(
+    historicalCheckIn.getTime() + 86400000,
+  );
+  const selectedMonth = `${historicalCheckIn.getUTCFullYear()}-${String(
+    historicalCheckIn.getUTCMonth() + 1,
+  ).padStart(2, "0")}`;
+
+  await Booking.updateOne(
+    { bookingId: "DASHBOARD-HISTORICAL-MONTH" },
+    {
+      $set: {
+        checkIn: historicalCheckIn,
+        checkOut: historicalCheckOut,
+        nights: 1,
+        roomStays: [
+          {
+            roomIds: ["Balcony"],
+            from: historicalCheckIn,
+            to: historicalCheckOut,
+          },
+        ],
+        "commercialSegments.0.from": historicalCheckIn,
+        "commercialSegments.0.to": historicalCheckOut,
+        "transactions.0.createdAt": historicalCheckIn,
+      },
+    },
+  );
+
+  const dashboardResponse = response();
+  await controller.getAdminDashboardStats(
+    {
+      user: { userId: "admin-id", username: "admin", admin: true },
+      query: { revenueRange: "MTD", month: selectedMonth },
+    } as any,
+    dashboardResponse as any,
+  );
+
+  assert.equal(dashboardResponse.statusCode, 200);
+  assert.equal(dashboardResponse.body.selectedMonth, selectedMonth);
+  assert.equal(dashboardResponse.body.monthBookings, 1);
+  assert.equal(dashboardResponse.body.monthlyGrossRevenue, 500);
+  assert.equal(
+    dashboardResponse.body.esrSeries.reduce(
+      (total: number, point: { grossRevenue: number }) =>
+        total + point.grossRevenue,
+      0,
+    ),
+    500,
+  );
+});
+
+test("admin dashboard rejects an invalid selected month", async () => {
+  const dashboardResponse = response();
+  await controller.getAdminDashboardStats(
+    {
+      user: { userId: "admin-id", username: "admin", admin: true },
+      query: { revenueRange: "MTD", month: "2026-13" },
+    } as any,
+    dashboardResponse as any,
+  );
+
+  assert.equal(dashboardResponse.statusCode, 400);
+  assert.equal(
+    dashboardResponse.body.message,
+    "Invalid month format. Use YYYY-MM.",
+  );
+});

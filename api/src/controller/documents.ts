@@ -21,6 +21,7 @@ import type { Request, Response } from "express";
 import type { EncryptedField } from "../models/booking";
 import { formatDateAD } from "../helpers/dateHelpers";
 import {
+  bookingsReportCheckInMonthBounds,
   bookingsReportDepositCollectedTotal,
   bookingsReportTransactionAmount,
 } from "../helpers/bookingsReportHelpers";
@@ -446,18 +447,19 @@ export const getBookingsReport = async (req: Request, res: Response) => {
     const bookingStatus = req.query.bookingStatus as string | undefined;
     const paymentMethod = req.query.paymentMethod as string | undefined;
 
-    if (!/^\d{4}-\d{2}$/.test(month)) {
+    const monthBounds = bookingsReportCheckInMonthBounds(month);
+    if (!monthBounds) {
       return res.status(400).json({ message: "Invalid month format" });
     }
 
-    const [year, monthNumber] = month.split("-").map(Number);
-
-    const firstDayOfNextMonth = new Date(year, monthNumber, 1);
-    const firstDayOfMonth = new Date(year, monthNumber - 1, 1);
+    const firstDayOfMonth = monthBounds.start;
+    const firstDayOfNextMonth = monthBounds.end;
 
     const query: Record<string, unknown> = {
-      checkIn: { $lt: firstDayOfNextMonth },
-      checkOut: { $gt: firstDayOfMonth },
+      checkIn: {
+        $gte: firstDayOfMonth,
+        $lt: firstDayOfNextMonth,
+      },
     };
 
     if (bookingChannel) {

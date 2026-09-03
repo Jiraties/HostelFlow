@@ -18,6 +18,7 @@ import TransactionCorrectionHistory from "./TransactionCorrectionHistory.tsx";
 import CorrectCheckIn from "./CorrectCheckIn.tsx";
 import CorrectBookingStatus from "./CorrectBookingStatus.tsx";
 import ClosedRoomAvailability from "./ClosedRoomAvailability.tsx";
+import ReceiveRoomPayment from "./ReceiveRoomPayment.tsx";
 
 import { useCallback, useState, useEffect, useRef } from "react";
 import { API_URL } from "../../config/api.ts";
@@ -167,6 +168,9 @@ const ViewBooking = ({
   const [manageRoomStaysIsOpen, setManageRoomStaysIsOpen] = useState(false);
   const [editBookingIsOpen, setEditBookingIsOpen] = useState(false);
   const [addTransactionIsOpen, setAddTransactionIsOpen] = useState(false);
+  const [roomPaymentTransaction, setRoomPaymentTransaction] = useState<
+    booking["transactions"][number] | null
+  >(null);
   const [closedRoomAvailabilityIsOpen, setClosedRoomAvailabilityIsOpen] =
     useState(false);
   const [transactionEditMode, setTransactionEditMode] = useState(false);
@@ -205,6 +209,7 @@ const ViewBooking = ({
   const [manageRoomStaysIsDirty, setManageRoomStaysIsDirty] = useState(false);
   const [editBookingIsDirty, setEditBookingIsDirty] = useState(false);
   const [addTransactionIsDirty, setAddTransactionIsDirty] = useState(false);
+  const [roomPaymentIsDirty, setRoomPaymentIsDirty] = useState(false);
   const [closedRoomAvailabilityIsDirty, setClosedRoomAvailabilityIsDirty] =
     useState(false);
   const [cancellationIsDirty, setCancellationIsDirty] = useState(false);
@@ -686,6 +691,7 @@ const ViewBooking = ({
     data.resolution?.finalStatus === "checkedOut"
       ? data.resolution.resolvedAt
       : undefined);
+  const wasEarlyCheckOut = data.checkout?.earlyCheckOut === true;
   const checkInWasOnDifferentDate = Boolean(
     data.checkedInAt && !isSameDay(new Date(data.checkedInAt), checkInDate),
   );
@@ -883,6 +889,28 @@ const ViewBooking = ({
       Boolean(transaction.relatedTransactionId));
 
   const outstandingRoomChargeAmount = roomChargeOutstandingAmount(data);
+  const remainingForRoomCharge = (
+    roomCharge: booking["transactions"][number],
+  ) => {
+    if (!roomCharge._id) return 0;
+    const appliedAmount = data.transactions.reduce((total, transaction) => {
+      if (transaction.relatedTransactionId !== roomCharge._id) return total;
+      return (["settlementCharge", "paymentCorrection"].includes(
+        transaction.type,
+      ) &&
+        transaction.paymentMethod !== "Unpaid") ||
+        transaction.type === "roomChargeWriteOff"
+        ? total + Math.abs(transaction.amount || 0)
+        : total;
+    }, 0);
+    return Math.max(
+      Number((Math.abs(roomCharge.amount || 0) - appliedAmount).toFixed(2)),
+      0,
+    );
+  };
+  const selectedRoomPaymentRemaining = roomPaymentTransaction
+    ? remainingForRoomCharge(roomPaymentTransaction)
+    : 0;
   const financialPosition = bookingFinancialPosition(data);
   const advancePaymentTransaction = advanceRoomPaymentTransaction(data);
   let attachNextSettlementCardSurchargeToRoomCharge = false;
@@ -1390,30 +1418,29 @@ const ViewBooking = ({
     }
   };
 
-  const downloadPdfHandler = async () => {
+  const printBookingSummaryHandler = async () => {
     if (pdfExporting) return;
 
     setPdfExporting(true);
-    setMoreActionsIsOpen(false);
     try {
       const response = await axios.get<booking>(
         `${API_URL}/bookings/getBookingById/${data.bookingId}`,
         { withCredentials: true },
       );
       const latestBooking = formatBookingDates(response.data);
-      const { downloadBookingSummaryPdf } =
+      const { printBookingSummaryPdf } =
         await import("./bookingSummaryPdf.ts");
 
-      await downloadBookingSummaryPdf({
+      await printBookingSummaryPdf({
         booking: latestBooking,
         resolveStaffName,
       });
-      toast.success("ดาวน์โหลด PDF แล้ว");
+      toast.success("เปิดหน้าปริ้น Booking Summary แล้ว");
     } catch (error) {
       toast.error(
         getApiErrorMessage(
           error,
-          "ไม่สามารถสร้าง Booking Summary PDF ได้ กรุณาลองอีกครั้ง",
+          "ไม่สามารถเปิดหน้าปริ้น Booking Summary ได้ กรุณาลองอีกครั้ง",
         ),
       );
     } finally {
@@ -1444,6 +1471,36 @@ const ViewBooking = ({
 
   return (
     <>
+      <Modal
+        open={Boolean(roomPaymentTransaction)}
+        className="home__modalCenter"
+        onClose={() =>
+          requestUnsavedModalClose(
+            roomPaymentIsDirty,
+            () => setRoomPaymentTransaction(null),
+            () =>
+              setPendingUnsavedClose(
+                () => () => setRoomPaymentTransaction(null),
+              ),
+          )
+        }
+      >
+        {roomPaymentTransaction ? (
+          <ReceiveRoomPayment
+            booking={data}
+            transaction={roomPaymentTransaction}
+            remainingAmount={selectedRoomPaymentRemaining}
+            onClose={() => setRoomPaymentTransaction(null)}
+            onDirtyChange={setRoomPaymentIsDirty}
+            onUpdated={(updatedBooking) => {
+              updateBooking(updatedBooking);
+              setRoomPaymentTransaction(null);
+            }}
+          />
+        ) : (
+          <span />
+        )}
+      </Modal>
       <Modal
         open={Boolean(transactionToCorrect)}
         className="home__modalCenter"
@@ -2005,7 +2062,7 @@ const ViewBooking = ({
                     <Tooltip
                       className="viewBooking__actualTime viewBooking__actualTime--checkOut viewBooking__actualTime--late"
                       ariaLabel="วันที่ Check-Out จริงไม่ตรงกับวันที่จอง"
-                      content="วันที่และเวลา Late Check-Out"
+                      content={`วันที่และเวลา ${wasEarlyCheckOut ? "Early" : "Late"} Check-Out`}
                     >
                       <i className="bx bx-arrow-from-left" />{" "}
                       {formatDisplayTime(actualCheckOutAt)}
@@ -2150,6 +2207,28 @@ const ViewBooking = ({
                                       {transactionName(transaction)}
                                     </p>
                                     {renderCorrectionActions(transaction)}
+                                    {data.status === "booked" &&
+                                      !transactionEditMode &&
+                                      transaction.type === "roomCharge" &&
+                                      transaction.paymentMethod === "Unpaid" &&
+                                      remainingForRoomCharge(transaction) >
+                                        0 && (
+                                        <button
+                                          type="button"
+                                          className="viewBooking__receiveRoomPayment"
+                                          onClick={() =>
+                                            setRoomPaymentTransaction(
+                                              transaction,
+                                            )
+                                          }
+                                        >
+                                          <i
+                                            className="bx bx-credit-card"
+                                            aria-hidden="true"
+                                          />
+                                          รับชำระตอนนี้
+                                        </button>
+                                      )}
                                   </div>
                                   {renderReviewMeta(transaction)}
                                 </div>
@@ -2282,14 +2361,6 @@ const ViewBooking = ({
                     >
                       <i className="bx bx-edit" />
                       แก้ไข
-                    </button>
-                    <button
-                      type="button"
-                      disabled={pdfExporting}
-                      onClick={() => void downloadPdfHandler()}
-                    >
-                      <i className="bx bx-arrow-to-bottom" />
-                      {pdfExporting ? "กำลังสร้าง PDF..." : "ดาวน์โหลด PDF"}
                     </button>
                     {!data.voided &&
                       (data.status === "booked" ||
@@ -2528,6 +2599,17 @@ const ViewBooking = ({
                 setNoteDraft(data.note || "");
                 setNoteIsEditing(true);
               }}
+            />
+
+            <ActionButton
+              text=""
+              mobileText="ปริ้น Booking Summary"
+              tooltip="ปริ้น Booking Summary"
+              ariaLabel="ปริ้น Booking Summary"
+              icon={pdfExporting ? "bx-loader-alt bx-spin" : "bx-printer"}
+              className="viewBooking__printAction"
+              disabled={pdfExporting}
+              onClick={() => void printBookingSummaryHandler()}
             />
 
             <ActionButton

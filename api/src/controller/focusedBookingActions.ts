@@ -55,11 +55,55 @@ type FinancialActionBody = {
   relatedTransactionId?: string;
   largeAmountConfirmed?: boolean;
 };
+type PreArrivalRoomPaymentBody = {
+  expectedRevision?: number;
+  relatedTransactionId?: string;
+  amount?: number;
+  paymentMethod?: PaymentMethod;
+  reference?: string;
+  note?: string;
+};
 
 const OTA_PLATFORMS = new Set(["BOOK", "HOST", "TRAV", "AGOD"]);
 const CLOSED_STATUSES = new Set(["checkedOut", "cancelled", "noShow"]);
 const PAYMENT_METHODS: PaymentMethod[] = ["Cash", "Card", "Transfer", "OTA"];
+const PRE_ARRIVAL_PAYMENT_METHODS: PaymentMethod[] = [
+  "Cash",
+  "Card",
+  "Transfer",
+];
 const STAFF_FINANCIAL_LIMIT = 2000;
+const CARD_SURCHARGE_RATE = 0.03;
+const roundMoney = (value: number) => Number(value.toFixed(2));
+
+const remainingUnpaidRoomChargeAmount = (
+  transactions: transcation[],
+  relatedTransactionId: string,
+) => {
+  const roomCharge = transactions.find(
+    (transaction) =>
+      String(transaction._id || "") === relatedTransactionId &&
+      transaction.type === "roomCharge" &&
+      transaction.paymentMethod === "Unpaid",
+  );
+  if (!roomCharge) return null;
+
+  const settled = transactions.reduce((total, transaction) => {
+    if (transaction.relatedTransactionId !== relatedTransactionId) return total;
+    if (
+      ["settlementCharge", "paymentCorrection"].includes(transaction.type) &&
+      transaction.paymentMethod !== "Unpaid"
+    ) {
+      return total + Math.abs(transaction.amount || 0);
+    }
+    if (transaction.type === "roomChargeWriteOff") {
+      return total + Math.abs(transaction.amount || 0);
+    }
+    return total;
+  }, 0);
+
+  return Math.max(roundMoney(Math.abs(roomCharge.amount || 0) - settled), 0);
+};
 
 const stableStringify = (value: unknown): string => {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
@@ -551,6 +595,235 @@ export const correctClosedRoomAvailability = async (
     return res.status(500).json({
       error: "CLOSED_ROOM_CORRECTION_FAILED",
       message: "ไม่สามารถแก้ไขการเปิดห้องได้ กรุณาลองใหม่",
+    });
+  }
+};
+
+export const recordPreArrivalRoomPayment = async (
+  req: Request<BookingParams, {}, PreArrivalRoomPaymentBody>,
+  res: Response,
+) => {
+  try {
+    const validated = validateMutation(req);
+    if (validated.error) {
+      return res.status(validated.error.status).json(validated.error);
+    }
+
+    const relatedTransactionId = String(
+      req.body.relatedTransactionId || "",
+    ).trim();
+    const amount = Number(req.body.amount);
+    const paymentMethod = req.body.paymentMethod;
+    const reference = String(req.body.reference || "").trim();
+    const note = String(req.body.note || "").trim();
+    if (
+      !relatedTransactionId ||
+      !Number.isFinite(amount) ||
+      amount <= 0 ||
+      !paymentMethod ||
+      !PRE_ARRIVAL_PAYMENT_METHODS.includes(paymentMethod)
+    ) {
+      return res.status(400).json({
+        error: "INVALID_PRE_ARRIVAL_ROOM_PAYMENT",
+        message: "กรุณาระบุยอดและช่องทางรับชำระค่าห้องให้ถูกต้อง",
+      });
+    }
+
+    const replay = await replayIfStored(req, res, validated.username);
+    if (!replay) return;
+    const initial = await Booking.findOne({
+      bookingId: req.params.bookingId,
+    }).lean<booking>();
+    if (!initial) {
+      return res.status(404).json({
+        error: "BOOKING_NOT_FOUND",
+        message: "ไม่พบ booking นี้",
+      });
+    }
+    if (Number(initial.revision || 0) !== validated.expectedRevision) {
+      return sendBookingRevisionConflict(res, req.params.bookingId);
+    }
+    if (initial.voided || initial.status !== "booked") {
+      return res.status(409).json({
+        error: "BOOKING_LIFECYCLE_CONFLICT",
+        message: "รับชำระก่อน Check-In ได้เฉพาะ Booking ที่ยังไม่ Check-In",
+      });
+    }
+
+    const effectiveTransactions = effectiveBookingTransactions(initial);
+    const remainingAmount = remainingUnpaidRoomChargeAmount(
+      effectiveTransactions,
+      relatedTransactionId,
+    );
+    if (remainingAmount === null) {
+      return res.status(409).json({
+        error: "UNPAID_ROOM_CHARGE_NOT_FOUND",
+        message: "ไม่พบรายการค่าห้องค้างชำระ กรุณารีเฟรช Booking",
+      });
+    }
+    if (remainingAmount <= 0) {
+      return res.status(409).json({
+        error: "ROOM_CHARGE_ALREADY_SETTLED",
+        message: "รายการค่าห้องนี้ชำระครบแล้ว",
+        remainingAmount,
+      });
+    }
+    if (roundMoney(amount) > remainingAmount) {
+      return res.status(409).json({
+        error: "PAYMENT_EXCEEDS_ROOM_CHARGE_BALANCE",
+        message: `รับชำระได้ไม่เกิน ${remainingAmount.toLocaleString("th-TH")} บาท`,
+        remainingAmount,
+      });
+    }
+
+    const settlementId = String(new mongoose.Types.ObjectId());
+    const receivedAt = new Date();
+    const transactionNote = note || "รับชำระค่าห้องก่อน Check-In";
+    const newTransactions: transcation[] = [
+      normalizeTransaction(
+        {
+          _id: settlementId,
+          type: "settlementCharge",
+          paymentMethod,
+          relatedTransactionType: "roomCharge",
+          relatedTransactionId,
+          amount: roundMoney(amount),
+          note: transactionNote,
+          reference: reference || undefined,
+          createdAt: receivedAt,
+        },
+        {
+          createdBy: validated.username,
+          sourceAction: "RECORD_PRE_ARRIVAL_ROOM_PAYMENT",
+          note: transactionNote,
+          reference: reference || undefined,
+          sameTypeCount: initial.transactions.filter(
+            (transaction) => transaction.type === "settlementCharge",
+          ).length,
+        },
+      ),
+    ];
+    if (paymentMethod === "Card") {
+      newTransactions.push(
+        normalizeTransaction(
+          {
+            type: "cardSurcharge",
+            paymentMethod: "Card",
+            relatedTransactionType: "settlementCharge",
+            relatedTransactionId: settlementId,
+            amount: roundMoney(amount * CARD_SURCHARGE_RATE),
+            createdAt: receivedAt,
+          },
+          {
+            createdBy: validated.username,
+            sourceAction: "RECORD_PRE_ARRIVAL_ROOM_PAYMENT",
+            note: "ค่าธรรมเนียมบัตร 3% สำหรับค่าห้องที่รับก่อน Check-In",
+            sameTypeCount: initial.transactions.filter(
+              (transaction) => transaction.type === "cardSurcharge",
+            ).length,
+          },
+        ),
+      );
+    }
+
+    const before = summarizeBookingFinancialPosition(effectiveTransactions);
+    const session = await mongoose.startSession();
+    let result:
+      | {
+          booking: booking;
+          after: ReturnType<typeof summarizeBookingFinancialPosition>;
+        }
+      | undefined;
+    try {
+      result = await session.withTransaction(async () => {
+        const assignedTransactions = await assignCashTransactionsInSession(
+          newTransactions,
+          session,
+        );
+        const updated = await Booking.findOneAndUpdate(
+          {
+            bookingId: initial.bookingId,
+            status: "booked",
+            voided: { $ne: true },
+            ...bookingRevisionPredicate(validated.expectedRevision),
+            transactions: {
+              $elemMatch: {
+                _id: relatedTransactionId,
+                type: "roomCharge",
+                paymentMethod: "Unpaid",
+              },
+            },
+          },
+          {
+            $push: { transactions: { $each: assignedTransactions } },
+            $inc: { revision: 1 },
+          },
+          { returnDocument: "after", runValidators: true, session },
+        );
+        if (!updated) return undefined;
+        const after = summarizeBookingFinancialPosition(
+          effectiveBookingTransactions(updated.toObject()),
+        );
+        const afterRemaining = roundMoney(remainingAmount - amount);
+        await logActivityStrict(
+          validated.username,
+          "RECORD_PRE_ARRIVAL_ROOM_PAYMENT",
+          {
+            changes: { guestBalance: { before, after } },
+            summary: {
+              amount: roundMoney(amount),
+              paymentMethod,
+              reference: reference || undefined,
+              note: transactionNote,
+              relatedTransactionId,
+              receivedAt,
+              remainingAmount: afterRemaining,
+              addedTransactions: assignedTransactions,
+            },
+          },
+          initial.bookingId,
+          session,
+        );
+        await saveAction({
+          action: "RECORD_PRE_ARRIVAL_ROOM_PAYMENT",
+          bookingId: initial.bookingId,
+          username: validated.username,
+          identity: replay.identity,
+          response: {
+            message: "บันทึกรับชำระค่าห้องสำเร็จ",
+            financialSummary: after,
+            remainingAmount: afterRemaining,
+            receivedAt,
+          },
+          session,
+        });
+        return { booking: updated.toObject() as booking, after };
+      });
+    } finally {
+      await session.endSession();
+    }
+    if (!result) {
+      return sendBookingRevisionConflict(res, req.params.bookingId);
+    }
+    return res.status(200).json({
+      message: "บันทึกรับชำระค่าห้องสำเร็จ",
+      booking: result.booking,
+      financialSummary: result.after,
+      remainingAmount: roundMoney(remainingAmount - amount),
+      receivedAt,
+    });
+  } catch (err: any) {
+    if (req.user?.username && req.get("Idempotency-Key")?.trim()) {
+      const recovered = await replayIfStored(req, res, req.user.username);
+      if (!recovered) return;
+    }
+    if (err instanceof CashShiftLedgerConflictError) {
+      return res.status(409).json({ error: err.code, message: err.message });
+    }
+    console.error("Pre-arrival room payment failed", err);
+    return res.status(500).json({
+      error: "PRE_ARRIVAL_ROOM_PAYMENT_FAILED",
+      message: "ไม่สามารถบันทึกรับชำระค่าห้องได้ กรุณาลองใหม่",
     });
   }
 };

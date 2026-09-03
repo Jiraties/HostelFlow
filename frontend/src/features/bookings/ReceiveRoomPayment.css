@@ -1,0 +1,110 @@
+.receiveRoomPayment__wrapper {
+  max-height: calc(100vh - 2rem);
+}
+
+.receiveRoomPayment__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.receiveRoomPayment__header > p {
+  color: #777777;
+  line-height: 1.5;
+}
+
+.receiveRoomPayment__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: fit-content;
+  color: var(--primary-color);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.receiveRoomPayment__summary {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 0.75rem;
+  background: #fafafa;
+}
+
+.receiveRoomPayment__summary div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.receiveRoomPayment__summary div:last-child {
+  text-align: right;
+}
+
+.receiveRoomPayment__summary span,
+.receiveRoomPayment__cardTotal span {
+  color: #777777;
+  font-size: 0.82rem;
+}
+
+.receiveRoomPayment__summary i {
+  color: var(--primary-color);
+  font-size: 1.35rem;
+}
+
+.receiveRoomPayment__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.receiveRoomPayment__grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.receiveRoomPayment__note {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.receiveRoomPayment__note small {
+  color: #8a8a8a;
+  font-weight: 400;
+}
+
+.receiveRoomPayment__cardTotal {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--payment-method-card) 10%, #ffffff);
+}
+
+@media (max-width: 560px) {
+  .receiveRoomPayment__wrapper {
+    width: calc(100vw - 1.5rem);
+    max-height: calc(100vh - 1.5rem);
+    padding: 1.25rem;
+  }
+
+  .receiveRoomPayment__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .receiveRoomPayment__summary {
+    gap: 0.5rem;
+  }
+
+  .receiveRoomPayment__cardTotal {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+}

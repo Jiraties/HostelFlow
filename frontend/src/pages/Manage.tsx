@@ -157,6 +157,10 @@ const actionMap = {
     icon: "bx-bed",
     text: "แก้ไขการเปิดห้องหลังปิด",
   },
+  RECORD_PRE_ARRIVAL_ROOM_PAYMENT: {
+    icon: "bx-wallet",
+    text: "รับชำระค่าห้องก่อน Check-In",
+  },
   RECORD_REFUND: { icon: "bx-undo", text: "บันทึกการคืนเงิน" },
   RECORD_COMPENSATION: { icon: "bx-gift", text: "บันทึกค่าชดเชย" },
   POST_CLOSE_ADJUSTMENT: {

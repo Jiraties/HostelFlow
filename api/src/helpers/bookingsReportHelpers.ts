@@ -4,6 +4,21 @@ import {
   transactionDirection,
 } from "./financeHelpers";
 
+const BANGKOK_UTC_OFFSET_MS = 7 * 60 * 60 * 1000;
+
+export const bookingsReportCheckInMonthBounds = (month: string) => {
+  if (!/^\d{4}-\d{2}$/.test(month)) return null;
+  const [year, monthNumber] = month.split("-").map(Number);
+  if (monthNumber < 1 || monthNumber > 12) return null;
+
+  return {
+    start: new Date(
+      Date.UTC(year, monthNumber - 1, 1) - BANGKOK_UTC_OFFSET_MS,
+    ),
+    end: new Date(Date.UTC(year, monthNumber, 1) - BANGKOK_UTC_OFFSET_MS),
+  };
+};
+
 export const bookingsReportRoomChargeTotal = (transactions: transcation[]) =>
   transactions
     .filter((transaction) => transaction.type === "roomCharge")

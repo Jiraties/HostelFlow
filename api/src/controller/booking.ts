@@ -310,6 +310,29 @@ const getBusinessMonthBounds = (date = new Date()) => {
   return { start, end };
 };
 
+const getBusinessMonthBoundsFromKey = (monthKey: unknown, date = new Date()) => {
+  if (monthKey === undefined) {
+    const bounds = getBusinessMonthBounds(date);
+    const { year, month } = getBusinessDateParts(date);
+    return {
+      ...bounds,
+      monthKey: `${year}-${String(month).padStart(2, "0")}`,
+    };
+  }
+  if (typeof monthKey !== "string" || !/^\d{4}-\d{2}$/.test(monthKey)) {
+    return null;
+  }
+
+  const [year, month] = monthKey.split("-").map(Number);
+  if (month < 1 || month > 12) return null;
+
+  return {
+    start: getBusinessDateStart(year, month, 1),
+    end: getBusinessDateStart(year, month + 1, 1),
+    monthKey,
+  };
+};
+
 const daysInBusinessMonth = (year: number, month: number) =>
   new Date(Date.UTC(year, month, 0)).getUTCDate();
 
@@ -1509,16 +1532,36 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
   }
 
   const today = new Date();
-  const { start: startOfToday, end: startOfTomorrow } =
-    getBusinessDayBounds(today);
-  const { start: startOfMonth, end: startOfNextMonth } =
-    getBusinessMonthBounds(today);
+  const { end: startOfTomorrow } = getBusinessDayBounds(today);
+  const selectedMonthBounds = getBusinessMonthBoundsFromKey(
+    req.query.month,
+    today,
+  );
+  if (!selectedMonthBounds) {
+    return res.status(400).json({
+      message: "Invalid month format. Use YYYY-MM.",
+    });
+  }
+  const {
+    start: startOfMonth,
+    end: startOfNextMonth,
+    monthKey: selectedMonth,
+  } = selectedMonthBounds;
+  const currentMonthBounds = getBusinessMonthBounds(today);
+  const selectedMonthIsCurrent =
+    startOfMonth.getTime() === currentMonthBounds.start.getTime();
+  const chartAnchorDate = selectedMonthIsCurrent
+    ? today
+    : new Date(startOfNextMonth.getTime() - 86400000);
+  const chartPeriodEnd = selectedMonthIsCurrent
+    ? startOfTomorrow
+    : startOfNextMonth;
   const revenueRange = normalizeRevenueChartRange(req.query.revenueRange);
   const { start: chartStart, end: chartEnd } = getRevenueChartBounds(
-    today,
+    chartAnchorDate,
     revenueRange,
     startOfMonth,
-    startOfTomorrow,
+    chartPeriodEnd,
   );
   const occupancyQueryStart = new Date(
     Math.min(chartStart.getTime(), startOfMonth.getTime()),
@@ -1690,7 +1733,7 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
 
     for (
       let date = getRevenueBucketStart(chartStart, revenueBucketSize);
-      date <= startOfToday;
+      date < chartEnd;
       date = nextRevenueBucketStart(date, revenueBucketSize)
     ) {
       const nextBucketStart = nextRevenueBucketStart(date, revenueBucketSize);
@@ -1774,6 +1817,7 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
     );
 
     res.status(200).json({
+      selectedMonth,
       monthlyGrossRevenue,
       monthlyCollectedRevenue,
       monthRoomRevenue: monthlyGrossRevenue,
