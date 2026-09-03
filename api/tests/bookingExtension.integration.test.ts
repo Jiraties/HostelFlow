@@ -7,6 +7,7 @@ import Activity from "../src/models/activity";
 import Booking from "../src/models/booking";
 import CashShift from "../src/models/cashShift";
 import RoomMutationLock from "../src/models/roomMutationLock";
+import RoomBlock from "../src/models/roomBlock";
 import { buildDepositRequirement } from "../src/helpers/depositPreparationHelpers";
 import { calculateTodayRevenueSummary } from "../src/helpers/financeHelpers";
 import { toInputDate } from "../src/helpers/dateHelpers";
@@ -240,6 +241,7 @@ before(async () => {
     Booking.syncIndexes(),
     CashShift.syncIndexes(),
     RoomMutationLock.syncIndexes(),
+    RoomBlock.syncIndexes(),
   ]);
   controller = require("../src/controller/booking");
 });
@@ -710,6 +712,30 @@ test("extension rejects occupied room nights", async () => {
   assert.equal(res.statusCode, 409);
   assert.equal(res.body.error, "ROOM_CONFLICT");
   const stored = await Booking.findOne({ bookingId: "EXT-ROOM-CONFLICT" }).lean();
+  assert.equal(stored?.revision, 0);
+});
+
+test("extension rejects active room blocks", async () => {
+  await bookingFixture({ bookingId: "EXT-ROOM-BLOCK" });
+  await RoomBlock.create({
+    roomId: "Siesta 3",
+    from: new Date(`${localDate(1)}T00:00:00`),
+    to: new Date(`${localDate(2)}T00:00:00`),
+    reason: "Maintenance",
+    createdBy: "staff",
+  });
+
+  const res = response();
+  await controller.extendBooking(
+    request({
+      bookingId: "EXT-ROOM-BLOCK",
+      body: extensionBody({ roomIds: ["Siesta 3"] }),
+    }),
+    res as any,
+  );
+  assert.equal(res.statusCode, 409);
+  assert.equal(res.body.error, "ROOM_CONFLICT");
+  const stored = await Booking.findOne({ bookingId: "EXT-ROOM-BLOCK" }).lean();
   assert.equal(stored?.revision, 0);
 });
 

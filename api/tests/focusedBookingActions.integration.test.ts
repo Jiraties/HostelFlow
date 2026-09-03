@@ -398,6 +398,41 @@ test("pre-arrival room payment supports partial payment and rejects overpayment"
   assert.equal(excessive.body.remainingAmount, 600);
 });
 
+test("pre-arrival room payment rejects amounts that round to zero", async () => {
+  const created = await Booking.findOne({ bookingId: "FOCUSED-1" });
+  created!.transactions.push({
+    type: "roomCharge",
+    paymentMethod: "Unpaid",
+    amount: 1000,
+    sourceAction: "NEW_BOOKING",
+  });
+  await created!.save();
+  const transactionId = String(created!.transactions[0]._id);
+  const res = response();
+
+  await recordPreArrivalRoomPayment(
+    request(
+      {
+        expectedRevision: 1,
+        relatedTransactionId: transactionId,
+        amount: 0.001,
+        paymentMethod: "Transfer",
+      },
+      {
+        key: "pre-arrival-rounded-zero",
+        path: "/bookings/FOCUSED-1/pre-arrival-room-payments",
+      },
+    ),
+    res,
+  );
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.body.error, "INVALID_PRE_ARRIVAL_ROOM_PAYMENT");
+  const stored = await Booking.findOne({ bookingId: "FOCUSED-1" }).lean();
+  assert.equal(stored?.transactions.length, 1);
+  assert.equal(stored?.revision, 1);
+});
+
 test("pre-arrival card payment adds a same-day three-percent surcharge", async () => {
   const created = await Booking.findOne({ bookingId: "FOCUSED-1" });
   created!.transactions.push({

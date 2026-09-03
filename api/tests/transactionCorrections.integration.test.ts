@@ -11,6 +11,7 @@ import { correctTransaction } from "../src/controller/transactionCorrections";
 import {
   approveReviewEvent,
   getReviewEvents,
+  getTodayRevenueBreakdown,
 } from "../src/controller/finance";
 
 type CapturedResponse = {
@@ -336,6 +337,53 @@ test("material amount corrections enter the immutable review queue", async () =>
   assert.equal(
     approved?.transactionCorrections[0].reviewStatus,
     "reviewed",
+  );
+});
+
+test("review queue shows each sequential correction's own after snapshot", async () => {
+  const booking = await createBooking({ amount: 6000 });
+  const transactionId = String(booking.transactions[0]._id);
+  const first = await callCorrection({
+    transactionId,
+    overrides: {
+      correctedAmount: 3000,
+      correctedPaymentMethod: "Unpaid",
+    },
+  });
+  const second = await callCorrection({
+    transactionId,
+    expectedRevision: 1,
+    overrides: {
+      correctedAmount: 0,
+      correctedPaymentMethod: "Unpaid",
+    },
+  });
+  assert.equal(first.statusCode, 200, JSON.stringify(first.body));
+  assert.equal(second.statusCode, 200, JSON.stringify(second.body));
+
+  const queueResponse = response();
+  await getReviewEvents(
+    {
+      query: { date: businessDateKey() },
+      user: { username: "admin", admin: true },
+    } as any,
+    queueResponse as any,
+  );
+
+  const corrections = queueResponse.body.transactions.filter(
+    (transaction: any) =>
+      transaction.reviewEventKind === "transactionCorrection",
+  );
+  assert.equal(corrections.length, 2);
+  assert.deepEqual(
+    corrections.map((transaction: any) => ({
+      before: transaction.correctionBeforeAmount,
+      after: transaction.amount,
+    })),
+    [
+      { before: 6000, after: 3000 },
+      { before: 3000, after: 0 },
+    ],
   );
 });
 
@@ -733,6 +781,24 @@ test("admin can fully waive an open-period charge without deleting it", async ()
     (await Booking.findById(booking._id).lean())?.transactions[0].amount,
     1200,
   );
+
+  const breakdown = response();
+  await getTodayRevenueBreakdown(
+    {
+      query: { businessDate: businessDateKey() },
+      user: { username: "admin", admin: true },
+    } as any,
+    breakdown as any,
+  );
+  assert.equal(breakdown.statusCode, 200, JSON.stringify(breakdown.body));
+  assert.equal(breakdown.body.totals.grossStayCharges, 0);
+  const roomCharge = breakdown.body.categories
+    .flatMap((category: any) => category.transactions)
+    .find(
+      (transaction: any) =>
+        transaction.transactionId === String(booking.transactions[0]._id),
+    );
+  assert.equal(roomCharge?.amount, 0);
 });
 
 test("concurrent corrections use revision compare-and-swap", async () => {

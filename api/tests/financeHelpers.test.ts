@@ -251,16 +251,14 @@ test("minor rounding adjustments stay below review noise while material or repea
   ]);
 });
 
-test("every refund needs review while THB 2,000 retains the large-refund flag", () => {
+test("customer refunds need review while deposit returns stay routine", () => {
   const refund = (type: transcation["type"], amount: number): transcation => ({
     type,
     paymentMethod: "Transfer",
     amount,
   });
 
-  assert.deepEqual(transactionNeedsReview(refund("depositRefund", 1)), [
-    "refund",
-  ]);
+  assert.deepEqual(transactionNeedsReview(refund("depositRefund", 1)), []);
   assert.deepEqual(transactionNeedsReview(refund("cancellationRefund", 100)), [
     "refund",
   ]);

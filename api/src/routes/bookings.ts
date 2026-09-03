@@ -47,9 +47,15 @@ import {
   recordPreArrivalRoomPayment,
   recordFinancialAction,
 } from "../controller/focusedBookingActions";
+import {
+  createRoomBlock,
+  releaseRoomBlock,
+} from "../controller/roomBlocks";
 
 const bookingsRouter = express.Router();
 
+bookingsRouter.post("/room-blocks", createRoomBlock);
+bookingsRouter.patch("/room-blocks/:blockId/release", releaseRoomBlock);
 bookingsRouter.post("/newBooking", newBooking);
 bookingsRouter.post("/:bookingId/extensions", extendBooking);
 bookingsRouter.patch("/editBooking/:bookingId", editBooking);

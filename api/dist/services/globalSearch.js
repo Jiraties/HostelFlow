@@ -562,6 +562,71 @@ const transactionElemMatch = (intent) => ({
         }
         : {}),
 });
+const transactionCorrectionElemMatch = (intent) => {
+    const match = {
+        ...(intent.amount !== undefined ? { "after.amount": intent.amount } : {}),
+        ...(intent.transactionTypes.length
+            ? { "after.type": { $in: intent.transactionTypes } }
+            : {}),
+    };
+    return Object.keys(match).length > 0 ? match : null;
+};
+const effectiveTransactionProjection = {
+    $map: {
+        input: { $ifNull: ["$transactions", []] },
+        as: "transaction",
+        in: {
+            $let: {
+                vars: {
+                    latestCorrection: {
+                        $reduce: {
+                            input: {
+                                $filter: {
+                                    input: { $ifNull: ["$transactionCorrections", []] },
+                                    as: "correction",
+                                    cond: {
+                                        $eq: [
+                                            "$$correction.targetTransactionId",
+                                            { $toString: "$$transaction._id" },
+                                        ],
+                                    },
+                                },
+                            },
+                            initialValue: null,
+                            in: {
+                                $cond: [
+                                    {
+                                        $or: [
+                                            { $eq: ["$$value", null] },
+                                            {
+                                                $gte: [
+                                                    "$$this.correctedAt",
+                                                    "$$value.correctedAt",
+                                                ],
+                                            },
+                                        ],
+                                    },
+                                    "$$this",
+                                    "$$value",
+                                ],
+                            },
+                        },
+                    },
+                },
+                in: {
+                    $mergeObjects: [
+                        "$$transaction",
+                        { $ifNull: ["$$latestCorrection.after", {}] },
+                        {
+                            _id: "$$transaction._id",
+                            createdAt: "$$transaction.createdAt",
+                        },
+                    ],
+                },
+            },
+        },
+    },
+};
 const transactionParentClauses = (intent) => {
     const clauses = [];
     // nameFallback belongs to the parallel booking-name branch. Once a
@@ -595,13 +660,32 @@ const searchTransactions = async (intent, pagination) => {
     }
     const parentClauses = transactionParentClauses(intent);
     const transactionMatch = transactionElemMatch(intent);
+    const correctionMatch = transactionCorrectionElemMatch(intent);
+    const transactionCandidateClause = correctionMatch
+        ? {
+            $or: [
+                { transactions: { $elemMatch: transactionMatch } },
+                {
+                    transactionCorrections: { $elemMatch: correctionMatch },
+                    ...(intent.transactionDate
+                        ? {
+                            "transactions.createdAt": {
+                                $gte: intent.transactionDate.start,
+                                $lt: intent.transactionDate.end,
+                            },
+                        }
+                        : {}),
+                },
+            ],
+        }
+        : { transactions: { $elemMatch: transactionMatch } };
     const match = {
         ...(parentClauses.length === 1
             ? parentClauses[0]
             : parentClauses.length > 1
                 ? { $and: parentClauses }
                 : {}),
-        transactions: { $elemMatch: transactionMatch },
+        ...transactionCandidateClause,
     };
     const filterConditions = transactionFilterConditions(intent);
     const today = currentBangkokRange();
@@ -609,6 +693,7 @@ const searchTransactions = async (intent, pagination) => {
     const rows = await booking_1.default.collection
         .aggregate([
         { $match: match },
+        { $set: { effectiveTransactions: effectiveTransactionProjection } },
         {
             $project: {
                 name: 1,
@@ -622,7 +707,7 @@ const searchTransactions = async (intent, pagination) => {
                     $map: {
                         input: {
                             $filter: {
-                                input: "$transactions",
+                                input: "$effectiveTransactions",
                                 as: "transaction",
                                 cond: filterConditions.length === 1
                                     ? filterConditions[0]

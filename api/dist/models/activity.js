@@ -24,6 +24,8 @@ const activitySchema = new mongoose_1.default.Schema({
             "CANCEL_BOOKING",
             "MARK_NO_SHOW",
             "CORRECT_CLOSED_ROOM_AVAILABILITY",
+            "CREATE_ROOM_BLOCK",
+            "RELEASE_ROOM_BLOCK",
             "RECORD_PRE_ARRIVAL_ROOM_PAYMENT",
             "RECORD_REFUND",
             "RECORD_COMPENSATION",

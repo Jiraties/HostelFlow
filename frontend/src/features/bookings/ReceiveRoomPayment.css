@@ -8,6 +8,17 @@
   gap: 0.35rem;
 }
 
+.receiveRoomPayment__titleRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.receiveRoomPayment__titleRow .addBooking__title {
+  margin-bottom: 0;
+}
+
 .receiveRoomPayment__header > p {
   color: #777777;
   line-height: 1.5;
@@ -17,8 +28,9 @@
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
+  margin-top: 1rem;
   width: fit-content;
-  color: var(--primary-color);
+  color: #e7c332;
   font-size: 0.82rem;
   font-weight: 600;
 }
@@ -52,6 +64,10 @@
 .receiveRoomPayment__summary i {
   color: var(--primary-color);
   font-size: 1.35rem;
+}
+
+.receiveRoomPayment__summary strong {
+  font-weight: 500;
 }
 
 .receiveRoomPayment__grid {

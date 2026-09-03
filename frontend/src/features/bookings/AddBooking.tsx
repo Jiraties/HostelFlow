@@ -101,7 +101,9 @@ const AddBooking = ({
   onDirtyChange?: (isDirty: boolean) => void;
   clickInfo?: {
     checkIn: string | null;
+    checkOut?: string | null;
     roomId: string | null;
+    roomIds?: string[];
   };
 }) => {
   const { user } = useAuth();
@@ -148,9 +150,13 @@ const AddBooking = ({
     return {
       name: "",
       checkIn: clickInfo?.checkIn || "",
-      checkOut: "",
+      checkOut: clickInfo?.checkOut || "",
       platformId: defaultPlatform,
-      roomIds: clickInfo?.roomId ? [clickInfo.roomId] : [],
+      roomIds: clickInfo?.roomIds?.length
+        ? clickInfo.roomIds
+        : clickInfo?.roomId
+          ? [clickInfo.roomId]
+          : [],
       price: "",
       paymentMethod:
         defaultPlatform === "TRAV"
@@ -162,7 +168,9 @@ const AddBooking = ({
     };
   }, [
     clickInfo?.checkIn,
+    clickInfo?.checkOut,
     clickInfo?.roomId,
+    clickInfo?.roomIds,
     editModeBooking,
     user?.settings.defaultPaymentMethod,
     user?.settings.defaultPlatformId,

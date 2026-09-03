@@ -29,6 +29,7 @@ import {
   RoomMutationConflictError,
   withRoomMutationLocks,
 } from "./roomMutationLocks";
+import { findActiveRoomBlockConflict } from "./roomBlockAvailability";
 
 const PLATFORM_IDS: PlatformId[] = ["BOOK", "HOST", "TRAV", "AGOD", "WALK"];
 const EXTENSION_PAYMENT_METHODS: PaymentMethod[] = [
@@ -423,8 +424,17 @@ const hasRoomConflict = async (
   from: Date,
   to: Date,
   session: mongoose.ClientSession,
-) =>
-  Boolean(
+) => {
+  if (
+    await findActiveRoomBlockConflict(
+      [{ roomIds, from, to }],
+      session,
+    )
+  ) {
+    return true;
+  }
+
+  return Boolean(
     await Booking.exists({
       bookingId: { $ne: bookingId },
       $and: [
@@ -454,6 +464,7 @@ const hasRoomConflict = async (
       ],
     }).session(session),
   );
+};
 
 const materializeCommercialSegments = (
   currentBooking: booking,

@@ -58,7 +58,6 @@ const moneyOutTransactionTypes: TransactionType[] = [
 ];
 
 const refundTransactionTypes = new Set<TransactionType>([
-  "depositRefund",
   "cancellationRefund",
   "roomRefund",
 ]);

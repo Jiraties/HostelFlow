@@ -39,6 +39,14 @@ const actionMap = {
     icon: "bx-bed",
     text: "แก้ไขการเปิดห้องหลังปิด",
   },
+  CREATE_ROOM_BLOCK: {
+    icon: "bx-block",
+    text: "บล็อกห้อง",
+  },
+  RELEASE_ROOM_BLOCK: {
+    icon: "bx-check",
+    text: "เปิดห้องให้จอง",
+  },
   RECORD_PRE_ARRIVAL_ROOM_PAYMENT: {
     icon: "bx-wallet",
     text: "รับชำระค่าห้องก่อน Check-In",
@@ -217,6 +225,11 @@ const detailLabels: Record<string, string> = {
   pinned: "ปัก Booking",
   starred: "ปัก Booking",
   status: "สถานะ",
+  blockId: "รหัสรายการบล็อก",
+  roomId: "ห้อง / เตียง",
+  from: "วันเริ่มต้น",
+  to: "วันสิ้นสุด",
+  reason: "เหตุผล",
   checkInByStaffUsername: "พนักงาน Check-In",
   checkedInAt: "เวลา Check-In",
   targetName: "ชื่อผู้ใช้",

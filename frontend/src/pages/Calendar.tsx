@@ -2,6 +2,9 @@ import ConfirmationModal from "../components/ConfirmationModal.tsx";
 import UnsavedChangesModal from "../components/UnsavedChangesModal.tsx";
 import ViewBooking from "../features/bookings/ViewBooking";
 import AddBooking from "../features/bookings/AddBooking.tsx";
+import RoomBlockModal, {
+  type CalendarRoomBlock,
+} from "../features/bookings/RoomBlockModal.tsx";
 import PageHeader from "../components/PageHeader.tsx";
 import axios from "axios";
 import toast from "react-hot-toast";
@@ -10,9 +13,16 @@ import type { booking, PlatformId } from "../types/bookingTypes";
 import { platformMap } from "../helpers/maps.ts";
 import { getApiErrorMessage } from "../helpers/apiErrorMessage";
 
-import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  useRef,
+} from "react";
 import { Modal } from "@mui/material";
-import type { ReactNode } from "react";
+import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import {
   calculateNights,
   roomChargeDisplayPaymentMethod,
@@ -46,6 +56,20 @@ type CalendarBooking = {
 type Room = {
   roomId: string;
   bookings: CalendarBooking[];
+  blocks?: CalendarRoomBlock[];
+};
+
+type CalendarSelection = {
+  startRoomIndex: number;
+  endRoomIndex: number;
+  startIndex: number;
+  endIndex: number;
+};
+
+type SelectionChooser = {
+  selection: CalendarSelection;
+  x: number;
+  y: number;
 };
 
 type CalendarDensity = "compact" | "comfortable" | "spacious";
@@ -155,8 +179,12 @@ const Calendar = () => {
   const today = new Date();
   const calendarColorMode = user?.settings.calendarColorMode || "status";
   const calendarDensity = user?.settings.calendarDensity || "comfortable";
-  const calendarLegend =
-    calendarColorMode === "source" ? sourceLegendItems : calendarLegendItems;
+  const calendarLegend = [
+    ...(calendarColorMode === "source"
+      ? sourceLegendItems
+      : calendarLegendItems),
+    { label: "บล็อกห้อง", color: "#64748b" },
+  ];
   const dayColumnWidth =
     calendarDensity === "compact"
       ? "2.75rem"
@@ -167,6 +195,17 @@ const Calendar = () => {
 
   const timelineRef = useRef<HTMLDivElement>(null);
   const monthPickerRef = useRef<HTMLSpanElement>(null);
+  const selectionChooserRef = useRef<HTMLDivElement>(null);
+  const selectionChooserFirstActionRef = useRef<HTMLButtonElement>(null);
+  const dragRef = useRef<{
+    pointerId: number;
+    anchorRoomIndex: number;
+    currentRoomIndex: number;
+    anchorIndex: number;
+    currentIndex: number;
+    dragged: boolean;
+  } | null>(null);
+  const suppressNextClickRef = useRef(false);
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const targetRoomId = searchParams.get("room")?.trim() || "";
@@ -182,7 +221,9 @@ const Calendar = () => {
   >(null);
   const [addBookingClickInfo, setAddBookingClickInfo] = useState<{
     checkIn: string | null;
+    checkOut?: string | null;
     roomId: string | null;
+    roomIds?: string[];
   }>({
     checkIn: null,
     roomId: null,
@@ -194,6 +235,19 @@ const Calendar = () => {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [highlightedRoomDate, setHighlightedRoomDate] = useState("");
   const [searchAnnouncement, setSearchAnnouncement] = useState("");
+  const [dragSelection, setDragSelection] = useState<CalendarSelection | null>(
+    null,
+  );
+  const [selectionChooser, setSelectionChooser] =
+    useState<SelectionChooser | null>(null);
+  const [newRoomBlock, setNewRoomBlock] = useState<{
+    roomIds: string[];
+    from: string;
+    to: string;
+  } | null>(null);
+  const [viewRoomBlock, setViewRoomBlock] = useState<CalendarRoomBlock | null>(
+    null,
+  );
   const handledRoomDateRef = useRef("");
   const [viewBookingBooking, setViewBookingBooking] = useState<booking | null>(
     null,
@@ -222,8 +276,271 @@ const Calendar = () => {
 
   const [rooms, setRooms] = useState<Room[]>([]);
 
+  const selectionDates = (selection: CalendarSelection) => {
+    const startIndex = Math.min(selection.startIndex, selection.endIndex);
+    const endIndex = Math.max(selection.startIndex, selection.endIndex);
+    const startRoomIndex = Math.min(
+      selection.startRoomIndex,
+      selection.endRoomIndex,
+    );
+    const endRoomIndex = Math.max(
+      selection.startRoomIndex,
+      selection.endRoomIndex,
+    );
+    return {
+      roomIds: rooms
+        .slice(startRoomIndex, endRoomIndex + 1)
+        .map((room) => room.roomId),
+      from: formatLocalDate(calendarDays[startIndex]),
+      to: formatLocalDate(calendarDays[endIndex]),
+    };
+  };
+
+  const nightIsUnavailable = (roomId: string, dayIndex: number) => {
+    const day = calendarDays[dayIndex];
+    const nextDay = new Date(day);
+    nextDay.setDate(nextDay.getDate() + 1);
+    const room = rooms.find((item) => item.roomId === roomId);
+    if (!room) return true;
+
+    return [...room.bookings, ...(room.blocks || [])].some((item) => {
+      const from = startOfCalendarDay(new Date(item.from));
+      const to = startOfCalendarDay(new Date(item.to));
+      return from < nextDay && to > day;
+    });
+  };
+
+  const clampSelectionEnd = (
+    roomIds: string[],
+    anchorIndex: number,
+    requestedIndex: number,
+  ) => {
+    if (requestedIndex > anchorIndex) {
+      for (let index = anchorIndex; index < requestedIndex; index += 1) {
+        if (roomIds.some((roomId) => nightIsUnavailable(roomId, index))) {
+          return index;
+        }
+      }
+      return requestedIndex;
+    }
+
+    if (requestedIndex < anchorIndex) {
+      for (let index = anchorIndex - 1; index >= requestedIndex; index -= 1) {
+        if (roomIds.some((roomId) => nightIsUnavailable(roomId, index))) {
+          return index + 1;
+        }
+      }
+    }
+    return requestedIndex;
+  };
+
+  const selectionRangeIsUnavailable = (
+    roomId: string,
+    startIndex: number,
+    endIndex: number,
+  ) => {
+    const start = Math.min(startIndex, endIndex);
+    const end = Math.max(startIndex, endIndex);
+    for (let index = start; index < end; index += 1) {
+      if (nightIsUnavailable(roomId, index)) return true;
+    }
+    return false;
+  };
+
+  const clampSelectionRoomIndex = (
+    anchorRoomIndex: number,
+    requestedRoomIndex: number,
+    startIndex: number,
+    endIndex: number,
+  ) => {
+    const direction = requestedRoomIndex >= anchorRoomIndex ? 1 : -1;
+    let currentRoomIndex = anchorRoomIndex;
+
+    for (
+      let roomIndex = anchorRoomIndex + direction;
+      direction > 0
+        ? roomIndex <= requestedRoomIndex
+        : roomIndex >= requestedRoomIndex;
+      roomIndex += direction
+    ) {
+      const room = rooms[roomIndex];
+      if (
+        !room ||
+        selectionRangeIsUnavailable(room.roomId, startIndex, endIndex)
+      ) {
+        break;
+      }
+      currentRoomIndex = roomIndex;
+    }
+
+    return currentRoomIndex;
+  };
+
+  const dayIndexAtPointer = (clientX: number) => {
+    const headers = Array.from(
+      timelineRef.current?.querySelectorAll<HTMLElement>("[data-day]") || [],
+    );
+    if (!headers.length) return null;
+
+    const containing = headers.find((header) => {
+      const rect = header.getBoundingClientRect();
+      return clientX >= rect.left && clientX <= rect.right;
+    });
+    if (containing) return Number(containing.dataset.day);
+
+    const firstRect = headers[0].getBoundingClientRect();
+    if (clientX < firstRect.left) return 0;
+    return headers.length - 1;
+  };
+
+  const roomIndexAtPointer = (clientY: number) => {
+    const labels = Array.from(
+      timelineRef.current?.querySelectorAll<HTMLElement>(
+        "[data-selection-room-index]",
+      ) || [],
+    );
+    if (!labels.length) return null;
+
+    const containing = labels.find((label) => {
+      const rect = label.getBoundingClientRect();
+      return clientY >= rect.top && clientY <= rect.bottom;
+    });
+    if (containing) return Number(containing.dataset.selectionRoomIndex);
+
+    const firstRect = labels[0].getBoundingClientRect();
+    if (clientY < firstRect.top) return 0;
+    return labels.length - 1;
+  };
+
+  const handleSelectionPointerDown = (
+    event: ReactPointerEvent<HTMLDivElement>,
+    roomIndex: number,
+    dayIndex: number,
+  ) => {
+    if (event.pointerType === "touch" || event.button !== 0) return;
+    const roomId = rooms[roomIndex]?.roomId;
+    if (!roomId || nightIsUnavailable(roomId, dayIndex)) return;
+    suppressNextClickRef.current = false;
+    setSelectionChooser(null);
+    setDragSelection(null);
+    dragRef.current = {
+      pointerId: event.pointerId,
+      anchorRoomIndex: roomIndex,
+      currentRoomIndex: roomIndex,
+      anchorIndex: dayIndex,
+      currentIndex: dayIndex,
+      dragged: false,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handleSelectionPointerMove = (
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const requestedIndex = dayIndexAtPointer(event.clientX);
+    const requestedRoomIndex = roomIndexAtPointer(event.clientY);
+    if (requestedIndex === null || requestedRoomIndex === null) return;
+    const anchorRoomId = rooms[drag.anchorRoomIndex]?.roomId;
+    if (!anchorRoomId) return;
+
+    let currentIndex = clampSelectionEnd(
+      [anchorRoomId],
+      drag.anchorIndex,
+      requestedIndex,
+    );
+    const currentRoomIndex = clampSelectionRoomIndex(
+      drag.anchorRoomIndex,
+      requestedRoomIndex,
+      drag.anchorIndex,
+      currentIndex,
+    );
+    const selectedRoomIds = rooms
+      .slice(
+        Math.min(drag.anchorRoomIndex, currentRoomIndex),
+        Math.max(drag.anchorRoomIndex, currentRoomIndex) + 1,
+      )
+      .map((room) => room.roomId);
+    currentIndex = clampSelectionEnd(
+      selectedRoomIds,
+      drag.anchorIndex,
+      requestedIndex,
+    );
+    if (
+      requestedIndex !== drag.anchorIndex ||
+      requestedRoomIndex !== drag.anchorRoomIndex
+    ) {
+      drag.dragged = true;
+    }
+    drag.currentIndex = currentIndex;
+    drag.currentRoomIndex = currentRoomIndex;
+    setDragSelection(
+      currentIndex === drag.anchorIndex
+        ? null
+        : {
+            startRoomIndex: drag.anchorRoomIndex,
+            endRoomIndex: currentRoomIndex,
+            startIndex: drag.anchorIndex,
+            endIndex: currentIndex,
+          },
+    );
+  };
+
+  const finishSelection = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+
+    if (!drag.dragged) {
+      setDragSelection(null);
+      return;
+    }
+    suppressNextClickRef.current = true;
+    if (drag.currentIndex === drag.anchorIndex) {
+      setDragSelection(null);
+      return;
+    }
+    const selection = {
+      startRoomIndex: drag.anchorRoomIndex,
+      endRoomIndex: drag.currentRoomIndex,
+      startIndex: drag.anchorIndex,
+      endIndex: drag.currentIndex,
+    };
+    setDragSelection(selection);
+    setSelectionChooser({
+      selection,
+      x: 0,
+      y: 0,
+    });
+  };
+
+  const cancelSelection = () => {
+    dragRef.current = null;
+    setDragSelection(null);
+  };
+
+  const selectionContainsNight = (roomId: string, dayIndex: number) => {
+    if (!dragSelection) return false;
+    const roomIndex = rooms.findIndex((room) => room.roomId === roomId);
+    const startRoomIndex = Math.min(
+      dragSelection.startRoomIndex,
+      dragSelection.endRoomIndex,
+    );
+    const endRoomIndex = Math.max(
+      dragSelection.startRoomIndex,
+      dragSelection.endRoomIndex,
+    );
+    if (roomIndex < startRoomIndex || roomIndex > endRoomIndex) return false;
+    const start = Math.min(dragSelection.startIndex, dragSelection.endIndex);
+    const end = Math.max(dragSelection.startIndex, dragSelection.endIndex);
+    return dayIndex >= start && dayIndex < end;
+  };
+
   const roomRows: ReactNode[] = [];
   const mergedBookingBlocks: ReactNode[] = [];
+  const roomBlockElements: ReactNode[] = [];
+  const selectionGhostElements: ReactNode[] = [];
   const timelineGridRows: string[] = [roomRowHeight];
   const roomGridRows: number[] = [];
   let roomTypeSeparatorCount = 0;
@@ -264,9 +581,12 @@ const Calendar = () => {
   const monthStart = startOfCalendarDay(new Date(year, month, 1));
   const monthEnd = startOfCalendarDay(new Date(year, month + 1, 1));
 
-  const getVisibleBookingPosition = (booking: CalendarBooking) => {
-    const from = startOfCalendarDay(new Date(booking.from));
-    const to = startOfCalendarDay(new Date(booking.to));
+  const getVisibleRangePosition = (
+    fromValue: string | Date,
+    toValue: string | Date,
+  ) => {
+    const from = startOfCalendarDay(new Date(fromValue));
+    const to = startOfCalendarDay(new Date(toValue));
     const overlaps = to > monthStart && from < monthEnd;
     if (!overlaps) return null;
 
@@ -293,6 +613,13 @@ const Calendar = () => {
     };
   };
 
+  const getVisibleBookingPosition = (booking: CalendarBooking) =>
+    getVisibleRangePosition(booking.from, booking.to);
+
+  const roomBlocksById = new Map<
+    string,
+    { block: CalendarRoomBlock; roomIndex: number }[]
+  >();
   const bookingBlocksBySegment = new Map<
     string,
     { booking: CalendarBooking; roomIndex: number }[]
@@ -329,6 +656,7 @@ const Calendar = () => {
     roomRow.push(
       <div
         className="timeline__item timeline__roomIdItem"
+        data-selection-room-index={roomIndex}
         style={{
           gridColumn: "1",
           gridRow,
@@ -365,6 +693,10 @@ const Calendar = () => {
             highlightedRoomDate === roomDateKey
               ? " timeline__emptyCell--searchHighlight"
               : ""
+          }${
+            selectionContainsNight(room.roomId, dayIndex)
+              ? " timeline__emptyCell--dragSelected"
+              : ""
           }`}
           data-search-room-id={room.roomId}
           data-search-date={dateKey}
@@ -376,7 +708,16 @@ const Calendar = () => {
             gridRow,
             backgroundColor: isToday ? "#0000000a" : undefined, // subtle grey
           }}
-          onClick={() => handleAddBooking(room.roomId, day)}
+          onPointerDown={(event) =>
+            handleSelectionPointerDown(event, roomIndex, dayIndex)
+          }
+          onClick={() => {
+            if (suppressNextClickRef.current) {
+              suppressNextClickRef.current = false;
+              return;
+            }
+            handleAddBooking(room.roomId, day);
+          }}
           title={`Add booking: ${room.roomId} — ${day.toDateString()}`}
         />,
       );
@@ -398,7 +739,132 @@ const Calendar = () => {
       ]);
     });
 
+    (room.blocks || []).forEach((block) => {
+      const position = getVisibleRangePosition(block.from, block.to);
+      if (!position) return;
+
+      roomBlocksById.set(block.blockId, [
+        ...(roomBlocksById.get(block.blockId) || []),
+        { block, roomIndex },
+      ]);
+    });
+
     roomRows.push(roomRow);
+  });
+
+  if (dragSelection) {
+    const startIndex = Math.min(
+      dragSelection.startIndex,
+      dragSelection.endIndex,
+    );
+    const endIndex = Math.max(dragSelection.startIndex, dragSelection.endIndex);
+    const startRoomIndex = Math.min(
+      dragSelection.startRoomIndex,
+      dragSelection.endRoomIndex,
+    );
+    const endRoomIndex = Math.max(
+      dragSelection.startRoomIndex,
+      dragSelection.endRoomIndex,
+    );
+    const selectedNights = endIndex - startIndex;
+    const selectedBeds = endRoomIndex - startRoomIndex + 1;
+    const rowGroups: number[][] = [];
+
+    for (
+      let roomIndex = startRoomIndex;
+      roomIndex <= endRoomIndex;
+      roomIndex += 1
+    ) {
+      const currentGroup = rowGroups[rowGroups.length - 1];
+      const previousRoomIndex = currentGroup?.[currentGroup.length - 1];
+      if (
+        currentGroup &&
+        previousRoomIndex !== undefined &&
+        roomGridRows[roomIndex] === roomGridRows[previousRoomIndex] + 1
+      ) {
+        currentGroup.push(roomIndex);
+      } else {
+        rowGroups.push([roomIndex]);
+      }
+    }
+
+    if (selectedNights > 0) {
+      rowGroups.forEach((roomIndexes, groupIndex) => {
+        selectionGhostElements.push(
+          <div
+            className="timeline__item timeline__selectionGhost"
+            style={{
+              gridColumn: `${startIndex + 2} / span ${selectedNights}`,
+              gridRow: `${roomGridRows[roomIndexes[0]]} / span ${roomIndexes.length}`,
+            }}
+            key={`selection-ghost-${groupIndex}`}
+            data-selection-ghost
+            aria-hidden="true"
+          >
+            <span className="timeline__selectionGhostLabel">
+              <i className="bx bx-fullscreen" aria-hidden="true" />
+              <span>
+                {selectedBeds > 1 && `${selectedBeds} เตียง · `}
+                {selectedNights} คืน
+              </span>
+            </span>
+          </div>,
+        );
+      });
+    }
+  }
+
+  roomBlocksById.forEach((items, blockId) => {
+    const sortedItems = [...items].sort((a, b) => a.roomIndex - b.roomIndex);
+    const rowGroups: { block: CalendarRoomBlock; roomIndexes: number[] }[] = [];
+
+    sortedItems.forEach((item) => {
+      const currentGroup = rowGroups[rowGroups.length - 1];
+      const previousRoomIndex =
+        currentGroup?.roomIndexes[currentGroup.roomIndexes.length - 1];
+      if (
+        currentGroup &&
+        previousRoomIndex !== undefined &&
+        roomGridRows[item.roomIndex] === roomGridRows[previousRoomIndex] + 1
+      ) {
+        currentGroup.roomIndexes.push(item.roomIndex);
+      } else {
+        rowGroups.push({ block: item.block, roomIndexes: [item.roomIndex] });
+      }
+    });
+
+    rowGroups.forEach((group, groupIndex) => {
+      const position = getVisibleRangePosition(
+        group.block.from,
+        group.block.to,
+      );
+      if (!position) return;
+      roomBlockElements.push(
+        <button
+          type="button"
+          className="timeline__item timeline__roomBlockItem"
+          style={{
+            gridColumn: `${position.startingDate + 2} / span ${position.span}`,
+            gridRow: `${roomGridRows[group.roomIndexes[0]]} / span ${group.roomIndexes.length}`,
+            borderTopLeftRadius: position.continuesBefore ? 0 : "0.5rem",
+            borderBottomLeftRadius: position.continuesBefore ? 0 : "0.5rem",
+            borderTopRightRadius: position.continuesAfter ? 0 : "0.5rem",
+            borderBottomRightRadius: position.continuesAfter ? 0 : "0.5rem",
+          }}
+          key={`${blockId}-${groupIndex}`}
+          title={`บล็อก: ${group.block.reason}`}
+          onClick={() => setViewRoomBlock(group.block)}
+        >
+          <i className="bx bx-block" aria-hidden="true" />
+          <span>
+            บล็อก
+            {group.block.roomIds && group.block.roomIds.length > 1
+              ? ` · ${group.block.roomIds.length} เตียง`
+              : ""}
+          </span>
+        </button>,
+      );
+    });
   });
 
   bookingBlocksBySegment.forEach((items, segmentKey) => {
@@ -478,7 +944,29 @@ const Calendar = () => {
     setAddBookingClickInfo({
       roomId,
       checkIn: formatLocalDate(checkIn),
+      checkOut: null,
     });
+  };
+
+  const handleAddBookingRange = (selection: CalendarSelection) => {
+    const range = selectionDates(selection);
+    suppressNextClickRef.current = false;
+    setSelectionChooser(null);
+    setDragSelection(null);
+    setAddBookingClickInfo({
+      roomId: range.roomIds[0] || null,
+      roomIds: range.roomIds,
+      checkIn: range.from,
+      checkOut: range.to,
+    });
+    setAddBookingIsOpen(true);
+  };
+
+  const handleCreateRoomBlock = (selection: CalendarSelection) => {
+    suppressNextClickRef.current = false;
+    setSelectionChooser(null);
+    setDragSelection(null);
+    setNewRoomBlock(selectionDates(selection));
   };
 
   const appendToBookings = (booking: booking) => {
@@ -595,6 +1083,75 @@ const Calendar = () => {
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, [isMonthPickerOpen]);
+
+  useEffect(() => {
+    if (!selectionChooser) return;
+    selectionChooserFirstActionRef.current?.focus({ preventScroll: true });
+
+    const dismiss = (event: PointerEvent) => {
+      if (!selectionChooserRef.current?.contains(event.target as Node)) {
+        suppressNextClickRef.current = false;
+        setSelectionChooser(null);
+        setDragSelection(null);
+      }
+    };
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        suppressNextClickRef.current = false;
+        setSelectionChooser(null);
+        setDragSelection(null);
+      }
+    };
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", dismissOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("keydown", dismissOnEscape);
+    };
+  }, [selectionChooser]);
+
+  useLayoutEffect(() => {
+    if (!selectionChooser || !selectionChooserRef.current) return;
+    const ghosts = Array.from(
+      timelineRef.current?.querySelectorAll<HTMLElement>(
+        "[data-selection-ghost]",
+      ) || [],
+    );
+    if (!ghosts.length) return;
+
+    const ghostRects = ghosts.map((ghost) => ghost.getBoundingClientRect());
+    const ghostLeft = Math.min(...ghostRects.map((rect) => rect.left));
+    const ghostRight = Math.max(...ghostRects.map((rect) => rect.right));
+    const ghostTop = Math.min(...ghostRects.map((rect) => rect.top));
+    const ghostBottom = Math.max(...ghostRects.map((rect) => rect.bottom));
+    const chooserRect = selectionChooserRef.current.getBoundingClientRect();
+    const margin = 8;
+    const gap = 10;
+
+    let x = ghostRight + gap;
+    if (x + chooserRect.width > window.innerWidth - margin) {
+      x = ghostLeft - chooserRect.width - gap;
+    }
+    x = Math.max(
+      margin,
+      Math.min(x, window.innerWidth - chooserRect.width - margin),
+    );
+    const y = Math.max(
+      margin,
+      Math.min(
+        (ghostTop + ghostBottom - chooserRect.height) / 2,
+        window.innerHeight - chooserRect.height - margin,
+      ),
+    );
+
+    setSelectionChooser((current) =>
+      current &&
+      current.selection === selectionChooser.selection &&
+      (current.x !== x || current.y !== y)
+        ? { ...current, x, y }
+        : current,
+    );
+  }, [selectionChooser]);
 
   const getRooms = useCallback(async () => {
     const fetchedRooms = await axios.get(
@@ -770,6 +1327,28 @@ const Calendar = () => {
         />
       </Modal>
       <Modal
+        open={!!newRoomBlock}
+        className="home__modalCenter"
+        onClose={() => setNewRoomBlock(null)}
+      >
+        <RoomBlockModal
+          selection={newRoomBlock}
+          onClose={() => setNewRoomBlock(null)}
+          onChanged={() => getRooms().catch(showCalendarLoadError)}
+        />
+      </Modal>
+      <Modal
+        open={!!viewRoomBlock}
+        className="home__modalCenter"
+        onClose={() => setViewRoomBlock(null)}
+      >
+        <RoomBlockModal
+          block={viewRoomBlock}
+          onClose={() => setViewRoomBlock(null)}
+          onChanged={() => getRooms().catch(showCalendarLoadError)}
+        />
+      </Modal>
+      <Modal
         open={!!pendingUnsavedClose}
         className="home__modalCenter"
         onClose={() => setPendingUnsavedClose(null)}
@@ -892,7 +1471,62 @@ const Calendar = () => {
         ))}
       </div>
 
-      <div className="timeline__wrapper" ref={timelineRef}>
+      {selectionChooser && (
+        <div
+          className="calendar__selectionChooser"
+          ref={selectionChooserRef}
+          role="menu"
+          aria-label="เลือกการทำงานสำหรับช่วงวันที่"
+          style={{ left: selectionChooser.x, top: selectionChooser.y }}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            ref={selectionChooserFirstActionRef}
+            onClick={() => handleAddBookingRange(selectionChooser.selection)}
+          >
+            <i
+              className="bx bx-calendar-plus"
+              style={{ color: "var(--primary-color)" }}
+              aria-hidden="true"
+            />
+            เพิ่มการจอง
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => handleCreateRoomBlock(selectionChooser.selection)}
+          >
+            <i
+              className="bx bx-block"
+              style={{ color: "var(--primary-color)" }}
+              aria-hidden="true"
+            />
+            บล็อก วันที่{" "}
+            {calendarDays[
+              Math.min(
+                selectionChooser.selection.startIndex,
+                selectionChooser.selection.endIndex,
+              )
+            ].getDate()}
+            –
+            {calendarDays[
+              Math.max(
+                selectionChooser.selection.startIndex,
+                selectionChooser.selection.endIndex,
+              )
+            ].getDate()}
+          </button>
+        </div>
+      )}
+
+      <div
+        className="timeline__wrapper"
+        ref={timelineRef}
+        onPointerMove={handleSelectionPointerMove}
+        onPointerUp={finishSelection}
+        onPointerCancel={cancelSelection}
+      >
         <div
           className="timeline"
           style={{
@@ -910,6 +1544,8 @@ const Calendar = () => {
 
           {roomRows}
           {mergedBookingBlocks}
+          {roomBlockElements}
+          {selectionGhostElements}
         </div>
       </div>
     </main>

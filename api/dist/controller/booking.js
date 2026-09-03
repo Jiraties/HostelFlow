@@ -39,6 +39,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getNeedsReviewBookingCount = exports.getNeedsReviewBookings = exports.resolveBooking = exports.cancelBooking = exports.getPassportData = exports.addTransaction = exports.extendBooking = exports.manageRoomStays = exports.getBookingById = exports.getMonthCalendar = exports.checkOut = exports.checkIn = exports.removeBooking = exports.getMasterBookings = exports.getAdminDashboardStats = exports.getTodayBookings = exports.pinBooking = exports.updateBookingNote = exports.editBooking = exports.getRoomAvailability = exports.newBooking = exports.occupancySummaryForRange = exports.occupiedCapacityOnDate = void 0;
 const booking_1 = __importStar(require("../models/booking"));
 const standaloneSale_1 = __importDefault(require("../models/standaloneSale"));
+const roomBlock_1 = __importDefault(require("../models/roomBlock"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const crypto_1 = __importDefault(require("crypto"));
 const mongoose_1 = __importDefault(require("mongoose"));
@@ -47,6 +48,7 @@ const financeHelpers_1 = require("../helpers/financeHelpers");
 const dateHelpers_1 = require("../helpers/dateHelpers");
 const roomStayHelpers_1 = require("../helpers/roomStayHelpers");
 const roomMutationLocks_1 = require("../services/roomMutationLocks");
+const roomBlockAvailability_1 = require("../services/roomBlockAvailability");
 const mutationIdempotency_1 = require("../services/mutationIdempotency");
 const cashLedgerTransaction_1 = require("../services/cashLedgerTransaction");
 const financialTransactionPolicy_1 = require("../services/financialTransactionPolicy");
@@ -597,6 +599,12 @@ const newBooking = async (req, res, next) => {
                 to: newCheckOut,
             },
         ], async () => {
+            const overlappingRoomBlock = await (0, roomBlockAvailability_1.findActiveRoomBlockConflict)([
+                { roomIds: requestedRoomIds, from: newCheckIn, to: newCheckOut },
+            ]);
+            if (overlappingRoomBlock) {
+                return { overlappingRoomBlock };
+            }
             // find bookings that have same room && checkout greater than new checkin && checkin less than new checkout
             const overlappingBooking = await booking_1.default.findOne(buildBlockingRoomConflictQuery(requestedRoomIds, newCheckIn, newCheckOut));
             if (overlappingBooking) {
@@ -700,6 +708,12 @@ const newBooking = async (req, res, next) => {
                 message: `ห้องนี้ถูกจองแล้วระหว่างวันที่ ${(0, dateHelpers_1.dateRangeText)(createResult.overlappingBooking.roomStays[0].from, createResult.overlappingBooking.roomStays[0].to)} กรุณาเลือกช่วงเวลาอื่น`,
             });
         }
+        if (createResult.overlappingRoomBlock) {
+            return res.status(409).json({
+                error: "ROOM_BLOCK_CONFLICT",
+                message: "ห้องนี้ถูกบล็อกอยู่ในช่วงวันที่เลือก กรุณาเลือกช่วงเวลาอื่น",
+            });
+        }
         const savedBooking = createResult.savedBooking;
         res
             .status(201)
@@ -774,10 +788,14 @@ const getRoomAvailability = async (req, res) => {
         const overlappingBookings = await booking_1.default.find(query)
             .select("roomStays")
             .lean();
-        const occupiedRoomIds = Array.from(new Set(overlappingBookings.flatMap((booking) => booking.roomStays.flatMap((roomStay) => {
-            const overlaps = new Date(roomStay.from) < to && new Date(roomStay.to) > from;
-            return overlaps ? (0, roomStayHelpers_1.getRoomStayRoomIds)(roomStay) : [];
-        }))));
+        const blockedRoomIds = await (0, roomBlockAvailability_1.getActiveBlockedRoomIds)(from, to);
+        const occupiedRoomIds = Array.from(new Set([
+            ...blockedRoomIds,
+            ...overlappingBookings.flatMap((booking) => booking.roomStays.flatMap((roomStay) => {
+                const overlaps = new Date(roomStay.from) < to && new Date(roomStay.to) > from;
+                return overlaps ? (0, roomStayHelpers_1.getRoomStayRoomIds)(roomStay) : [];
+            })),
+        ]));
         res.status(200).json({ occupiedRoomIds });
     }
     catch (err) {
@@ -866,6 +884,10 @@ const editBooking = async (req, res) => {
             });
         }
         const editResult = await (0, roomMutationLocks_1.withRoomMutationLocks)(correctedRoomStays, async () => {
+            const conflictingRoomBlock = await (0, roomBlockAvailability_1.findActiveRoomBlockConflict)(correctedRoomStays);
+            if (conflictingRoomBlock) {
+                return { hasConflict: true };
+            }
             const conflictingBookings = await booking_1.default.find({
                 bookingId: { $ne: bookingId },
                 ...buildBlockingRoomConflictQuery(roomIds, newCheckIn, newCheckOut),
@@ -912,7 +934,7 @@ const editBooking = async (req, res) => {
         });
         if (editResult.hasConflict) {
             return res.status(409).json({
-                message: "ห้องถูกจองในช่วงวันที่ที่แก้ไข",
+                message: "ห้องถูกจองหรือบล็อกในช่วงวันที่ที่แก้ไข",
             });
         }
         const updatedBooking = editResult.updatedBooking;
@@ -1927,7 +1949,29 @@ const getMonthCalendar = async (req, res) => {
         const rooms = (0, roomInventory_1.activeRoomInventory)().map((room) => ({
             roomId: room.id,
             bookings: [],
+            blocks: [],
         }));
+        const activeRoomBlocks = await roomBlock_1.default.find({
+            releasedAt: { $exists: false },
+            from: { $lt: endingDate },
+            to: { $gt: startingDate },
+        }).lean();
+        activeRoomBlocks.forEach((block) => {
+            const blockRoomIds = (0, roomStayHelpers_1.getRoomStayRoomIds)(block);
+            blockRoomIds.forEach((roomId) => {
+                const room = rooms.find((item) => item.roomId === roomId);
+                room?.blocks.push({
+                    blockId: String(block._id),
+                    roomId,
+                    roomIds: blockRoomIds,
+                    from: block.from,
+                    to: block.to,
+                    reason: block.reason,
+                    createdBy: block.createdBy,
+                    createdAt: block.createdAt,
+                });
+            });
+        });
         monthOfBookings.forEach((booking) => {
             const effectiveTransactions = (0, transactionCorrections_1.effectiveBookingTransactions)(booking);
             const roomCharge = effectiveTransactions.find((transaction) => transaction.type === "roomCharge");
@@ -2133,6 +2177,9 @@ const manageRoomStays = async (req, res) => {
             ? ["checkedOut"]
             : ["booked", "checkedIn"];
         const manageResult = await (0, roomMutationLocks_1.withRoomMutationLocks)(roomStaysToValidate, async () => {
+            if (await (0, roomBlockAvailability_1.findActiveRoomBlockConflict)(roomStaysToValidate)) {
+                return { hasConflict: true };
+            }
             const conflictingBookings = roomStaysToValidate.length > 0
                 ? await booking_1.default.find({
                     bookingId: { $ne: bookingId },
@@ -2159,7 +2206,7 @@ const manageRoomStays = async (req, res) => {
         if (manageResult.hasConflict) {
             return res.status(409).json({
                 error: "ROOM_CONFLICT",
-                message: "ห้องถูกจองในช่วงเวลานี้",
+                message: "ห้องถูกจองหรือบล็อกในช่วงเวลานี้",
             });
         }
         const updatedBooking = manageResult.updatedBooking;

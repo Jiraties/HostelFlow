@@ -10,6 +10,7 @@ const booking_1 = __importDefault(require("../models/booking"));
 const focusedBookingAction_1 = __importDefault(require("../models/focusedBookingAction"));
 const bookingConcurrency_1 = require("../services/bookingConcurrency");
 const roomMutationLocks_1 = require("../services/roomMutationLocks");
+const roomBlockAvailability_1 = require("../services/roomBlockAvailability");
 const cashLedgerTransaction_1 = require("../services/cashLedgerTransaction");
 const activityServices_1 = require("../services/activityServices");
 const financeHelpers_1 = require("../helpers/financeHelpers");
@@ -379,10 +380,13 @@ const correctClosedRoomAvailability = async (req, res) => {
         const updatedBooking = await (0, roomMutationLocks_1.withRoomMutationLocks)(initial.roomStays || [], async () => {
             if (target === "blocked") {
                 const conflicts = await conflictingBookings(initial);
-                if (conflicts.length) {
+                const roomBlockConflict = await (0, roomBlockAvailability_1.findActiveRoomBlockConflict)(initial.roomStays || []);
+                if (conflicts.length || roomBlockConflict) {
                     return res.status(409).json({
                         error: "ROOMS_ALREADY_ASSIGNED",
-                        message: "ห้องถูกใช้โดย Booking อื่นแล้ว จึงไม่สามารถบล็อกได้",
+                        message: roomBlockConflict
+                            ? "ห้องมีรายการบล็อกอยู่แล้ว จึงไม่สามารถกันห้องจาก Booking นี้ได้"
+                            : "ห้องถูกใช้โดย Booking อื่นแล้ว จึงไม่สามารถบล็อกได้",
                         bookingIds: conflicts.map((conflict) => conflict.bookingId),
                     });
                 }
@@ -468,12 +472,13 @@ const recordPreArrivalRoomPayment = async (req, res) => {
         }
         const relatedTransactionId = String(req.body.relatedTransactionId || "").trim();
         const amount = Number(req.body.amount);
+        const roundedAmount = roundMoney(amount);
         const paymentMethod = req.body.paymentMethod;
         const reference = String(req.body.reference || "").trim();
         const note = String(req.body.note || "").trim();
         if (!relatedTransactionId ||
             !Number.isFinite(amount) ||
-            amount <= 0 ||
+            roundedAmount <= 0 ||
             !paymentMethod ||
             !PRE_ARRIVAL_PAYMENT_METHODS.includes(paymentMethod)) {
             return res.status(400).json({
@@ -517,7 +522,7 @@ const recordPreArrivalRoomPayment = async (req, res) => {
                 remainingAmount,
             });
         }
-        if (roundMoney(amount) > remainingAmount) {
+        if (roundedAmount > remainingAmount) {
             return res.status(409).json({
                 error: "PAYMENT_EXCEEDS_ROOM_CHARGE_BALANCE",
                 message: `รับชำระได้ไม่เกิน ${remainingAmount.toLocaleString("th-TH")} บาท`,
@@ -534,7 +539,7 @@ const recordPreArrivalRoomPayment = async (req, res) => {
                 paymentMethod,
                 relatedTransactionType: "roomCharge",
                 relatedTransactionId,
-                amount: roundMoney(amount),
+                amount: roundedAmount,
                 note: transactionNote,
                 reference: reference || undefined,
                 createdAt: receivedAt,
@@ -586,11 +591,11 @@ const recordPreArrivalRoomPayment = async (req, res) => {
                 if (!updated)
                     return undefined;
                 const after = (0, transactionCorrections_1.summarizeBookingFinancialPosition)((0, transactionCorrections_1.effectiveBookingTransactions)(updated.toObject()));
-                const afterRemaining = roundMoney(remainingAmount - amount);
+                const afterRemaining = roundMoney(remainingAmount - roundedAmount);
                 await (0, activityServices_1.logActivityStrict)(validated.username, "RECORD_PRE_ARRIVAL_ROOM_PAYMENT", {
                     changes: { guestBalance: { before, after } },
                     summary: {
-                        amount: roundMoney(amount),
+                        amount: roundedAmount,
                         paymentMethod,
                         reference: reference || undefined,
                         note: transactionNote,
@@ -626,7 +631,7 @@ const recordPreArrivalRoomPayment = async (req, res) => {
             message: "บันทึกรับชำระค่าห้องสำเร็จ",
             booking: result.booking,
             financialSummary: result.after,
-            remainingAmount: roundMoney(remainingAmount - amount),
+            remainingAmount: roundMoney(remainingAmount - roundedAmount),
             receivedAt,
         });
     }

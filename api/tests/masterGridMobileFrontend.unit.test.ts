@@ -13,7 +13,7 @@ test("mobile booking grids own a definite remaining-height viewport", () => {
 
   assert.match(
     appStyles,
-    /\.app > main\.home \{[\s\S]{0,120}height: 100%;[\s\S]{0,120}overflow: hidden;/,
+    /\.app > main\.home \{[\s\S]{0,160}height: 100%;[\s\S]{0,160}overflow-x: hidden;[\s\S]{0,120}overflow-y: auto;/,
   );
   assert.match(
     homeStyles,

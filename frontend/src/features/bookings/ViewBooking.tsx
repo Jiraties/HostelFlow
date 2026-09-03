@@ -1428,8 +1428,7 @@ const ViewBooking = ({
         { withCredentials: true },
       );
       const latestBooking = formatBookingDates(response.data);
-      const { printBookingSummaryPdf } =
-        await import("./bookingSummaryPdf.ts");
+      const { printBookingSummaryPdf } = await import("./bookingSummaryPdf.ts");
 
       await printBookingSummaryPdf({
         booking: latestBooking,

@@ -16,6 +16,7 @@ const bookingConcurrency_1 = require("./bookingConcurrency");
 const cashLedgerTransaction_1 = require("./cashLedgerTransaction");
 const financialTransactionPolicy_1 = require("./financialTransactionPolicy");
 const roomMutationLocks_1 = require("./roomMutationLocks");
+const roomBlockAvailability_1 = require("./roomBlockAvailability");
 const PLATFORM_IDS = ["BOOK", "HOST", "TRAV", "AGOD", "WALK"];
 const EXTENSION_PAYMENT_METHODS = [
     "OTA",
@@ -230,34 +231,39 @@ const validateBooking = (currentBooking, input, start, placement) => {
         throw new BookingExtensionError(400, "INVALID_EXTENSION_DATES", "วันที่สำหรับคืนที่เพิ่มไม่ถูกต้อง");
     }
 };
-const hasRoomConflict = async (bookingId, roomIds, from, to, session) => Boolean(await booking_1.default.exists({
-    bookingId: { $ne: bookingId },
-    $and: [
-        ROOM_BLOCKING_BOOKING_FILTER,
-        {
-            $or: [
-                {
-                    roomStays: {
-                        $elemMatch: {
-                            roomIds: { $in: roomIds },
-                            from: { $lt: to },
-                            to: { $gt: from },
+const hasRoomConflict = async (bookingId, roomIds, from, to, session) => {
+    if (await (0, roomBlockAvailability_1.findActiveRoomBlockConflict)([{ roomIds, from, to }], session)) {
+        return true;
+    }
+    return Boolean(await booking_1.default.exists({
+        bookingId: { $ne: bookingId },
+        $and: [
+            ROOM_BLOCKING_BOOKING_FILTER,
+            {
+                $or: [
+                    {
+                        roomStays: {
+                            $elemMatch: {
+                                roomIds: { $in: roomIds },
+                                from: { $lt: to },
+                                to: { $gt: from },
+                            },
                         },
                     },
-                },
-                {
-                    roomStays: {
-                        $elemMatch: {
-                            roomId: { $in: roomIds },
-                            from: { $lt: to },
-                            to: { $gt: from },
+                    {
+                        roomStays: {
+                            $elemMatch: {
+                                roomId: { $in: roomIds },
+                                from: { $lt: to },
+                                to: { $gt: from },
+                            },
                         },
                     },
-                },
-            ],
-        },
-    ],
-}).session(session));
+                ],
+            },
+        ],
+    }).session(session));
+};
 const materializeCommercialSegments = (currentBooking) => {
     const storedSegments = [...(currentBooking.commercialSegments || [])];
     if (storedSegments.some((segment) => segment.kind === "original")) {

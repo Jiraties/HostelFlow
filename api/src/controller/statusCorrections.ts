@@ -26,6 +26,7 @@ import {
   RoomMutationConflictError,
   withRoomMutationLocks,
 } from "../services/roomMutationLocks";
+import { findActiveRoomBlockConflict } from "../services/roomBlockAvailability";
 import {
   effectiveBookingTransactions,
   snapshotTransaction,
@@ -615,11 +616,15 @@ const buildPreview = async ({
   }
 
   const conflicts = await conflictingRoomBookings(currentBooking);
-  if (conflicts.length) {
+  const roomBlockConflict = await findActiveRoomBlockConflict(
+    currentBooking.roomStays || [],
+  );
+  if (conflicts.length || roomBlockConflict) {
     blockers.push({
       code: "ROOM_ASSIGNMENT_CONFLICT",
-      message:
-        "ห้องหรือเตียงเดิมถูกจัดให้ Booking อื่นแล้ว ต้องแก้การจัดห้องก่อน",
+      message: roomBlockConflict
+        ? "ห้องหรือเตียงเดิมมีรายการบล็อกอยู่ ต้องเปิดห้องหรือแก้การจัดห้องก่อน"
+        : "ห้องหรือเตียงเดิมถูกจัดให้ Booking อื่นแล้ว ต้องแก้การจัดห้องก่อน",
       bookingIds: conflicts.map((conflict) => conflict.bookingId),
     });
   }

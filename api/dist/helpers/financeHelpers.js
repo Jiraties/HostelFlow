@@ -20,7 +20,6 @@ const moneyOutTransactionTypes = [
     "compensation",
 ];
 const refundTransactionTypes = new Set([
-    "depositRefund",
     "cancellationRefund",
     "roomRefund",
 ]);

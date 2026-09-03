@@ -256,6 +256,59 @@ test("uses one elemMatch and filters only transactions satisfying every clause",
   assert.equal("note" in (result.groups.transactions?.items[0] || {}), false);
 });
 
+test("transaction search uses only the latest immutable correction", async () => {
+  const transactionId = new mongoose.Types.ObjectId();
+  const booking = bookingDocument({
+    bookingId: "HF-CORRECTED",
+    name: "Corrected Transaction",
+    transactions: [
+      {
+        _id: transactionId,
+        type: "deposit",
+        amount: 200,
+        paymentMethod: "Cash",
+        createdAt: new Date("2026-08-08T03:00:00.000Z"),
+      },
+    ],
+  });
+  Object.assign(booking, {
+    transactionCorrections: [
+      {
+        targetTransactionId: String(transactionId),
+        correctedAt: new Date("2026-08-08T04:00:00.000Z"),
+        after: { type: "towel", amount: 175, paymentMethod: "Cash" },
+      },
+      {
+        targetTransactionId: String(transactionId),
+        correctedAt: new Date("2026-08-08T05:00:00.000Z"),
+        after: { type: "laundry", amount: 150, paymentMethod: "Transfer" },
+      },
+    ],
+  });
+  await Booking.collection.insertOne(booking);
+
+  for (const obsoleteQuery of ["deposit 200", "towel 175"]) {
+    const obsolete = await searchEntities(
+      parseSearchIntent(obsoleteQuery),
+      normalizeSearchPagination({ group: "transactions" }),
+    );
+    assert.equal(obsolete.groups.transactions?.items.length, 0, obsoleteQuery);
+  }
+
+  const corrected = await searchEntities(
+    parseSearchIntent("laundry 150"),
+    normalizeSearchPagination({ group: "transactions" }),
+  );
+  assert.equal(corrected.groups.transactions?.items.length, 1);
+  assert.equal(
+    corrected.groups.transactions?.items[0].transactionId,
+    String(transactionId),
+  );
+  assert.equal(corrected.groups.transactions?.items[0].amount, 150);
+  assert.equal(corrected.groups.transactions?.items[0].type, "laundry");
+  assert.equal(corrected.groups.transactions?.items[0].paymentMethod, "Transfer");
+});
+
 test("keeps booking dates separate from transaction createdAt dates", async () => {
   await Booking.collection.insertMany([
     bookingDocument({

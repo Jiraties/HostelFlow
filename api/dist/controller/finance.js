@@ -280,7 +280,6 @@ const getCorrectionReviewEventsForBusinessDate = async (businessDate) => {
         .select("bookingId name staffUsername transactions transactionCorrections")
         .lean();
     const transactions = bookings.flatMap((sourceBooking) => {
-        const effectiveBooking = (0, transactionCorrections_1.withEffectiveTransactions)(sourceBooking);
         return (sourceBooking.transactionCorrections || []).flatMap((correction, correctionIndex, corrections) => {
             const priorCorrectionCount = corrections
                 .slice(0, correctionIndex)
@@ -295,9 +294,16 @@ const getCorrectionReviewEventsForBusinessDate = async (businessDate) => {
                 new Date(correction.correctedAt) >= bounds.end) {
                 return [];
             }
-            const transaction = effectiveBooking.transactions.find((candidate) => String(candidate._id) === correction.targetTransactionId);
-            if (!transaction)
+            const originalTransaction = sourceBooking.transactions.find((candidate) => String(candidate._id) === correction.targetTransactionId);
+            if (!originalTransaction)
                 return [];
+            const transaction = {
+                ...originalTransaction,
+                ...correction.after,
+                _id: originalTransaction._id,
+            };
+            if (!correction.after.cashShiftId)
+                delete transaction.cashShiftId;
             return [
                 {
                     ...transaction,
@@ -1066,7 +1072,7 @@ const getTodayRevenueBreakdown = async (req, res) => {
                     const roomCharge = (booking.transactions || []).find((transaction) => String(transaction._id) === segment.transactionId);
                     if (!roomCharge)
                         return;
-                    const amount = Math.abs(roomCharge.amount || segment.amount || 0);
+                    const amount = Math.abs(roomCharge.amount ?? segment.amount ?? 0);
                     const segmentTransaction = {
                         ...roomCharge,
                         amount,

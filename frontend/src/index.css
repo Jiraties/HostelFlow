@@ -76,8 +76,6 @@ body {
   font-family: "IBM Plex Sans Thai", sans-serif;
   padding: 1rem;
   border-radius: 0.5rem;
-  /* background-color: var(--background);
-  color: var(--text); */
   border: 0;
   box-shadow: var(--main-shadow);
   width: 100%;
@@ -160,7 +158,6 @@ body {
   a {
     -webkit-tap-highlight-color: transparent;
   }
-
 }
 
 @media (max-width: 640px) and (hover: none) {

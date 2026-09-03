@@ -19,6 +19,7 @@ import {
   RoomMutationConflictError,
   withRoomMutationLocks,
 } from "../services/roomMutationLocks";
+import { findActiveRoomBlockConflict } from "../services/roomBlockAvailability";
 import {
   assignCashTransactionsInSession,
   CashShiftLedgerConflictError,
@@ -512,10 +513,15 @@ export const correctClosedRoomAvailability = async (
       async () => {
         if (target === "blocked") {
           const conflicts = await conflictingBookings(initial);
-          if (conflicts.length) {
+          const roomBlockConflict = await findActiveRoomBlockConflict(
+            initial.roomStays || [],
+          );
+          if (conflicts.length || roomBlockConflict) {
             return res.status(409).json({
               error: "ROOMS_ALREADY_ASSIGNED",
-              message: "ห้องถูกใช้โดย Booking อื่นแล้ว จึงไม่สามารถบล็อกได้",
+              message: roomBlockConflict
+                ? "ห้องมีรายการบล็อกอยู่แล้ว จึงไม่สามารถกันห้องจาก Booking นี้ได้"
+                : "ห้องถูกใช้โดย Booking อื่นแล้ว จึงไม่สามารถบล็อกได้",
               bookingIds: conflicts.map((conflict) => conflict.bookingId),
             });
           }
@@ -613,13 +619,14 @@ export const recordPreArrivalRoomPayment = async (
       req.body.relatedTransactionId || "",
     ).trim();
     const amount = Number(req.body.amount);
+    const roundedAmount = roundMoney(amount);
     const paymentMethod = req.body.paymentMethod;
     const reference = String(req.body.reference || "").trim();
     const note = String(req.body.note || "").trim();
     if (
       !relatedTransactionId ||
       !Number.isFinite(amount) ||
-      amount <= 0 ||
+      roundedAmount <= 0 ||
       !paymentMethod ||
       !PRE_ARRIVAL_PAYMENT_METHODS.includes(paymentMethod)
     ) {
@@ -668,7 +675,7 @@ export const recordPreArrivalRoomPayment = async (
         remainingAmount,
       });
     }
-    if (roundMoney(amount) > remainingAmount) {
+    if (roundedAmount > remainingAmount) {
       return res.status(409).json({
         error: "PAYMENT_EXCEEDS_ROOM_CHARGE_BALANCE",
         message: `รับชำระได้ไม่เกิน ${remainingAmount.toLocaleString("th-TH")} บาท`,
@@ -687,7 +694,7 @@ export const recordPreArrivalRoomPayment = async (
           paymentMethod,
           relatedTransactionType: "roomCharge",
           relatedTransactionId,
-          amount: roundMoney(amount),
+          amount: roundedAmount,
           note: transactionNote,
           reference: reference || undefined,
           createdAt: receivedAt,
@@ -764,14 +771,14 @@ export const recordPreArrivalRoomPayment = async (
         const after = summarizeBookingFinancialPosition(
           effectiveBookingTransactions(updated.toObject()),
         );
-        const afterRemaining = roundMoney(remainingAmount - amount);
+        const afterRemaining = roundMoney(remainingAmount - roundedAmount);
         await logActivityStrict(
           validated.username,
           "RECORD_PRE_ARRIVAL_ROOM_PAYMENT",
           {
             changes: { guestBalance: { before, after } },
             summary: {
-              amount: roundMoney(amount),
+              amount: roundedAmount,
               paymentMethod,
               reference: reference || undefined,
               note: transactionNote,
@@ -809,7 +816,7 @@ export const recordPreArrivalRoomPayment = async (
       message: "บันทึกรับชำระค่าห้องสำเร็จ",
       booking: result.booking,
       financialSummary: result.after,
-      remainingAmount: roundMoney(remainingAmount - amount),
+      remainingAmount: roundMoney(remainingAmount - roundedAmount),
       receivedAt,
     });
   } catch (err: any) {

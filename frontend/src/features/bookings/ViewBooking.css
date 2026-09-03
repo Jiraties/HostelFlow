@@ -720,7 +720,19 @@
 }
 
 .viewBooking__priceChildAmount--payment {
-  color: var(--green);
+  align-items: center;
+  color: var(--text);
+  display: inline-flex;
+  gap: 0.4rem;
+}
+
+.viewBooking__priceChildAmount--payment::before {
+  background-color: var(--green);
+  border-radius: 50%;
+  content: "";
+  flex: 0 0 auto;
+  height: 0.45rem;
+  width: 0.45rem;
 }
 
 .viewBooking__priceChildSummary {

@@ -15,6 +15,7 @@ const bookingConcurrency_1 = require("../services/bookingConcurrency");
 const activityServices_1 = require("../services/activityServices");
 const roomStayHelpers_1 = require("../helpers/roomStayHelpers");
 const roomMutationLocks_1 = require("../services/roomMutationLocks");
+const roomBlockAvailability_1 = require("../services/roomBlockAvailability");
 const transactionCorrections_1 = require("../services/transactionCorrections");
 const BUSINESS_TIME_ZONE = "Asia/Bangkok";
 const CORRECTION_TYPES = [
@@ -430,10 +431,13 @@ const buildPreview = async ({ currentBooking, body, username, isAdmin, }) => {
         }
     }
     const conflicts = await conflictingRoomBookings(currentBooking);
-    if (conflicts.length) {
+    const roomBlockConflict = await (0, roomBlockAvailability_1.findActiveRoomBlockConflict)(currentBooking.roomStays || []);
+    if (conflicts.length || roomBlockConflict) {
         blockers.push({
             code: "ROOM_ASSIGNMENT_CONFLICT",
-            message: "ห้องหรือเตียงเดิมถูกจัดให้ Booking อื่นแล้ว ต้องแก้การจัดห้องก่อน",
+            message: roomBlockConflict
+                ? "ห้องหรือเตียงเดิมมีรายการบล็อกอยู่ ต้องเปิดห้องหรือแก้การจัดห้องก่อน"
+                : "ห้องหรือเตียงเดิมถูกจัดให้ Booking อื่นแล้ว ต้องแก้การจัดห้องก่อน",
             bookingIds: conflicts.map((conflict) => conflict.bookingId),
         });
     }

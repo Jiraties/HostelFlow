@@ -438,8 +438,6 @@ const getCorrectionReviewEventsForBusinessDate = async (
     .lean<booking[]>();
 
   const transactions = bookings.flatMap((sourceBooking) => {
-    const effectiveBooking = withEffectiveTransactions(sourceBooking);
-
     return (sourceBooking.transactionCorrections || []).flatMap(
       (correction, correctionIndex, corrections) => {
         const priorCorrectionCount = corrections
@@ -464,11 +462,17 @@ const getCorrectionReviewEventsForBusinessDate = async (
         ) {
           return [];
         }
-        const transaction = effectiveBooking.transactions.find(
+        const originalTransaction = sourceBooking.transactions.find(
           (candidate) =>
             String(candidate._id) === correction.targetTransactionId,
         );
-        if (!transaction) return [];
+        if (!originalTransaction) return [];
+        const transaction = {
+          ...originalTransaction,
+          ...correction.after,
+          _id: originalTransaction._id,
+        };
+        if (!correction.after.cashShiftId) delete transaction.cashShiftId;
 
         return [
           {
@@ -1589,7 +1593,7 @@ export const getTodayRevenueBreakdown = async (req: Request, res: Response) => {
                 String(transaction._id) === segment.transactionId,
             );
             if (!roomCharge) return;
-            const amount = Math.abs(roomCharge.amount || segment.amount || 0);
+            const amount = Math.abs(roomCharge.amount ?? segment.amount ?? 0);
             const segmentTransaction = {
               ...roomCharge,
               amount,
