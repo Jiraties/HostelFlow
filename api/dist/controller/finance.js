@@ -762,7 +762,7 @@ const getCashShiftAuditForDate = async (businessDate) => {
         gaps,
     };
 };
-const addBreakdownTransaction = (categories, transaction, booking, amount, direction) => {
+const addBreakdownTransaction = (categories, transaction, booking, amount, direction, paymentMethodLabel, stayChargeKind) => {
     const meta = expectedStayRevenueTransactionMeta[transaction.type] || {
         label: transaction.type,
         color: "#94a3b8",
@@ -792,6 +792,8 @@ const addBreakdownTransaction = (categories, transaction, booking, amount, direc
         icon: meta.icon,
         amount,
         paymentMethod: transaction.paymentMethod,
+        paymentMethodLabel,
+        stayChargeKind,
         direction,
         createdAt: transaction.createdAt,
         createdBy: transaction.createdBy || booking.staffUsername,
@@ -799,6 +801,34 @@ const addBreakdownTransaction = (categories, transaction, booking, amount, direc
         reference: transaction.reference,
     });
     categories.set(transaction.type, existingCategory);
+};
+const paymentAllocationEntries = (paymentAmounts) => paymentAmounts
+    ? Object.entries(paymentAmounts).filter(([, amount]) => amount > 0)
+    : [];
+const paymentAllocationKey = (booking, transactionId) => `${booking.bookingId}::${transactionId}`;
+const paymentAllocationDisplay = (paymentAmounts, fallback) => {
+    const entries = paymentAllocationEntries(paymentAmounts);
+    if (!entries.length)
+        return { paymentMethod: fallback };
+    return {
+        paymentMethod: entries[0][0],
+        paymentMethodLabel: entries.length > 1
+            ? entries
+                .map(([paymentMethod]) => paymentMethodMeta[paymentMethod].label)
+                .join(" + ")
+            : undefined,
+    };
+};
+const addPaymentAllocationBreakdown = (paymentMethods, transaction, booking, paymentAmounts) => {
+    const entries = paymentAllocationEntries(paymentAmounts);
+    if (!entries.length) {
+        addPaymentMethodBreakdownTransaction(paymentMethods, transaction, booking, Math.abs(transaction.amount || 0), (0, financeHelpers_1.transactionDirection)(transaction));
+        return;
+    }
+    entries.forEach(([paymentMethod, amount]) => {
+        const direction = paymentMethod === "Unpaid" ? "neutral" : "in";
+        addPaymentMethodBreakdownTransaction(paymentMethods, { ...transaction, paymentMethod, amount, direction }, booking, amount, direction);
+    });
 };
 const addPaymentMethodBreakdownTransaction = (paymentMethods, transaction, booking, amount, direction) => {
     const methodMeta = paymentMethodMeta[transaction.paymentMethod];
@@ -940,7 +970,7 @@ const getExpectedStayRevenueBreakdown = async (req, res) => {
         const reductions = new Map();
         const paymentMethods = new Map();
         summary.entries.forEach((entry) => {
-            addBreakdownTransaction(categories, entry.roomCharge, entry.booking, Math.abs(entry.roomCharge.amount || entry.segment.amount || 0), "in");
+            addBreakdownTransaction(categories, entry.roomCharge, entry.booking, Math.abs(entry.roomCharge.amount || entry.segment.amount || 0), "in", undefined, entry.segment.kind);
             entry.chargeAdjustments.forEach(({ transaction, amount }) => {
                 addBreakdownTransaction(categories, transaction, entry.booking, amount, "in");
             });
@@ -1040,6 +1070,14 @@ const getTodayRevenueBreakdown = async (req, res) => {
             ...standaloneSales.map(standaloneSaleBookingView),
         ];
         const todaySummary = (0, financeHelpers_1.calculateTodayRevenueSummary)(bookings, bounds.start, bounds.end);
+        const roomPaymentAmounts = new Map((0, expectedStayRevenueHelpers_1.buildExpectedStayRevenueEntries)(bookings, bounds.start, bounds.end).map((entry) => [
+            paymentAllocationKey(entry.booking, entry.segment.transactionId),
+            entry.paymentAmounts,
+        ]));
+        const servicePaymentAmounts = new Map((0, expectedStayRevenueHelpers_1.buildExpectedStayRevenueServiceEntries)(bookings, bounds.start, bounds.end).map((entry) => [
+            paymentAllocationKey(entry.booking, String(entry.transaction._id || "")),
+            entry.paymentAmounts,
+        ]));
         const categories = new Map();
         const reductions = new Map();
         const paymentMethods = new Map();
@@ -1058,7 +1096,7 @@ const getTodayRevenueBreakdown = async (req, res) => {
                         paymentMethod: todayArrivalPaymentMethod(booking, roomCharge),
                     };
                     const direction = (0, financeHelpers_1.transactionDirection)(arrivalTransaction);
-                    addBreakdownTransaction(categories, arrivalTransaction, booking, arrivalAmount, direction);
+                    addBreakdownTransaction(categories, arrivalTransaction, booking, arrivalAmount, direction, undefined, "original");
                     addPaymentMethodBreakdownTransaction(paymentMethods, arrivalTransaction, booking, arrivalAmount, direction);
                 }
             }
@@ -1078,9 +1116,15 @@ const getTodayRevenueBreakdown = async (req, res) => {
                         amount,
                         createdAt: segment.from,
                     };
-                    const direction = (0, financeHelpers_1.transactionDirection)(segmentTransaction);
-                    addBreakdownTransaction(categories, segmentTransaction, booking, amount, direction);
-                    addPaymentMethodBreakdownTransaction(paymentMethods, segmentTransaction, booking, amount, direction);
+                    const paymentAmounts = roomPaymentAmounts.get(paymentAllocationKey(booking, segment.transactionId));
+                    const displayPayment = paymentAllocationDisplay(paymentAmounts, segmentTransaction.paymentMethod);
+                    const displayTransaction = {
+                        ...segmentTransaction,
+                        paymentMethod: displayPayment.paymentMethod,
+                    };
+                    const direction = (0, financeHelpers_1.transactionDirection)(displayTransaction);
+                    addBreakdownTransaction(categories, displayTransaction, booking, amount, direction, displayPayment.paymentMethodLabel, segment.kind);
+                    addPaymentAllocationBreakdown(paymentMethods, segmentTransaction, booking, paymentAmounts);
                 });
             }
             (booking.transactions || []).forEach((transaction) => {
@@ -1092,8 +1136,14 @@ const getTodayRevenueBreakdown = async (req, res) => {
                 const direction = (0, financeHelpers_1.transactionDirection)(transaction);
                 const extrasAmount = (0, financeHelpers_1.transactionTodayExtrasRevenueAmount)(transaction);
                 if (extrasAmount > 0) {
-                    addBreakdownTransaction(categories, transaction, booking, extrasAmount, direction);
-                    addPaymentMethodBreakdownTransaction(paymentMethods, transaction, booking, extrasAmount, direction);
+                    const paymentAmounts = servicePaymentAmounts.get(paymentAllocationKey(booking, String(transaction._id || "")));
+                    const displayPayment = paymentAllocationDisplay(paymentAmounts, transaction.paymentMethod);
+                    const displayTransaction = {
+                        ...transaction,
+                        paymentMethod: displayPayment.paymentMethod,
+                    };
+                    addBreakdownTransaction(categories, displayTransaction, booking, extrasAmount, (0, financeHelpers_1.transactionDirection)(displayTransaction), displayPayment.paymentMethodLabel);
+                    addPaymentAllocationBreakdown(paymentMethods, transaction, booking, paymentAmounts);
                 }
                 const reductionAmount = (0, financeHelpers_1.bookingTransactionTodayReductionAmount)(booking, transaction, bounds.end);
                 const arrivalReductionAlreadyNetted = isTodayArrival &&

@@ -14,6 +14,7 @@ import { toInputDate } from "../src/helpers/dateHelpers";
 import {
   closeCashShift,
   getExpectedStayRevenueBreakdown,
+  getTodayRevenueBreakdown,
 } from "../src/controller/finance";
 
 type BookingController = typeof import("../src/controller/booking");
@@ -209,19 +210,23 @@ const backwardExtensionBody = ({
   nights = 1,
   roomIds = ["Balcony"],
   platformId = "WALK",
+  channelBookingId = `WALK-${crypto.randomUUID()}`,
+  paymentMethod = "Transfer",
 }: {
   expectedRevision?: number;
   nights?: number;
   roomIds?: string[];
   platformId?: string;
+  channelBookingId?: string;
+  paymentMethod?: string;
 } = {}) => ({
   expectedRevision,
   placement: "before",
   nights,
   roomIds,
   platformId,
-  channelBookingId: `WALK-${crypto.randomUUID()}`,
-  paymentMethod: "Transfer",
+  channelBookingId,
+  paymentMethod,
   amount: 250,
   note: "Synthetic preceding night",
 });
@@ -342,7 +347,53 @@ test("backward addition preserves every anchor source and prepends a WALK segmen
   }
 });
 
-test("backward addition changes rooms, materializes legacy history, and validates source", async () => {
+test("pre-arrival extensions accept OTA channels and preserve the original reservation", async () => {
+  for (const platformId of ["BOOK", "HOST", "AGOD", "TRAV"] as const) {
+    const bookingId = `PREPEND-OTA-${platformId}`;
+    await bookingFixture({
+      bookingId,
+      platformId: "BOOK",
+      checkInOffset: 2,
+      checkOutOffset: 4,
+    });
+    const original = (await Booking.findOne({ bookingId }).lean())!;
+    const originalSegment = original.commercialSegments[0];
+    const channelBookingId =
+      platformId === "BOOK" ? bookingId : `${platformId}-PREARRIVAL-001`;
+    const res = response();
+    await controller.extendBooking(
+      request({
+        bookingId,
+        body: backwardExtensionBody({
+          platformId,
+          channelBookingId,
+          paymentMethod: "OTA",
+        }),
+      }),
+      res as any,
+    );
+    assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+    const stored = (await Booking.findOne({ bookingId }).lean())!;
+    const [extensionSegment, preservedOriginal] = stored.commercialSegments;
+    assert.equal(stored.platformId, "BOOK");
+    assert.equal(extensionSegment.kind, "extension");
+    assert.equal(extensionSegment.placement, "before");
+    assert.equal(extensionSegment.platformId, platformId);
+    assert.equal(extensionSegment.channelBookingId, channelBookingId);
+    assert.equal(preservedOriginal.platformId, originalSegment.platformId);
+    assert.equal(preservedOriginal.channelBookingId, originalSegment.channelBookingId);
+    assert.equal(preservedOriginal.transactionId, originalSegment.transactionId);
+    const extensionCharge = stored.transactions.find(
+      (transaction) => transaction.sourceAction === "EXTEND_BOOKING" && transaction.type === "roomCharge",
+    );
+    assert.equal(extensionCharge?.platformId, platformId);
+    assert.equal(extensionCharge?.paymentMethod, "OTA");
+    assert.equal(extensionCharge?.commercialSegmentId, String(extensionSegment._id));
+    await Booking.deleteOne({ bookingId });
+  }
+});
+
+test("backward addition changes rooms, materializes legacy history, and validates channel", async () => {
   await bookingFixture({
     bookingId: "PREPEND-LEGACY",
     platformId: "HOST",
@@ -380,12 +431,12 @@ test("backward addition changes rooms, materializes legacy history, and validate
   await controller.extendBooking(
     request({
       bookingId: "PREPEND-SOURCE",
-      body: backwardExtensionBody({ platformId: "HOST" }),
+      body: backwardExtensionBody({ platformId: "INVALID" }),
     }),
     invalidSource as any,
   );
   assert.equal(invalidSource.statusCode, 400);
-  assert.equal(invalidSource.body.error, "INVALID_BACKWARD_EXTENSION_SOURCE");
+  assert.equal(invalidSource.body.error, "INVALID_PLATFORM");
 });
 
 test("repeated backward additions remain contiguous and recognize revenue on segment start", async () => {
@@ -952,7 +1003,7 @@ test("calendar and daily revenue split the extension without a false arrival", a
   );
 });
 
-test("financial breakdown attributes original and extension revenue to their own platforms", async () => {
+test("financial breakdown identifies original and extension room revenue without changing totals", async () => {
   await bookingFixture({ bookingId: "EXT-PLATFORM-REPORT" });
   const extensionResponse = response();
   await controller.extendBooking(
@@ -979,7 +1030,33 @@ test("financial breakdown attributes original and extension revenue to their own
       .sort(),
     ["BOOK", "WALK"],
   );
+  assert.deepEqual(
+    roomChargeCategory.transactions
+      .map((transaction: any) => transaction.stayChargeKind)
+      .sort(),
+    ["extension", "original"],
+  );
   assert.equal(roomChargeCategory.total, 800);
+
+  const todayResponse = response();
+  await getTodayRevenueBreakdown(
+    {
+      user: { userId: "admin-id", username: "admin", admin: true },
+      query: { businessDate: localDate(1) },
+    } as any,
+    todayResponse as any,
+  );
+  assert.equal(todayResponse.statusCode, 200);
+  const todayRoomChargeCategory = todayResponse.body.categories.find(
+    (category: any) => category.type === "roomCharge",
+  );
+  assert.equal(todayRoomChargeCategory.total, 300);
+  assert.deepEqual(
+    todayRoomChargeCategory.transactions.map(
+      (transaction: any) => transaction.stayChargeKind,
+    ),
+    ["extension"],
+  );
 });
 
 test("admin dashboard calculates ESR from MongoDB booking documents", async () => {

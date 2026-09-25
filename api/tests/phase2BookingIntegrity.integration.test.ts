@@ -1070,108 +1070,41 @@ test("cash check-in records a small rounding difference without changing the roo
   assert.ok(rounding?.cashShiftId);
 });
 
-test("card and transfer check-in adjustments use the selected payment method", async () => {
-  const cardBooking = await bookingFixture("CARD-ROUNDING");
-  cardBooking.transactions[0].amount = 449.8;
-  await cardBooking.save();
+test("card and transfer check-ins reject rounding without changing the booking", async () => {
+  for (const paymentMethod of ["Card", "Transfer"] as const) {
+    const bookingId = `${paymentMethod.toUpperCase()}-ROUNDING`;
+    await bookingFixture(bookingId);
 
-  const cardResponse = response();
-  await controller.checkIn(
-    request({
-      body: {
-        expectedRevision: 0,
-        deposit: 200,
-        unpaidPayment: {
-          paymentMethod: "Card",
-          roundingAdjustment: 0.2,
+    const checkInResponse = response();
+    await controller.checkIn(
+      request({
+        body: {
+          expectedRevision: 0,
+          deposit: 200,
+          unpaidPayment: { paymentMethod, roundingAdjustment: 0.2 },
+          passportData: {
+            namePrefix: "Ms",
+            passportNo: `${bookingId}-PASSPORT`,
+            passportName: "Synthetic Guest",
+            nationality: "US",
+            nextDestinationCountry: "THA",
+          },
         },
-        passportData: {
-          namePrefix: "Ms",
-          passportNo: "CARD-ROUNDING-PASSPORT",
-          passportName: "Card Guest",
-          nationality: "US",
-          nextDestinationCountry: "THA",
-        },
-      },
-      params: { bookingId: "CARD-ROUNDING" },
-      method: "PUT",
-      url: "/bookings/checkIn/CARD-ROUNDING",
-      key: "card-rounding-checkin",
-      admin: false,
-    }),
-    cardResponse as any,
-  );
+        params: { bookingId },
+        method: "PUT",
+        url: `/bookings/checkIn/${bookingId}`,
+        key: `${paymentMethod.toLowerCase()}-rounding-checkin`,
+        admin: false,
+      }),
+      checkInResponse as any,
+    );
 
-  assert.equal(cardResponse.statusCode, 200, JSON.stringify(cardResponse.body));
-  const storedCardBooking = await Booking.findOne({
-    bookingId: "CARD-ROUNDING",
-  }).lean();
-  const cardAdjustment = storedCardBooking?.transactions.find(
-    (transaction) => transaction.reasonOfAdjustment === "rounding",
-  );
-  const cardSurcharges =
-    storedCardBooking?.transactions.filter(
-      (transaction) => transaction.type === "cardSurcharge",
-    ) || [];
-
-  assert.equal(cardAdjustment?.amount, 0.2);
-  assert.equal(cardAdjustment?.paymentMethod, "Card");
-  assert.equal(cardAdjustment?.cashShiftId, undefined);
-  assert.equal(cardSurcharges.length, 1);
-  assert.equal(cardSurcharges[0].amount, 13.5);
-
-  const transferBooking = await bookingFixture("TRANSFER-ROUNDING");
-  transferBooking.transactions[0].amount = 499.4;
-  await transferBooking.save();
-
-  const transferResponse = response();
-  await controller.checkIn(
-    request({
-      body: {
-        expectedRevision: 0,
-        deposit: 200,
-        unpaidPayment: {
-          paymentMethod: "Transfer",
-          roundingAdjustment: 0.6,
-        },
-        passportData: {
-          namePrefix: "Mr",
-          passportNo: "TRANSFER-ROUNDING-PASSPORT",
-          passportName: "Transfer Guest",
-          nationality: "US",
-          nextDestinationCountry: "THA",
-        },
-      },
-      params: { bookingId: "TRANSFER-ROUNDING" },
-      method: "PUT",
-      url: "/bookings/checkIn/TRANSFER-ROUNDING",
-      key: "transfer-rounding-checkin",
-      admin: false,
-    }),
-    transferResponse as any,
-  );
-
-  assert.equal(
-    transferResponse.statusCode,
-    200,
-    JSON.stringify(transferResponse.body),
-  );
-  const storedTransferBooking = await Booking.findOne({
-    bookingId: "TRANSFER-ROUNDING",
-  }).lean();
-  const transferAdjustment = storedTransferBooking?.transactions.find(
-    (transaction) => transaction.reasonOfAdjustment === "rounding",
-  );
-
-  assert.equal(transferAdjustment?.amount, 0.6);
-  assert.equal(transferAdjustment?.paymentMethod, "Transfer");
-  assert.equal(transferAdjustment?.cashShiftId, undefined);
-  assert.equal(
-    storedTransferBooking?.transactions.some(
-      (transaction) => transaction.type === "cardSurcharge",
-    ),
-    false,
-  );
+    assert.equal(checkInResponse.statusCode, 400);
+    assert.equal(checkInResponse.body.message, "ปรับเศษเงินได้เฉพาะการรับเงินสด");
+    const storedBooking = await Booking.findOne({ bookingId }).lean();
+    assert.equal(storedBooking?.status, "booked");
+    assert.equal(storedBooking?.transactions.length, 1);
+  }
 });
 
 test("only admin can historically onboard an expired stay without touching today's cash shift", async () => {

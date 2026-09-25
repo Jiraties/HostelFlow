@@ -158,9 +158,6 @@ const validateInput = (input) => {
         if (!Number.isInteger(input.nights) || Number(input.nights) < 1) {
             throw new BookingExtensionError(400, "INVALID_EXTENSION_NIGHTS", "จำนวนคืนที่เพิ่มต้องเป็นจำนวนเต็มอย่างน้อย 1 คืน");
         }
-        if (input.placement === "before" && input.platformId !== "WALK") {
-            throw new BookingExtensionError(400, "INVALID_BACKWARD_EXTENSION_SOURCE", "คืนที่เพิ่มก่อนวันเข้าพักต้องเป็น Walk-in");
-        }
         if (input.placement === "before" && !BACKWARD_ADD_NIGHTS_ENABLED) {
             throw new BookingExtensionError(403, "BACKWARD_EXTENSION_DISABLED", "การเพิ่มคืนก่อนวันเข้ายังไม่เปิดใช้งาน");
         }

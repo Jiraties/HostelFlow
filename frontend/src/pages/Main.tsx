@@ -126,6 +126,7 @@ const formatServiceType = (type: TransactionType) => {
 };
 
 const priorityTodayServiceTypes: TransactionType[] = [
+  "roomCharge",
   "joinTour",
   "motorbike",
   "slowBoat",
@@ -524,7 +525,7 @@ const TodayList = ({
 };
 
 const Main = () => {
-  usePageTitle("HostelFlow · หน้าแรก");
+  usePageTitle("HostelFlow · Home");
   const { user, resolveStaffName } = useAuth();
   const currentUsername = user?.username;
   const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
@@ -1248,7 +1249,10 @@ const Main = () => {
               className="main__adminMonthPicker"
               onClick={(event) => {
                 const monthInput = dashboardMonthInputRef.current;
-                if (!monthInput || typeof monthInput.showPicker !== "function") {
+                if (
+                  !monthInput ||
+                  typeof monthInput.showPicker !== "function"
+                ) {
                   return;
                 }
                 event.preventDefault();
@@ -1286,7 +1290,9 @@ const Main = () => {
                       <ExpectedStayRevenueInfo />
                     </div>
                   </div>
-                  <p>{dashboardMonthIsCurrent ? "เดือนนี้" : dashboardMonthLabel}</p>
+                  <p>
+                    {dashboardMonthIsCurrent ? "เดือนนี้" : dashboardMonthLabel}
+                  </p>
                 </div>
                 <div className="main__revenueHeroValue">
                   <strong>

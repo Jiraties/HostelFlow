@@ -84,6 +84,9 @@ const getDefaultMasterFilters = (): MasterFilters => {
   };
 };
 
+const masterQueryKey = (filters: MasterFilters, limitSearchToRange: boolean) =>
+  JSON.stringify([filters, limitSearchToRange]);
+
 const bookingStatusOptions: OptionType[] = [
   { value: "", label: "ทุกสถานะ" },
   { value: "booked", label: "ยังไม่ Check-In" },
@@ -125,7 +128,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
         ? "Arrivals"
         : status === "departures"
           ? "Departures"
-          : "รายการจองทั้งหมด"
+          : "รายการทั้งหมด"
     }`,
   );
   const { user, resolveStaffName } = useAuth();
@@ -168,7 +171,12 @@ const Home = ({ status }: { status: HomeStatus }) => {
   const [masterFilters, setMasterFilters] = useState<MasterFilters>(
     getDefaultMasterFilters,
   );
+  const [loadedMasterQueryKey, setLoadedMasterQueryKey] = useState<
+    string | null
+  >(null);
+  const [masterResultsVersion, setMasterResultsVersion] = useState(0);
   const masterFiltersRef = useRef(masterFilters);
+  const loadedMasterQueryKeyRef = useRef<string | null>(null);
   const masterPageRef = useRef(0);
   const masterRequestIdRef = useRef(0);
   const masterLoadingMoreRef = useRef(false);
@@ -196,6 +204,10 @@ const Home = ({ status }: { status: HomeStatus }) => {
 
   const fullFormattedDate = formatHeaderDate(new Date(), dateFormat);
   const today = new Date();
+  const activeMasterQueryKey = masterQueryKey(
+    masterFilters,
+    limitSearchToRange,
+  );
   const bookingCheckInIsToday = (booking: booking) =>
     booking.checkIn.toDateString() === today.toDateString();
 
@@ -377,6 +389,8 @@ const Home = ({ status }: { status: HomeStatus }) => {
     async (filters: MasterFilters, options: { append?: boolean } = {}) => {
       const append = options.append === true;
       if (append && masterLoadingMoreRef.current) return;
+      const queryKey = masterQueryKey(filters, limitSearchToRange);
+      if (append && queryKey !== loadedMasterQueryKeyRef.current) return;
       const normalizedSearch = filters.search.trim();
       const hasGlobalSearch = normalizedSearch.length >= 3;
       const useDateRange = !hasGlobalSearch || limitSearchToRange;
@@ -445,6 +459,11 @@ const Home = ({ status }: { status: HomeStatus }) => {
             ),
           ];
         });
+        if (!append) {
+          loadedMasterQueryKeyRef.current = queryKey;
+          setLoadedMasterQueryKey(queryKey);
+          setMasterResultsVersion((version) => version + 1);
+        }
         masterPageRef.current = response.data.pagination?.page || requestedPage;
         setHasMoreBookings(hasMore);
       } catch (err) {
@@ -497,6 +516,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
   const loadMoreMasterBookings = useCallback(() => {
     if (
       !isMaster ||
+      loadedMasterQueryKey !== activeMasterQueryKey ||
       loading ||
       loadingMore ||
       !hasMoreBookings ||
@@ -509,9 +529,11 @@ const Home = ({ status }: { status: HomeStatus }) => {
       (err) => toast.error(getFetchErrorMessage(err)),
     );
   }, [
+    activeMasterQueryKey,
     fetchBookingsWithFilters,
     hasMoreBookings,
     isMaster,
+    loadedMasterQueryKey,
     loading,
     loadingMore,
   ]);
@@ -904,10 +926,12 @@ const Home = ({ status }: { status: HomeStatus }) => {
           }
           focusMasterToday={
             isMaster &&
+            loadedMasterQueryKey === activeMasterQueryKey &&
             !masterFilters.search.trim() &&
             masterFilters.from <= formatInputDate(today) &&
             masterFilters.to >= formatInputDate(today)
           }
+          masterResultsVersion={masterResultsVersion}
           setViewBookingBooking={setViewBookingBooking}
         />
         <ActionButton

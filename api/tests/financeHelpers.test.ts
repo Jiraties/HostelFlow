@@ -550,6 +550,85 @@ test("today revenue summary excludes future arrivals while including today's ext
   });
 });
 
+test("today revenue highlights extension stays without adding their charge twice", () => {
+  const start = new Date("2026-07-11T17:00:00.000Z");
+  const end = new Date("2026-07-12T17:00:00.000Z");
+  const bookings = [
+    {
+      bookingId: "EXTENSION-TODAY",
+      checkIn: new Date("2026-07-10T00:00:00.000Z"),
+      checkOut: new Date("2026-07-14T00:00:00.000Z"),
+      status: "checkedIn",
+      platformId: "walkIn",
+      transactions: [
+        {
+          _id: "original-charge",
+          type: "roomCharge",
+          paymentMethod: "Unpaid",
+          amount: 1200,
+          createdAt: new Date("2026-07-09T00:00:00.000Z"),
+        },
+        {
+          _id: "extension-charge",
+          type: "roomCharge",
+          sourceAction: "EXTEND_BOOKING",
+          paymentMethod: "Unpaid",
+          amount: 700,
+          createdAt: new Date("2026-07-11T00:00:00.000Z"),
+        },
+        {
+          _id: "future-extension-charge",
+          type: "roomCharge",
+          sourceAction: "EXTEND_BOOKING",
+          paymentMethod: "Unpaid",
+          amount: 500,
+          createdAt: new Date("2026-07-12T02:00:00.000Z"),
+        },
+      ],
+      commercialSegments: [
+        {
+          kind: "extension",
+          from: new Date("2026-07-12T00:00:00.000Z"),
+          to: new Date("2026-07-13T00:00:00.000Z"),
+          transactionId: "extension-charge",
+          amount: 700,
+        },
+        {
+          kind: "extension",
+          from: new Date("2026-07-13T00:00:00.000Z"),
+          to: new Date("2026-07-14T00:00:00.000Z"),
+          transactionId: "future-extension-charge",
+          amount: 500,
+        },
+      ],
+    },
+    {
+      bookingId: "ARRIVAL-TODAY",
+      checkIn: new Date("2026-07-12T00:00:00.000Z"),
+      checkOut: new Date("2026-07-13T00:00:00.000Z"),
+      status: "checkedIn",
+      platformId: "walkIn",
+      transactions: [
+        {
+          _id: "arrival-charge",
+          type: "roomCharge",
+          paymentMethod: "Unpaid",
+          amount: 900,
+        },
+      ],
+    },
+  ] as unknown as booking[];
+
+  assert.deepEqual(calculateTodayRevenueSummary(bookings, start, end), {
+    todayRevenue: 1600,
+    todayArrivalRevenue: 1600,
+    todayExtrasRevenue: 0,
+    todayReductions: 0,
+    todayCollectedRevenue: 0,
+    todayServiceHighlights: [{ type: "roomCharge", count: 1, total: 700 }],
+  });
+});
+
 test("today revenue does not deduct a future OTA cancellation refund", () => {
   const start = new Date("2026-07-11T17:00:00.000Z");
   const end = new Date("2026-07-12T17:00:00.000Z");

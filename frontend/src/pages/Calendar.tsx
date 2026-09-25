@@ -174,7 +174,7 @@ const monthNames = Array.from({ length: 12 }, (_, month) =>
 );
 
 const Calendar = () => {
-  usePageTitle("HostelFlow · ตารางการจอง");
+  usePageTitle("HostelFlow · ปฏิทิน");
   const { user, login } = useAuth();
   const today = new Date();
   const calendarColorMode = user?.settings.calendarColorMode || "status";

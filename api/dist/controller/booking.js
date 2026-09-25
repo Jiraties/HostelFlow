@@ -1666,6 +1666,12 @@ const checkIn = async (req, res) => {
                 message: "ยอดปรับเศษเงินไม่ถูกต้อง",
             });
         }
+        if (roundingAdjustment > 0 &&
+            checkInData.unpaidPayment?.paymentMethod !== "Cash") {
+            return res.status(400).json({
+                message: "ปรับเศษเงินได้เฉพาะการรับเงินสด",
+            });
+        }
         if (roundingAdjustment)
             newTransactions.push((0, financeHelpers_1.normalizeTransaction)({
                 type: "adjustment",

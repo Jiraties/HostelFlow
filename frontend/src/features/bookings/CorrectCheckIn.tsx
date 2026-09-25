@@ -1,17 +1,18 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import Select from "react-select";
-import countries from "i18n-iso-countries";
-import en from "i18n-iso-countries/langs/en.json";
+import {
+  nationalityOptions,
+  nationalitySelectOptions,
+} from "../../helpers/nationalityOptions";
 import toast from "react-hot-toast";
 import ActionButton from "../../components/ActionButton";
 import ModalCloseButton from "../../components/ModalCloseButton";
 import { API_URL } from "../../config/api";
 import { customStyles, type OptionType } from "../../helpers/selectStyling";
+import { uppercasePassportNumberLetters } from "../../helpers/passportNumberInput";
 import type { booking } from "../../types/bookingTypes";
 import "./CorrectCheckIn.css";
-
-countries.registerLocale(en);
 
 type CorrectionMode = "replace_passport" | "undo_check_in";
 
@@ -20,18 +21,6 @@ type CorrectionError = {
   message?: string;
   preview?: { blockers?: { message: string }[] };
 };
-
-const getFlagEmoji = (code: string) =>
-  code
-    .toUpperCase()
-    .replace(/./g, (char) => String.fromCodePoint(127397 + char.charCodeAt(0)));
-
-const nationalityOptions: OptionType[] = Object.entries(
-  countries.getNames("en"),
-).map(([code, name]) => ({
-  value: code,
-  label: `${name} ${getFlagEmoji(code)}`,
-}));
 
 const foreignNamePrefixOptions: OptionType[] = [
   "Mr",
@@ -201,7 +190,7 @@ const CorrectCheckIn = ({
                 setPassportNo(
                   isThaiGuest
                     ? event.target.value.replace(/\D/g, "").slice(0, 13)
-                    : event.target.value,
+                    : uppercasePassportNumberLetters(event.target.value),
                 );
               }}
             />
@@ -242,7 +231,7 @@ const CorrectCheckIn = ({
             <Select<OptionType>
               inputId="correct-check-in-nationality"
               styles={customStyles<OptionType>()}
-              options={nationalityOptions}
+              options={nationalitySelectOptions}
               value={nationalityOptions.find(
                 (option) => option.value === nationality,
               )}

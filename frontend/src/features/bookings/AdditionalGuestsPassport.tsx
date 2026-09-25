@@ -1,6 +1,8 @@
 import axios from "axios";
-import countries from "i18n-iso-countries";
-import en from "i18n-iso-countries/langs/en.json";
+import {
+  nationalityOptions,
+  nationalitySelectOptions,
+} from "../../helpers/nationalityOptions";
 import { Modal } from "@mui/material";
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
@@ -11,9 +13,8 @@ import { API_URL } from "../../config/api";
 import { customStyles } from "../../helpers/selectStyling";
 import type { OptionType } from "../../helpers/selectStyling";
 import { getApiErrorMessage } from "../../helpers/apiErrorMessage";
+import { uppercasePassportNumberLetters } from "../../helpers/passportNumberInput";
 import "./AdditionalGuestsPassport.css";
-
-countries.registerLocale(en);
 
 type GuestSummary = {
   guestId: string;
@@ -34,18 +35,6 @@ type GuestListResponse = {
   revision: number;
   additionalGuests: GuestSummary[];
 };
-
-const getFlagEmoji = (code: string) =>
-  code
-    .toUpperCase()
-    .replace(/./g, (char) => String.fromCodePoint(127397 + char.charCodeAt(0)));
-
-const nationalityOptions: OptionType[] = Object.entries(
-  countries.getNames("en"),
-).map(([code, name]) => ({
-  value: code,
-  label: `${name} ${getFlagEmoji(code)}`,
-}));
 
 const foreignNamePrefixOptions: OptionType[] = [
   { value: "Mr", label: "Mr" },
@@ -412,7 +401,7 @@ const AdditionalGuestsPassport = ({
               <label>สัญชาติ</label>
               <Select<OptionType>
                 styles={customStyles<OptionType>()}
-                options={nationalityOptions}
+                options={nationalitySelectOptions}
                 value={nationalityOptions.find(
                   (option) => option.value === formData.nationality,
                 )}
@@ -496,7 +485,7 @@ const AdditionalGuestsPassport = ({
                     ...current,
                     passportNo: isThaiGuest
                       ? event.target.value.replace(/\D/g, "").slice(0, 13)
-                      : event.target.value,
+                      : uppercasePassportNumberLetters(event.target.value),
                   }))
                 }
               />

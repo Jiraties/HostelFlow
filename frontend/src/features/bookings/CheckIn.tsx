@@ -3,8 +3,10 @@ import type { booking } from "../../types/bookingTypes";
 import "./BookingCheckbox.css";
 import "./CheckIn.css";
 import Select from "react-select";
-import countries from "i18n-iso-countries";
-import en from "i18n-iso-countries/langs/en.json";
+import {
+  nationalityOptions,
+  nationalitySelectOptions,
+} from "../../helpers/nationalityOptions";
 import { customStyles } from "../../helpers/selectStyling";
 import ActionButton from "../../components/ActionButton";
 import ModalCloseButton from "../../components/ModalCloseButton";
@@ -15,21 +17,8 @@ import axios from "axios";
 import toast from "react-hot-toast";
 import { API_URL } from "../../config/api";
 import { getApiErrorMessage } from "../../helpers/apiErrorMessage";
+import { uppercasePassportNumberLetters } from "../../helpers/passportNumberInput";
 import "./CheckOut.css";
-
-countries.registerLocale(en);
-
-const getFlagEmoji = (code: string) =>
-  code
-    .toUpperCase()
-    .replace(/./g, (char) => String.fromCodePoint(127397 + char.charCodeAt(0)));
-
-const nationalityOptions = Object.entries(countries.getNames("en")).map(
-  ([code, name]) => ({
-    value: code,
-    label: `${name} ${getFlagEmoji(code)}`,
-  }),
-);
 
 const paymentMethodOptions = [
   { value: "Cash", label: "Cash" },
@@ -206,8 +195,12 @@ const CheckIn = ({
     }).format(num);
 
   const parsedAdjustedRoomChargeAmount = Number(adjustedRoomChargeInput);
-  const adjustedRoomChargeAmount =
+  const cashRoundingEnabled =
     roundingAdjustment &&
+    hasOutstandingRoomCharge &&
+    unpaidPaymentPaymentMethod === "Cash";
+  const adjustedRoomChargeAmount =
+    cashRoundingEnabled &&
     Number.isFinite(parsedAdjustedRoomChargeAmount) &&
     parsedAdjustedRoomChargeAmount >= outstandingRoomChargeAmount
       ? parsedAdjustedRoomChargeAmount
@@ -258,7 +251,7 @@ const CheckIn = ({
 
     if (
       hasOutstandingRoomCharge &&
-      roundingAdjustment &&
+      cashRoundingEnabled &&
       (!Number.isFinite(parsedAdjustedRoomChargeAmount) ||
         parsedAdjustedRoomChargeAmount < outstandingRoomChargeAmount)
     ) {
@@ -285,7 +278,7 @@ const CheckIn = ({
       if (hasOutstandingRoomCharge) {
         payload.unpaidPayment = {
           paymentMethod: unpaidPaymentPaymentMethod,
-          roundingAdjustment: roundingAdjustment
+          roundingAdjustment: cashRoundingEnabled
             ? parsedAdjustedRoomChargeAmount - outstandingRoomChargeAmount
             : 0,
         };
@@ -371,7 +364,7 @@ const CheckIn = ({
                 setPassportNo(
                   isThaiGuest
                     ? e.target.value.replace(/\D/g, "").slice(0, 13)
-                    : e.target.value,
+                    : uppercasePassportNumberLetters(e.target.value),
                 )
               }
               inputMode={isThaiGuest ? "numeric" : undefined}
@@ -417,7 +410,7 @@ const CheckIn = ({
             <p className="checkIn__label">ชาติ</p>
             <Select<OptionType>
               styles={customStyles<OptionType>()}
-              options={nationalityOptions}
+              options={nationalitySelectOptions}
               value={nationalityOptions.find(
                 (option) => option.value === nationality,
               )}
@@ -497,13 +490,18 @@ const CheckIn = ({
                 )}
                 onChange={(option) => {
                   setConfirmedPayment(false);
-                  setUnpaidPaymentPaymentMethod(option?.value || "");
+                  const paymentMethod = option?.value || "";
+                  setUnpaidPaymentPaymentMethod(paymentMethod);
+                  if (paymentMethod !== "Cash") {
+                    setRoundingAdjustment(false);
+                    setAdjustedRoomChargeInput(String(outstandingRoomChargeAmount));
+                  }
                 }}
               />
             </div>
           )}
 
-          {roundingAdjustment && hasOutstandingRoomCharge && (
+          {cashRoundingEnabled && (
             <div>
               <p className="checkIn__label">
                 ยอดชำระค่าห้องหลังปรับ (บาท)
@@ -556,7 +554,7 @@ const CheckIn = ({
                     </p>
                     <p>
                       {formatCurrency(outstandingRoomChargeAmount)}
-                      {roundingAdjustment && (
+                      {cashRoundingEnabled && (
                         <span className="checkIn__extraAmountReceived">
                           {` + เกิน ${formatCurrency(adjustedRoomChargeAmount - outstandingRoomChargeAmount)}`}
                         </span>
@@ -619,13 +617,9 @@ const CheckIn = ({
       </div>
 
       <div className="checkIn__actions">
-        {hasOutstandingRoomCharge && (
+        {hasOutstandingRoomCharge && unpaidPaymentPaymentMethod === "Cash" && (
           <ActionButton
-            text={
-              unpaidPaymentPaymentMethod === "Cash"
-                ? "รับเงินสดไม่ตรงค่าห้อง"
-                : "รับยอดไม่ตรงค่าห้อง"
-            }
+            text="รับเงินสดไม่ตรงค่าห้อง"
             onClick={() => {
               setRoundingAdjustment(!roundingAdjustment);
               setConfirmedPayment(false);

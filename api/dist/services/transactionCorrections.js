@@ -168,10 +168,9 @@ const summarizeBookingFinancialPosition = (transactions) => {
             bookingTotal -= Math.abs(transaction.amount || 0);
             return;
         }
-        if (refundTypes.has(transaction.type)) {
-            if (transaction.type !== "depositRefund") {
-                bookingTotal -= Math.abs(transaction.amount || 0);
-            }
+        // Deposit returns only reduce the separate deposit liability below.
+        if (refundTypes.has(transaction.type) && transaction.type !== "depositRefund") {
+            bookingTotal -= Math.abs(transaction.amount || 0);
             if (transaction.paymentMethod !== "Unpaid" && direction === "out") {
                 amountReceived -= Math.abs(transaction.amount || 0);
             }

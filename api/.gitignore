@@ -1,2 +1,10 @@
-node_modules
+node_modules/
 .env
+.env.*
+!.env.example
+
+# Runtime-generated personal uploads; document templates and default.jpg remain versioned.
+uploads/profile-pictures/
+uploads/passports/
+uploads/guest-documents/
+uploads/tmp/

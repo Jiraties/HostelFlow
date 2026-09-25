@@ -35,6 +35,8 @@ type ExpectedStayRevenueBreakdownTransaction = {
   icon: string;
   amount: number;
   paymentMethod: PaymentMethod;
+  paymentMethodLabel?: string;
+  stayChargeKind?: "original" | "extension";
   direction?: TransactionDirection;
   createdAt?: string | Date;
   createdBy?: string;
@@ -105,6 +107,53 @@ type BreakdownDisplayGroup = {
   transactionCount: number;
   transactions: ExpectedStayRevenueBreakdownTransaction[];
   paymentMethod?: PaymentMethod;
+  sourceType?: TransactionType;
+};
+
+const EXTENSION_ROOM_CHARGE_COLOR = "#8adfe6";
+
+const roomChargeDisplayGroups = (
+  category: ExpectedStayRevenueBreakdownCategory,
+): BreakdownDisplayGroup[] => {
+  const originalTransactions = category.transactions.filter(
+    (transaction) => transaction.stayChargeKind !== "extension",
+  );
+  const extensionTransactions = category.transactions.filter(
+    (transaction) => transaction.stayChargeKind === "extension",
+  );
+
+  return [
+    {
+      key: "roomCharge-original",
+      label: "ค่าห้อง — การจองเดิม",
+      color: category.color,
+      transactions: originalTransactions,
+    },
+    {
+      key: "roomCharge-extension",
+      label: "ค่าห้อง — Extension",
+      color: EXTENSION_ROOM_CHARGE_COLOR,
+      transactions: extensionTransactions,
+    },
+  ]
+    .filter((group) => group.transactions.length > 0)
+    .map((group) => {
+      const total = group.transactions.reduce(
+        (sum, transaction) => sum + transaction.amount,
+        0,
+      );
+
+      return {
+        ...group,
+        sourceType: category.type,
+        total,
+        percentage:
+          category.total > 0
+            ? (total / category.total) * category.percentage
+            : 0,
+        transactionCount: group.transactions.length,
+      };
+    });
 };
 
 const formatMoney = (value: number) =>
@@ -315,6 +364,11 @@ const BreakdownSection = ({
                               <span className="nonGuestBadge">แขกนอก</span>
                             )}
                             {transaction.guestName}
+                            {transaction.stayChargeKind === "extension" && (
+                              <span className="financialBreakdown__extensionBadge">
+                                Extension
+                              </span>
+                            )}
                           </strong>
                           <div className="financialBreakdown__transactionMeta">
                             <span className="financialBreakdown__transactionMetaText">
@@ -373,9 +427,16 @@ const BreakdownSection = ({
                             {formatMoney(transaction.amount)} ฿
                           </strong>
                           <span className="financialBreakdown__paymentMethod">
-                            {paymentMethodLabel[transaction.paymentMethod]}
+                            {transaction.paymentMethodLabel ||
+                              paymentMethodLabel[transaction.paymentMethod]}
                             <i
-                              className={`bx ${paymentMethodIconMap[transaction.paymentMethod]}`}
+                              className={`bx ${
+                                transaction.paymentMethodLabel
+                                  ? "bx-wallet"
+                                  : paymentMethodIconMap[
+                                      transaction.paymentMethod
+                                    ]
+                              }`}
                             />
                           </span>
                         </div>
@@ -417,15 +478,22 @@ const FinancialBreakdown = ({
   );
   const typeGroups = useMemo<BreakdownDisplayGroup[]>(
     () =>
-      (breakdown?.categories || []).map((category) => ({
-        key: category.type,
-        label: category.label,
-        color: category.color,
-        total: category.total,
-        percentage: category.percentage,
-        transactionCount: category.transactionCount,
-        transactions: category.transactions,
-      })),
+      (breakdown?.categories || []).flatMap((category) =>
+        category.type === "roomCharge"
+          ? roomChargeDisplayGroups(category)
+          : [
+              {
+                key: category.type,
+                sourceType: category.type,
+                label: category.label,
+                color: category.color,
+                total: category.total,
+                percentage: category.percentage,
+                transactionCount: category.transactionCount,
+                transactions: category.transactions,
+              },
+            ],
+      ),
     [breakdown],
   );
   const paymentMethodGroups = useMemo<BreakdownDisplayGroup[]>(
@@ -446,7 +514,7 @@ const FinancialBreakdown = ({
   const activeGroups =
     breakdownMode === "type"
       ? selectedType
-        ? typeGroups.filter((group) => group.key === selectedType)
+        ? typeGroups.filter((group) => group.sourceType === selectedType)
         : typeGroups
       : paymentMethodGroups;
   const activeTitle =
@@ -520,8 +588,8 @@ const FinancialBreakdown = ({
           </h1>
           <p>
             {mode === "today"
-              ? "มูลค่าการจองที่เช็คอินวันนี้ รวมบริการเสริมวันนี้ หลังหักรายการลดรายได้"
-              : "ค่าที่พักนับตามวันที่เริ่มการจองหรือรายการต่อคืน และบริการเสริมนับตามวันที่บันทึกรายการ"}
+              ? "ค่าห้องจากการจองเดิมที่เริ่มเข้าพักวันนี้ รายการเพิ่มคืนที่เริ่มวันนี้ และบริการเสริมที่บันทึกวันนี้ หลังหักรายการลดรายได้"
+              : "ค่าห้องจากการจองเดิมและรายการเพิ่มคืน นับตามวันที่แต่ละช่วงเริ่มต้น ส่วนบริการเสริมนับตามวันที่บันทึกรายการ"}
           </p>
         </div>
         {mode === "today" ? (

@@ -118,12 +118,14 @@ beforeEach(async () => {
 });
 
 const createBooking = async ({
+  bookingId = "CORRECT-1",
   paymentMethod = "Unpaid",
   amount = 1200,
   cashShiftId,
   status = "booked",
   checkIn = new Date(),
 }: {
+  bookingId?: string;
   paymentMethod?: "OTA" | "Unpaid" | "Cash" | "Card" | "Transfer";
   amount?: number;
   cashShiftId?: string;
@@ -133,7 +135,7 @@ const createBooking = async ({
   Booking.create({
     revision: 0,
     name: "Correction Guest",
-    bookingId: "CORRECT-1",
+    bookingId,
     status,
     staffUsername: "staff",
     checkIn,
@@ -150,6 +152,74 @@ const createBooking = async ({
       },
     ],
   });
+
+test("today revenue shows settled unpaid charges under their effective payment methods", async () => {
+  const fullyPaid = await createBooking({
+    bookingId: "TODAY-FULLY-PAID",
+    status: "checkedIn",
+    amount: 1200,
+  });
+  fullyPaid.transactions.push({
+    type: "settlementCharge",
+    paymentMethod: "Cash",
+    amount: 1200,
+    direction: "in",
+    relatedTransactionType: "roomCharge",
+    relatedTransactionId: String(fullyPaid.transactions[0]._id),
+    createdBy: "staff",
+    createdAt: new Date(),
+  });
+  await fullyPaid.save();
+
+  const partiallyPaid = await createBooking({
+    bookingId: "TODAY-PARTIALLY-PAID",
+    status: "checkedIn",
+    amount: 1200,
+  });
+  partiallyPaid.transactions.push({
+    type: "settlementCharge",
+    paymentMethod: "Cash",
+    amount: 500,
+    direction: "in",
+    relatedTransactionType: "roomCharge",
+    relatedTransactionId: String(partiallyPaid.transactions[0]._id),
+    createdBy: "staff",
+    createdAt: new Date(),
+  });
+  await partiallyPaid.save();
+
+  const breakdown = response();
+  await getTodayRevenueBreakdown(
+    {
+      query: { businessDate: businessDateKey() },
+      user: { username: "staff", admin: false },
+    } as any,
+    breakdown as any,
+  );
+
+  assert.equal(breakdown.statusCode, 200, JSON.stringify(breakdown.body));
+  const roomChargeRows = breakdown.body.categories
+    .find((category: any) => category.type === "roomCharge")
+    .transactions;
+  const fullRow = roomChargeRows.find(
+    (transaction: any) => transaction.bookingId === "TODAY-FULLY-PAID",
+  );
+  const partialRow = roomChargeRows.find(
+    (transaction: any) => transaction.bookingId === "TODAY-PARTIALLY-PAID",
+  );
+  assert.equal(fullRow.paymentMethod, "Cash");
+  assert.equal(fullRow.paymentMethodLabel, undefined);
+  assert.equal(partialRow.paymentMethodLabel, "Cash + Unpaid");
+
+  const paymentTotals = Object.fromEntries(
+    breakdown.body.paymentMethods.map((method: any) => [
+      method.paymentMethod,
+      method.total,
+    ]),
+  );
+  assert.equal(paymentTotals.Cash, 1700);
+  assert.equal(paymentTotals.Unpaid, 700);
+});
 
 test("correction appends audit history and never mutates the original transaction", async () => {
   const booking = await createBooking();

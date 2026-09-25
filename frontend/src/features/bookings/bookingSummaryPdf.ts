@@ -25,7 +25,7 @@ const PAGE_WIDTH = 1240;
 const PAGE_HEIGHT = 1754;
 const PAGE_MARGIN = 58;
 const CONTENT_BOTTOM = PAGE_HEIGHT - 108;
-const TEAL = "#20aeba";
+const TEAL = "#51d1dc";
 const TEAL_PALE = "#eaf8f9";
 const TEXT = "#182126";
 const MUTED = "#667077";
@@ -33,6 +33,13 @@ const BORDER = "#dce5e7";
 const RED = "#dc2626";
 const PDF_FONT_NAME = "IBM Plex Sans Thai";
 const FONT_FAMILY = `"${PDF_FONT_NAME}", sans-serif`;
+const BUSINESS_DETAILS = {
+  name: "บริษัท สลีพ ออล เดย์ จำกัด",
+  address:
+    "647/1 ถนนศรีเกิด ตำบลเวียง อำเภอเมืองเชียงราย จังหวัดเชียงราย 57000",
+  phone: "099-2605522",
+  taxId: "0 5755 59001 20 7",
+} as const;
 const PDF_FONT_SOURCES = [
   { weight: "400", url: ibmPlexSansThaiRegularUrl },
   { weight: "500", url: ibmPlexSansThaiMediumUrl },
@@ -58,7 +65,8 @@ const ensurePdfFonts = () => {
     .then(async () => {
       await document.fonts.ready;
       const missingWeight = PDF_FONT_SOURCES.find(
-        ({ weight }) => !document.fonts.check(`${weight} 20px "${PDF_FONT_NAME}"`),
+        ({ weight }) =>
+          !document.fonts.check(`${weight} 20px "${PDF_FONT_NAME}"`),
       );
       if (missingWeight) {
         throw new Error(`Font weight ${missingWeight.weight} unavailable`);
@@ -67,7 +75,9 @@ const ensurePdfFonts = () => {
     .catch((error: unknown) => {
       pdfFontsPromise = null;
       const detail = error instanceof Error ? `: ${error.message}` : "";
-      throw new Error(`ไม่สามารถโหลด IBM Plex Sans Thai สำหรับ PDF ได้${detail}`);
+      throw new Error(
+        `ไม่สามารถโหลด IBM Plex Sans Thai สำหรับ PDF ได้${detail}`,
+      );
     });
 
   return pdfFontsPromise;
@@ -133,6 +143,8 @@ const BOOKING_SUMMARY_COPY = {
     payment: "Payment",
     deposit: "Deposit",
     note: "Note",
+    businessPhone: "Tel",
+    businessTaxId: "Tax ID",
   },
   th: {
     statusWaitingCheckIn: "รอ Check-In",
@@ -187,6 +199,8 @@ const BOOKING_SUMMARY_COPY = {
     payment: "Payment",
     deposit: "Deposit",
     note: "หมายเหตุ",
+    businessPhone: "โทร",
+    businessTaxId: "เลขประจำตัวผู้เสียภาษี",
   },
 } as const;
 
@@ -285,10 +299,19 @@ const drawImageContained = (
   maxWidth: number,
   maxHeight: number,
 ) => {
-  const scale = Math.min(maxWidth / image.naturalWidth, maxHeight / image.naturalHeight);
+  const scale = Math.min(
+    maxWidth / image.naturalWidth,
+    maxHeight / image.naturalHeight,
+  );
   const width = image.naturalWidth * scale;
   const height = image.naturalHeight * scale;
-  context.drawImage(image, x + (maxWidth - width) / 2, y + (maxHeight - height) / 2, width, height);
+  context.drawImage(
+    image,
+    x + (maxWidth - width) / 2,
+    y + (maxHeight - height) / 2,
+    width,
+    height,
+  );
 };
 
 const createPage = (): CanvasPage => {
@@ -371,7 +394,8 @@ const tokenize = (text: string) => {
   if (!normalized) return [];
 
   const words = normalized.split(" ");
-  if (words.length > 1) return words.map((word, index) => (index ? ` ${word}` : word));
+  if (words.length > 1)
+    return words.map((word, index) => (index ? ` ${word}` : word));
   return Array.from(normalized);
 };
 
@@ -442,11 +466,14 @@ const measureInfoCard = (
   let height = 76;
   if (prominentValue) {
     setFont(context, 37, 700);
-    height += Math.max(wrapText(context, prominentValue, width - 46).length, 1) * 46 + 13;
+    height +=
+      Math.max(wrapText(context, prominentValue, width - 46).length, 1) * 46 +
+      13;
   }
   rows.forEach((row) => {
     setFont(context, 21, row.strong ? 700 : 500);
-    height += Math.max(wrapText(context, row.value, width * 0.56).length, 1) * 28 + 16;
+    height +=
+      Math.max(wrapText(context, row.value, width * 0.56).length, 1) * 28 + 16;
   });
   return height + 15;
 };
@@ -491,12 +518,7 @@ const drawInfoCard = (
     context.fillStyle = row.valueColor || TEXT;
     const lines = wrapText(context, row.value, width * 0.56);
     lines.forEach((line, lineIndex) => {
-      drawTextRight(
-        context,
-        line,
-        x + width - 25,
-        cursorY + lineIndex * 28,
-      );
+      drawTextRight(context, line, x + width - 25, cursorY + lineIndex * 28);
     });
     cursorY += Math.max(lines.length, 1) * 28 + 15;
 
@@ -525,7 +547,11 @@ const bookingStatusDetails = (
       checkIn.getDate() === generatedAt.getDate();
 
     return checkInIsToday
-      ? { label: text.statusWaitingCheckIn, color: "#00adef", background: "#e0f5fc" }
+      ? {
+          label: text.statusWaitingCheckIn,
+          color: "#00adef",
+          background: "#e0f5fc",
+        }
       : { label: text.statusBooked, color: "#2a2a2a", background: "#f7f7f7" };
   }
 
@@ -545,7 +571,11 @@ const bookingStatusDetails = (
       color: "#fd4169",
       background: "#fff2f5",
     },
-    noShow: { label: text.statusNoShow, color: "#4b5563", background: "#f3f4f6" },
+    noShow: {
+      label: text.statusNoShow,
+      color: "#4b5563",
+      background: "#f3f4f6",
+    },
   };
 
   return details[currentBooking.status];
@@ -578,11 +608,7 @@ const drawStatusBadge = (
     Math.PI * 2,
   );
   context.fill();
-  context.fillText(
-    status.label,
-    x + horizontalPadding + dotSize + gap,
-    y + 10,
-  );
+  context.fillText(status.label, x + horizontalPadding + dotSize + gap, y + 10);
 };
 
 const statusBadgeWidth = (
@@ -628,10 +654,16 @@ const transactionDescription = (
   if (transaction.type === "misc" && transaction.note?.trim()) {
     return `Misc · ${transaction.note.trim()}`;
   }
-  if (transaction.type === "deposit" && transaction.sourceAction === "ADD_TRANSACTION") {
+  if (
+    transaction.type === "deposit" &&
+    transaction.sourceAction === "ADD_TRANSACTION"
+  ) {
     return text.addedDeposit;
   }
-  if (transaction.type === "adjustment" && transaction.reasonOfAdjustment === "rounding") {
+  if (
+    transaction.type === "adjustment" &&
+    transaction.reasonOfAdjustment === "rounding"
+  ) {
     return text.cashRounding;
   }
   const advancePayment = currentBooking.advancePayment;
@@ -640,7 +672,10 @@ const transactionDescription = (
       ? text.advanceRoomCharge
       : `${text.advanceRoomCharge} ${advancePayment.percentage}%`;
   }
-  if (transaction.type === "roomCharge" && transaction.sourceAction === "EXTEND_BOOKING") {
+  if (
+    transaction.type === "roomCharge" &&
+    transaction.sourceAction === "EXTEND_BOOKING"
+  ) {
     const platformId =
       transaction.platformId ||
       (currentBooking.commercialSegments || []).find(
@@ -695,9 +730,12 @@ const isLinkedTransaction = (
   transaction.type === "roomChargeWriteOff" ||
   transaction._id === currentBooking.advancePayment?.transactionId ||
   isRoomChargeSettlementTransaction(currentBooking, transaction) ||
-  (transaction.type === "roomCharge" && transaction.sourceAction === "EXTEND_BOOKING") ||
-  (transaction.type === "deposit" && transaction.sourceAction === "ADD_TRANSACTION") ||
-  (transaction.type === "adjustment" && Boolean(transaction.relatedTransactionId));
+  (transaction.type === "roomCharge" &&
+    transaction.sourceAction === "EXTEND_BOOKING") ||
+  (transaction.type === "deposit" &&
+    transaction.sourceAction === "ADD_TRANSACTION") ||
+  (transaction.type === "adjustment" &&
+    Boolean(transaction.relatedTransactionId));
 
 const transactionDescriptionWithMeta = (
   currentBooking: booking,
@@ -711,15 +749,17 @@ const transactionDescriptionWithMeta = (
     language,
     text,
   );
-  const note = transaction.note?.trim() && transaction.type !== "misc"
-    ? ` · ${transaction.note.trim()}`
-    : "";
-  const correction = transaction.corrected ? ` · ${text.corrected}` : "";
-  const review = transaction.reviewStatus === "needs_review"
-    ? ` · ${text.needsReview}`
-    : transaction.reviewStatus === "reviewed"
-      ? ` · ${text.reviewed}`
+  const note =
+    transaction.note?.trim() && transaction.type !== "misc"
+      ? ` · ${transaction.note.trim()}`
       : "";
+  const correction = transaction.corrected ? ` · ${text.corrected}` : "";
+  const review =
+    transaction.reviewStatus === "needs_review"
+      ? ` · ${text.needsReview}`
+      : transaction.reviewStatus === "reviewed"
+        ? ` · ${text.reviewed}`
+        : "";
   return `${isLinkedTransaction(currentBooking, transaction) ? "- " : ""}${description}${note}${correction}${review}`;
 };
 
@@ -774,7 +814,11 @@ const transactionFolioAmounts = (transaction: transcation): FolioAmounts => {
   if (transaction.type === "roomChargeWriteOff") {
     return { charge: -amount };
   }
-  if (["cancellationRefund", "roomRefund", "compensation"].includes(transaction.type)) {
+  if (
+    ["cancellationRefund", "roomRefund", "compensation"].includes(
+      transaction.type,
+    )
+  ) {
     return { charge: -amount, payment: isPaid ? -amount : undefined };
   }
   if (transaction.type === "deposit") return { deposit: signedAmount };
@@ -796,7 +840,9 @@ const roomStayNights = (from: string | Date, to: string | Date) => {
   const start = new Date(from);
   const end = new Date(to);
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "";
-  return String(Math.max(Math.round((end.getTime() - start.getTime()) / 86_400_000), 0));
+  return String(
+    Math.max(Math.round((end.getTime() - start.getTime()) / 86_400_000), 0),
+  );
 };
 
 const canvasToJpeg = (canvas: HTMLCanvasElement) =>
@@ -860,7 +906,10 @@ const buildPdf = (images: Uint8Array[]) => {
     length += encodeText(start).byteLength;
     for (const chunk of objects.get(objectId) || []) {
       chunks.push(chunk);
-      length += typeof chunk === "string" ? encodeText(chunk).byteLength : chunk.byteLength;
+      length +=
+        typeof chunk === "string"
+          ? encodeText(chunk).byteLength
+          : chunk.byteLength;
     }
     const end = "\nendobj\n";
     chunks.push(end);
@@ -883,11 +932,7 @@ const buildPdf = (images: Uint8Array[]) => {
   );
 };
 
-const drawFooter = (
-  page: CanvasPage,
-  pageIndex: number,
-  pageCount: number,
-) => {
+const drawFooter = (page: CanvasPage, pageIndex: number, pageCount: number) => {
   const { context } = page;
   const y = PAGE_HEIGHT - 78;
   context.strokeStyle = TEAL;
@@ -932,6 +977,40 @@ const drawContinuationHeader = (page: CanvasPage, currentBooking: booking) => {
   context.stroke();
 };
 
+const drawBusinessDetails = (
+  context: CanvasRenderingContext2D,
+  text: (typeof BOOKING_SUMMARY_COPY)[BookingSummaryLanguage],
+  y: number,
+) => {
+  const width = PAGE_WIDTH - PAGE_MARGIN * 2;
+  setFont(context, 19, 400);
+  const addressLines = wrapText(context, BUSINESS_DETAILS.address, width - 36);
+  const height = 87 + addressLines.length * 26;
+
+  context.fillStyle = "#fbfefe";
+  context.strokeStyle = BORDER;
+  context.lineWidth = 1.5;
+  roundedRect(context, PAGE_MARGIN, y, width, height, 8);
+  context.fill();
+  context.stroke();
+
+  setFont(context, 23, 700);
+  context.fillStyle = TEXT;
+  context.fillText(BUSINESS_DETAILS.name, PAGE_MARGIN + 18, y + 13);
+  setFont(context, 19, 400);
+  context.fillStyle = MUTED;
+  addressLines.forEach((line, index) => {
+    context.fillText(line, PAGE_MARGIN + 18, y + 47 + index * 26);
+  });
+  context.fillText(
+    `${text.businessPhone}: ${BUSINESS_DETAILS.phone}    ·    ${text.businessTaxId}: ${BUSINESS_DETAILS.taxId}`,
+    PAGE_MARGIN + 18,
+    y + 52 + addressLines.length * 26,
+  );
+
+  return height;
+};
+
 const renderPdfPages = async ({
   booking: currentBooking,
   generatedAt = new Date(),
@@ -939,7 +1018,9 @@ const renderPdfPages = async ({
   language = DEFAULT_BOOKING_SUMMARY_LANGUAGE,
 }: PdfOptions) => {
   if (!currentBooking.financialSummary) {
-    throw new Error("ไม่พบข้อมูลสรุปการเงินล่าสุด กรุณาโหลด Booking ใหม่แล้วลองอีกครั้ง");
+    throw new Error(
+      "ไม่พบข้อมูลสรุปการเงินล่าสุด กรุณาโหลด Booking ใหม่แล้วลองอีกครั้ง",
+    );
   }
 
   await ensurePdfFonts();
@@ -947,11 +1028,14 @@ const renderPdfPages = async ({
 
   const channelRows = buildChannelRows(currentBooking);
   const imageEntries = await Promise.all([
-    loadImage(hostelFlowLogoUrl).then((image) => ["hostelflow", image] as const),
-    ...Array.from(new Set(channelRows.map((row) => row.platformId))).map((platformId) =>
-      loadImage(platformMap[platformId].logo).then(
-        (image) => [platformId, image] as const,
-      ),
+    loadImage(hostelFlowLogoUrl).then(
+      (image) => ["hostelflow", image] as const,
+    ),
+    ...Array.from(new Set(channelRows.map((row) => row.platformId))).map(
+      (platformId) =>
+        loadImage(platformMap[platformId].logo).then(
+          (image) => [platformId, image] as const,
+        ),
     ),
   ]);
   const images = new Map(imageEntries);
@@ -986,13 +1070,17 @@ const renderPdfPages = async ({
 
     const drawHeader = () => {
       context.fillStyle = TEAL_PALE;
-      context.fillRect(PAGE_MARGIN, cursorY, PAGE_WIDTH - PAGE_MARGIN * 2, headerHeight);
+      context.fillRect(
+        PAGE_MARGIN,
+        cursorY,
+        PAGE_WIDTH - PAGE_MARGIN * 2,
+        headerHeight,
+      );
       setFont(context, 18, 700);
       context.fillStyle = "#364148";
       let x = PAGE_MARGIN;
       columns.forEach((column) => {
-        const textX =
-          column.align === "right" ? x + column.width - 16 : x + 16;
+        const textX = column.align === "right" ? x + column.width - 16 : x + 16;
         if (column.align === "right") {
           drawTextRight(context, column.header, textX, cursorY + 10);
         } else {
@@ -1007,7 +1095,12 @@ const renderPdfPages = async ({
     drawHeader();
     if (!rows.length && emptyText) {
       context.strokeStyle = BORDER;
-      context.strokeRect(PAGE_MARGIN, cursorY, PAGE_WIDTH - PAGE_MARGIN * 2, 56);
+      context.strokeRect(
+        PAGE_MARGIN,
+        cursorY,
+        PAGE_WIDTH - PAGE_MARGIN * 2,
+        56,
+      );
       setFont(context, 18, 400);
       context.fillStyle = MUTED;
       context.fillText(emptyText, PAGE_MARGIN + 16, cursorY + 16);
@@ -1019,7 +1112,10 @@ const renderPdfPages = async ({
       const lineSets = columns.map((column) =>
         wrapText(context, column.value(row), column.width - 32),
       );
-      const rowHeight = Math.max(46, Math.max(...lineSets.map((lines) => lines.length)) * 23 + 20);
+      const rowHeight = Math.max(
+        46,
+        Math.max(...lineSets.map((lines) => lines.length)) * 23 + 20,
+      );
 
       if (cursorY + rowHeight > CONTENT_BOTTOM) {
         addPage();
@@ -1034,7 +1130,12 @@ const renderPdfPages = async ({
       }
 
       context.strokeStyle = BORDER;
-      context.strokeRect(PAGE_MARGIN, cursorY, PAGE_WIDTH - PAGE_MARGIN * 2, rowHeight);
+      context.strokeRect(
+        PAGE_MARGIN,
+        cursorY,
+        PAGE_WIDTH - PAGE_MARGIN * 2,
+        rowHeight,
+      );
       let x = PAGE_MARGIN;
       columns.forEach((column, columnIndex) => {
         const lines = lineSets[columnIndex];
@@ -1102,8 +1203,16 @@ const renderPdfPages = async ({
   drawStatusBadge(context, status, statusX, 182);
   setFont(context, 17, 400);
   context.fillStyle = MUTED;
-  context.fillText(`Generated on: ${formatDate(generatedAt, true)}`, PAGE_MARGIN, 258);
-  cursorY = 310;
+  context.fillText(
+    `Generated on: ${formatDate(generatedAt, true)}`,
+    PAGE_MARGIN,
+    258,
+  );
+  const businessDetailsY = 295;
+  cursorY =
+    businessDetailsY +
+    drawBusinessDetails(context, text, businessDetailsY) +
+    24;
 
   const guestRows: InfoRow[] = [];
   if (currentBooking.passport?.nationality) {
@@ -1125,7 +1234,10 @@ const renderPdfPages = async ({
   const stayRows: InfoRow[] = [
     { label: "Check-In", value: formatDate(currentBooking.checkIn) },
     { label: "Check-Out", value: formatDate(currentBooking.checkOut) },
-    { label: text.nights, value: `${currentBooking.nights} ${text.nightsUnit}` },
+    {
+      label: text.nights,
+      value: `${currentBooking.nights} ${text.nightsUnit}`,
+    },
     ...(rooms ? [{ label: text.room, value: rooms }] : []),
   ];
   if (currentBooking.checkedInAt) {
@@ -1134,7 +1246,9 @@ const renderPdfPages = async ({
       value: formatDate(currentBooking.checkedInAt, true),
     });
   }
-  const actualCheckout = currentBooking.checkout?.checkedOutAt || currentBooking.resolution?.resolvedAt;
+  const actualCheckout =
+    currentBooking.checkout?.checkedOutAt ||
+    currentBooking.resolution?.resolvedAt;
   if (actualCheckout && currentBooking.status === "checkedOut") {
     stayRows.push({
       label: text.actualCheckOut,
@@ -1144,7 +1258,12 @@ const renderPdfPages = async ({
 
   const gap = 20;
   const cardWidth = (PAGE_WIDTH - PAGE_MARGIN * 2 - gap) / 2;
-  const guestHeight = measureInfoCard(context, cardWidth, guestRows, currentBooking.name);
+  const guestHeight = measureInfoCard(
+    context,
+    cardWidth,
+    guestRows,
+    currentBooking.name,
+  );
   const stayHeight = measureInfoCard(context, cardWidth, stayRows);
   const firstCardsHeight = Math.max(guestHeight, stayHeight);
   drawInfoCard(
@@ -1170,7 +1289,9 @@ const renderPdfPages = async ({
 
   const channelInfoRows = channelRows.map((channel, index) => {
     const label = platformMap[channel.platformId]?.label || channel.platformId;
-    const bookingNumber = channel.channelBookingId ? ` · No. ${channel.channelBookingId}` : "";
+    const bookingNumber = channel.channelBookingId
+      ? ` · No. ${channel.channelBookingId}`
+      : "";
     return {
       label:
         channel.placement === "before"
@@ -1208,10 +1329,24 @@ const renderPdfPages = async ({
       strong: true,
     },
     ...(summary.guestCredit > 0
-      ? [{ label: text.guestCredit, value: formatMoney(summary.guestCredit), valueColor: TEAL, strong: true }]
+      ? [
+          {
+            label: text.guestCredit,
+            value: formatMoney(summary.guestCredit),
+            valueColor: TEAL,
+            strong: true,
+          },
+        ]
       : []),
     ...(summary.remainingDeposit > 0
-      ? [{ label: text.remainingDeposit, value: formatMoney(summary.remainingDeposit), valueColor: "#8a5a00", strong: true }]
+      ? [
+          {
+            label: text.remainingDeposit,
+            value: formatMoney(summary.remainingDeposit),
+            valueColor: "#8a5a00",
+            strong: true,
+          },
+        ]
       : []),
   ];
 
@@ -1239,99 +1374,98 @@ const renderPdfPages = async ({
   );
   cursorY += secondCardsHeight + 28;
 
-  drawTable(
-    text.roomAssignments,
-    currentBooking.roomStays,
-    [
-      { header: text.room, width: 400, value: (stay) => formatRoomStayRooms(stay) },
-      { header: text.from, width: 260, value: (stay) => formatDate(stay.from) },
-      { header: text.to, width: 260, value: (stay) => formatDate(stay.to) },
-      {
-        header: text.nights,
-        width: PAGE_WIDTH - PAGE_MARGIN * 2 - 920,
-        align: "right",
-        value: (stay) => roomStayNights(stay.from, stay.to),
-      },
-    ],
-  );
+  drawTable(text.roomAssignments, currentBooking.roomStays, [
+    {
+      header: text.room,
+      width: 400,
+      value: (stay) => formatRoomStayRooms(stay),
+    },
+    { header: text.from, width: 260, value: (stay) => formatDate(stay.from) },
+    { header: text.to, width: 260, value: (stay) => formatDate(stay.to) },
+    {
+      header: text.nights,
+      width: PAGE_WIDTH - PAGE_MARGIN * 2 - 920,
+      align: "right",
+      value: (stay) => roomStayNights(stay.from, stay.to),
+    },
+  ]);
 
   const effectiveTransactions = (
     currentBooking.effectiveTransactions !== undefined
       ? currentBooking.effectiveTransactions
       : currentBooking.transactions
-  ).filter((transaction) => transaction.type !== "cardSurcharge" || transaction.amount > 0);
+  ).filter(
+    (transaction) =>
+      transaction.type !== "cardSurcharge" || transaction.amount > 0,
+  );
   const transactionDisplayBooking: booking = {
     ...currentBooking,
     transactions: effectiveTransactions,
   };
   if (effectiveTransactions.length) {
-    drawTable(
-      text.transactions,
-      effectiveTransactions,
-      [
-        {
-          header: text.date,
-          width: 200,
-          value: (transaction) =>
-            transaction.createdAt ? formatDate(transaction.createdAt, true) : "",
+    drawTable(text.transactions, effectiveTransactions, [
+      {
+        header: text.date,
+        width: 200,
+        value: (transaction) =>
+          transaction.createdAt ? formatDate(transaction.createdAt, true) : "",
+      },
+      {
+        header: text.description,
+        width: 350,
+        value: (transaction) =>
+          transactionDescriptionWithMeta(
+            transactionDisplayBooking,
+            transaction,
+            language,
+            text,
+          ),
+      },
+      {
+        header: text.type,
+        width: 130,
+        value: (transaction) =>
+          transactionTypeLabel(transactionDisplayBooking, transaction, text),
+        color: (transaction) => {
+          const typeLabel = transactionTypeLabel(
+            transactionDisplayBooking,
+            transaction,
+            text,
+          );
+          if (typeLabel === "Unpaid") return RED;
+          if (typeLabel === "Paid") return "rgb(30, 203, 131)";
+          if (typeLabel === text.writeOff) return MUTED;
+          return TEXT;
         },
-        {
-          header: text.description,
-          width: 350,
-          value: (transaction) =>
-            transactionDescriptionWithMeta(
-              transactionDisplayBooking,
-              transaction,
-              language,
-              text,
-            ),
-        },
-        {
-          header: text.type,
-          width: 130,
-          value: (transaction) =>
-            transactionTypeLabel(transactionDisplayBooking, transaction, text),
-          color: (transaction) => {
-            const typeLabel = transactionTypeLabel(
-              transactionDisplayBooking,
-              transaction,
-              text,
-            );
-            if (typeLabel === "Unpaid") return RED;
-            if (typeLabel === "Paid") return "rgb(30, 203, 131)";
-            if (typeLabel === text.writeOff) return MUTED;
-            return TEXT;
-          },
-        },
-        {
-          header: text.charge,
-          width: 148,
-          align: "right",
-          value: (transaction) =>
-            folioAmountText(transactionFolioAmounts(transaction).charge),
-          color: (transaction) =>
-            folioAmountColor(transactionFolioAmounts(transaction).charge),
-        },
-        {
-          header: text.payment,
-          width: 148,
-          align: "right",
-          value: (transaction) =>
-            folioAmountText(transactionFolioAmounts(transaction).payment),
-          color: (transaction) =>
-            folioAmountColor(transactionFolioAmounts(transaction).payment),
-        },
-        {
-          header: text.deposit,
-          width: PAGE_WIDTH - PAGE_MARGIN * 2 - 976,
-          align: "right",
-          value: (transaction) =>
-            folioAmountText(transactionFolioAmounts(transaction).deposit),
-          color: (transaction) =>
-            folioAmountColor(transactionFolioAmounts(transaction).deposit),
-        },
-      ],
-    );
+      },
+      {
+        header: text.charge,
+        width: 148,
+        align: "right",
+        value: (transaction) =>
+          folioAmountText(transactionFolioAmounts(transaction).charge),
+        color: (transaction) =>
+          folioAmountColor(transactionFolioAmounts(transaction).charge),
+      },
+      {
+        header: text.payment,
+        width: 148,
+        align: "right",
+        value: (transaction) =>
+          folioAmountText(transactionFolioAmounts(transaction).payment),
+        color: (transaction) =>
+          folioAmountColor(transactionFolioAmounts(transaction).payment),
+      },
+      {
+        header: text.deposit,
+        width: PAGE_WIDTH - PAGE_MARGIN * 2 - 976,
+        align: "right",
+        value: (transaction) =>
+          folioAmountText(transactionFolioAmounts(transaction).deposit),
+        color: (transaction) =>
+          folioAmountColor(transactionFolioAmounts(transaction).deposit),
+      },
+    ]);
   }
 
   if (currentBooking.note?.trim()) {
@@ -1365,13 +1499,17 @@ const renderPdfPages = async ({
     cursorY += noteHeight + 20;
   }
 
-  pages.forEach((currentPage, index) => drawFooter(currentPage, index, pages.length));
+  pages.forEach((currentPage, index) =>
+    drawFooter(currentPage, index, pages.length),
+  );
   return pages;
 };
 
 export const printBookingSummaryPdf = async (options: PdfOptions) => {
   const pages = await renderPdfPages(options);
-  const pdf = buildPdf(await Promise.all(pages.map((page) => canvasToJpeg(page.canvas))));
+  const pdf = buildPdf(
+    await Promise.all(pages.map((page) => canvasToJpeg(page.canvas))),
+  );
   const url = URL.createObjectURL(pdf);
   const printFrame = document.createElement("iframe");
   printFrame.title = `ปริ้น ${createBookingSummaryFilename(options.booking)}`;

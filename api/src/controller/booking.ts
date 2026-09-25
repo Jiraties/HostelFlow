@@ -2358,6 +2358,15 @@ export const checkIn = async (req: Request, res: Response) => {
       });
     }
 
+    if (
+      roundingAdjustment > 0 &&
+      checkInData.unpaidPayment?.paymentMethod !== "Cash"
+    ) {
+      return res.status(400).json({
+        message: "ปรับเศษเงินได้เฉพาะการรับเงินสด",
+      });
+    }
+
     if (roundingAdjustment)
       newTransactions.push(
         normalizeTransaction(

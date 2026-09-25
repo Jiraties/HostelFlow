@@ -222,6 +222,44 @@ test("cash rounding is a separate small charge and does not create guest credit"
   assert.equal(transactions[0].amount, 449.8);
 });
 
+for (const paidAmount of [900, 1200, 1350]) {
+  for (const refundAmount of [150, 300]) {
+    test(`deposit return of ${refundAmount} preserves the operating balance with ${paidAmount} paid`, () => {
+      const transactions = [
+        transaction("synthetic-room-charge"),
+        transaction("synthetic-payment", {
+          type: "settlementCharge",
+          paymentMethod: "Cash",
+          amount: paidAmount,
+          relatedTransactionType: "roomCharge",
+          relatedTransactionId: "synthetic-room-charge",
+        }),
+        transaction("synthetic-deposit", {
+          type: "deposit",
+          paymentMethod: "Cash",
+          amount: 300,
+        }),
+        transaction("synthetic-deposit-return", {
+          type: "depositRefund",
+          paymentMethod: "Cash",
+          amount: refundAmount,
+          direction: "out",
+          relatedTransactionType: "deposit",
+          relatedTransactionId: "synthetic-deposit",
+        }),
+      ];
+
+      assert.deepEqual(summarizeBookingFinancialPosition(transactions), {
+        bookingTotal: 1200,
+        amountReceived: paidAmount,
+        outstandingBalance: Math.max(1200 - paidAmount, 0),
+        guestCredit: Math.max(paidAmount - 1200, 0),
+        remainingDeposit: 300 - refundAmount,
+      });
+    });
+  }
+}
+
 test("deposit corrections flow into remaining deposit and explicit refunds", () => {
   const deposit = transaction("deposit", {
     type: "deposit",

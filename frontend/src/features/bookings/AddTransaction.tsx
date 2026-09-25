@@ -27,26 +27,34 @@ type TransactionType = Transaction["type"];
 type PaymentMethod = Transaction["paymentMethod"];
 type AdjustmentDirection = "in" | "out";
 
+const rankedTransactionTypes = [
+  "towel",
+  "slowBoat",
+  "motorbike",
+  "pickACraft",
+  "laundry",
+  "deposit",
+  "joinTour",
+  "extraBed",
+  "misc",
+  "onlyWalk",
+  "rainCoat",
+  "setMenu",
+];
 const addTransactionTypePriority = new Map(
-  [
-    "towel",
-    "pickACraft",
-    "laundry",
-    "slowBoat",
-    "motorbike",
-    "joinTour",
-    "extraBed",
-  ].map((type, index) => [type, index]),
+  rankedTransactionTypes.map((type, index) => [type, index]),
 );
 
 const prioritizedTransactionTypeOptions = [...transactionTypeOptions].sort(
   (first, second) =>
     (addTransactionTypePriority.get(first.value) ?? Number.MAX_SAFE_INTEGER) -
-    (addTransactionTypePriority.get(second.value) ?? Number.MAX_SAFE_INTEGER),
+      (addTransactionTypePriority.get(second.value) ?? Number.MAX_SAFE_INTEGER) ||
+    first.label.localeCompare(second.label, "en"),
 );
+const frequentTransactionTypes = new Set(rankedTransactionTypes.slice(0, 5));
 const focusedTransactionTypeOptions: OptionType[] = [
-  { value: "roomRefund", label: "คืนเงินลูกค้า", color: "#fb7185" },
   { value: "compensation", label: "ชดเชยลูกค้า", color: "#38bdf8" },
+  { value: "roomRefund", label: "คืนเงินลูกค้า", color: "#fb7185" },
 ];
 
 type AddTransactionFormData = {
@@ -299,6 +307,25 @@ const AddTransaction = ({
     ),
     ...focusedTransactionTypeOptions,
   ];
+  const transactionTypeOptionGroups = [
+    {
+      label: "ใช้บ่อย",
+      options: availableTransactionTypeOptions.filter((option) =>
+        frequentTransactionTypes.has(option.value),
+      ),
+    },
+    {
+      label: "รายการอื่น",
+      options: availableTransactionTypeOptions.filter(
+        (option) =>
+          !frequentTransactionTypes.has(option.value) &&
+          !focusedTransactionTypeOptions.some(
+            (focusedOption) => focusedOption.value === option.value,
+          ),
+      ),
+    },
+    { label: "คืนเงิน / ชดเชย", options: focusedTransactionTypeOptions },
+  ];
   const availablePaymentMethodOptions =
     isFocusedFinancialAction
       ? paymentMethodOptions.filter((option) => option.value !== "Unpaid")
@@ -439,7 +466,7 @@ const AddTransaction = ({
           <Select<OptionType>
             styles={customStyles<OptionType>()}
             classNamePrefix="rs"
-            options={availableTransactionTypeOptions}
+            options={transactionTypeOptionGroups}
             placeholder="เลือกประเภทรายการ"
             formatOptionLabel={formatTransactionTypeLabel}
             menuPortalTarget={document.body}

@@ -210,12 +210,6 @@ const ExtendBooking = ({
     setNewCheckIn(initialNewCheckIn);
     setNewCheckOut(initialNewCheckOut);
     setRoomIds(nextPlacement === "before" ? earliestRoomIds : finalRoomIds);
-    if (nextPlacement === "before") {
-      const walkInBookingId = generateWalkInBookingId();
-      generatedWalkInBookingIdRef.current = walkInBookingId;
-      setPlatformId("WALK");
-      setChannelBookingId(walkInBookingId);
-    }
   };
 
   const platformChangeHandler = (nextPlatformId: PlatformId) => {
@@ -349,7 +343,7 @@ const ExtendBooking = ({
           placement,
           nights: addedNights,
           roomIds: selectedRooms,
-          platformId: placement === "before" ? "WALK" : platformId,
+          platformId,
           channelBookingId: channelBookingId.trim(),
           amount: numericAmount,
           paymentMethod,
@@ -492,7 +486,7 @@ const ExtendBooking = ({
         <div className="extendBooking__field">
           <p className="addBooking__label">ช่องทางสำหรับคืนที่เพิ่ม</p>
           <Select<OptionType>
-            isDisabled={submitting || placement === "before"}
+            isDisabled={submitting}
             styles={customStyles<OptionType>()}
             classNamePrefix="rs"
             options={platformOptions}
@@ -517,7 +511,7 @@ const ExtendBooking = ({
             placeholder={
               platformId === "WALK" ? "เช่น 170720261819" : "เช่น 4012345678"
             }
-            disabled={submitting || placement === "before"}
+            disabled={submitting}
             onChange={(event) =>
               channelBookingIdChangeHandler(event.target.value)
             }
@@ -571,7 +565,7 @@ const ExtendBooking = ({
 
       {placement === "before" && (
         <p className="extendBooking__anchorNotice">
-          คืนที่เพิ่มจะเป็น Walk-in ใหม่ ส่วนวันที่ OTA และ Booking No. เดิมจะไม่เปลี่ยน
+          คืนที่เพิ่มจะใช้ช่องทางและ Booking No. ที่เลือก ส่วนการจองเดิมจะไม่เปลี่ยน
         </p>
       )}
 

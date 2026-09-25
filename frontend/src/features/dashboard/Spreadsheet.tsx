@@ -206,6 +206,7 @@ const Spreadsheet = ({
   status,
   masterRange,
   focusMasterToday,
+  masterResultsVersion,
 }: {
   bookings: booking[];
   setViewBookingBooking: (booking: booking) => void;
@@ -219,6 +220,7 @@ const Spreadsheet = ({
     to: string;
   };
   focusMasterToday?: boolean;
+  masterResultsVersion?: number;
 }) => {
   const { user, login, resolveStaffName } = useAuth();
   const isMaster = status === "master";
@@ -241,7 +243,7 @@ const Spreadsheet = ({
   const gridApiRef = useRef<GridApi<SpreadsheetRow> | null>(null);
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const gridRepaintFrameRef = useRef<number | null>(null);
-  const hasScrolledToTodayRef = useRef(false);
+  const focusedMasterResultsVersionRef = useRef<number | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [animationsEnabledForStatus, setAnimationsEnabledForStatus] =
     useState<SpreadsheetStatus | null>(null);
@@ -375,33 +377,37 @@ const Spreadsheet = ({
       loading ||
       loadingMore ||
       !masterDataHasReachedToday ||
-      hasScrolledToTodayRef.current
+      focusedMasterResultsVersionRef.current === masterResultsVersion
     ) {
       return;
     }
 
-    const todayRowIndex = rowData.findIndex(
-      (row) => isSeparatorRow(row) && row.dateKey === todayKey,
+    const gridHasCurrentRows = [rowData[0], rowData[rowData.length - 1]].every(
+      (row) => {
+        if (!row) return false;
+        const rowId = isSeparatorRow(row)
+          ? `separator-${row.dateKey}`
+          : `booking-${status}-${row.bookingId}`;
+        return api.getRowNode(rowId)?.data === row;
+      },
     );
-
-    if (todayRowIndex === -1) return;
+    if (!gridHasCurrentRows) return;
+    const todayRowIndex = api.getRowNode(`separator-${todayKey}`)?.rowIndex;
+    if (todayRowIndex == null) return;
 
     api.ensureIndexVisible(todayRowIndex, "top");
-    hasScrolledToTodayRef.current = true;
+    focusedMasterResultsVersionRef.current = masterResultsVersion ?? null;
   }, [
     focusMasterToday,
     isMaster,
     loading,
     loadingMore,
     masterDataHasReachedToday,
+    masterResultsVersion,
     rowData,
+    status,
     todayKey,
   ]);
-
-  useEffect(() => {
-    if (isMaster && focusMasterToday) return;
-    hasScrolledToTodayRef.current = false;
-  }, [focusMasterToday, isMaster]);
 
   useEffect(() => {
     scrollToTodaySeparator();

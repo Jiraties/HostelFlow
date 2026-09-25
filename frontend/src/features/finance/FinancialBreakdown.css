@@ -413,6 +413,17 @@
   font-weight: 400;
 }
 
+.financialBreakdown__extensionBadge {
+  flex: 0 0 auto;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999rem;
+  background-color: #eaf9fa;
+  color: #397b80;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
 .financialBreakdown__transactionMeta {
   display: flex;
   align-items: center;

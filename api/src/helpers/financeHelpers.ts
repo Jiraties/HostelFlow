@@ -459,6 +459,23 @@ export const calculateTodayRevenueSummary = (
     current.total += amount;
     serviceHighlights.set(transaction.type, current);
   });
+  activeSegmentCohorts.forEach(({ booking, segment }) => {
+    if (segment.kind !== "extension") return;
+    const charge = (booking.transactions || []).find(
+      (transaction) => String(transaction._id) === segment.transactionId,
+    );
+    const amount = Math.abs(charge?.amount ?? segment.amount ?? 0);
+    if (amount <= 0) return;
+
+    const current = serviceHighlights.get("roomCharge") || {
+      type: "roomCharge" as const,
+      count: 0,
+      total: 0,
+    };
+    current.count += 1;
+    current.total += amount;
+    serviceHighlights.set("roomCharge", current);
+  });
   const todayReductions = todayTransactions.reduce(
     (sum, { booking, transaction }) => {
       const alreadyNetted =
