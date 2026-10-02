@@ -51,11 +51,19 @@ import {
   createRoomBlock,
   releaseRoomBlock,
 } from "../controller/roomBlocks";
+import {
+  createExtraSaleAnnotation,
+  updateExtraSaleNote,
+  removeExtraSaleAnnotation,
+} from "../controller/extraSaleAnnotations";
 
 const bookingsRouter = express.Router();
 
 bookingsRouter.post("/room-blocks", createRoomBlock);
 bookingsRouter.patch("/room-blocks/:blockId/release", releaseRoomBlock);
+bookingsRouter.post("/extra-sale-annotations", createExtraSaleAnnotation);
+bookingsRouter.patch("/extra-sale-annotations/:annotationId/note", updateExtraSaleNote);
+bookingsRouter.patch("/extra-sale-annotations/:annotationId/remove", removeExtraSaleAnnotation);
 bookingsRouter.post("/newBooking", newBooking);
 bookingsRouter.post("/:bookingId/extensions", extendBooking);
 bookingsRouter.patch("/editBooking/:bookingId", editBooking);

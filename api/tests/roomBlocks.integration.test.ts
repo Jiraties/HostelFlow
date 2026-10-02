@@ -4,7 +4,7 @@ import mongoose from "mongoose";
 import { MongoMemoryReplSet } from "mongodb-memory-server";
 import Activity from "../src/models/activity";
 import Booking from "../src/models/booking";
-import RoomBlock from "../src/models/roomBlock";
+import RoomBlock, { HOUSE_USE_ROOM_BLOCK_REASON } from "../src/models/roomBlock";
 import RoomMutationLock from "../src/models/roomMutationLock";
 import { createRoomBlock, releaseRoomBlock } from "../src/controller/roomBlocks";
 
@@ -371,4 +371,50 @@ test("concurrent booking and block creation cannot both acquire the same room-ni
       (await Booking.countDocuments({ bookingId: "RACING-BOOKING" })),
     1,
   );
+});
+
+test("room-block creation saves its category and rejects unknown categories", async () => {
+  const body = {
+    roomIds: ["Balcony"],
+    from: localDate(),
+    to: localDate(2),
+    reason: HOUSE_USE_ROOM_BLOCK_REASON,
+    reasonType: "house_use",
+  };
+  const invalid = response();
+  await createRoomBlock(request({ body: { ...body, reasonType: "invalid" } }), invalid);
+  assert.equal(invalid.statusCode, 400);
+  assert.equal(await RoomBlock.countDocuments(), 0);
+
+  const created = response();
+  await createRoomBlock(request({ body }), created);
+  assert.equal(created.statusCode, 201);
+  assert.equal((await RoomBlock.findById(created.body.block._id).lean())?.reasonType, "house_use");
+});
+
+test("dashboard occupancy includes internal-use history and ignores all other blocks", async () => {
+  const julyDate = (day: number) => new Date(`2026-07-${String(day).padStart(2, "0")}T00:00:00+07:00`);
+  await RoomBlock.create([
+    { roomIds: ["Balcony"], from: julyDate(1), to: julyDate(3), reasonType: "house_use", reason: "Synthetic internal stay", createdBy: "test-staff" },
+    { roomId: "Siesta 1", from: julyDate(1), to: julyDate(2), reason: HOUSE_USE_ROOM_BLOCK_REASON, createdBy: "test-staff" },
+    { roomIds: ["Pottery 1"], from: julyDate(1), to: julyDate(5), releasedAt: new Date("2026-07-03T05:00:00.000Z"), reasonType: "house_use", reason: "Synthetic released stay", createdBy: "test-staff" },
+    { roomIds: ["Wicker 1"], from: julyDate(1), to: julyDate(31), reasonType: "maintenance", reason: "Synthetic maintenance", createdBy: "test-staff" },
+    { roomIds: ["Wicker 2"], from: julyDate(1), to: julyDate(31), reasonType: "other", reason: HOUSE_USE_ROOM_BLOCK_REASON, createdBy: "test-staff" },
+  ]);
+
+  const dashboard = response();
+  await bookingController.getAdminDashboardStats({
+    user: { userId: "test-admin-id", username: "test-admin", admin: true },
+    query: { month: "2026-07", revenueRange: "mtd" },
+  } as any, dashboard);
+  assert.equal(dashboard.statusCode, 200);
+  assert.equal(dashboard.body.occupancyRate, 11 / (52 * 31));
+  assert.equal(dashboard.body.rangeOccupancyRate, 11 / (52 * 31));
+  const firstDay = dashboard.body.revenueSeries.find((point: any) => point.date === "2026-07-01");
+  const releaseDay = dashboard.body.revenueSeries.find((point: any) => point.date === "2026-07-03");
+  assert.equal(firstDay.occupiedCapacity, 6);
+  assert.equal(firstDay.occupancyRate, 6 / 52);
+  assert.equal(releaseDay.occupiedCapacity, 0);
+  assert.equal(dashboard.body.monthlyGrossRevenue, 0);
+  assert.equal(dashboard.body.monthlyCollectedRevenue, 0);
 });

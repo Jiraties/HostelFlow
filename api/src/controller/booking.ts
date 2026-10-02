@@ -3,7 +3,11 @@ import Booking, {
   PaymentMethod,
 } from "../models/booking";
 import StandaloneSale from "../models/standaloneSale";
-import RoomBlock from "../models/roomBlock";
+import RoomBlock, {
+  HOUSE_USE_ROOM_BLOCK_REASON,
+  type roomBlock,
+} from "../models/roomBlock";
+import ExtraSaleAnnotation from "../models/extraSaleAnnotation";
 import dotenv from "dotenv";
 import crypto from "crypto";
 import mongoose from "mongoose";
@@ -486,15 +490,45 @@ const bookingOccupiedRoomIdsOnDate = (
   });
 };
 
+type OccupancyRoomBlock = Pick<
+  roomBlock,
+  "roomId" | "roomIds" | "from" | "to" | "reason" | "reasonType" | "releasedAt"
+>;
+
+const internalUseOccupiedRoomIdsOnDate = (
+  block: OccupancyRoomBlock,
+  start: Date,
+  end: Date,
+) => {
+  const isInternalUse = block.reasonType === "house_use" ||
+    (block.reasonType === undefined && block.reason === HOUSE_USE_ROOM_BLOCK_REASON);
+  if (!isInternalUse) return [];
+
+  const plannedEnd = new Date(block.to);
+  const releaseDate = block.releasedAt
+    ? getBookingBusinessDateStart(new Date(block.releasedAt))
+    : plannedEnd;
+  const effectiveEnd = releaseDate < plannedEnd ? releaseDate : plannedEnd;
+  if (new Date(block.from) >= end || effectiveEnd <= start) return [];
+
+  return getRoomStayRoomIds(block);
+};
+
 export const occupiedCapacityOnDate = (
   bookings: booking[],
   start: Date,
   end: Date,
+  roomBlocks: OccupancyRoomBlock[] = [],
 ) => {
   const occupiedRoomIds = new Set(
-    bookings.flatMap((currentBooking) =>
-      bookingOccupiedRoomIdsOnDate(currentBooking, start, end),
-    ),
+    [
+      ...bookings.flatMap((currentBooking) =>
+        bookingOccupiedRoomIdsOnDate(currentBooking, start, end),
+      ),
+      ...roomBlocks.flatMap((block) =>
+        internalUseOccupiedRoomIdsOnDate(block, start, end),
+      ),
+    ],
   );
 
   return Array.from(occupiedRoomIds).reduce(
@@ -510,6 +544,7 @@ export const occupancySummaryForRange = (
   bookings: booking[],
   start: Date,
   end: Date,
+  roomBlocks: OccupancyRoomBlock[] = [],
 ) => {
   let date = new Date(start);
   let occupiedBedNights = 0;
@@ -519,7 +554,7 @@ export const occupancySummaryForRange = (
     const dayEnd = new Date(
       Math.min(date.getTime() + 86400000, end.getTime()),
     );
-    occupiedBedNights += occupiedCapacityOnDate(bookings, date, dayEnd);
+    occupiedBedNights += occupiedCapacityOnDate(bookings, date, dayEnd, roomBlocks);
     dayCount += 1;
     date = dayEnd;
   }
@@ -1606,6 +1641,7 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
       monthStandaloneSales,
       esrBookings,
       occupancyBookings,
+      internalUseBlocks,
       monthBookings,
       channelMixBookings,
       unpaidBookings,
@@ -1627,6 +1663,19 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
             },
           },
         }),
+        RoomBlock.find({
+          from: { $lt: occupancyQueryEnd },
+          to: { $gt: occupancyQueryStart },
+          $or: [
+            { reasonType: "house_use" },
+            {
+              reasonType: { $exists: false },
+              reason: HOUSE_USE_ROOM_BLOCK_REASON,
+            },
+          ],
+        })
+          .select("roomId roomIds from to reason reasonType releasedAt")
+          .lean(),
         Booking.find({
           checkIn: { $gte: startOfMonth, $lt: startOfNextMonth },
         }),
@@ -1801,11 +1850,13 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
       occupancyBookings,
       startOfMonth,
       startOfNextMonth,
+      internalUseBlocks,
     );
     const selectedRangeOccupancy = occupancySummaryForRange(
       occupancyBookings,
       chartStart,
       chartEnd,
+      internalUseBlocks,
     );
 
     revenueBuckets.forEach((bucket) => {
@@ -1816,6 +1867,7 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
         occupancyBookings,
         bucket.start < chartStart ? chartStart : bucket.start,
         bucket.end,
+        internalUseBlocks,
       );
       bucketRevenue.occupiedCapacity =
         bucketOccupancy.averageOccupiedCapacity;
@@ -2751,6 +2803,20 @@ type Room = {
     createdBy: string;
     createdAt: Date;
   }[];
+  extraSaleAnnotations: {
+    annotationId: string;
+    roomId: string;
+    roomIds: string[];
+    from: Date;
+    to: Date;
+    kind: string;
+    customReason: string;
+    note: string;
+    createdBy: string;
+    createdAt: Date;
+    updatedBy?: string;
+    updatedAt?: Date;
+  }[];
 };
 
 export const getMonthCalendar = async (req: Request, res: Response) => {
@@ -2774,7 +2840,32 @@ export const getMonthCalendar = async (req: Request, res: Response) => {
       roomId: room.id,
       bookings: [],
       blocks: [],
+      extraSaleAnnotations: [],
     }));
+
+    const annotations = await ExtraSaleAnnotation.find({
+      removedAt: { $exists: false },
+      from: { $lt: endingDate },
+      to: { $gt: startingDate },
+    }).lean();
+    annotations.forEach((annotation) => {
+      annotation.roomIds.forEach((roomId) => {
+        rooms.find((room) => room.roomId === roomId)?.extraSaleAnnotations.push({
+          annotationId: String(annotation._id),
+          roomId,
+          roomIds: annotation.roomIds,
+          from: annotation.from,
+          to: annotation.to,
+          kind: annotation.kind || "EXTRA_SALE",
+          customReason: annotation.customReason || "",
+          note: annotation.note || "",
+          createdBy: annotation.createdBy,
+          createdAt: annotation.createdAt,
+          updatedBy: annotation.updatedBy,
+          updatedAt: annotation.updatedAt,
+        });
+      });
+    });
 
     const activeRoomBlocks = await RoomBlock.find({
       releasedAt: { $exists: false },

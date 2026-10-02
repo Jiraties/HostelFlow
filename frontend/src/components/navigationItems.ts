@@ -9,6 +9,7 @@ export type NavigationItem = {
 
 export const navigationItems: NavigationItem[] = [
   { id: 1, label: "Home", link: "/", icon: "bx-home" },
+  { id: 7, label: "Analytics", link: "/analytics", icon: "bx-bar-chart-big" },
   { id: 2, label: "Arrivals", link: "/arrivals", icon: "bx-arrow-to-left" },
   {
     id: 3,

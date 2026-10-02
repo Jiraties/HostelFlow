@@ -4,6 +4,7 @@ import ModalCloseButton from "../../components/ModalCloseButton";
 import CashShiftNudge from "../../components/CashShiftNudge";
 import { BookingDateRangePicker } from "./BookingDateRangePicker";
 import "./AddBooking.css";
+import "./AddTransaction.css";
 import Select, { type MultiValue, type SingleValue } from "react-select";
 import { useAuth } from "../../context/AuthContext";
 import toast from "react-hot-toast";
@@ -1207,7 +1208,10 @@ const AddBooking = ({
           </>
         )}
         <div>
-          <p className="addBooking__label">Note</p>
+          <p className="addBooking__label">
+            Note
+            <span className="addTransaction__optionalLabel">(ไม่บังคับ)</span>
+          </p>
           <input
             className="boxInput"
             type="text"

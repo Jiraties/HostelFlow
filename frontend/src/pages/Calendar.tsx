@@ -5,6 +5,10 @@ import AddBooking from "../features/bookings/AddBooking.tsx";
 import RoomBlockModal, {
   type CalendarRoomBlock,
 } from "../features/bookings/RoomBlockModal.tsx";
+import ExtraSaleAnnotationModal, {
+  type CalendarExtraSaleAnnotation,
+  type NewExtraSaleAnnotation,
+} from "../features/bookings/ExtraSaleAnnotationModal.tsx";
 import PageHeader from "../components/PageHeader.tsx";
 import axios from "axios";
 import toast from "react-hot-toast";
@@ -12,6 +16,8 @@ import toast from "react-hot-toast";
 import type { booking, PlatformId } from "../types/bookingTypes";
 import { platformMap } from "../helpers/maps.ts";
 import { getApiErrorMessage } from "../helpers/apiErrorMessage";
+import { calendarAnnotationLabel } from "../helpers/calendarAnnotations";
+import { formatDisplayDate } from "../helpers/displayDate";
 
 import {
   useCallback,
@@ -57,6 +63,7 @@ type Room = {
   roomId: string;
   bookings: CalendarBooking[];
   blocks?: CalendarRoomBlock[];
+  extraSaleAnnotations?: CalendarExtraSaleAnnotation[];
 };
 
 type CalendarSelection = {
@@ -192,6 +199,7 @@ const Calendar = () => {
         ? "4.8rem"
         : "4rem";
   const roomRowHeight = calendarDensity === "compact" ? "2.75rem" : "3rem";
+  const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
 
   const timelineRef = useRef<HTMLDivElement>(null);
   const monthPickerRef = useRef<HTMLSpanElement>(null);
@@ -248,6 +256,10 @@ const Calendar = () => {
   const [viewRoomBlock, setViewRoomBlock] = useState<CalendarRoomBlock | null>(
     null,
   );
+  const [newExtraSaleAnnotation, setNewExtraSaleAnnotation] =
+    useState<NewExtraSaleAnnotation | null>(null);
+  const [viewExtraSaleAnnotation, setViewExtraSaleAnnotation] =
+    useState<CalendarExtraSaleAnnotation | null>(null);
   const handledRoomDateRef = useRef("");
   const [viewBookingBooking, setViewBookingBooking] = useState<booking | null>(
     null,
@@ -540,6 +552,7 @@ const Calendar = () => {
   const roomRows: ReactNode[] = [];
   const mergedBookingBlocks: ReactNode[] = [];
   const roomBlockElements: ReactNode[] = [];
+  const extraSaleAnnotationElements: ReactNode[] = [];
   const selectionGhostElements: ReactNode[] = [];
   const timelineGridRows: string[] = [roomRowHeight];
   const roomGridRows: number[] = [];
@@ -747,6 +760,35 @@ const Calendar = () => {
         ...(roomBlocksById.get(block.blockId) || []),
         { block, roomIndex },
       ]);
+    });
+
+    (room.extraSaleAnnotations || []).forEach((annotation) => {
+      const position = getVisibleRangePosition(annotation.from, annotation.to);
+      if (!position) return;
+      const label = calendarAnnotationLabel(
+        annotation.kind,
+        annotation.customReason,
+      );
+      extraSaleAnnotationElements.push(
+        <button
+          type="button"
+          className="timeline__item timeline__extraSaleAnnotation"
+          style={{
+            gridColumn: `${position.startingDate + 2} / span ${position.span}`,
+            gridRow,
+            borderTopLeftRadius: position.continuesBefore ? 0 : undefined,
+            borderBottomLeftRadius: position.continuesBefore ? 0 : undefined,
+            borderTopRightRadius: position.continuesAfter ? 0 : undefined,
+            borderBottomRightRadius: position.continuesAfter ? 0 : undefined,
+          }}
+          key={`${annotation.annotationId}-${room.roomId}`}
+          title={`${label} · ${room.roomId}${annotation.note ? ` · ${annotation.note}` : ""}`}
+          aria-label={`${label} ห้อง ${room.roomId} ช่วง ${formatDisplayDate(annotation.from, dateFormat)} ถึง ${formatDisplayDate(annotation.to, dateFormat)}`}
+          onClick={() => setViewExtraSaleAnnotation(annotation)}
+        >
+          <span>{label}</span>
+        </button>,
+      );
     });
 
     roomRows.push(roomRow);
@@ -967,6 +1009,13 @@ const Calendar = () => {
     setSelectionChooser(null);
     setDragSelection(null);
     setNewRoomBlock(selectionDates(selection));
+  };
+
+  const handleCreateExtraSaleAnnotation = (selection: CalendarSelection) => {
+    suppressNextClickRef.current = false;
+    setSelectionChooser(null);
+    setDragSelection(null);
+    setNewExtraSaleAnnotation(selectionDates(selection));
   };
 
   const appendToBookings = (booking: booking) => {
@@ -1349,6 +1398,34 @@ const Calendar = () => {
         />
       </Modal>
       <Modal
+        open={!!newExtraSaleAnnotation}
+        className="home__modalCenter"
+        onClose={() => setNewExtraSaleAnnotation(null)}
+      >
+        <ExtraSaleAnnotationModal
+          key={
+            newExtraSaleAnnotation
+              ? `${newExtraSaleAnnotation.roomIds.join(",")}-${newExtraSaleAnnotation.from}-${newExtraSaleAnnotation.to}`
+              : "closed"
+          }
+          selection={newExtraSaleAnnotation}
+          onClose={() => setNewExtraSaleAnnotation(null)}
+          onChanged={() => getRooms().catch(showCalendarLoadError)}
+        />
+      </Modal>
+      <Modal
+        open={!!viewExtraSaleAnnotation}
+        className="home__modalCenter"
+        onClose={() => setViewExtraSaleAnnotation(null)}
+      >
+        <ExtraSaleAnnotationModal
+          key={viewExtraSaleAnnotation?.annotationId || "closed"}
+          annotation={viewExtraSaleAnnotation}
+          onClose={() => setViewExtraSaleAnnotation(null)}
+          onChanged={() => getRooms().catch(showCalendarLoadError)}
+        />
+      </Modal>
+      <Modal
         open={!!pendingUnsavedClose}
         className="home__modalCenter"
         onClose={() => setPendingUnsavedClose(null)}
@@ -1469,6 +1546,10 @@ const Calendar = () => {
             <p>{item.label}</p>
           </div>
         ))}
+        <div className="calendar__legendItem">
+          <span className="calendar__legendExtraSale" aria-hidden="true" />
+          <p>หมายเหตุ</p>
+        </div>
       </div>
 
       {selectionChooser && (
@@ -1517,6 +1598,20 @@ const Calendar = () => {
               )
             ].getDate()}
           </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() =>
+              handleCreateExtraSaleAnnotation(selectionChooser.selection)
+            }
+          >
+            <i
+              className="bx bx-highlight"
+              aria-hidden="true"
+              style={{ color: "var(--primary-color)" }}
+            />
+            เพิ่มหมายเหตุ
+          </button>
         </div>
       )}
 
@@ -1543,6 +1638,7 @@ const Calendar = () => {
           {renderedDayHeaders}
 
           {roomRows}
+          {extraSaleAnnotationElements}
           {mergedBookingBlocks}
           {roomBlockElements}
           {selectionGhostElements}

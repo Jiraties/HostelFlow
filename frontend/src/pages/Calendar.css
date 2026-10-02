@@ -238,6 +238,10 @@
   opacity: 0.65;
 }
 
+.calendar__selectionChooser .bx-highlight {
+  color: #a86b12;
+}
+
 .calendar__monthPickerTrigger:hover,
 .calendar__monthPickerTrigger:focus-visible {
   background: #00000008;
@@ -355,6 +359,53 @@
   box-shadow: 0 0 0.45rem #ff526980;
   height: 1rem;
   width: 0.28rem;
+}
+
+.calendar__legendExtraSale {
+  background: repeating-linear-gradient(135deg, #fff8e8, #fff8e8 4px, #f6dfaf 4px, #f6dfaf 5px);
+  border-radius: 0.15rem;
+  height: 0.7rem;
+  width: 0.7rem;
+}
+
+.timeline__extraSaleAnnotation {
+  align-self: stretch;
+  background: repeating-linear-gradient(135deg, #fff8e878, #fff8e878 8px, #ebc57355 8px, #ebc57355 9px);
+  border: 0;
+  border-radius: 0.35rem;
+  box-shadow: 0 0.1rem 0.35rem #a86b1214;
+  color: #8c5d19;
+  cursor: pointer;
+  font: inherit;
+  justify-content: flex-start;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0.25rem;
+  position: relative;
+  text-align: left;
+  z-index: 1;
+}
+
+.timeline__extraSaleAnnotation span {
+  background: #fff9eced;
+  border-radius: 0.25rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 0.1rem 0.25rem;
+  white-space: nowrap;
+}
+
+.timeline__extraSaleAnnotation:hover,
+.timeline__extraSaleAnnotation:focus-visible {
+  background: repeating-linear-gradient(135deg, #fff2d4bd, #fff2d4bd 8px, #ebc5737a 8px, #ebc5737a 9px);
+  outline: none;
+}
+
+.timeline__extraSaleAnnotation:focus-visible { box-shadow: 0 0 0 2px var(--primary-color); }
+
+@media (max-width: 600px) {
+  .timeline__extraSaleAnnotation span { display: none; }
 }
 
 .timeline__emptyCell {

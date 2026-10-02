@@ -552,7 +552,10 @@ const ExtendBooking = ({
         </div>
 
         <label className="extendBooking__field extendBooking__field--full">
-          <span>หมายเหตุ (ถ้ามี)</span>
+          <span>
+            หมายเหตุ
+            <span className="addTransaction__optionalLabel">(ไม่บังคับ)</span>
+          </span>
           <input
             className="boxInput"
             value={note}

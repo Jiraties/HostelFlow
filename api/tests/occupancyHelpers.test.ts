@@ -6,6 +6,7 @@ import {
   occupiedCapacityOnDate,
 } from "../src/controller/booking";
 import type { booking } from "../src/models/booking";
+import { HOUSE_USE_ROOM_BLOCK_REASON, type roomBlock } from "../src/models/roomBlock";
 
 const dayStart = new Date("2026-07-17T17:00:00.000Z");
 const dayEnd = new Date("2026-07-18T17:00:00.000Z");
@@ -27,6 +28,77 @@ const occupancyBooking = (
     ],
     ...overrides,
   }) as booking;
+
+const occupancyBlock = (overrides: Partial<roomBlock> = {}) => ({
+  roomIds: ["Balcony"],
+  from: dayStart,
+  to: thirdDayEnd,
+  reason: HOUSE_USE_ROOM_BLOCK_REASON,
+  reasonType: "house_use" as const,
+  ...overrides,
+});
+
+test("internal-use blocks count full room capacity without duplicating bookings or blocks", () => {
+  const blocks = [
+    occupancyBlock(),
+    occupancyBlock({ roomId: "Balcony", roomIds: undefined }),
+    occupancyBlock({ roomIds: ["Siesta 1", "Legacy Room"] }),
+  ];
+  assert.equal(
+    occupiedCapacityOnDate([occupancyBooking(["Balcony"])], dayStart, dayEnd, blocks),
+    3,
+  );
+});
+
+test("other block types change neither occupied nor available bed-nights", () => {
+  const blocks = (["temporary_hold", "cleaning", "maintenance", "other"] as const)
+    .map((reasonType) => occupancyBlock({ reasonType }));
+  const summary = occupancySummaryForRange([], dayStart, thirdDayEnd, blocks);
+  assert.equal(summary.occupiedBedNights, 0);
+  assert.equal(summary.availableBedNights, 156);
+  assert.equal(summary.occupancyRate, 0);
+});
+
+test("legacy internal-use blocks require the exact saved label and no explicit category", () => {
+  assert.equal(occupiedCapacityOnDate([], dayStart, dayEnd, [
+    occupancyBlock({ reasonType: undefined }),
+  ]), 2);
+  assert.equal(occupiedCapacityOnDate([], dayStart, dayEnd, [
+    occupancyBlock({ reasonType: undefined, reason: "ใช้ภายใน" }),
+    occupancyBlock({ reasonType: "other" }),
+  ]), 0);
+});
+
+test("internal-use stays are half-open and retain past nights after early release", () => {
+  const blocks = [occupancyBlock({
+    releasedAt: new Date("2026-07-19T05:00:00.000Z"),
+  })];
+  assert.equal(occupiedCapacityOnDate([], dayStart, dayEnd, blocks), 2);
+  assert.equal(occupiedCapacityOnDate([], dayEnd, secondDayEnd, blocks), 0);
+  const summary = occupancySummaryForRange([], dayStart, thirdDayEnd, blocks);
+  assert.equal(summary.occupiedBedNights, 2);
+  assert.equal(summary.availableBedNights, 156);
+});
+
+test("release uses Bangkok's date and a block cancelled before its start never counts", () => {
+  // This UTC timestamp is already 19 July in Bangkok.
+  const blocks = [occupancyBlock({
+    releasedAt: new Date("2026-07-18T18:00:00.000Z"),
+  })];
+  assert.equal(occupiedCapacityOnDate([], dayStart, dayEnd, blocks), 2);
+  assert.equal(occupiedCapacityOnDate([], dayEnd, secondDayEnd, blocks), 0);
+  assert.equal(occupancySummaryForRange([], dayStart, thirdDayEnd, [
+    occupancyBlock({ releasedAt: new Date("2026-07-17T05:00:00.000Z") }),
+  ]).occupiedBedNights, 0);
+});
+
+test("release after a block's planned end does not extend its occupancy", () => {
+  const blocks = [occupancyBlock({
+    to: dayEnd,
+    releasedAt: new Date("2026-07-21T05:00:00.000Z"),
+  })];
+  assert.equal(occupancySummaryForRange([], dayStart, thirdDayEnd, blocks).occupiedBedNights, 2);
+});
 
 test("occupancy counts each active sellable bed only once", () => {
   const bookings = [

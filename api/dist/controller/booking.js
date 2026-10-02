@@ -39,7 +39,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getNeedsReviewBookingCount = exports.getNeedsReviewBookings = exports.resolveBooking = exports.cancelBooking = exports.getPassportData = exports.addTransaction = exports.extendBooking = exports.manageRoomStays = exports.getBookingById = exports.getMonthCalendar = exports.checkOut = exports.checkIn = exports.removeBooking = exports.getMasterBookings = exports.getAdminDashboardStats = exports.getTodayBookings = exports.pinBooking = exports.updateBookingNote = exports.editBooking = exports.getRoomAvailability = exports.newBooking = exports.occupancySummaryForRange = exports.occupiedCapacityOnDate = void 0;
 const booking_1 = __importStar(require("../models/booking"));
 const standaloneSale_1 = __importDefault(require("../models/standaloneSale"));
-const roomBlock_1 = __importDefault(require("../models/roomBlock"));
+const roomBlock_1 = __importStar(require("../models/roomBlock"));
+const extraSaleAnnotation_1 = __importDefault(require("../models/extraSaleAnnotation"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const crypto_1 = __importDefault(require("crypto"));
 const mongoose_1 = __importDefault(require("mongoose"));
@@ -329,20 +330,37 @@ const bookingOccupiedRoomIdsOnDate = (currentBooking, start, end) => {
         return (0, roomStayHelpers_1.getRoomStayRoomIds)(roomStay);
     });
 };
-const occupiedCapacityOnDate = (bookings, start, end) => {
-    const occupiedRoomIds = new Set(bookings.flatMap((currentBooking) => bookingOccupiedRoomIdsOnDate(currentBooking, start, end)));
+const internalUseOccupiedRoomIdsOnDate = (block, start, end) => {
+    const isInternalUse = block.reasonType === "house_use" ||
+        (block.reasonType === undefined && block.reason === roomBlock_1.HOUSE_USE_ROOM_BLOCK_REASON);
+    if (!isInternalUse)
+        return [];
+    const plannedEnd = new Date(block.to);
+    const releaseDate = block.releasedAt
+        ? getBookingBusinessDateStart(new Date(block.releasedAt))
+        : plannedEnd;
+    const effectiveEnd = releaseDate < plannedEnd ? releaseDate : plannedEnd;
+    if (new Date(block.from) >= end || effectiveEnd <= start)
+        return [];
+    return (0, roomStayHelpers_1.getRoomStayRoomIds)(block);
+};
+const occupiedCapacityOnDate = (bookings, start, end, roomBlocks = []) => {
+    const occupiedRoomIds = new Set([
+        ...bookings.flatMap((currentBooking) => bookingOccupiedRoomIdsOnDate(currentBooking, start, end)),
+        ...roomBlocks.flatMap((block) => internalUseOccupiedRoomIdsOnDate(block, start, end)),
+    ]);
     return Array.from(occupiedRoomIds).reduce((total, roomId) => ACTIVE_ROOM_IDS.has(roomId)
         ? total + getRoomGuestCapacity(roomId)
         : total, 0);
 };
 exports.occupiedCapacityOnDate = occupiedCapacityOnDate;
-const occupancySummaryForRange = (bookings, start, end) => {
+const occupancySummaryForRange = (bookings, start, end, roomBlocks = []) => {
     let date = new Date(start);
     let occupiedBedNights = 0;
     let dayCount = 0;
     while (date < end) {
         const dayEnd = new Date(Math.min(date.getTime() + 86400000, end.getTime()));
-        occupiedBedNights += (0, exports.occupiedCapacityOnDate)(bookings, date, dayEnd);
+        occupiedBedNights += (0, exports.occupiedCapacityOnDate)(bookings, date, dayEnd, roomBlocks);
         dayCount += 1;
         date = dayEnd;
     }
@@ -1114,7 +1132,7 @@ const getAdminDashboardStats = async (req, res) => {
     const occupancyQueryStart = new Date(Math.min(chartStart.getTime(), startOfMonth.getTime()));
     const occupancyQueryEnd = new Date(Math.max(chartEnd.getTime(), startOfNextMonth.getTime()));
     try {
-        const [monthFinancialBookings, monthStandaloneSales, esrBookings, occupancyBookings, monthBookings, channelMixBookings, unpaidBookings,] = await Promise.all([
+        const [monthFinancialBookings, monthStandaloneSales, esrBookings, occupancyBookings, internalUseBlocks, monthBookings, channelMixBookings, unpaidBookings,] = await Promise.all([
             booking_1.default.find({
                 "transactions.createdAt": { $gte: startOfMonth, $lt: startOfNextMonth },
             }),
@@ -1130,6 +1148,19 @@ const getAdminDashboardStats = async (req, res) => {
                     },
                 },
             }),
+            roomBlock_1.default.find({
+                from: { $lt: occupancyQueryEnd },
+                to: { $gt: occupancyQueryStart },
+                $or: [
+                    { reasonType: "house_use" },
+                    {
+                        reasonType: { $exists: false },
+                        reason: roomBlock_1.HOUSE_USE_ROOM_BLOCK_REASON,
+                    },
+                ],
+            })
+                .select("roomId roomIds from to reason reasonType releasedAt")
+                .lean(),
             booking_1.default.find({
                 checkIn: { $gte: startOfMonth, $lt: startOfNextMonth },
             }),
@@ -1247,13 +1278,13 @@ const getAdminDashboardStats = async (req, res) => {
                 channelCounts.set(segment.platformId, current);
             });
         });
-        const wholeMonthOccupancy = (0, exports.occupancySummaryForRange)(occupancyBookings, startOfMonth, startOfNextMonth);
-        const selectedRangeOccupancy = (0, exports.occupancySummaryForRange)(occupancyBookings, chartStart, chartEnd);
+        const wholeMonthOccupancy = (0, exports.occupancySummaryForRange)(occupancyBookings, startOfMonth, startOfNextMonth, internalUseBlocks);
+        const selectedRangeOccupancy = (0, exports.occupancySummaryForRange)(occupancyBookings, chartStart, chartEnd, internalUseBlocks);
         revenueBuckets.forEach((bucket) => {
             const bucketRevenue = revenueByDate.get(bucket.key);
             if (!bucketRevenue)
                 return;
-            const bucketOccupancy = (0, exports.occupancySummaryForRange)(occupancyBookings, bucket.start < chartStart ? chartStart : bucket.start, bucket.end);
+            const bucketOccupancy = (0, exports.occupancySummaryForRange)(occupancyBookings, bucket.start < chartStart ? chartStart : bucket.start, bucket.end, internalUseBlocks);
             bucketRevenue.occupiedCapacity =
                 bucketOccupancy.averageOccupiedCapacity;
             bucketRevenue.occupancyRate = bucketOccupancy.occupancyRate;
@@ -1956,7 +1987,31 @@ const getMonthCalendar = async (req, res) => {
             roomId: room.id,
             bookings: [],
             blocks: [],
+            extraSaleAnnotations: [],
         }));
+        const annotations = await extraSaleAnnotation_1.default.find({
+            removedAt: { $exists: false },
+            from: { $lt: endingDate },
+            to: { $gt: startingDate },
+        }).lean();
+        annotations.forEach((annotation) => {
+            annotation.roomIds.forEach((roomId) => {
+                rooms.find((room) => room.roomId === roomId)?.extraSaleAnnotations.push({
+                    annotationId: String(annotation._id),
+                    roomId,
+                    roomIds: annotation.roomIds,
+                    from: annotation.from,
+                    to: annotation.to,
+                    kind: annotation.kind || "EXTRA_SALE",
+                    customReason: annotation.customReason || "",
+                    note: annotation.note || "",
+                    createdBy: annotation.createdBy,
+                    createdAt: annotation.createdAt,
+                    updatedBy: annotation.updatedBy,
+                    updatedAt: annotation.updatedAt,
+                });
+            });
+        });
         const activeRoomBlocks = await roomBlock_1.default.find({
             releasedAt: { $exists: false },
             from: { $lt: endingDate },

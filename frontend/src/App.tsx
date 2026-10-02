@@ -15,6 +15,7 @@ import Calendar from "./pages/Calendar";
 import Main from "./pages/Main";
 import Documents from "./pages/Documents";
 import Manage from "./pages/Manage";
+import Analytics from "./pages/Analytics";
 import { CommandPaletteProvider } from "./context/CommandPaletteContext";
 import { useModalInputAutofocus } from "./hooks/useModalInputAutofocus";
 
@@ -73,6 +74,7 @@ function App() {
             <Sidebar />
             <Routes>
               <Route path="/" element={<Main />} />
+              <Route path="/analytics" element={<Analytics />} />
               {user?.admin && <Route path="/manage" element={<Manage />} />}
               <Route path="/arrivals" element={<Home status="arrivals" />} />
               <Route path="/departures" element={<Home status="departures" />} />

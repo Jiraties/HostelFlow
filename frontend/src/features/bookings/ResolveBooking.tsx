@@ -13,6 +13,7 @@ import { customStyles, type OptionType } from "../../helpers/selectStyling";
 import { useAuth } from "../../context/AuthContext";
 import type { booking, ResolutionOutcome } from "../../types/bookingTypes";
 import "./AddBooking.css";
+import "./AddTransaction.css";
 import "./BookingCheckbox.css";
 import "./Cancellation.css";
 import "./ResolveBooking.css";
@@ -973,11 +974,14 @@ const ResolveBooking = ({
                         />
                       </div>
                       <div className="resolveBooking__rowNote">
-                        <p className="addBooking__label">หมายเหตุรายการ</p>
+                        <p className="addBooking__label">
+                          หมายเหตุรายการ
+                          <span className="addTransaction__optionalLabel">(ไม่บังคับ)</span>
+                        </p>
                         <input
                           className="boxInput"
                           value={row.note}
-                          placeholder="ไม่บังคับ"
+                          placeholder="รายละเอียดเพิ่มเติมของรายการ"
                           onChange={(event) =>
                             updateRow(row.id, "note", event.target.value)
                           }
