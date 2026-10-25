@@ -38,6 +38,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getNeedsReviewBookingCount = exports.getNeedsReviewBookings = exports.resolveBooking = exports.cancelBooking = exports.getPassportData = exports.addTransaction = exports.extendBooking = exports.manageRoomStays = exports.getBookingById = exports.getMonthCalendar = exports.checkOut = exports.checkIn = exports.removeBooking = exports.getMasterBookings = exports.getAdminDashboardStats = exports.getTodayBookings = exports.pinBooking = exports.updateBookingNote = exports.editBooking = exports.getRoomAvailability = exports.newBooking = exports.occupancySummaryForRange = exports.occupiedCapacityOnDate = void 0;
 const occupancyHelpers_1 = require("../helpers/occupancyHelpers");
+const channelMixHelpers_1 = require("../helpers/channelMixHelpers");
 var occupancyHelpers_2 = require("../helpers/occupancyHelpers");
 Object.defineProperty(exports, "occupiedCapacityOnDate", { enumerable: true, get: function () { return occupancyHelpers_2.occupiedCapacityOnDate; } });
 Object.defineProperty(exports, "occupancySummaryForRange", { enumerable: true, get: function () { return occupancyHelpers_2.occupancySummaryForRange; } });
@@ -1151,7 +1152,7 @@ const getAdminDashboardStats = async (req, res) => {
         const monthlyGrossRevenue = esrSummary.expectedStayRevenue;
         const monthlyCollectedRevenue = esrSummary.collectedRevenue;
         const unpaidAmount = unpaidBookings.reduce((sum, booking) => sum + unpaidRoomChargeAmount(booking), 0);
-        const channelCounts = new Map();
+        const channelSummary = (0, channelMixHelpers_1.summarizeChannelMix)(channelMixBookings, startOfMonth, startOfNextMonth);
         const revenueByDate = new Map();
         const revenueBucketSize = getRevenueChartBucketSize(revenueRange);
         const revenueBuckets = [];
@@ -1194,22 +1195,6 @@ const getAdminDashboardStats = async (req, res) => {
                 occupiedCapacity: 0,
             });
         }
-        channelMixBookings.forEach((booking) => {
-            const financialBooking = (0, transactionCorrections_1.withEffectiveTransactions)(booking.toObject());
-            (0, commercialSegmentHelpers_1.effectiveCommercialSegments)(financialBooking).forEach((segment) => {
-                const segmentStart = new Date(segment.from);
-                const segmentEnd = new Date(segment.to);
-                if (segmentStart >= startOfNextMonth || segmentEnd <= startOfMonth)
-                    return;
-                const current = channelCounts.get(segment.platformId) || {
-                    count: 0,
-                    revenue: 0,
-                };
-                current.count += 1;
-                current.revenue += Math.abs(segment.amount || 0);
-                channelCounts.set(segment.platformId, current);
-            });
-        });
         const wholeMonthOccupancy = (0, occupancyHelpers_1.occupancySummaryForRange)(occupancyBookings, startOfMonth, startOfNextMonth, internalUseBlocks);
         const selectedRangeOccupancy = (0, occupancyHelpers_1.occupancySummaryForRange)(occupancyBookings, chartStart, chartEnd, internalUseBlocks);
         revenueBuckets.forEach((bucket) => {
@@ -1221,11 +1206,7 @@ const getAdminDashboardStats = async (req, res) => {
                 bucketOccupancy.averageOccupiedCapacity;
             bucketRevenue.occupancyRate = bucketOccupancy.occupancyRate;
         });
-        const channelMix = Array.from(channelCounts.entries()).map(([platformId, summary]) => ({
-            platformId,
-            count: summary.count,
-            revenue: summary.revenue,
-        }));
+        const channelMix = channelSummary.channels;
         const revenueSeries = Array.from(revenueByDate.entries()).map(([date, revenue]) => ({
             date,
             grossRevenue: revenue.grossRevenue,
@@ -1249,6 +1230,8 @@ const getAdminDashboardStats = async (req, res) => {
             occupancyRate: wholeMonthOccupancy.occupancyRate,
             rangeOccupancyRate: selectedRangeOccupancy.occupancyRate,
             channelMix,
+            channelMixTotal: channelSummary.total,
+            channelMixUnit: channelSummary.unit,
             revenueRange,
             revenueSeries,
             esrSeries,
