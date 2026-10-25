@@ -1,4 +1,6 @@
 import express from "express";
+import { getAnalytics } from "../controller/analytics";
+import { requireAnalyticsPreview } from "../config/featureFlags";
 import {
   addTransaction,
   checkIn,
@@ -58,6 +60,8 @@ import {
 } from "../controller/extraSaleAnnotations";
 
 const bookingsRouter = express.Router();
+
+bookingsRouter.get("/analytics", requireAnalyticsPreview, getAnalytics);
 
 bookingsRouter.post("/room-blocks", createRoomBlock);
 bookingsRouter.patch("/room-blocks/:blockId/release", releaseRoomBlock);

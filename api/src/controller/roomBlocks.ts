@@ -17,10 +17,10 @@ import { getRoomStayRoomIds } from "../helpers/roomStayHelpers";
 const ROOM_BLOCKING_BOOKING_FILTER = {
   voided: { $ne: true },
   $or: [
-    { status: { $nin: ["cancelled", "checkedOut", "noShow"] } },
-    { "cancellation.roomReleaseStatus": "blocked" },
-    { "checkout.roomReleaseStatus": "blocked" },
-    { "resolution.roomReleaseStatus": "blocked" },
+    { status: { $nin: ["cancelled", "checkedOut", "noShow"] as const } },
+    { "cancellation.roomReleaseStatus": "blocked" as const },
+    { "checkout.roomReleaseStatus": "blocked" as const },
+    { "resolution.roomReleaseStatus": "blocked" as const },
   ],
 };
 

@@ -2,6 +2,7 @@
   "name": "bookings",
   "private": true,
   "version": "0.0.0",
+  "packageManager": "pnpm@12.11.2",
   "engines": {
     "node": "22.x"
   },
@@ -25,6 +26,7 @@
     "@ibm/plex-sans-thai": "^1.1.0",
     "@lottiefiles/dotlottie-react": "^0.18.3",
     "@mui/material": "^7.3.9",
+    "ag-grid-community": "^35.1.0",
     "ag-grid-react": "^35.1.0",
     "axios": "^1.13.6",
     "boxicons": "^2.1.4",

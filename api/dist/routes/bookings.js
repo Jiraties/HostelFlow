@@ -4,6 +4,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
+const analytics_1 = require("../controller/analytics");
+const featureFlags_1 = require("../config/featureFlags");
 const booking_1 = require("../controller/booking");
 const passportAuthorization_1 = require("../middleware/passportAuthorization");
 const transactionCorrections_1 = require("../controller/transactionCorrections");
@@ -14,6 +16,7 @@ const focusedBookingActions_1 = require("../controller/focusedBookingActions");
 const roomBlocks_1 = require("../controller/roomBlocks");
 const extraSaleAnnotations_1 = require("../controller/extraSaleAnnotations");
 const bookingsRouter = express_1.default.Router();
+bookingsRouter.get("/analytics", featureFlags_1.requireAnalyticsPreview, analytics_1.getAnalytics);
 bookingsRouter.post("/room-blocks", roomBlocks_1.createRoomBlock);
 bookingsRouter.patch("/room-blocks/:blockId/release", roomBlocks_1.releaseRoomBlock);
 bookingsRouter.post("/extra-sale-annotations", extraSaleAnnotations_1.createExtraSaleAnnotation);

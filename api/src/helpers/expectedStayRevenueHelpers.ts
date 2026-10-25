@@ -50,7 +50,7 @@ const roundMoney = (value: number) => Number(value.toFixed(2));
 const transactionId = (transaction: transcation) =>
   String(transaction._id || "");
 const segmentId = (segment: commercialSegment) => String(segment._id || "");
-const plainBooking = (record: booking) =>
+const plainBooking = (record: booking): booking =>
   typeof (
     record as booking & {
       toObject?: () => booking;
@@ -359,7 +359,7 @@ export const buildExpectedStayRevenueEntries = (
       const chargeAdjustments =
         chargeAdjustmentsBySegment.get(segment.transactionId) || [];
       const baseRoomRevenue = Math.abs(
-        roomCharge.amount || segment.amount || 0,
+        roomCharge.amount ?? segment.amount ?? 0,
       );
       const chargeAdjustmentTotal = chargeAdjustments.reduce(
         (total, adjustment) => total + adjustment.amount,
@@ -424,7 +424,7 @@ export const buildExpectedStayRevenueServiceEntries = (
         (sourceBooking.transactions || []).map(plainTransaction),
         sourceBooking.transactionCorrections || [],
       ),
-    } as booking;
+    } as unknown as booking;
     const transactions = currentBooking.transactions || [];
     const services = transactions.filter((transaction) => {
       if (
@@ -550,7 +550,7 @@ export const expectedStayRevenueBookingQuery = (start: Date, end: Date) => ({
   $or: [
     {
       $and: [
-        { status: { $nin: ["cancelled", "noShow"] } },
+        { status: { $nin: ["cancelled", "noShow"] as const } },
         {
           $or: [
             {

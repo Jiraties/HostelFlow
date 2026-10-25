@@ -1,4 +1,14 @@
-# React + TypeScript + Vite
+# HostelFlow frontend
+
+Use pnpm 12.11.2 and Node.js 22. See the [project setup guide](../README.md) for both apps.
+
+```sh
+pnpm install --frozen-lockfile
+pnpm start
+pnpm build
+```
+
+## Vite reference
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 

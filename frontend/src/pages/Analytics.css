@@ -5,6 +5,57 @@
   gap: 1.5rem;
 }
 
+.analytics__content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  min-width: 0;
+}
+
+.analytics__basisNote {
+  color: var(--analytics-muted);
+  font-size: 0.85rem;
+  line-height: 1.7;
+}
+
+.analytics__state {
+  padding: 1.5rem;
+  border-radius: 1.5rem;
+  background: var(--background);
+  box-shadow: var(--light-shadow);
+}
+
+.analytics__state button {
+  margin-left: 0.75rem;
+  padding: 0.35rem 0.65rem;
+  border: 0;
+  border-radius: 999rem;
+  color: var(--text-color);
+  background: var(--analytics-inset-background);
+  cursor: pointer;
+  font: inherit;
+}
+
+.analytics__monthControl {
+  display: inline-flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.analytics__monthControl input {
+  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--analytics-divider);
+  border-radius: 999rem;
+  background: var(--background);
+  color: inherit;
+  font: inherit;
+}
+
+.analytics__change--neutral {
+  color: var(--analytics-muted);
+  background: var(--analytics-inset-background);
+}
+
 .analytics__pageMeta {
   display: inline-flex;
   align-items: center;

@@ -970,7 +970,7 @@ const getExpectedStayRevenueBreakdown = async (req, res) => {
         const reductions = new Map();
         const paymentMethods = new Map();
         summary.entries.forEach((entry) => {
-            addBreakdownTransaction(categories, entry.roomCharge, entry.booking, Math.abs(entry.roomCharge.amount || entry.segment.amount || 0), "in", undefined, entry.segment.kind);
+            addBreakdownTransaction(categories, entry.roomCharge, entry.booking, Math.abs(entry.roomCharge.amount ?? entry.segment.amount ?? 0), "in", undefined, entry.segment.kind);
             entry.chargeAdjustments.forEach(({ transaction, amount }) => {
                 addBreakdownTransaction(categories, transaction, entry.booking, amount, "in");
             });

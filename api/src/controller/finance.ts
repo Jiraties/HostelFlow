@@ -1419,7 +1419,7 @@ export const getExpectedStayRevenueBreakdown = async (
         categories,
         entry.roomCharge,
         entry.booking,
-        Math.abs(entry.roomCharge.amount || entry.segment.amount || 0),
+        Math.abs(entry.roomCharge.amount ?? entry.segment.amount ?? 0),
         "in",
         undefined,
         entry.segment.kind,

@@ -18,7 +18,7 @@ import {
 import { logActivityStrict } from "../services/activityServices";
 
 const editableStayQuery = {
-  status: { $in: ["checkedIn", "checkedOut"] },
+  status: { $in: ["checkedIn", "checkedOut"] as const },
   voided: { $ne: true },
 };
 

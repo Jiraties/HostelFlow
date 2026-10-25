@@ -1,0 +1,8 @@
+allowBuilds:
+  bcrypt: true
+  mongodb-memory-server: true
+permissions:
+  dotenv:
+    skills: true
+skills:
+  dirs: []

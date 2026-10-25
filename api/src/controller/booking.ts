@@ -1,3 +1,5 @@
+import { effectiveRoomStayEnd, occupiedCapacityOnDate, occupancySummaryForRange } from "../helpers/occupancyHelpers";
+export { occupiedCapacityOnDate, occupancySummaryForRange } from "../helpers/occupancyHelpers";
 import Booking, {
   PASSPORT_SENSITIVE_SELECT,
   PaymentMethod,
@@ -5,7 +7,6 @@ import Booking, {
 import StandaloneSale from "../models/standaloneSale";
 import RoomBlock, {
   HOUSE_USE_ROOM_BLOCK_REASON,
-  type roomBlock,
 } from "../models/roomBlock";
 import ExtraSaleAnnotation from "../models/extraSaleAnnotation";
 import dotenv from "dotenv";
@@ -70,7 +71,6 @@ import {
 import {
   activeRoomInventory,
   invalidRoomIds,
-  roomGuestCapacity,
 } from "../config/roomInventory";
 import {
   commercialRoomSlices,
@@ -114,11 +114,6 @@ import { assessOrdinaryRefundEntitlements } from "../services/refundEntitlement"
 dotenv.config();
 
 const ACTIVE_ROOM_INVENTORY = activeRoomInventory();
-const ACTIVE_ROOM_IDS = new Set(ACTIVE_ROOM_INVENTORY.map((room) => room.id));
-const TOTAL_GUEST_CAPACITY = ACTIVE_ROOM_INVENTORY.reduce(
-  (total, room) => total + room.capacity,
-  0,
-);
 const CARD_SURCHARGE_RATE = 0.03;
 const ADD_TRANSACTION_TYPES: TransactionType[] = [
   "adjustment",
@@ -197,10 +192,10 @@ const SENSITIVE_SETTLEMENT_TYPES: TransactionType[] = [
 const ROOM_BLOCKING_BOOKING_FILTER = {
   voided: { $ne: true },
   $or: [
-    { status: { $nin: ["cancelled", "checkedOut", "noShow"] } },
-    { "cancellation.roomReleaseStatus": "blocked" },
-    { "checkout.roomReleaseStatus": "blocked" },
-    { "resolution.roomReleaseStatus": "blocked" },
+    { status: { $nin: ["cancelled", "checkedOut", "noShow"] as const } },
+    { "cancellation.roomReleaseStatus": "blocked" as const },
+    { "checkout.roomReleaseStatus": "blocked" as const },
+    { "resolution.roomReleaseStatus": "blocked" as const },
   ],
 };
 const BUSINESS_TIME_ZONE = "Asia/Bangkok";
@@ -438,30 +433,6 @@ const nextRevenueBucketStart = (
   return new Date(date.getTime() + 86400000);
 };
 
-const bookingKeepsRoomForOccupancy = (booking: booking) => {
-  return (
-    !booking.voided &&
-    booking.status !== "cancelled" &&
-    booking.status !== "noShow"
-  );
-};
-
-const effectiveRoomStayEnd = (currentBooking: booking, roomStay: roomStay) => {
-  const stayEnd = new Date(roomStay.to);
-
-  if (
-    currentBooking.checkout?.earlyCheckOut &&
-    currentBooking.checkout.checkedOutAt
-  ) {
-    const checkoutStart = getBookingBusinessDateStart(
-      new Date(currentBooking.checkout.checkedOutAt),
-    );
-    return checkoutStart < stayEnd ? checkoutStart : stayEnd;
-  }
-
-  return stayEnd;
-};
-
 const effectiveCalendarRoomStayEnd = (
   currentBooking: booking,
   roomStay: roomStay,
@@ -472,107 +443,6 @@ const effectiveCalendarRoomStayEnd = (
 
   return effectiveRoomStayEnd(currentBooking, roomStay);
 };
-
-const bookingOccupiedRoomIdsOnDate = (
-  currentBooking: booking,
-  start: Date,
-  end: Date,
-) => {
-  if (!bookingKeepsRoomForOccupancy(currentBooking)) return [];
-
-  return (currentBooking.roomStays || []).flatMap((roomStay) => {
-    const stayStart = new Date(roomStay.from);
-    const stayEnd = effectiveRoomStayEnd(currentBooking, roomStay);
-
-    if (stayStart >= end || stayEnd <= start) return [];
-
-    return getRoomStayRoomIds(roomStay);
-  });
-};
-
-type OccupancyRoomBlock = Pick<
-  roomBlock,
-  "roomId" | "roomIds" | "from" | "to" | "reason" | "reasonType" | "releasedAt"
->;
-
-const internalUseOccupiedRoomIdsOnDate = (
-  block: OccupancyRoomBlock,
-  start: Date,
-  end: Date,
-) => {
-  const isInternalUse = block.reasonType === "house_use" ||
-    (block.reasonType === undefined && block.reason === HOUSE_USE_ROOM_BLOCK_REASON);
-  if (!isInternalUse) return [];
-
-  const plannedEnd = new Date(block.to);
-  const releaseDate = block.releasedAt
-    ? getBookingBusinessDateStart(new Date(block.releasedAt))
-    : plannedEnd;
-  const effectiveEnd = releaseDate < plannedEnd ? releaseDate : plannedEnd;
-  if (new Date(block.from) >= end || effectiveEnd <= start) return [];
-
-  return getRoomStayRoomIds(block);
-};
-
-export const occupiedCapacityOnDate = (
-  bookings: booking[],
-  start: Date,
-  end: Date,
-  roomBlocks: OccupancyRoomBlock[] = [],
-) => {
-  const occupiedRoomIds = new Set(
-    [
-      ...bookings.flatMap((currentBooking) =>
-        bookingOccupiedRoomIdsOnDate(currentBooking, start, end),
-      ),
-      ...roomBlocks.flatMap((block) =>
-        internalUseOccupiedRoomIdsOnDate(block, start, end),
-      ),
-    ],
-  );
-
-  return Array.from(occupiedRoomIds).reduce(
-    (total, roomId) =>
-      ACTIVE_ROOM_IDS.has(roomId)
-        ? total + getRoomGuestCapacity(roomId)
-        : total,
-    0,
-  );
-};
-
-export const occupancySummaryForRange = (
-  bookings: booking[],
-  start: Date,
-  end: Date,
-  roomBlocks: OccupancyRoomBlock[] = [],
-) => {
-  let date = new Date(start);
-  let occupiedBedNights = 0;
-  let dayCount = 0;
-
-  while (date < end) {
-    const dayEnd = new Date(
-      Math.min(date.getTime() + 86400000, end.getTime()),
-    );
-    occupiedBedNights += occupiedCapacityOnDate(bookings, date, dayEnd, roomBlocks);
-    dayCount += 1;
-    date = dayEnd;
-  }
-
-  const availableBedNights = TOTAL_GUEST_CAPACITY * dayCount;
-  const averageOccupiedCapacity =
-    dayCount === 0 ? 0 : occupiedBedNights / dayCount;
-
-  return {
-    occupiedBedNights,
-    availableBedNights,
-    averageOccupiedCapacity,
-    occupancyRate:
-      availableBedNights === 0 ? 0 : occupiedBedNights / availableBedNights,
-  };
-};
-
-const getRoomGuestCapacity = roomGuestCapacity;
 
 const getRequestedRoomIds = (booking: { roomIds?: string[]; roomId?: string }) =>
   getRoomStayRoomIds({
@@ -3152,7 +3022,7 @@ export const manageRoomStays = async (req: Request, res: Response) => {
       : sorted;
     const roomIdsToValidate =
       getUniqueRoomIdsFromRoomStays(roomStaysToValidate);
-    const allowedStatuses = isClosedRoomHistoryCorrection
+    const allowedStatuses: Status[] = isClosedRoomHistoryCorrection
       ? ["checkedOut"]
       : ["booked", "checkedIn"];
 
@@ -4344,11 +4214,11 @@ const needsReviewBookingFilters = () => {
 
   return {
     lateCheckIns: {
-      status: "booked",
+      status: "booked" as const,
       checkIn: { $gte: thirtyDaysAgo, $lt: todayStart },
     },
     lateCheckOuts: {
-      status: "checkedIn",
+      status: "checkedIn" as const,
       checkOut: { $gte: thirtyDaysAgo, $lt: todayStart },
     },
   };

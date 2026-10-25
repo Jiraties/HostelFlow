@@ -14,94 +14,84 @@ import PageHeader from "../components/PageHeader";
 import usePageTitle from "../hooks/useTitle";
 import AnalyticsDetails from "./AnalyticsDetails";
 import FinancialBreakdown from "../features/finance/FinancialBreakdown";
+import { useAuth } from "../context/AuthContext";
+import { useAnalytics } from "../hooks/useAnalytics";
+import { analyticsMoney, analyticsMonthLabel, analyticsDateLabel, currentAnalyticsMonth } from "../helpers/analyticsFormatting";
+import AnalyticsChangeBadge from "./AnalyticsChangeBadge";
 import "./Home.css";
 import "./Analytics.css";
 
-const previewStats: {
-  label: string;
-  value: string;
-  change: number;
-  comparison?: string;
-}[] = [
-  { label: "Stay Revenue", value: "฿128,400", change: 2 },
-  { label: "Unpaid", value: "฿24,600", change: -4 },
-  { label: "Occupancy", value: "76%", change: -1 },
-  { label: "RevPAB", value: "฿580", change: 2 },
-  {
-    label: "Forward Occupancy",
-    value: "68%",
-    change: 3,
-    comparison: "vs Sep 2026",
-  },
-];
-
-// Fabricated daily figures for the September layout preview.
-const dailyRevenue = [
-  3200, 3600, 3900, 4100, 4800, 5200, 4600, 3700, 3500, 3800, 4200, 4500, 5100,
-  5400, 4700, 4000, 3600, 3900, 4300, 4900, 5300, 4800, 4100, 3700, 3900, 4400,
-  5000, 5100, 4500, 2600,
-];
-const dailyOccupancy = [
-  62, 66, 69, 72, 78, 84, 80, 71, 68, 70, 74, 77, 83, 86, 81, 73, 69, 72, 76,
-  82, 85, 80, 75, 70, 73, 77, 83, 84, 79, 76,
-];
-const mockDailyTrend = dailyRevenue.map((revenue, index) => ({
-  label: `${index + 1} Sep`,
-  revenue,
-  occupancy: dailyOccupancy[index],
-}));
-
 const Analytics = () => {
   usePageTitle("HostelFlow · Analytics");
-  const now = new Date();
+  const { user } = useAuth();
+  const [month, setMonth] = useState(currentAnalyticsMonth);
+  const { data, loading, error, refresh } = useAnalytics(month, Boolean(user?.admin));
+  const monthLabel = analyticsMonthLabel(month);
+  const previousLabel = data ? analyticsMonthLabel(data.previousMonth) : "";
+  const stats = data ? [
+    { label: "Stay Revenue", value: analyticsMoney(data.stats.stayRevenue), change: data.stats.changes.stayRevenue, helper: "Expected Stay Revenue รวมค่าห้องและบริการ หลังปรับปรุง" },
+    { label: "Outstanding Balance", value: analyticsMoney(data.stats.outstandingBalance), change: data.stats.changes.outstandingBalance, lowerIsBetter: true, helper: "ยอดที่ยังค้างชำระของรายการรายได้ในเดือนที่เลือก" },
+    { label: "Occupancy", value: `${data.stats.occupancy.toFixed(1)}%`, change: data.stats.changes.occupancy, unit: "pts" as const, helper: "อัตราเข้าพักตามความจุ รวมการใช้ภายใน" },
+    { label: "RevPAB", value: analyticsMoney(data.stats.revpab), change: data.stats.changes.revpab, helper: "รายได้ค่าห้องสุทธิ ÷ (จำนวนเตียงพร้อมขาย × จำนวนวัน)" },
+    { label: "Forward Occupancy", value: `${data.stats.forwardOccupancy.toFixed(1)}%`, change: null, comparison: analyticsMonthLabel(data.nextMonth), helper: "อัตราเข้าพักเดือนถัดไป จากข้อมูลที่มีอยู่ขณะนี้ รวมการใช้ภายใน" },
+  ] : [];
+  const selectMonth = (next: string) => {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(next) || next < "1901-01" || next > "9997-12") return;
+    setRevenueDetail(null);
+    setMonth(next);
+  };
   const [revenueDetail, setRevenueDetail] = useState<{ groupKey?: string } | null>(null);
   const openRevenueBreakdown = (groupKey?: string) => setRevenueDetail({ groupKey });
   const closeRevenueBreakdown = () => setRevenueDetail(null);
 
   return (
     <main className="home analytics">
-      <Modal open={revenueDetail !== null} className="home__modalCenter" onClose={closeRevenueBreakdown} aria-label="รายละเอียดรายได้ September 2026">
+      {revenueDetail && <Modal open className="home__modalCenter" onClose={closeRevenueBreakdown} aria-label={`รายละเอียดรายได้ ${monthLabel}`}>
         <FinancialBreakdown
-          key={revenueDetail?.groupKey || "all"}
+          key={`${month}-${revenueDetail.groupKey || "all"}`}
           mode="monthly"
-          month="2026-09"
+          month={month}
           initialGroupKey={revenueDetail?.groupKey}
-          contextNote="ข้อมูลจริง · September 2026 — ตัวเลขบนหน้า Analytics เป็นตัวอย่าง"
+          contextNote={`ข้อมูลจริง · ${monthLabel} · Expected Stay Revenue`}
           onClose={closeRevenueBreakdown}
         />
-      </Modal>
+      </Modal>}
       <PageHeader
-        title={`Analytics | September 2026`}
-        meta={<span className="analytics__pageMeta">Monthly overview <span aria-hidden="true">·</span> ตัวเลขตัวอย่าง</span>}
-        lastUpdated={now}
-        onRefresh={() => {}}
+        title={`Analytics | ${monthLabel}`}
+        meta={<div className="analytics__pageMeta">
+          {user?.admin && <label className="analytics__monthControl">เดือน <input type="month" aria-label="เลือกเดือน Analytics" value={month} min="1901-01" max="9997-12" onChange={(event) => selectMonth(event.target.value)} /></label>}
+          <span>อัปเดตล่าสุด {data ? new Date(data.generatedAt).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" }) : "--:--"}</span>
+        </div>}
+        lastUpdated={data ? new Date(data.generatedAt) : null}
+        onRefresh={user?.admin ? refresh : undefined}
       />
+      {!user?.admin && <p className="analytics__state" role="status">เฉพาะผู้ดูแลระบบเท่านั้นที่สามารถดู Analytics ได้</p>}
+      {user?.admin && error && <div className="analytics__state" role="alert">{error} <button type="button" onClick={() => void refresh().catch(() => {})}>ลองใหม่</button></div>}
+      {loading && <p className="analytics__state" role="status">กำลังโหลดข้อมูล Analytics…</p>}
+      {data && <div className="analytics__content" aria-busy={loading}>
+      {data.totalRevenue === 0 && data.channels.every((channel) => channel.bookings === 0) && data.dailyTrend.every((day) => day.occupancy === 0) && <p className="analytics__state" role="status">ยังไม่มีข้อมูลรายได้หรือการเข้าพักในเดือนนี้</p>}
+      <p className="analytics__basisNote">ข้อมูลรายเดือน · Expected Stay Revenue: ค่าห้องลงวันที่เริ่มเข้าพัก / เริ่มต่อคืน บริการลงวันที่ทำรายการ รวมยอดค้างชำระและหักรายการคืนเงินที่เกี่ยวข้อง · Occupancy คิดเต็มเดือนตามความจุ {data.capacity} เตียง รวมการใช้ภายใน</p>
       <section
         className="analytics__stats"
-        aria-label="Sample analytics figures"
+        aria-label="ข้อมูล Analytics รายเดือน"
       >
         <div className="analytics__statsGrid">
-          {previewStats.map((stat) => (
+          {stats.map((stat) => (
             <div
               className={`analytics__statCard${stat.label === "Stay Revenue" ? " analytics__statCard--interactive" : ""}`}
               key={stat.label}
             >
               {stat.label === "Stay Revenue" && (
-                <button className="analytics__cardTrigger" type="button" onClick={() => openRevenueBreakdown()} aria-label="ดูรายละเอียดรายได้จริง September 2026">
+                <button className="analytics__cardTrigger" type="button" onClick={() => openRevenueBreakdown()} aria-label={`ดูรายละเอียดรายได้จริง ${monthLabel}`}>
                   <i className="bx bx-chevron-right" aria-hidden="true" />
                 </button>
               )}
-              <p className="analytics__statLabel">{stat.label}</p>
+              <p className="analytics__statLabel" title={stat.helper}>{stat.label}</p>
               <strong className="analytics__statValue">{stat.value}</strong>
               <div className="analytics__comparison">
-                <span
-                  className={`analytics__change analytics__change--${stat.change >= 0 ? "up" : "down"}`}
-                >
-                  <span aria-hidden="true">{stat.change >= 0 ? "↑" : "↓"}</span>
-                  {Math.abs(stat.change)}%
-                </span>
+                {stat.label !== "Forward Occupancy" && <AnalyticsChangeBadge value={stat.change} unit={stat.unit} lowerIsBetter={stat.lowerIsBetter} />}
                 <span className="analytics__change--versus">
-                  {stat.comparison || "vs Aug 2026"}
+                  {stat.comparison || `vs ${previousLabel}` }
                 </span>
               </div>
             </div>
@@ -110,7 +100,7 @@ const Analytics = () => {
       </section>
       <section
         className="analytics__trendPanel"
-        aria-label="ตัวอย่างกราฟแนวโน้ม"
+        aria-label="กราฟแนวโน้มรายได้และอัตราเข้าพัก"
       >
         <div className="analytics__chartHeader">
           <div>
@@ -130,11 +120,11 @@ const Analytics = () => {
         <div
           className="analytics__chartWrapper"
           role="img"
-          aria-label="กราฟตัวอย่างแนวโน้มรายได้และอัตราเข้าพัก"
+          aria-label={`รายได้และอัตราเข้าพัก ${monthLabel}`}
         >
           <ResponsiveContainer width="100%" height={260}>
             <ComposedChart
-              data={mockDailyTrend}
+              data={data.dailyTrend}
               barCategoryGap="28%"
               margin={{ top: 12, right: 12, bottom: 0, left: 0 }}
             >
@@ -145,7 +135,8 @@ const Analytics = () => {
                 vertical={false}
               />
               <XAxis
-                dataKey="label"
+                dataKey="date"
+                tickFormatter={analyticsDateLabel}
                 minTickGap={28}
                 axisLine={false}
                 tickLine={false}
@@ -176,6 +167,7 @@ const Analytics = () => {
                   boxShadow: "var(--main-shadow)",
                   fontSize: "1rem",
                 }}
+                labelFormatter={(date) => analyticsDateLabel(String(date))}
                 formatter={(value, name) => [
                   name === "Daily Stay Revenue"
                     ? `${Number(value).toLocaleString("en-US")} ฿`
@@ -210,7 +202,8 @@ const Analytics = () => {
           </ResponsiveContainer>
         </div>
       </section>
-      <AnalyticsDetails onOpenRevenueBreakdown={openRevenueBreakdown} />
+      <AnalyticsDetails data={data} onOpenRevenueBreakdown={openRevenueBreakdown} />
+      </div>}
     </main>
   );
 };
