@@ -7,6 +7,10 @@ import Booking from "../src/models/booking";
 import RoomBlock, { HOUSE_USE_ROOM_BLOCK_REASON } from "../src/models/roomBlock";
 import RoomMutationLock from "../src/models/roomMutationLock";
 import { createRoomBlock, releaseRoomBlock } from "../src/controller/roomBlocks";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { runInNewContext } from "node:vm";
+import { transpileModule, ModuleKind } from "typescript";
 
 type BookingController = typeof import("../src/controller/booking");
 
@@ -131,6 +135,39 @@ test("room blocks validate input and reject booking overlaps", async () => {
   assert.equal(conflict.statusCode, 409);
   assert.equal(await RoomBlock.countDocuments(), 0);
 });
+
+for (const [year, month, lastNight, nextMonth] of [
+  [2026, 8, "2026-09-30", "2026-10-01"],
+  [2026, 11, "2026-12-31", "2027-01-01"],
+  [2028, 1, "2028-02-29", "2028-03-01"],
+] as const) {
+  test(`frontend drag boundaries create a persisted single-night block for ${lastNight}`, async () => {
+    // Execute the actual pure frontend module without writing compiled files.
+    const source = readFileSync(path.resolve(__dirname, "../../frontend/src/helpers/calendarSelection.ts"), "utf8");
+    const exports: {
+      calendarMonthBoundaries?: (year: number, month: number) => Date[];
+      calendarBoundaryAtPointer?: (columns: { left: number; right: number }[], x: number) => number;
+      calendarDragEndpoint?: (anchor: number, boundary: number) => number;
+    } = {};
+    runInNewContext(transpileModule(source, { compilerOptions: { module: ModuleKind.CommonJS } }).outputText, { exports });
+    const boundaries = exports.calendarMonthBoundaries!(year, month);
+    const nightCount = boundaries.length - 1;
+    const columns = Array.from({ length: nightCount }, (_, index) => ({ left: index * 40, right: (index + 1) * 40 }));
+    const endIndex = exports.calendarDragEndpoint!(nightCount - 1, exports.calendarBoundaryAtPointer!(columns, nightCount * 40 - 2));
+    const key = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    const range = { from: key(boundaries[nightCount - 1]), to: key(boundaries[endIndex]) };
+    assert.deepEqual(range, { from: lastNight, to: nextMonth });
+    const created = response();
+    await createRoomBlock(request({ body: { ...range, roomId: "Window", reason: "Synthetic boundary regression", reasonType: "maintenance" } }), created);
+    assert.equal(created.statusCode, 201, JSON.stringify(created.body));
+    const stored = await RoomBlock.findOne({ roomIds: "Window" }).lean();
+    assert.ok(stored);
+    assert.equal((new Date(stored.to).getTime() - new Date(stored.from).getTime()) / 86400000, 1);
+    const occupied = response();
+    await bookingController.getRoomAvailability(request({ query: { checkIn: lastNight, checkOut: nextMonth } }), occupied);
+    assert.ok(occupied.body.occupiedRoomIds.includes("Window"));
+  });
+}
 
 test("active blocks feed calendar and availability while preserving half-open boundaries", async () => {
   const created = response();
