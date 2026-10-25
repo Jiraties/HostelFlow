@@ -303,7 +303,8 @@ const correctTransaction = async (req, res) => {
             }
         }
         const linkedSurcharge = findLinkedCardSurcharge(effectiveTransactions, transactionId);
-        const needsGeneratedSurcharge = correctedPaymentMethod === "Card" &&
+        const needsGeneratedSurcharge = financialChange &&
+            correctedPaymentMethod === "Card" &&
             !linkedSurcharge &&
             !["depositRefund", "cancellationRefund", "roomRefund", "compensation"].includes(current.type);
         const requiresCashLedgerLock = financialChange &&
@@ -324,7 +325,8 @@ const correctTransaction = async (req, res) => {
             ]
             : [];
         const updatedBooking = await (0, mutationIdempotency_1.withMutationIdempotency)(req, () => (0, cashLedgerTransaction_1.withCashLedgerTransaction)(cashProbe, async (assigned, session) => {
-            if (before.cashShiftId &&
+            if (requiresCashLedgerLock &&
+                before.cashShiftId &&
                 assigned[0]?.cashShiftId !== before.cashShiftId) {
                 throw new cashLedgerTransaction_1.CashShiftLedgerConflictError("กะเงินสดของรายการเดิมไม่ใช่กะที่เปิดอยู่ กรุณารีเฟรชและตรวจสอบกะเงินสด");
             }
@@ -345,7 +347,7 @@ const correctTransaction = async (req, res) => {
                 }),
             ];
             const generatedTransactions = [];
-            if (linkedSurcharge) {
+            if (financialChange && linkedSurcharge) {
                 const surchargeBefore = (0, transactionCorrections_1.snapshotTransaction)(linkedSurcharge);
                 const surchargeAfter = {
                     ...surchargeBefore,

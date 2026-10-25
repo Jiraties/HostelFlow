@@ -647,6 +647,70 @@ test("financial correction affecting a closed cash shift is rejected", async () 
   assert.equal((await Booking.findById(booking._id).lean())?.transactionCorrections.length, 0);
 });
 
+// Synthetic metadata regressions: do not involve any operating cash movement.
+for (const shiftStatus of ["open", "closed"] as const) {
+  test(`staff can correct a cash service note with a ${shiftStatus} linked shift without touching the ledger`, async () => {
+    const shift = await CashShift.create({
+      businessDate: businessDateKey(), shiftNumber: 1,
+      staffUsername: "synthetic-cashier", createdBy: "synthetic-cashier",
+      status: shiftStatus, openingMode: "counted", ledgerRevision: 7,
+      operatingOpeningCash: 0, operatingExpectedCash: 1200,
+      ...(shiftStatus === "closed" ? { endedAt: new Date(), closedBy: "synthetic-cashier", operatingActualCash: 1200 } : {}),
+    });
+    const booking = await createBooking({ paymentMethod: "Cash", cashShiftId: String(shift._id), status: "checkedIn" });
+    booking.transactions[0].type = "slowBoat";
+    booking.transactions[0].note = "Synthetic service note before correction";
+    await booking.save();
+    const originalTransactions = JSON.stringify(booking.transactions);
+    const result = await callCorrection({
+      transactionId: String(booking.transactions[0]._id), admin: false,
+      overrides: { correctedAmount: 1200, correctedPaymentMethod: "Cash", correctedCategory: "slowBoat", correctedNote: "Synthetic corrected service note", reasonCode: "incorrect_note" },
+    });
+    assert.equal(result.statusCode, 200, JSON.stringify(result.body));
+    assert.equal(result.body.correction.financialChange, false);
+    assert.equal(result.body.effectiveTransaction.note, "Synthetic corrected service note");
+    assert.equal(result.body.effectiveTransaction.cashShiftId, String(shift._id));
+    const stored = await Booking.findById(booking._id);
+    assert.equal(JSON.stringify(stored!.transactions), originalTransactions);
+    assert.equal(stored!.revision, 1);
+    assert.equal(stored!.transactionCorrections.length, 1);
+    assert.equal((await CashShift.findById(shift._id))!.ledgerRevision, 7);
+    assert.equal(await Activity.countDocuments({ action: "CORRECT_TRANSACTION" }), 1);
+  });
+}
+
+for (const surchargeAmount of [null, 99] as const) {
+  test(`a closed-period card note correction leaves ${surchargeAmount === null ? "missing" : "existing nonstandard"} surcharges unchanged`, async () => {
+    const booking = await createBooking({ paymentMethod: "Card", status: "checkedIn" });
+    if (surchargeAmount !== null) {
+      booking.transactions.push({ type: "cardSurcharge", paymentMethod: "Card", amount: surchargeAmount, direction: "in", relatedTransactionId: String(booking.transactions[0]._id), createdAt: new Date() });
+      await booking.save();
+    }
+    await DailyClose.create({ businessDate: businessDateKey(), staffUsername: "synthetic-cashier", createdBy: "synthetic-cashier", openingCash: 0, expectedCash: 0, actualCash: 0, variance: 0, cashIn: 0, cashOut: 0 });
+    const originalTransactions = JSON.stringify(booking.transactions);
+    const result = await callCorrection({
+      transactionId: String(booking.transactions[0]._id), admin: false,
+      overrides: { correctedAmount: 1200, correctedPaymentMethod: "Card", correctedNote: "Synthetic card note only", reasonCode: "incorrect_note" },
+    });
+    assert.equal(result.statusCode, 200, JSON.stringify(result.body));
+    const stored = await Booking.findById(booking._id);
+    assert.equal(JSON.stringify(stored!.transactions), originalTransactions);
+    assert.equal(stored!.transactionCorrections.length, 1);
+    assert.equal(stored!.transactionCorrections[0].financialChange, false);
+  });
+}
+
+test("an open-period card amount correction still recalculates its linked surcharge", async () => {
+  const booking = await createBooking({ paymentMethod: "Card" });
+  booking.transactions.push({ type: "cardSurcharge", paymentMethod: "Card", amount: 36, direction: "in", relatedTransactionId: String(booking.transactions[0]._id), createdAt: new Date() });
+  await booking.save();
+  const result = await callCorrection({ transactionId: String(booking.transactions[0]._id), overrides: { correctedPaymentMethod: "Card", correctedAmount: 1000 } });
+  assert.equal(result.statusCode, 200, JSON.stringify(result.body));
+  assert.equal(result.body.booking.transactionCorrections.length, 2);
+  assert.equal(result.body.booking.transactionCorrections[1].after.amount, 30);
+  assert.equal(result.body.booking.transactions[1].amount, 36);
+});
+
 test("financial correction for a checked-in booking after daily close is rejected but metadata-only correction is allowed", async () => {
   await DailyClose.create({
     businessDate: businessDateKey(),
