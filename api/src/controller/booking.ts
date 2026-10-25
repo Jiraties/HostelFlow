@@ -1,4 +1,5 @@
 import { effectiveRoomStayEnd, occupiedCapacityOnDate, occupancySummaryForRange } from "../helpers/occupancyHelpers";
+import { summarizeChannelMix } from "../helpers/channelMixHelpers";
 export { occupiedCapacityOnDate, occupancySummaryForRange } from "../helpers/occupancyHelpers";
 import Booking, {
   PASSPORT_SENSITIVE_SELECT,
@@ -1628,7 +1629,7 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
       0,
     );
 
-    const channelCounts = new Map<PlatformId, { count: number; revenue: number }>();
+    const channelSummary = summarizeChannelMix(channelMixBookings, startOfMonth, startOfNextMonth);
     const revenueByDate = new Map<
       string,
       {
@@ -1700,22 +1701,6 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
       });
     }
 
-    channelMixBookings.forEach((booking) => {
-      const financialBooking = withEffectiveTransactions(booking.toObject());
-      effectiveCommercialSegments(financialBooking).forEach((segment) => {
-        const segmentStart = new Date(segment.from);
-        const segmentEnd = new Date(segment.to);
-        if (segmentStart >= startOfNextMonth || segmentEnd <= startOfMonth) return;
-        const current = channelCounts.get(segment.platformId) || {
-          count: 0,
-          revenue: 0,
-        };
-        current.count += 1;
-        current.revenue += Math.abs(segment.amount || 0);
-        channelCounts.set(segment.platformId, current);
-      });
-    });
-
     const wholeMonthOccupancy = occupancySummaryForRange(
       occupancyBookings,
       startOfMonth,
@@ -1744,13 +1729,7 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
       bucketRevenue.occupancyRate = bucketOccupancy.occupancyRate;
     });
 
-    const channelMix = Array.from(channelCounts.entries()).map(
-      ([platformId, summary]) => ({
-        platformId,
-        count: summary.count,
-        revenue: summary.revenue,
-      }),
-    );
+    const channelMix = channelSummary.channels;
     const revenueSeries = Array.from(revenueByDate.entries()).map(
       ([date, revenue]) => ({
         date,
@@ -1779,6 +1758,8 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
       occupancyRate: wholeMonthOccupancy.occupancyRate,
       rangeOccupancyRate: selectedRangeOccupancy.occupancyRate,
       channelMix,
+      channelMixTotal: channelSummary.total,
+      channelMixUnit: channelSummary.unit,
       revenueRange,
       revenueSeries,
       esrSeries,
