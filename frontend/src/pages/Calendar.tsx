@@ -17,6 +17,13 @@ import type { booking, PlatformId } from "../types/bookingTypes";
 import { platformMap } from "../helpers/maps.ts";
 import { getApiErrorMessage } from "../helpers/apiErrorMessage";
 import { calendarAnnotationLabel } from "../helpers/calendarAnnotations";
+import {
+  calendarMonthBoundaries,
+  calendarBoundaryAtPointer,
+  calendarDragHasMoved,
+  calendarDragEndpoint,
+  clampCalendarSelectionEnd,
+} from "../helpers/calendarSelection";
 import { formatDisplayDate } from "../helpers/displayDate";
 
 import {
@@ -212,6 +219,8 @@ const Calendar = () => {
     anchorIndex: number;
     currentIndex: number;
     dragged: boolean;
+    startX: number;
+    startY: number;
   } | null>(null);
   const suppressNextClickRef = useRef(false);
   const location = useLocation();
@@ -278,6 +287,10 @@ const Calendar = () => {
       (_, i) => new Date(year, month, i + 1),
     );
   }, [month, year]); // [new Date(1,1,1), new Date(1,1,1), ...]
+  const calendarBoundaries = useMemo(
+    () => calendarMonthBoundaries(year, month),
+    [year, month],
+  );
 
   const todayIndex = calendarDays.findIndex(
     (day) =>
@@ -303,8 +316,8 @@ const Calendar = () => {
       roomIds: rooms
         .slice(startRoomIndex, endRoomIndex + 1)
         .map((room) => room.roomId),
-      from: formatLocalDate(calendarDays[startIndex]),
-      to: formatLocalDate(calendarDays[endIndex]),
+      from: formatLocalDate(calendarBoundaries[startIndex]),
+      to: formatLocalDate(calendarBoundaries[endIndex]),
     };
   };
 
@@ -326,25 +339,10 @@ const Calendar = () => {
     roomIds: string[],
     anchorIndex: number,
     requestedIndex: number,
-  ) => {
-    if (requestedIndex > anchorIndex) {
-      for (let index = anchorIndex; index < requestedIndex; index += 1) {
-        if (roomIds.some((roomId) => nightIsUnavailable(roomId, index))) {
-          return index;
-        }
-      }
-      return requestedIndex;
-    }
-
-    if (requestedIndex < anchorIndex) {
-      for (let index = anchorIndex - 1; index >= requestedIndex; index -= 1) {
-        if (roomIds.some((roomId) => nightIsUnavailable(roomId, index))) {
-          return index + 1;
-        }
-      }
-    }
-    return requestedIndex;
-  };
+  ) =>
+    clampCalendarSelectionEnd(anchorIndex, requestedIndex, (index) =>
+      roomIds.some((roomId) => nightIsUnavailable(roomId, index)),
+    );
 
   const selectionRangeIsUnavailable = (
     roomId: string,
@@ -392,17 +390,10 @@ const Calendar = () => {
     const headers = Array.from(
       timelineRef.current?.querySelectorAll<HTMLElement>("[data-day]") || [],
     );
-    if (!headers.length) return null;
-
-    const containing = headers.find((header) => {
-      const rect = header.getBoundingClientRect();
-      return clientX >= rect.left && clientX <= rect.right;
-    });
-    if (containing) return Number(containing.dataset.day);
-
-    const firstRect = headers[0].getBoundingClientRect();
-    if (clientX < firstRect.left) return 0;
-    return headers.length - 1;
+    return calendarBoundaryAtPointer(
+      headers.map((header) => header.getBoundingClientRect()),
+      clientX,
+    );
   };
 
   const roomIndexAtPointer = (clientY: number) => {
@@ -442,6 +433,8 @@ const Calendar = () => {
       anchorIndex: dayIndex,
       currentIndex: dayIndex,
       dragged: false,
+      startX: event.clientX,
+      startY: event.clientY,
     };
     event.currentTarget.setPointerCapture(event.pointerId);
   };
@@ -451,9 +444,15 @@ const Calendar = () => {
   ) => {
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
-    const requestedIndex = dayIndexAtPointer(event.clientX);
+    if (
+      !drag.dragged &&
+      !calendarDragHasMoved(drag.startX, drag.startY, event.clientX, event.clientY)
+    ) return;
+    drag.dragged = true;
+    const boundary = dayIndexAtPointer(event.clientX);
     const requestedRoomIndex = roomIndexAtPointer(event.clientY);
-    if (requestedIndex === null || requestedRoomIndex === null) return;
+    if (boundary === null || requestedRoomIndex === null) return;
+    const requestedIndex = calendarDragEndpoint(drag.anchorIndex, boundary);
     const anchorRoomId = rooms[drag.anchorRoomIndex]?.roomId;
     if (!anchorRoomId) return;
 
@@ -479,12 +478,6 @@ const Calendar = () => {
       drag.anchorIndex,
       requestedIndex,
     );
-    if (
-      requestedIndex !== drag.anchorIndex ||
-      requestedRoomIndex !== drag.anchorRoomIndex
-    ) {
-      drag.dragged = true;
-    }
     drag.currentIndex = currentIndex;
     drag.currentRoomIndex = currentRoomIndex;
     setDragSelection(
@@ -1584,19 +1577,23 @@ const Calendar = () => {
               aria-hidden="true"
             />
             บล็อก วันที่{" "}
-            {calendarDays[
-              Math.min(
+            {formatDisplayDate(
+              calendarBoundaries[Math.min(
                 selectionChooser.selection.startIndex,
                 selectionChooser.selection.endIndex,
-              )
-            ].getDate()}
+              )],
+              dateFormat,
+              { includeYear: false },
+            )}
             –
-            {calendarDays[
-              Math.max(
+            {formatDisplayDate(
+              calendarBoundaries[Math.max(
                 selectionChooser.selection.startIndex,
                 selectionChooser.selection.endIndex,
-              )
-            ].getDate()}
+              )],
+              dateFormat,
+              { includeYear: false },
+            )}
           </button>
           <button
             type="button"
