@@ -17,12 +17,13 @@ Commit changes to the relevant `pnpm-lock.yaml` alongside dependency changes. Do
 
 Configure ignored local `.env` files using the app's `.env.example`. For the shared-cluster development setup, the backend URI must explicitly select `/dev`, with `EXPECTED_DATABASE_NAME=dev`. Do not use production data for development.
 
-Run these in separate terminals from the repository root:
+Start both apps from the repository root in one terminal:
 
 ```sh
-pnpm --dir api dev
-pnpm --dir frontend start
+pnpm dev
 ```
+
+Open `http://localhost:5173`. Both apps keep their normal live reload. Press Ctrl+C to stop both; if either process exits, the launcher stops the other. You can still run them separately with `pnpm --dir api dev` and `pnpm --dir frontend start`.
 
 Create the first development admin interactively:
 

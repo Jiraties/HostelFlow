@@ -1,0 +1,2 @@
+# Root launcher only; api and frontend keep their independent pnpm projects.
+packages: []
