@@ -117,7 +117,7 @@ const PageHeader = ({
     <header className={`pageHeader ${className}`.trim()}>
       <div>
         <h1>{title}</h1>
-        {(meta || onRefresh) && (
+        {(meta || onRefresh || lastUpdated !== undefined) && (
           <div className="pageHeader__meta">
             {meta || (
               <p className="pageHeader__updatedAt">

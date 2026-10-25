@@ -144,7 +144,10 @@ type AdminDashboardStats = {
   channelMix: Array<{
     platformId: PlatformId;
     count: number;
+    percentage: number;
   }>;
+  channelMixTotal: number;
+  channelMixUnit: "commercialSegment";
   revenueRange: RevenueRange;
   revenueSeries: Array<{
     date: string;
@@ -194,7 +197,7 @@ const dashboardHelpText = {
   unpaid: "ยอดจองที่ยังไม่ได้รับเงินจากลูกค้า",
   cashToday: "เงินสดรับ ลบ เงินสดจ่าย สำหรับวันที่เลือก",
   occupancy:
-    "เปอร์เซ็นต์เตียงที่ถูกจองตลอดเดือนที่เลือกเทียบกับเตียงที่เปิดขาย รวมการจองล่วงหน้า โดยห้องส่วนตัวที่ถูกจองจะนับเต็มความจุของห้อง",
+    "เปอร์เซ็นต์ความจุที่มีการจองหรือใช้ภายในตลอดเดือนที่เลือกเทียบกับความจุทั้งหมด รวมการจองล่วงหน้าและการบล็อกใช้ภายใน / เจ้าของเข้าพัก โดยห้องส่วนตัวนับเต็มความจุ การบล็อกประเภทอื่นไม่มีผลต่ออัตราเข้าพัก",
   checkedInBeds:
     "จำนวนเตียงที่เช็คอินอยู่ตอนนี้ โดยห้องส่วนตัวจะนับเต็มความจุของห้อง",
 };
@@ -1401,10 +1404,10 @@ const Main = () => {
                 <section className="main__adminPanel main__channelPanel">
                   <div className="main__adminPanelHeader">
                     <div>
-                      <span>Bookings by channel</span>
-                      <h3>ช่องทางการจอง</h3>
+                      <span>Reservation segments by channel</span>
+                      <h3 title="นับช่วงการจองเดิมและช่วงเพิ่มคืนที่ทับซ้อนเดือนที่เลือก รวมทุกสถานะ">ช่วงการจองแยกช่องทาง</h3>
                     </div>
-                    <p>{adminStats.monthBookings} การจอง</p>
+                    <p>{adminStats.channelMixTotal} ช่วงการจอง</p>
                   </div>
                   <div className="main__channelList">
                     {adminStats.channelMix.length === 0 ? (
@@ -1415,13 +1418,6 @@ const Main = () => {
                     ) : (
                       adminStats.channelMix.map((channel) => {
                         const platform = platformMap[channel.platformId];
-                        const percentage =
-                          adminStats.monthBookings === 0
-                            ? 0
-                            : Math.round(
-                                (channel.count / adminStats.monthBookings) *
-                                  100,
-                              );
 
                         return (
                           <div
@@ -1438,7 +1434,7 @@ const Main = () => {
                               <p>{platform?.label || channel.platformId}</p>
                             </div>
                             <strong>
-                              {channel.count} รายการ · {percentage}%
+                              {channel.count} ช่วง · {channel.percentage}%
                             </strong>
                           </div>
                         );

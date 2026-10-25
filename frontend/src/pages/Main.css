@@ -20,7 +20,7 @@
   padding: 1rem;
   border-radius: 1.5rem;
   background-color: var(--background);
-  box-shadow: var(--main-shadow);
+  box-shadow: var(--light-shadow);
   box-sizing: border-box;
 }
 
@@ -37,7 +37,7 @@
   padding: 1.4rem;
   border-radius: 1.75rem;
   background-color: var(--background);
-  box-shadow: var(--main-shadow);
+  box-shadow: var(--light-shadow);
 }
 
 .main__cashCloseHero {
@@ -361,7 +361,7 @@
   padding: 1.25rem;
   border-radius: 2rem;
   background-color: var(--background);
-  box-shadow: var(--main-shadow);
+  box-shadow: var(--light-shadow);
 }
 
 .main__todayFinanceSection {
@@ -633,7 +633,7 @@
   padding: 1.15rem 1.35rem 1rem;
   border: none;
   background: #ffffff;
-  box-shadow: var(--main-shadow);
+  box-shadow: var(--light-shadow);
   cursor: pointer;
   transition:
     transform 160ms ease,
@@ -642,7 +642,7 @@
 
 .main__todayRevenue:hover {
   transform: translateY(-2px);
-  box-shadow: var(--main-shadow);
+  box-shadow: var(--light-shadow);
 }
 
 .main__todayRevenueEyebrow {
@@ -982,7 +982,7 @@
   padding: 1.25rem;
   border-radius: 2rem;
   background-color: var(--background);
-  box-shadow: var(--main-shadow);
+  box-shadow: var(--light-shadow);
 }
 
 .main__todaySection--review {
@@ -1219,7 +1219,7 @@
   .main__todaySection {
     border-radius: var(--mobile-card-radius, 1.25rem);
     border: 0;
-    box-shadow: var(--mobile-shadow, var(--main-shadow));
+    box-shadow: var(--light-shadow);
   }
 
   .main__adminSection,

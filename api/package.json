@@ -1,6 +1,7 @@
 {
   "name": "backend",
   "version": "1.0.0",
+  "packageManager": "pnpm@12.11.2",
   "engines": {
     "node": "22.x"
   },
@@ -22,6 +23,7 @@
     "migrate:pinned-bookings": "ts-node src/scripts/migratePinnedBookings.ts",
     "verify:restore": "ts-node src/scripts/verifyRestoredData.ts",
     "seed:demo": "ts-node src/scripts/seedDemoData.ts",
+    "admin:create-first": "ts-node src/scripts/createFirstAdmin.ts",
     "start": "node dist/app.js"
   },
   "keywords": [],

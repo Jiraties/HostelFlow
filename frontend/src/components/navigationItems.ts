@@ -1,3 +1,5 @@
+import { analyticsPreviewEnabled } from "../config/featureFlags";
+
 export type NavigationItem = {
   id: number;
   label: string;
@@ -9,6 +11,9 @@ export type NavigationItem = {
 
 export const navigationItems: NavigationItem[] = [
   { id: 1, label: "Home", link: "/", icon: "bx-home" },
+  ...(analyticsPreviewEnabled
+    ? [{ id: 7, label: "Analytics", link: "/analytics", icon: "bx-bar-chart-big", adminOnly: true }]
+    : []),
   { id: 2, label: "Arrivals", link: "/arrivals", icon: "bx-arrow-to-left" },
   {
     id: 3,

@@ -1,0 +1,704 @@
+.analytics {
+  --analytics-muted: #727982;
+  --analytics-inset-background: #fafbfc;
+  --analytics-divider: #edf0f3;
+  gap: 1.5rem;
+}
+
+.analytics__content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  min-width: 0;
+}
+
+.analytics__basisNote {
+  color: var(--analytics-muted);
+  font-size: 0.85rem;
+  line-height: 1.7;
+}
+
+.analytics__state {
+  padding: 1.5rem;
+  border-radius: 1.5rem;
+  background: var(--background);
+  box-shadow: var(--light-shadow);
+}
+
+.analytics__state button {
+  margin-left: 0.75rem;
+  padding: 0.35rem 0.65rem;
+  border: 0;
+  border-radius: 999rem;
+  color: var(--text-color);
+  background: var(--analytics-inset-background);
+  cursor: pointer;
+  font: inherit;
+}
+
+.analytics__monthControl {
+  display: inline-flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.analytics__monthControl input {
+  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--analytics-divider);
+  border-radius: 999rem;
+  background: var(--background);
+  color: inherit;
+  font: inherit;
+}
+
+.analytics__change--neutral {
+  color: var(--analytics-muted);
+  background: var(--analytics-inset-background);
+}
+
+.analytics__pageMeta {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  color: var(--analytics-muted);
+  font-size: 1rem;
+}
+
+.analytics__stats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.analytics__trendPanel {
+  --analytics-revenue-color: #51d0dc72;
+  --analytics-occupancy-color: var(--primary-color);
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  min-width: 0;
+  padding: 1.5rem;
+  border-radius: 1.5rem;
+  background-color: var(--background);
+  box-shadow: var(--light-shadow);
+}
+
+.analytics__chartHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem 1.5rem;
+}
+
+.analytics__chartHeader h2 {
+  font-size: 1.25rem;
+  font-weight: 500;
+}
+
+.analytics__chartWrapper {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.analytics__trendLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  color: #666666;
+  font-size: 1rem;
+}
+
+.analytics__trendLegend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.25rem 0;
+  font-weight: 400;
+}
+
+.analytics__trendLegendBar {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 0.15rem;
+  background: var(--analytics-revenue-color);
+  opacity: 0.75;
+}
+
+.analytics__trendLegendLine {
+  width: 1rem;
+  height: 0.2rem;
+  border-radius: 1rem;
+  background: var(--analytics-occupancy-color);
+}
+
+.analytics__statsGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.analytics__statCard {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 9rem;
+  padding: 1.25rem;
+  border-radius: 1.5rem;
+  background-color: var(--background);
+  box-shadow: var(--light-shadow);
+}
+
+.analytics__statLabel {
+  margin-bottom: 0.65rem;
+  color: #666666;
+  font-size: 1rem;
+  line-height: 1.3;
+}
+
+.analytics__statCard--interactive {
+  position: relative;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--primary-color) 8%, #ffffff), var(--background) 72%);
+  transition: transform 0.2s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .analytics__statCard--interactive:hover {
+    transform: scale(1.01);
+  }
+}
+
+.analytics__statCard--interactive:active {
+  transform: scale(0.99);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .analytics__statCard--interactive {
+    transition: none;
+  }
+
+  .analytics__statCard--interactive:hover,
+  .analytics__statCard--interactive:active {
+    transform: none;
+  }
+}
+
+.analytics__statCard--interactive .analytics__statLabel {
+  padding-right: 1.25rem;
+}
+
+.analytics__cardTrigger {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: #777777;
+  cursor: pointer;
+  font: inherit;
+}
+
+.analytics__cardTrigger i {
+  position: absolute;
+  top: 1.25rem;
+  right: 1rem;
+  font-size: 1.25rem;
+}
+
+.analytics__detailButton,
+.analytics__categoryButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 0;
+  color: #397b80;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.analytics__detailButton {
+  padding: 0.35rem 0.65rem;
+  border-radius: 999rem;
+  background-color: color-mix(in srgb, var(--primary-color) 10%, #ffffff);
+  white-space: nowrap;
+}
+
+.analytics__categoryButton {
+  padding: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: inherit;
+}
+
+.analytics__categoryButton i {
+  display: inline-flex;
+  transition: transform 0.2s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .analytics__categoryButton:hover i {
+    transform: translateX(2px);
+  }
+
+  .analytics__donutLabel:hover strong {
+    transform: scale(1.03);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .analytics__categoryButton i,
+  .analytics__donutLabel strong {
+    transition: none;
+    transform: none;
+  }
+
+  .analytics__categoryButton:hover i,
+  .analytics__donutLabel:hover strong {
+    transform: none;
+  }
+}
+
+.analytics__detailButton:hover {
+  background-color: color-mix(in srgb, var(--primary-color) 18%, #ffffff);
+}
+
+.analytics__cardTrigger:focus-visible,
+.analytics__detailButton:focus-visible,
+.analytics__categoryButton:focus-visible,
+.analytics__donutLabel:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 3px;
+}
+
+.analytics__statValue {
+  display: block;
+  font-size: clamp(1.75rem, 2.1vw, 2.4rem);
+  font-weight: 400;
+  line-height: 1.08;
+  font-variant-numeric: tabular-nums;
+}
+
+.analytics__comparison {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: auto;
+  padding-top: 0.85rem;
+  color: #777777;
+  font-size: 1rem;
+}
+
+.analytics__change {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.analytics__change--versus {
+  font-size: 0.8rem;
+}
+
+.analytics__change--up {
+  background: color-mix(in srgb, var(--green) 13%, var(--background));
+  color: color-mix(in srgb, var(--green) 72%, var(--text));
+}
+
+.analytics__change--down {
+  background: color-mix(in srgb, var(--red) 12%, var(--background));
+  color: color-mix(in srgb, var(--red) 78%, var(--text));
+}
+
+.analytics__detailPanel {
+  min-width: 0;
+  padding: 1.5rem;
+  border-radius: 1.5rem;
+  background-color: var(--background);
+  box-shadow: var(--light-shadow);
+}
+
+.analytics__detailHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.analytics__detailHeader h2 {
+  font-size: 1.25rem;
+  font-weight: 500;
+}
+
+.analytics__title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.analytics__info {
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  color: #8a8a8a;
+  cursor: help;
+  font-size: 1rem;
+}
+
+.analytics__info:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+.analytics__tooltipText {
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.analytics__periodLabel {
+  color: var(--analytics-muted);
+  font-size: 1rem;
+  white-space: nowrap;
+}
+
+.analytics__tableScroll {
+  overflow-x: auto;
+  border-radius: 1rem;
+}
+
+.analytics__tableScroll:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 3px;
+}
+
+.analytics__channelTable {
+  width: 100%;
+  min-width: 850px;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.analytics__channelTable th,
+.analytics__channelTable td {
+  padding: 0.85rem 1rem;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.analytics__channelTable thead {
+  background-color: var(--analytics-inset-background);
+  color: #666666;
+  font-size: 1rem;
+}
+
+.analytics__channelTable thead th {
+  font-weight: 500;
+}
+
+.analytics__channelTable tbody tr + tr {
+  border-top: 1px solid var(--analytics-divider);
+}
+
+.analytics__channelTable th:not(:first-child),
+.analytics__channelTable td {
+  text-align: right;
+}
+
+.analytics__channelTable td:last-child {
+  font-weight: 500;
+}
+
+.analytics__channelTable .analytics__tableMetric {
+  justify-content: flex-end;
+}
+
+.analytics__channelIdentity,
+.analytics__inventoryIdentity,
+.analytics__tableMetric {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.analytics__channelIcon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 2.5rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.8rem;
+  font-size: 1.25rem;
+}
+
+.analytics__channelLogo {
+  flex: 0 0 2.5rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.65rem;
+  object-fit: contain;
+}
+.analytics__channelIcon--direct {
+  background-color: color-mix(in srgb, var(--primary-color) 12%, #ffffff);
+  color: #397b80;
+}
+
+.analytics__inventoryGrid,
+.analytics__bottomGrid,
+.analytics__outlookGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+
+.analytics__inventoryCard {
+  min-width: 0;
+  padding: 1.25rem;
+  border-radius: 1.5rem;
+  background-color: var(--background);
+  box-shadow: var(--light-shadow);
+}
+
+.analytics__inventoryIdentity h3 {
+  font-size: 1.125rem;
+  font-weight: 500;
+}
+
+.analytics__inventoryMetrics {
+  margin-top: 1rem;
+}
+
+.analytics__inventoryMetrics > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  padding: 0.6rem 0;
+}
+
+.analytics__inventoryMetrics > div + div {
+  border-top: 1px solid var(--analytics-divider);
+}
+
+.analytics__inventoryMetrics dt,
+.analytics__revenueList dt {
+  color: #666666;
+  font-size: 1rem;
+}
+
+.analytics__inventoryMetrics dd {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.analytics__inventoryMetrics strong {
+  font-size: 1.2rem;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.analytics__inventoryMetrics > div:first-child strong {
+  font-size: 1.75rem;
+}
+
+.analytics__sparkline {
+  min-width: 0;
+  margin-top: 0.25rem;
+}
+
+.analytics__breakdownBody {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+}
+
+.analytics__donut {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 11.5rem;
+  height: 11.5rem;
+  border-radius: 50%;
+}
+
+.analytics__donutLabel {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 73%;
+  height: 73%;
+  border-radius: 50%;
+  gap: 0.25rem;
+}
+
+.analytics__donut strong {
+  font-size: 1.4rem;
+  font-weight: 500;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .analytics__donutLabel strong {
+    transition: transform 0.2s ease;
+  }
+}
+.analytics__donut span {
+  color: #777777;
+  font-size: 1rem;
+}
+
+.analytics__revenueList {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.analytics__revenueList > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.65rem 0;
+}
+
+.analytics__revenueList > div + div {
+  border-top: 1px solid var(--analytics-divider);
+}
+.analytics__revenueList dt {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.analytics__revenueList dd {
+  white-space: nowrap;
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+.analytics__colorDot {
+  flex: 0 0 0.6rem;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+}
+.analytics__negativeAmount {
+  color: #bf527b;
+}
+
+.analytics__outlookCard {
+  position: relative;
+  min-width: 0;
+  padding: 1.25rem;
+  border-radius: 1.25rem;
+  background-color: var(--background);
+  box-shadow: var(--light-shadow);
+}
+
+.analytics__outlookCard h3 {
+  font-size: 1rem;
+  font-weight: 500;
+}
+.analytics__outlookCard p {
+  margin-top: 0.2rem;
+  color: var(--analytics-muted);
+  font-size: 1rem;
+}
+.analytics__outlookValue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding-right: 3.25rem;
+}
+.analytics__outlookValue strong {
+  font-size: 2rem;
+  font-weight: 400;
+  line-height: 1.1;
+}
+.analytics__miniBars {
+  position: absolute;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  width: 2.75rem;
+  height: 2.75rem;
+}
+.analytics__miniBars span {
+  flex: 1;
+  border-radius: 2px 2px 0 0;
+  background-color: var(--primary-color);
+  opacity: 0.55;
+}
+@media (max-width: 1280px) {
+  .analytics__bottomGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 1180px) {
+  .analytics__statsGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .analytics__statCard,
+  .analytics__detailPanel,
+  .analytics__trendPanel {
+    padding: 1.25rem;
+  }
+
+  .analytics__chartHeader {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .analytics__statsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .analytics__inventoryGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 520px) {
+  .analytics__outlookGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .analytics__statsGrid {
+    grid-template-columns: 1fr;
+  }
+}

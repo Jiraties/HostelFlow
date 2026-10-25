@@ -1,3 +1,7 @@
+# Package manager
+
+Use pnpm for installs, scripts, dependency changes, and package execution. Do not use npm, npx, or Yarn for development commands. Both `api` and `frontend` are separate pnpm projects; run commands in the relevant directory or use `pnpm --dir api` / `pnpm --dir frontend`. Keep each app's `pnpm-lock.yaml` current and use `pnpm install --frozen-lockfile` for reproducible installs. The version is pinned in each `package.json`.
+
 # Repository privacy and public-safety
 
 Treat this repository as potentially public. Prevent unsafe, private, or production-derived information from entering Git.

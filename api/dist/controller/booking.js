@@ -37,9 +37,15 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getNeedsReviewBookingCount = exports.getNeedsReviewBookings = exports.resolveBooking = exports.cancelBooking = exports.getPassportData = exports.addTransaction = exports.extendBooking = exports.manageRoomStays = exports.getBookingById = exports.getMonthCalendar = exports.checkOut = exports.checkIn = exports.removeBooking = exports.getMasterBookings = exports.getAdminDashboardStats = exports.getTodayBookings = exports.pinBooking = exports.updateBookingNote = exports.editBooking = exports.getRoomAvailability = exports.newBooking = exports.occupancySummaryForRange = exports.occupiedCapacityOnDate = void 0;
+const occupancyHelpers_1 = require("../helpers/occupancyHelpers");
+const channelMixHelpers_1 = require("../helpers/channelMixHelpers");
+var occupancyHelpers_2 = require("../helpers/occupancyHelpers");
+Object.defineProperty(exports, "occupiedCapacityOnDate", { enumerable: true, get: function () { return occupancyHelpers_2.occupiedCapacityOnDate; } });
+Object.defineProperty(exports, "occupancySummaryForRange", { enumerable: true, get: function () { return occupancyHelpers_2.occupancySummaryForRange; } });
 const booking_1 = __importStar(require("../models/booking"));
 const standaloneSale_1 = __importDefault(require("../models/standaloneSale"));
-const roomBlock_1 = __importDefault(require("../models/roomBlock"));
+const roomBlock_1 = __importStar(require("../models/roomBlock"));
+const extraSaleAnnotation_1 = __importDefault(require("../models/extraSaleAnnotation"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const crypto_1 = __importDefault(require("crypto"));
 const mongoose_1 = __importDefault(require("mongoose"));
@@ -64,8 +70,6 @@ const expectedStayRevenueHelpers_1 = require("../helpers/expectedStayRevenueHelp
 const refundEntitlement_1 = require("../services/refundEntitlement");
 dotenv_1.default.config();
 const ACTIVE_ROOM_INVENTORY = (0, roomInventory_1.activeRoomInventory)();
-const ACTIVE_ROOM_IDS = new Set(ACTIVE_ROOM_INVENTORY.map((room) => room.id));
-const TOTAL_GUEST_CAPACITY = ACTIVE_ROOM_INVENTORY.reduce((total, room) => total + room.capacity, 0);
 const CARD_SURCHARGE_RATE = 0.03;
 const ADD_TRANSACTION_TYPES = [
     "adjustment",
@@ -298,65 +302,12 @@ const nextRevenueBucketStart = (date, bucketSize) => {
         return new Date(date.getTime() + 7 * 86400000);
     return new Date(date.getTime() + 86400000);
 };
-const bookingKeepsRoomForOccupancy = (booking) => {
-    return (!booking.voided &&
-        booking.status !== "cancelled" &&
-        booking.status !== "noShow");
-};
-const effectiveRoomStayEnd = (currentBooking, roomStay) => {
-    const stayEnd = new Date(roomStay.to);
-    if (currentBooking.checkout?.earlyCheckOut &&
-        currentBooking.checkout.checkedOutAt) {
-        const checkoutStart = getBookingBusinessDateStart(new Date(currentBooking.checkout.checkedOutAt));
-        return checkoutStart < stayEnd ? checkoutStart : stayEnd;
-    }
-    return stayEnd;
-};
 const effectiveCalendarRoomStayEnd = (currentBooking, roomStay) => {
     if (currentBooking.checkout?.roomReleaseStatus === "blocked") {
         return new Date(roomStay.to);
     }
-    return effectiveRoomStayEnd(currentBooking, roomStay);
+    return (0, occupancyHelpers_1.effectiveRoomStayEnd)(currentBooking, roomStay);
 };
-const bookingOccupiedRoomIdsOnDate = (currentBooking, start, end) => {
-    if (!bookingKeepsRoomForOccupancy(currentBooking))
-        return [];
-    return (currentBooking.roomStays || []).flatMap((roomStay) => {
-        const stayStart = new Date(roomStay.from);
-        const stayEnd = effectiveRoomStayEnd(currentBooking, roomStay);
-        if (stayStart >= end || stayEnd <= start)
-            return [];
-        return (0, roomStayHelpers_1.getRoomStayRoomIds)(roomStay);
-    });
-};
-const occupiedCapacityOnDate = (bookings, start, end) => {
-    const occupiedRoomIds = new Set(bookings.flatMap((currentBooking) => bookingOccupiedRoomIdsOnDate(currentBooking, start, end)));
-    return Array.from(occupiedRoomIds).reduce((total, roomId) => ACTIVE_ROOM_IDS.has(roomId)
-        ? total + getRoomGuestCapacity(roomId)
-        : total, 0);
-};
-exports.occupiedCapacityOnDate = occupiedCapacityOnDate;
-const occupancySummaryForRange = (bookings, start, end) => {
-    let date = new Date(start);
-    let occupiedBedNights = 0;
-    let dayCount = 0;
-    while (date < end) {
-        const dayEnd = new Date(Math.min(date.getTime() + 86400000, end.getTime()));
-        occupiedBedNights += (0, exports.occupiedCapacityOnDate)(bookings, date, dayEnd);
-        dayCount += 1;
-        date = dayEnd;
-    }
-    const availableBedNights = TOTAL_GUEST_CAPACITY * dayCount;
-    const averageOccupiedCapacity = dayCount === 0 ? 0 : occupiedBedNights / dayCount;
-    return {
-        occupiedBedNights,
-        availableBedNights,
-        averageOccupiedCapacity,
-        occupancyRate: availableBedNights === 0 ? 0 : occupiedBedNights / availableBedNights,
-    };
-};
-exports.occupancySummaryForRange = occupancySummaryForRange;
-const getRoomGuestCapacity = roomInventory_1.roomGuestCapacity;
 const getRequestedRoomIds = (booking) => (0, roomStayHelpers_1.getRoomStayRoomIds)({
     roomIds: booking.roomIds,
     roomId: booking.roomId,
@@ -429,7 +380,7 @@ const getGuestsInHouse = async (date = new Date()) => {
     })
         .select("roomStays")
         .lean();
-    return (0, exports.occupiedCapacityOnDate)(checkedInBookings, start, end);
+    return (0, occupancyHelpers_1.occupiedCapacityOnDate)(checkedInBookings, start, end);
 };
 const calculateCardSurcharge = (amount) => Number((amount * CARD_SURCHARGE_RATE).toFixed(2));
 const roundMoney = (amount) => Number(amount.toFixed(2));
@@ -1114,7 +1065,7 @@ const getAdminDashboardStats = async (req, res) => {
     const occupancyQueryStart = new Date(Math.min(chartStart.getTime(), startOfMonth.getTime()));
     const occupancyQueryEnd = new Date(Math.max(chartEnd.getTime(), startOfNextMonth.getTime()));
     try {
-        const [monthFinancialBookings, monthStandaloneSales, esrBookings, occupancyBookings, monthBookings, channelMixBookings, unpaidBookings,] = await Promise.all([
+        const [monthFinancialBookings, monthStandaloneSales, esrBookings, occupancyBookings, internalUseBlocks, monthBookings, channelMixBookings, unpaidBookings,] = await Promise.all([
             booking_1.default.find({
                 "transactions.createdAt": { $gte: startOfMonth, $lt: startOfNextMonth },
             }),
@@ -1130,6 +1081,19 @@ const getAdminDashboardStats = async (req, res) => {
                     },
                 },
             }),
+            roomBlock_1.default.find({
+                from: { $lt: occupancyQueryEnd },
+                to: { $gt: occupancyQueryStart },
+                $or: [
+                    { reasonType: "house_use" },
+                    {
+                        reasonType: { $exists: false },
+                        reason: roomBlock_1.HOUSE_USE_ROOM_BLOCK_REASON,
+                    },
+                ],
+            })
+                .select("roomId roomIds from to reason reasonType releasedAt")
+                .lean(),
             booking_1.default.find({
                 checkIn: { $gte: startOfMonth, $lt: startOfNextMonth },
             }),
@@ -1188,7 +1152,7 @@ const getAdminDashboardStats = async (req, res) => {
         const monthlyGrossRevenue = esrSummary.expectedStayRevenue;
         const monthlyCollectedRevenue = esrSummary.collectedRevenue;
         const unpaidAmount = unpaidBookings.reduce((sum, booking) => sum + unpaidRoomChargeAmount(booking), 0);
-        const channelCounts = new Map();
+        const channelSummary = (0, channelMixHelpers_1.summarizeChannelMix)(channelMixBookings, startOfMonth, startOfNextMonth);
         const revenueByDate = new Map();
         const revenueBucketSize = getRevenueChartBucketSize(revenueRange);
         const revenueBuckets = [];
@@ -1231,38 +1195,18 @@ const getAdminDashboardStats = async (req, res) => {
                 occupiedCapacity: 0,
             });
         }
-        channelMixBookings.forEach((booking) => {
-            const financialBooking = (0, transactionCorrections_1.withEffectiveTransactions)(booking.toObject());
-            (0, commercialSegmentHelpers_1.effectiveCommercialSegments)(financialBooking).forEach((segment) => {
-                const segmentStart = new Date(segment.from);
-                const segmentEnd = new Date(segment.to);
-                if (segmentStart >= startOfNextMonth || segmentEnd <= startOfMonth)
-                    return;
-                const current = channelCounts.get(segment.platformId) || {
-                    count: 0,
-                    revenue: 0,
-                };
-                current.count += 1;
-                current.revenue += Math.abs(segment.amount || 0);
-                channelCounts.set(segment.platformId, current);
-            });
-        });
-        const wholeMonthOccupancy = (0, exports.occupancySummaryForRange)(occupancyBookings, startOfMonth, startOfNextMonth);
-        const selectedRangeOccupancy = (0, exports.occupancySummaryForRange)(occupancyBookings, chartStart, chartEnd);
+        const wholeMonthOccupancy = (0, occupancyHelpers_1.occupancySummaryForRange)(occupancyBookings, startOfMonth, startOfNextMonth, internalUseBlocks);
+        const selectedRangeOccupancy = (0, occupancyHelpers_1.occupancySummaryForRange)(occupancyBookings, chartStart, chartEnd, internalUseBlocks);
         revenueBuckets.forEach((bucket) => {
             const bucketRevenue = revenueByDate.get(bucket.key);
             if (!bucketRevenue)
                 return;
-            const bucketOccupancy = (0, exports.occupancySummaryForRange)(occupancyBookings, bucket.start < chartStart ? chartStart : bucket.start, bucket.end);
+            const bucketOccupancy = (0, occupancyHelpers_1.occupancySummaryForRange)(occupancyBookings, bucket.start < chartStart ? chartStart : bucket.start, bucket.end, internalUseBlocks);
             bucketRevenue.occupiedCapacity =
                 bucketOccupancy.averageOccupiedCapacity;
             bucketRevenue.occupancyRate = bucketOccupancy.occupancyRate;
         });
-        const channelMix = Array.from(channelCounts.entries()).map(([platformId, summary]) => ({
-            platformId,
-            count: summary.count,
-            revenue: summary.revenue,
-        }));
+        const channelMix = channelSummary.channels;
         const revenueSeries = Array.from(revenueByDate.entries()).map(([date, revenue]) => ({
             date,
             grossRevenue: revenue.grossRevenue,
@@ -1286,6 +1230,8 @@ const getAdminDashboardStats = async (req, res) => {
             occupancyRate: wholeMonthOccupancy.occupancyRate,
             rangeOccupancyRate: selectedRangeOccupancy.occupancyRate,
             channelMix,
+            channelMixTotal: channelSummary.total,
+            channelMixUnit: channelSummary.unit,
             revenueRange,
             revenueSeries,
             esrSeries,
@@ -1956,7 +1902,31 @@ const getMonthCalendar = async (req, res) => {
             roomId: room.id,
             bookings: [],
             blocks: [],
+            extraSaleAnnotations: [],
         }));
+        const annotations = await extraSaleAnnotation_1.default.find({
+            removedAt: { $exists: false },
+            from: { $lt: endingDate },
+            to: { $gt: startingDate },
+        }).lean();
+        annotations.forEach((annotation) => {
+            annotation.roomIds.forEach((roomId) => {
+                rooms.find((room) => room.roomId === roomId)?.extraSaleAnnotations.push({
+                    annotationId: String(annotation._id),
+                    roomId,
+                    roomIds: annotation.roomIds,
+                    from: annotation.from,
+                    to: annotation.to,
+                    kind: annotation.kind || "EXTRA_SALE",
+                    customReason: annotation.customReason || "",
+                    note: annotation.note || "",
+                    createdBy: annotation.createdBy,
+                    createdAt: annotation.createdAt,
+                    updatedBy: annotation.updatedBy,
+                    updatedAt: annotation.updatedAt,
+                });
+            });
+        });
         const activeRoomBlocks = await roomBlock_1.default.find({
             releasedAt: { $exists: false },
             from: { $lt: endingDate },

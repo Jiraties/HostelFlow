@@ -91,7 +91,7 @@ const RoomBlockModal = ({
     try {
       await axios.post(
         `${API_URL}/bookings/room-blocks`,
-        { ...selection, reason },
+        { ...selection, reason, reasonType: reasonOption },
         { withCredentials: true },
       );
       onChanged();

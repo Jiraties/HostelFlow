@@ -223,7 +223,10 @@ const StandaloneSaleModal = ({
         {showOptionalDetails && (
           <div className="standaloneSale__optionalFields">
             <div>
-              <p className="addBooking__label">ชื่อลูกค้า (ไม่บังคับ)</p>
+              <p className="addBooking__label">
+                ชื่อลูกค้า
+                <span className="addTransaction__optionalLabel">(ไม่บังคับ)</span>
+              </p>
               <input
                 className="boxInput"
                 value={formData.customerName}

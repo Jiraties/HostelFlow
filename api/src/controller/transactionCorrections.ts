@@ -462,6 +462,7 @@ export const correctTransaction = async (
       transactionId,
     );
     const needsGeneratedSurcharge =
+      financialChange &&
       correctedPaymentMethod === "Card" &&
       !linkedSurcharge &&
       !["depositRefund", "cancellationRefund", "roomRefund", "compensation"].includes(
@@ -490,6 +491,7 @@ export const correctTransaction = async (
     const updatedBooking = await withMutationIdempotency(req, () =>
       withCashLedgerTransaction(cashProbe, async (assigned, session) => {
         if (
+          requiresCashLedgerLock &&
           before.cashShiftId &&
           assigned[0]?.cashShiftId !== before.cashShiftId
         ) {
@@ -515,7 +517,7 @@ export const correctTransaction = async (
         ];
         const generatedTransactions: transcation[] = [];
 
-        if (linkedSurcharge) {
+        if (financialChange && linkedSurcharge) {
           const surchargeBefore = snapshotTransaction(linkedSurcharge);
           const surchargeAfter = {
             ...surchargeBefore,

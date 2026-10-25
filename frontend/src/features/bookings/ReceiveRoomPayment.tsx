@@ -180,7 +180,8 @@ const ReceiveRoomPayment = ({
 
         <label className="receiveRoomPayment__note">
           <span className="addBooking__label">
-            หมายเหตุ <small>(ถ้ามี)</small>
+            หมายเหตุ
+            <span className="addTransaction__optionalLabel">(ไม่บังคับ)</span>
           </span>
           <input
             className="boxInput"

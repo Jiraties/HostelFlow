@@ -36,7 +36,9 @@ const Sidebar = () => {
     {
       id: "overview",
       label: "ภาพรวม",
-      items: sidebarItems.filter((item) => item.link === "/"),
+      items: sidebarItems.filter((item) =>
+        ["/", "/analytics"].includes(item.link),
+      ),
     },
     {
       id: "stays",

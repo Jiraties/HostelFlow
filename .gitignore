@@ -78,6 +78,7 @@ docs/*-remediation*.md
 
 # Dependencies, generated frontend artifacts, logs, and local tooling state.
 node_modules/
+.pnpm-store/
 frontend/dist/
 frontend/dist-ssr/
 coverage/
@@ -97,3 +98,5 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+.agents

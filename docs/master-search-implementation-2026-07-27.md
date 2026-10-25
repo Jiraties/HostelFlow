@@ -16,8 +16,8 @@ before enabling the all-date UI in production:
 
 ```sh
 cd api
-npm run build
-RUN_MASTER_SEARCH_INDEX_MIGRATION=true npm run migrate:master-search-indexes
+pnpm build
+RUN_MASTER_SEARCH_INDEX_MIGRATION=true pnpm migrate:master-search-indexes
 ```
 
 The guarded migration:

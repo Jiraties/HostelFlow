@@ -4,9 +4,13 @@ import mongoose from "mongoose";
 import { MongoMemoryReplSet } from "mongodb-memory-server";
 import Activity from "../src/models/activity";
 import Booking from "../src/models/booking";
-import RoomBlock from "../src/models/roomBlock";
+import RoomBlock, { HOUSE_USE_ROOM_BLOCK_REASON } from "../src/models/roomBlock";
 import RoomMutationLock from "../src/models/roomMutationLock";
 import { createRoomBlock, releaseRoomBlock } from "../src/controller/roomBlocks";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { runInNewContext } from "node:vm";
+import { transpileModule, ModuleKind } from "typescript";
 
 type BookingController = typeof import("../src/controller/booking");
 
@@ -131,6 +135,39 @@ test("room blocks validate input and reject booking overlaps", async () => {
   assert.equal(conflict.statusCode, 409);
   assert.equal(await RoomBlock.countDocuments(), 0);
 });
+
+for (const [year, month, lastNight, nextMonth] of [
+  [2026, 8, "2026-09-30", "2026-10-01"],
+  [2026, 11, "2026-12-31", "2027-01-01"],
+  [2028, 1, "2028-02-29", "2028-03-01"],
+] as const) {
+  test(`frontend drag boundaries create a persisted single-night block for ${lastNight}`, async () => {
+    // Execute the actual pure frontend module without writing compiled files.
+    const source = readFileSync(path.resolve(__dirname, "../../frontend/src/helpers/calendarSelection.ts"), "utf8");
+    const exports: {
+      calendarMonthBoundaries?: (year: number, month: number) => Date[];
+      calendarBoundaryAtPointer?: (columns: { left: number; right: number }[], x: number) => number;
+      calendarDragEndpoint?: (anchor: number, boundary: number) => number;
+    } = {};
+    runInNewContext(transpileModule(source, { compilerOptions: { module: ModuleKind.CommonJS } }).outputText, { exports });
+    const boundaries = exports.calendarMonthBoundaries!(year, month);
+    const nightCount = boundaries.length - 1;
+    const columns = Array.from({ length: nightCount }, (_, index) => ({ left: index * 40, right: (index + 1) * 40 }));
+    const endIndex = exports.calendarDragEndpoint!(nightCount - 1, exports.calendarBoundaryAtPointer!(columns, nightCount * 40 - 2));
+    const key = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    const range = { from: key(boundaries[nightCount - 1]), to: key(boundaries[endIndex]) };
+    assert.deepEqual(range, { from: lastNight, to: nextMonth });
+    const created = response();
+    await createRoomBlock(request({ body: { ...range, roomId: "Window", reason: "Synthetic boundary regression", reasonType: "maintenance" } }), created);
+    assert.equal(created.statusCode, 201, JSON.stringify(created.body));
+    const stored = await RoomBlock.findOne({ roomIds: "Window" }).lean();
+    assert.ok(stored);
+    assert.equal((new Date(stored.to).getTime() - new Date(stored.from).getTime()) / 86400000, 1);
+    const occupied = response();
+    await bookingController.getRoomAvailability(request({ query: { checkIn: lastNight, checkOut: nextMonth } }), occupied);
+    assert.ok(occupied.body.occupiedRoomIds.includes("Window"));
+  });
+}
 
 test("active blocks feed calendar and availability while preserving half-open boundaries", async () => {
   const created = response();
@@ -371,4 +408,50 @@ test("concurrent booking and block creation cannot both acquire the same room-ni
       (await Booking.countDocuments({ bookingId: "RACING-BOOKING" })),
     1,
   );
+});
+
+test("room-block creation saves its category and rejects unknown categories", async () => {
+  const body = {
+    roomIds: ["Balcony"],
+    from: localDate(),
+    to: localDate(2),
+    reason: HOUSE_USE_ROOM_BLOCK_REASON,
+    reasonType: "house_use",
+  };
+  const invalid = response();
+  await createRoomBlock(request({ body: { ...body, reasonType: "invalid" } }), invalid);
+  assert.equal(invalid.statusCode, 400);
+  assert.equal(await RoomBlock.countDocuments(), 0);
+
+  const created = response();
+  await createRoomBlock(request({ body }), created);
+  assert.equal(created.statusCode, 201);
+  assert.equal((await RoomBlock.findById(created.body.block._id).lean())?.reasonType, "house_use");
+});
+
+test("dashboard occupancy includes internal-use history and ignores all other blocks", async () => {
+  const julyDate = (day: number) => new Date(`2026-07-${String(day).padStart(2, "0")}T00:00:00+07:00`);
+  await RoomBlock.create([
+    { roomIds: ["Balcony"], from: julyDate(1), to: julyDate(3), reasonType: "house_use", reason: "Synthetic internal stay", createdBy: "test-staff" },
+    { roomId: "Siesta 1", from: julyDate(1), to: julyDate(2), reason: HOUSE_USE_ROOM_BLOCK_REASON, createdBy: "test-staff" },
+    { roomIds: ["Pottery 1"], from: julyDate(1), to: julyDate(5), releasedAt: new Date("2026-07-03T05:00:00.000Z"), reasonType: "house_use", reason: "Synthetic released stay", createdBy: "test-staff" },
+    { roomIds: ["Wicker 1"], from: julyDate(1), to: julyDate(31), reasonType: "maintenance", reason: "Synthetic maintenance", createdBy: "test-staff" },
+    { roomIds: ["Wicker 2"], from: julyDate(1), to: julyDate(31), reasonType: "other", reason: HOUSE_USE_ROOM_BLOCK_REASON, createdBy: "test-staff" },
+  ]);
+
+  const dashboard = response();
+  await bookingController.getAdminDashboardStats({
+    user: { userId: "test-admin-id", username: "test-admin", admin: true },
+    query: { month: "2026-07", revenueRange: "mtd" },
+  } as any, dashboard);
+  assert.equal(dashboard.statusCode, 200);
+  assert.equal(dashboard.body.occupancyRate, 11 / (52 * 31));
+  assert.equal(dashboard.body.rangeOccupancyRate, 11 / (52 * 31));
+  const firstDay = dashboard.body.revenueSeries.find((point: any) => point.date === "2026-07-01");
+  const releaseDay = dashboard.body.revenueSeries.find((point: any) => point.date === "2026-07-03");
+  assert.equal(firstDay.occupiedCapacity, 6);
+  assert.equal(firstDay.occupancyRate, 6 / 52);
+  assert.equal(releaseDay.occupiedCapacity, 0);
+  assert.equal(dashboard.body.monthlyGrossRevenue, 0);
+  assert.equal(dashboard.body.monthlyCollectedRevenue, 0);
 });

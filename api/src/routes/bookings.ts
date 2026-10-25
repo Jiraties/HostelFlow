@@ -1,4 +1,6 @@
 import express from "express";
+import { getAnalytics } from "../controller/analytics";
+import { requireAnalyticsPreview } from "../config/featureFlags";
 import {
   addTransaction,
   checkIn,
@@ -51,11 +53,21 @@ import {
   createRoomBlock,
   releaseRoomBlock,
 } from "../controller/roomBlocks";
+import {
+  createExtraSaleAnnotation,
+  updateExtraSaleNote,
+  removeExtraSaleAnnotation,
+} from "../controller/extraSaleAnnotations";
 
 const bookingsRouter = express.Router();
 
+bookingsRouter.get("/analytics", requireAnalyticsPreview, getAnalytics);
+
 bookingsRouter.post("/room-blocks", createRoomBlock);
 bookingsRouter.patch("/room-blocks/:blockId/release", releaseRoomBlock);
+bookingsRouter.post("/extra-sale-annotations", createExtraSaleAnnotation);
+bookingsRouter.patch("/extra-sale-annotations/:annotationId/note", updateExtraSaleNote);
+bookingsRouter.patch("/extra-sale-annotations/:annotationId/remove", removeExtraSaleAnnotation);
 bookingsRouter.post("/newBooking", newBooking);
 bookingsRouter.post("/:bookingId/extensions", extendBooking);
 bookingsRouter.patch("/editBooking/:bookingId", editBooking);

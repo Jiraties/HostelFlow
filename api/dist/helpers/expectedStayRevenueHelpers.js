@@ -191,7 +191,7 @@ const buildExpectedStayRevenueEntries = (records, start, end) => records.flatMap
                 note: segment.note,
             };
         const chargeAdjustments = chargeAdjustmentsBySegment.get(segment.transactionId) || [];
-        const baseRoomRevenue = Math.abs(roomCharge.amount || segment.amount || 0);
+        const baseRoomRevenue = Math.abs(roomCharge.amount ?? segment.amount ?? 0);
         const chargeAdjustmentTotal = chargeAdjustments.reduce((total, adjustment) => total + adjustment.amount, 0);
         const grossRevenue = baseRoomRevenue + chargeAdjustmentTotal;
         const reductions = reductionsBySegment.get(segment.transactionId) || [];

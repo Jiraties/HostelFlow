@@ -1,0 +1,4 @@
+allowBuilds:
+  '@ibm/plex-sans-thai': false
+  '@swc/core': true
+  esbuild: true

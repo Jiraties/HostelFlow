@@ -1,6 +1,10 @@
 import type { Request, Response } from "express";
 import Booking from "../models/booking";
-import RoomBlock from "../models/roomBlock";
+import RoomBlock, {
+  HOUSE_USE_ROOM_BLOCK_REASON,
+  ROOM_BLOCK_REASON_TYPES,
+  type RoomBlockReasonType,
+} from "../models/roomBlock";
 import { invalidRoomIds } from "../config/roomInventory";
 import {
   RoomMutationConflictError,
@@ -13,10 +17,10 @@ import { getRoomStayRoomIds } from "../helpers/roomStayHelpers";
 const ROOM_BLOCKING_BOOKING_FILTER = {
   voided: { $ne: true },
   $or: [
-    { status: { $nin: ["cancelled", "checkedOut", "noShow"] } },
-    { "cancellation.roomReleaseStatus": "blocked" },
-    { "checkout.roomReleaseStatus": "blocked" },
-    { "resolution.roomReleaseStatus": "blocked" },
+    { status: { $nin: ["cancelled", "checkedOut", "noShow"] as const } },
+    { "cancellation.roomReleaseStatus": "blocked" as const },
+    { "checkout.roomReleaseStatus": "blocked" as const },
+    { "resolution.roomReleaseStatus": "blocked" as const },
   ],
 };
 
@@ -82,6 +86,17 @@ export const createRoomBlock = async (req: Request, res: Response) => {
         : [];
     const roomIds: string[] = Array.from(new Set<string>(requestedRoomIds));
     const reason = typeof req.body.reason === "string" ? req.body.reason.trim() : "";
+    if (
+      req.body.reasonType !== undefined &&
+      !ROOM_BLOCK_REASON_TYPES.includes(req.body.reasonType)
+    ) {
+      return res.status(400).json({
+        error: "INVALID_ROOM_BLOCK_REASON_TYPE",
+        message: "กรุณาเลือกประเภทการบล็อกห้องที่ถูกต้อง",
+      });
+    }
+    const reasonType: RoomBlockReasonType = req.body.reasonType ??
+      (reason === HOUSE_USE_ROOM_BLOCK_REASON ? "house_use" : "other");
     const from = parseDateKey(req.body.from);
     const to = parseDateKey(req.body.to);
 
@@ -129,6 +144,7 @@ export const createRoomBlock = async (req: Request, res: Response) => {
           from,
           to,
           reason,
+          reasonType,
           createdBy,
         });
         return { block };
@@ -153,6 +169,7 @@ export const createRoomBlock = async (req: Request, res: Response) => {
         from,
         to,
         reason,
+        reasonType,
       },
     });
     return res.status(201).json({
@@ -211,6 +228,7 @@ export const releaseRoomBlock = async (req: Request, res: Response) => {
         from: block.from,
         to: block.to,
         reason: block.reason,
+        reasonType: block.reasonType,
       },
     });
     return res.status(200).json({

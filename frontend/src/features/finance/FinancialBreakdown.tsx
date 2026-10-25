@@ -457,11 +457,15 @@ const FinancialBreakdown = ({
   mode = "monthly",
   month,
   initialType = null,
+  initialGroupKey = null,
+  contextNote,
   onClose,
 }: {
   mode?: "monthly" | "today";
   month?: string;
   initialType?: TransactionType | null;
+  initialGroupKey?: string | null;
+  contextNote?: string;
   onClose: () => void;
 }) => {
   const { user } = useAuth();
@@ -476,6 +480,7 @@ const FinancialBreakdown = ({
   const [selectedType, setSelectedType] = useState<TransactionType | null>(
     initialType,
   );
+  const [selectedGroupKey, setSelectedGroupKey] = useState(initialGroupKey);
   const typeGroups = useMemo<BreakdownDisplayGroup[]>(
     () =>
       (breakdown?.categories || []).flatMap((category) =>
@@ -513,7 +518,9 @@ const FinancialBreakdown = ({
   );
   const activeGroups =
     breakdownMode === "type"
-      ? selectedType
+      ? selectedGroupKey
+        ? typeGroups.filter((group) => group.key === selectedGroupKey)
+        : selectedType
         ? typeGroups.filter((group) => group.sourceType === selectedType)
         : typeGroups
       : paymentMethodGroups;
@@ -586,6 +593,7 @@ const FinancialBreakdown = ({
           <h1 className="viewBooking__name">
             {mode === "today" ? "Today’s Revenue" : "Expected Stay Revenue"}
           </h1>
+          {contextNote && <p>{contextNote}</p>}
           <p>
             {mode === "today"
               ? "ค่าห้องจากการจองเดิมที่เริ่มเข้าพักวันนี้ รายการเพิ่มคืนที่เริ่มวันนี้ และบริการเสริมที่บันทึกวันนี้ หลังหักรายการลดรายได้"
@@ -687,16 +695,19 @@ const FinancialBreakdown = ({
             </div>
             <div
               className={
-                selectedType && breakdownMode === "type"
+                (selectedType || selectedGroupKey) && breakdownMode === "type"
                   ? "financialBreakdown__modeToggle financialBreakdown__modeToggle--filtered"
                   : "financialBreakdown__modeToggle"
               }
             >
-              {selectedType && breakdownMode === "type" && (
+              {(selectedType || selectedGroupKey) && breakdownMode === "type" && (
                 <button
                   className="financialBreakdown__modeButton financialBreakdown__modeButton--active"
                   type="button"
-                  onClick={() => setSelectedType(null)}
+                  onClick={() => {
+                    setSelectedType(null);
+                    setSelectedGroupKey(null);
+                  }}
                 >
                   ดูทั้งหมด
                 </button>

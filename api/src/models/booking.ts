@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose, { type Document } from "mongoose";
 import { buildBookingSearchFields } from "../helpers/bookingSearchHelpers";
 
 export type PlatformId = "BOOK" | "HOST" | "TRAV" | "AGOD" | "WALK";

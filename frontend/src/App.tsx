@@ -2,7 +2,7 @@ import Home from "./pages/Home";
 import Login from "./pages/Login";
 import axios from "axios";
 import { Toaster } from "react-hot-toast";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Routes, Route } from "react-router";
 import { useAuth } from "./context/AuthContext";
 import { API_URL } from "./config/api";
@@ -15,8 +15,14 @@ import Calendar from "./pages/Calendar";
 import Main from "./pages/Main";
 import Documents from "./pages/Documents";
 import Manage from "./pages/Manage";
+import { analyticsPreviewEnabled } from "./config/featureFlags";
 import { CommandPaletteProvider } from "./context/CommandPaletteContext";
 import { useModalInputAutofocus } from "./hooks/useModalInputAutofocus";
+
+// Keep the unfinished page out of production bundles as well as routing.
+const Analytics = import.meta.env.DEV && analyticsPreviewEnabled
+  ? lazy(() => import("./pages/Analytics"))
+  : null;
 
 function App() {
   const { isAuthenticated, login, user } = useAuth();
@@ -73,6 +79,9 @@ function App() {
             <Sidebar />
             <Routes>
               <Route path="/" element={<Main />} />
+              {Analytics && user?.admin && (
+                <Route path="/analytics" element={<Suspense fallback={null}><Analytics /></Suspense>} />
+              )}
               {user?.admin && <Route path="/manage" element={<Manage />} />}
               <Route path="/arrivals" element={<Home status="arrivals" />} />
               <Route path="/departures" element={<Home status="departures" />} />

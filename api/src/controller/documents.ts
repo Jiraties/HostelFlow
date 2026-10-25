@@ -172,7 +172,7 @@ const checkedInGuestDateQuery = (date: string) => {
   if (!bounds) return null;
 
   return {
-    status: { $in: ["checkedIn", "checkedOut"] },
+    status: { $in: ["checkedIn", "checkedOut"] as const },
     voided: { $ne: true },
     $or: [
       { checkedInAt: { $gte: bounds.start, $lt: bounds.end } },

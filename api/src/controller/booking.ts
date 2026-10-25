@@ -1,9 +1,15 @@
+import { effectiveRoomStayEnd, occupiedCapacityOnDate, occupancySummaryForRange } from "../helpers/occupancyHelpers";
+import { summarizeChannelMix } from "../helpers/channelMixHelpers";
+export { occupiedCapacityOnDate, occupancySummaryForRange } from "../helpers/occupancyHelpers";
 import Booking, {
   PASSPORT_SENSITIVE_SELECT,
   PaymentMethod,
 } from "../models/booking";
 import StandaloneSale from "../models/standaloneSale";
-import RoomBlock from "../models/roomBlock";
+import RoomBlock, {
+  HOUSE_USE_ROOM_BLOCK_REASON,
+} from "../models/roomBlock";
+import ExtraSaleAnnotation from "../models/extraSaleAnnotation";
 import dotenv from "dotenv";
 import crypto from "crypto";
 import mongoose from "mongoose";
@@ -66,7 +72,6 @@ import {
 import {
   activeRoomInventory,
   invalidRoomIds,
-  roomGuestCapacity,
 } from "../config/roomInventory";
 import {
   commercialRoomSlices,
@@ -110,11 +115,6 @@ import { assessOrdinaryRefundEntitlements } from "../services/refundEntitlement"
 dotenv.config();
 
 const ACTIVE_ROOM_INVENTORY = activeRoomInventory();
-const ACTIVE_ROOM_IDS = new Set(ACTIVE_ROOM_INVENTORY.map((room) => room.id));
-const TOTAL_GUEST_CAPACITY = ACTIVE_ROOM_INVENTORY.reduce(
-  (total, room) => total + room.capacity,
-  0,
-);
 const CARD_SURCHARGE_RATE = 0.03;
 const ADD_TRANSACTION_TYPES: TransactionType[] = [
   "adjustment",
@@ -193,10 +193,10 @@ const SENSITIVE_SETTLEMENT_TYPES: TransactionType[] = [
 const ROOM_BLOCKING_BOOKING_FILTER = {
   voided: { $ne: true },
   $or: [
-    { status: { $nin: ["cancelled", "checkedOut", "noShow"] } },
-    { "cancellation.roomReleaseStatus": "blocked" },
-    { "checkout.roomReleaseStatus": "blocked" },
-    { "resolution.roomReleaseStatus": "blocked" },
+    { status: { $nin: ["cancelled", "checkedOut", "noShow"] as const } },
+    { "cancellation.roomReleaseStatus": "blocked" as const },
+    { "checkout.roomReleaseStatus": "blocked" as const },
+    { "resolution.roomReleaseStatus": "blocked" as const },
   ],
 };
 const BUSINESS_TIME_ZONE = "Asia/Bangkok";
@@ -434,30 +434,6 @@ const nextRevenueBucketStart = (
   return new Date(date.getTime() + 86400000);
 };
 
-const bookingKeepsRoomForOccupancy = (booking: booking) => {
-  return (
-    !booking.voided &&
-    booking.status !== "cancelled" &&
-    booking.status !== "noShow"
-  );
-};
-
-const effectiveRoomStayEnd = (currentBooking: booking, roomStay: roomStay) => {
-  const stayEnd = new Date(roomStay.to);
-
-  if (
-    currentBooking.checkout?.earlyCheckOut &&
-    currentBooking.checkout.checkedOutAt
-  ) {
-    const checkoutStart = getBookingBusinessDateStart(
-      new Date(currentBooking.checkout.checkedOutAt),
-    );
-    return checkoutStart < stayEnd ? checkoutStart : stayEnd;
-  }
-
-  return stayEnd;
-};
-
 const effectiveCalendarRoomStayEnd = (
   currentBooking: booking,
   roomStay: roomStay,
@@ -468,76 +444,6 @@ const effectiveCalendarRoomStayEnd = (
 
   return effectiveRoomStayEnd(currentBooking, roomStay);
 };
-
-const bookingOccupiedRoomIdsOnDate = (
-  currentBooking: booking,
-  start: Date,
-  end: Date,
-) => {
-  if (!bookingKeepsRoomForOccupancy(currentBooking)) return [];
-
-  return (currentBooking.roomStays || []).flatMap((roomStay) => {
-    const stayStart = new Date(roomStay.from);
-    const stayEnd = effectiveRoomStayEnd(currentBooking, roomStay);
-
-    if (stayStart >= end || stayEnd <= start) return [];
-
-    return getRoomStayRoomIds(roomStay);
-  });
-};
-
-export const occupiedCapacityOnDate = (
-  bookings: booking[],
-  start: Date,
-  end: Date,
-) => {
-  const occupiedRoomIds = new Set(
-    bookings.flatMap((currentBooking) =>
-      bookingOccupiedRoomIdsOnDate(currentBooking, start, end),
-    ),
-  );
-
-  return Array.from(occupiedRoomIds).reduce(
-    (total, roomId) =>
-      ACTIVE_ROOM_IDS.has(roomId)
-        ? total + getRoomGuestCapacity(roomId)
-        : total,
-    0,
-  );
-};
-
-export const occupancySummaryForRange = (
-  bookings: booking[],
-  start: Date,
-  end: Date,
-) => {
-  let date = new Date(start);
-  let occupiedBedNights = 0;
-  let dayCount = 0;
-
-  while (date < end) {
-    const dayEnd = new Date(
-      Math.min(date.getTime() + 86400000, end.getTime()),
-    );
-    occupiedBedNights += occupiedCapacityOnDate(bookings, date, dayEnd);
-    dayCount += 1;
-    date = dayEnd;
-  }
-
-  const availableBedNights = TOTAL_GUEST_CAPACITY * dayCount;
-  const averageOccupiedCapacity =
-    dayCount === 0 ? 0 : occupiedBedNights / dayCount;
-
-  return {
-    occupiedBedNights,
-    availableBedNights,
-    averageOccupiedCapacity,
-    occupancyRate:
-      availableBedNights === 0 ? 0 : occupiedBedNights / availableBedNights,
-  };
-};
-
-const getRoomGuestCapacity = roomGuestCapacity;
 
 const getRequestedRoomIds = (booking: { roomIds?: string[]; roomId?: string }) =>
   getRoomStayRoomIds({
@@ -1606,6 +1512,7 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
       monthStandaloneSales,
       esrBookings,
       occupancyBookings,
+      internalUseBlocks,
       monthBookings,
       channelMixBookings,
       unpaidBookings,
@@ -1627,6 +1534,19 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
             },
           },
         }),
+        RoomBlock.find({
+          from: { $lt: occupancyQueryEnd },
+          to: { $gt: occupancyQueryStart },
+          $or: [
+            { reasonType: "house_use" },
+            {
+              reasonType: { $exists: false },
+              reason: HOUSE_USE_ROOM_BLOCK_REASON,
+            },
+          ],
+        })
+          .select("roomId roomIds from to reason reasonType releasedAt")
+          .lean(),
         Booking.find({
           checkIn: { $gte: startOfMonth, $lt: startOfNextMonth },
         }),
@@ -1709,7 +1629,7 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
       0,
     );
 
-    const channelCounts = new Map<PlatformId, { count: number; revenue: number }>();
+    const channelSummary = summarizeChannelMix(channelMixBookings, startOfMonth, startOfNextMonth);
     const revenueByDate = new Map<
       string,
       {
@@ -1781,31 +1701,17 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
       });
     }
 
-    channelMixBookings.forEach((booking) => {
-      const financialBooking = withEffectiveTransactions(booking.toObject());
-      effectiveCommercialSegments(financialBooking).forEach((segment) => {
-        const segmentStart = new Date(segment.from);
-        const segmentEnd = new Date(segment.to);
-        if (segmentStart >= startOfNextMonth || segmentEnd <= startOfMonth) return;
-        const current = channelCounts.get(segment.platformId) || {
-          count: 0,
-          revenue: 0,
-        };
-        current.count += 1;
-        current.revenue += Math.abs(segment.amount || 0);
-        channelCounts.set(segment.platformId, current);
-      });
-    });
-
     const wholeMonthOccupancy = occupancySummaryForRange(
       occupancyBookings,
       startOfMonth,
       startOfNextMonth,
+      internalUseBlocks,
     );
     const selectedRangeOccupancy = occupancySummaryForRange(
       occupancyBookings,
       chartStart,
       chartEnd,
+      internalUseBlocks,
     );
 
     revenueBuckets.forEach((bucket) => {
@@ -1816,19 +1722,14 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
         occupancyBookings,
         bucket.start < chartStart ? chartStart : bucket.start,
         bucket.end,
+        internalUseBlocks,
       );
       bucketRevenue.occupiedCapacity =
         bucketOccupancy.averageOccupiedCapacity;
       bucketRevenue.occupancyRate = bucketOccupancy.occupancyRate;
     });
 
-    const channelMix = Array.from(channelCounts.entries()).map(
-      ([platformId, summary]) => ({
-        platformId,
-        count: summary.count,
-        revenue: summary.revenue,
-      }),
-    );
+    const channelMix = channelSummary.channels;
     const revenueSeries = Array.from(revenueByDate.entries()).map(
       ([date, revenue]) => ({
         date,
@@ -1857,6 +1758,8 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
       occupancyRate: wholeMonthOccupancy.occupancyRate,
       rangeOccupancyRate: selectedRangeOccupancy.occupancyRate,
       channelMix,
+      channelMixTotal: channelSummary.total,
+      channelMixUnit: channelSummary.unit,
       revenueRange,
       revenueSeries,
       esrSeries,
@@ -2751,6 +2654,20 @@ type Room = {
     createdBy: string;
     createdAt: Date;
   }[];
+  extraSaleAnnotations: {
+    annotationId: string;
+    roomId: string;
+    roomIds: string[];
+    from: Date;
+    to: Date;
+    kind: string;
+    customReason: string;
+    note: string;
+    createdBy: string;
+    createdAt: Date;
+    updatedBy?: string;
+    updatedAt?: Date;
+  }[];
 };
 
 export const getMonthCalendar = async (req: Request, res: Response) => {
@@ -2774,7 +2691,32 @@ export const getMonthCalendar = async (req: Request, res: Response) => {
       roomId: room.id,
       bookings: [],
       blocks: [],
+      extraSaleAnnotations: [],
     }));
+
+    const annotations = await ExtraSaleAnnotation.find({
+      removedAt: { $exists: false },
+      from: { $lt: endingDate },
+      to: { $gt: startingDate },
+    }).lean();
+    annotations.forEach((annotation) => {
+      annotation.roomIds.forEach((roomId) => {
+        rooms.find((room) => room.roomId === roomId)?.extraSaleAnnotations.push({
+          annotationId: String(annotation._id),
+          roomId,
+          roomIds: annotation.roomIds,
+          from: annotation.from,
+          to: annotation.to,
+          kind: annotation.kind || "EXTRA_SALE",
+          customReason: annotation.customReason || "",
+          note: annotation.note || "",
+          createdBy: annotation.createdBy,
+          createdAt: annotation.createdAt,
+          updatedBy: annotation.updatedBy,
+          updatedAt: annotation.updatedAt,
+        });
+      });
+    });
 
     const activeRoomBlocks = await RoomBlock.find({
       releasedAt: { $exists: false },
@@ -3061,7 +3003,7 @@ export const manageRoomStays = async (req: Request, res: Response) => {
       : sorted;
     const roomIdsToValidate =
       getUniqueRoomIdsFromRoomStays(roomStaysToValidate);
-    const allowedStatuses = isClosedRoomHistoryCorrection
+    const allowedStatuses: Status[] = isClosedRoomHistoryCorrection
       ? ["checkedOut"]
       : ["booked", "checkedIn"];
 
@@ -4253,11 +4195,11 @@ const needsReviewBookingFilters = () => {
 
   return {
     lateCheckIns: {
-      status: "booked",
+      status: "booked" as const,
       checkIn: { $gte: thirtyDaysAgo, $lt: todayStart },
     },
     lateCheckOuts: {
-      status: "checkedIn",
+      status: "checkedIn" as const,
       checkOut: { $gte: thirtyDaysAgo, $lt: todayStart },
     },
   };

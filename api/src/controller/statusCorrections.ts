@@ -591,7 +591,7 @@ const buildPreview = async ({
       bookingId: currentBooking.bookingId,
       timestamp: { $gt: action.at },
       action: {
-        $in: [
+        $in: ([
           "EXTEND_BOOKING",
           "MANAGE_ROOM_STAYS",
           "CHECK_IN",
@@ -602,7 +602,7 @@ const buildPreview = async ({
           "POST_CLOSE_ADJUSTMENT",
           "CORRECT_TRANSACTION",
           "CORRECT_BOOKING_STATUS",
-        ].filter(
+        ] as const).filter(
           (activity) => !action.expectedActivities.includes(activity),
         ),
       },
