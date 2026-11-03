@@ -1,6 +1,6 @@
 .checkOut__summary {
   padding: 1rem;
-  border-radius: 1rem;
+  border-radius: 0.5rem;
   box-shadow: var(--main-shadow);
   display: flex;
   flex-direction: column;

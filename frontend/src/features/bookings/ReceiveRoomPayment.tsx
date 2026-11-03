@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import axios from "axios";
 import Select, { type SingleValue } from "react-select";
 import toast from "react-hot-toast";
@@ -46,6 +46,8 @@ const ReceiveRoomPayment = ({
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | "">("");
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [validationAttempted, setValidationAttempted] = useState(false);
+  const fieldId = useId();
   const [idempotencyKey] = useState(() => crypto.randomUUID());
   const numericAmount = Number(amount);
   const validAmount = Number.isFinite(numericAmount) && numericAmount > 0
@@ -69,6 +71,7 @@ const ReceiveRoomPayment = ({
 
   const submit = async () => {
     if (submitting) return;
+    setValidationAttempted(true);
     if (!transaction._id) throw new Error("ไม่พบรายการค่าห้อง กรุณารีเฟรช Booking");
     if (!paymentMethod) throw new Error("กรุณาเลือกช่องทางรับชำระ");
     if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
@@ -114,7 +117,10 @@ const ReceiveRoomPayment = ({
         <div className="receiveRoomPayment__titleRow">
           <h1 className="addBooking__title">รับชำระค่าห้อง</h1>
           <span className="receiveRoomPayment__eyebrow">
-            <i className="bx bx-wallet" aria-hidden="true" /> ก่อน Check-In
+            <i className="bx bx-wallet" aria-hidden="true" />{" "}
+            {currentBooking.status === "checkedIn"
+              ? "ระหว่างเข้าพัก / ก่อน Check-Out"
+              : "ก่อน Check-In"}
           </span>
         </div>
         <p>Booking ยังอยู่สถานะเดิม และรายการจะลงวันที่รับเงินจริงวันนี้</p>
@@ -136,10 +142,13 @@ const ReceiveRoomPayment = ({
         </section>
 
         <div className="receiveRoomPayment__grid">
-          <label>
-            <span className="addBooking__label">จำนวนเงิน (฿)</span>
+          <div>
+            <label className="addBooking__label" htmlFor={`${fieldId}-amount`}>จำนวนเงิน (฿)</label>
             <input
-              className="boxInput"
+              id={`${fieldId}-amount`}
+              className={`boxInput${validationAttempted && (!Number.isFinite(numericAmount) || numericAmount <= 0 || numericAmount > remainingAmount) ? " boxInput--error" : ""}`}
+              aria-invalid={validationAttempted && (!Number.isFinite(numericAmount) || numericAmount <= 0 || numericAmount > remainingAmount)}
+              aria-describedby={validationAttempted && (!Number.isFinite(numericAmount) || numericAmount <= 0 || numericAmount > remainingAmount) ? `${fieldId}-amount-error` : undefined}
               type="number"
               min="0.01"
               max={remainingAmount}
@@ -148,10 +157,19 @@ const ReceiveRoomPayment = ({
               disabled={submitting}
               onChange={(event) => setAmount(event.target.value)}
             />
-          </label>
-          <label>
-            <span className="addBooking__label">ช่องทางรับชำระ</span>
+            {validationAttempted && (!Number.isFinite(numericAmount) || numericAmount <= 0 || numericAmount > remainingAmount) && (
+              <p id={`${fieldId}-amount-error`} className="formField__error">
+                {!Number.isFinite(numericAmount) || numericAmount <= 0 ? "จำนวนเงินต้องมากกว่า 0" : `รับชำระได้ไม่เกิน ${formatCurrency(remainingAmount)} บาท`}
+              </p>
+            )}
+          </div>
+          <div>
+            <label className="addBooking__label" htmlFor={`${fieldId}-payment`}>ช่องทางรับชำระ</label>
             <Select<OptionType>
+              inputId={`${fieldId}-payment`}
+              className={validationAttempted && !paymentMethod ? "formField--error" : undefined}
+              aria-invalid={validationAttempted && !paymentMethod}
+              aria-errormessage={validationAttempted && !paymentMethod ? `${fieldId}-payment-error` : undefined}
               styles={customStyles<OptionType>()}
               classNamePrefix="rs"
               options={receivePaymentMethods}
@@ -168,7 +186,8 @@ const ReceiveRoomPayment = ({
                 setPaymentMethod((option?.value || "") as PaymentMethod | "")
               }
             />
-          </label>
+            {validationAttempted && !paymentMethod && <p id={`${fieldId}-payment-error`} className="formField__error">กรุณาเลือกช่องทางรับชำระ</p>}
+          </div>
         </div>
 
         {paymentMethod === "Card" && (

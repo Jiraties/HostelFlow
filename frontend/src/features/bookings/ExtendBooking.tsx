@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import Select, { type MultiValue, type SingleValue } from "react-select";
 import toast from "react-hot-toast";
@@ -120,6 +120,8 @@ const ExtendBooking = ({
   const [occupiedRoomIds, setOccupiedRoomIds] = useState<string[]>([]);
   const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [validationAttempted, setValidationAttempted] = useState(false);
+  const fieldId = useId();
   const [idempotencyKey] = useState(() => crypto.randomUUID());
 
   const addedNightsDifference =
@@ -321,6 +323,7 @@ const ExtendBooking = ({
   );
   const submitExtension = async () => {
     if (submitting) return;
+    setValidationAttempted(true);
     if (addedNights < 1) throw new Error("กรุณาเพิ่มอย่างน้อย 1 คืน");
     if (selectedRooms.length === 0) throw new Error("กรุณาเลือกห้องพัก");
     if (unavailableSelection) {
@@ -424,9 +427,10 @@ const ExtendBooking = ({
               isMulti
               isDisabled={submitting || checkingAvailability}
               styles={customStyles<OptionType, true>()}
-              className={unavailableSelection ? "formField--error" : undefined}
+              className={unavailableSelection || (validationAttempted && selectedRooms.length === 0) ? "formField--error" : undefined}
               classNamePrefix="rs"
-              aria-invalid={unavailableSelection}
+              aria-invalid={unavailableSelection || (validationAttempted && selectedRooms.length === 0)}
+              aria-errormessage={unavailableSelection || (validationAttempted && selectedRooms.length === 0) ? `${fieldId}-room-error` : undefined}
               options={availableRoomOptions}
               value={availableRoomOptions.filter((option) =>
                 selectedRooms.includes(option.value),
@@ -438,10 +442,11 @@ const ExtendBooking = ({
               }
             />
             {unavailableSelection && (
-              <p className="formField__error">
+              <p id={`${fieldId}-room-error`} className="formField__error">
                 ห้องที่เลือกไม่ว่างในช่วงนี้
               </p>
             )}
+            {validationAttempted && selectedRooms.length === 0 && !unavailableSelection && <p id={`${fieldId}-room-error`} className="formField__error">กรุณาเลือกห้องพัก</p>}
           </div>
           <div className="extendBooking__field">
             <p className="addBooking__label">
@@ -466,6 +471,8 @@ const ExtendBooking = ({
                 value={addedNightsInput}
                 disabled={submitting}
                 aria-label="จำนวนคืนที่เพิ่ม"
+                aria-invalid={validationAttempted && addedNights < 1}
+                aria-describedby={validationAttempted && addedNights < 1 ? `${fieldId}-nights-error` : undefined}
                 onChange={(event) =>
                   addedNightsChangeHandler(event.target.value)
                 }
@@ -480,6 +487,7 @@ const ExtendBooking = ({
                 <i className="bx bx-plus" aria-hidden="true" />
               </button>
             </div>
+            {validationAttempted && addedNights < 1 && <p id={`${fieldId}-nights-error`} className="formField__error">กรุณาเพิ่มอย่างน้อย 1 คืน</p>}
           </div>
         </div>
 
@@ -505,6 +513,8 @@ const ExtendBooking = ({
           <span>Booking No. สำหรับคืนที่เพิ่ม</span>
           <input
             className="boxInput"
+            aria-invalid={validationAttempted && !channelBookingId.trim()}
+            aria-describedby={validationAttempted && !channelBookingId.trim() ? `${fieldId}-booking-error` : undefined}
             value={channelBookingId}
             maxLength={100}
             inputMode={platformId === "WALK" ? "numeric" : undefined}
@@ -516,6 +526,7 @@ const ExtendBooking = ({
               channelBookingIdChangeHandler(event.target.value)
             }
           />
+          {validationAttempted && !channelBookingId.trim() && <span id={`${fieldId}-booking-error`} className="formField__error">กรุณาระบุ Booking No.</span>}
         </label>
 
         <label className="extendBooking__field">
@@ -523,6 +534,8 @@ const ExtendBooking = ({
           <input
             placeholder="เช่น 1000"
             className="boxInput"
+            aria-invalid={validationAttempted && (!Number.isFinite(numericAmount) || numericAmount <= 0)}
+            aria-describedby={validationAttempted && (!Number.isFinite(numericAmount) || numericAmount <= 0) ? `${fieldId}-amount-error` : undefined}
             type="number"
             min="0.01"
             step="0.01"
@@ -530,6 +543,7 @@ const ExtendBooking = ({
             disabled={submitting}
             onChange={(event) => setAmount(event.target.value)}
           />
+          {validationAttempted && (!Number.isFinite(numericAmount) || numericAmount <= 0) && <span id={`${fieldId}-amount-error`} className="formField__error">ค่าห้องต้องมากกว่า 0</span>}
         </label>
 
         <div className="extendBooking__field">
@@ -538,6 +552,9 @@ const ExtendBooking = ({
             isDisabled={submitting}
             styles={customStyles<OptionType>()}
             classNamePrefix="rs"
+            className={validationAttempted && !paymentMethod ? "formField--error" : undefined}
+            aria-invalid={validationAttempted && !paymentMethod}
+            aria-errormessage={validationAttempted && !paymentMethod ? `${fieldId}-payment-error` : undefined}
             options={paidPaymentOptions}
             value={paidPaymentOptions.find(
               (option) => option.value === paymentMethod,
@@ -548,6 +565,7 @@ const ExtendBooking = ({
               setPaymentMethod((option?.value || "") as PaymentMethod | "")
             }
           />
+          {validationAttempted && !paymentMethod && <p id={`${fieldId}-payment-error`} className="formField__error">กรุณาเลือกช่องทางชำระเงิน</p>}
           {paymentMethod === "Cash" && <CashShiftNudge />}
         </div>
 

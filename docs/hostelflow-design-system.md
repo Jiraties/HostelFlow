@@ -128,7 +128,9 @@ Use `PageHeader` instead of building a separate title/profile system. Updated-at
 - Secondary action: white surface with a cyan icon.
 - Disabled action: neutral grey, no active hover movement, native `disabled` state.
 - Icon-only action: a compact circular target with a meaningful accessible name.
-- Segmented control: rounded/pill group, with a cyan active segment.
+- Form segmented control: soft gray inset track with a raised white selected segment. The remaining-nights room-status control retains its white split surface and green/red selected label and icon. Reuse the shared styles in `index.css`, preserve disabled states, and expose the selection with `aria-pressed`.
+- Form choices with explanations: use the stacked `formChoiceGroup` and `formChoice` radio rows, with borderless white shadowed surfaces, regular text, muted helpers, and a primary-color check icon when selected. Preserve the native radio semantics and the existing decision and confirmation rules.
+- Form summaries: use a white raised surface with `1rem` padding, `0.5rem` corners, and `--main-shadow`; put the section label above the surface where present.
 - Use `aria-pressed` for toggle buttons and `aria-current="page"` for active navigation links.
 
 ### Forms

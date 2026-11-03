@@ -33,6 +33,7 @@ const ClosedRoomAvailability = ({
     current === "released" ? "blocked" : "released",
   );
   const [reason, setReason] = useState("");
+  const [validationAttempted, setValidationAttempted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [idempotencyKey] = useState(() => crypto.randomUUID());
 
@@ -42,6 +43,7 @@ const ClosedRoomAvailability = ({
   }, [current, onDirtyChange, reason, target]);
 
   const submit = async () => {
+    setValidationAttempted(true);
     if (!reason.trim()) throw new Error("กรุณาระบุเหตุผล");
     setSubmitting(true);
     try {
@@ -79,10 +81,12 @@ const ClosedRoomAvailability = ({
       </section>
       <section className="resolveBooking__section">
         <p className="addBooking__label">เปลี่ยนเป็น</p>
-        <div className="cancellation__segmentedControl">
+        <div className="cancellation__segmentedControl" role="group" aria-label="สถานะห้องที่ต้องการ">
           <button
             type="button"
             className={`cancellation__segment${target === "released" ? " cancellation__segment--active" : ""}`}
+            aria-pressed={target === "released"}
+            data-room-availability="available"
             onClick={() => setTarget("released")}
           >
             เปิดให้จอง
@@ -90,6 +94,8 @@ const ClosedRoomAvailability = ({
           <button
             type="button"
             className={`cancellation__segment${target === "blocked" ? " cancellation__segment--active" : ""}`}
+            aria-pressed={target === "blocked"}
+            data-room-availability="blocked"
             onClick={() => setTarget("blocked")}
           >
             กันห้องไว้
@@ -100,10 +106,14 @@ const ClosedRoomAvailability = ({
         <p className="addBooking__label">เหตุผล (จำเป็น)</p>
         <textarea
           className="boxInput"
+          aria-label="เหตุผล"
+          aria-invalid={validationAttempted && !reason.trim()}
+          aria-describedby={validationAttempted && !reason.trim() ? "closed-room-reason-error" : undefined}
           maxLength={500}
           value={reason}
           onChange={(event) => setReason(event.target.value)}
         />
+        {validationAttempted && !reason.trim() && <p id="closed-room-reason-error" className="formField__error">กรุณาระบุเหตุผล</p>}
       </section>
       <div className="resolveBooking__actions">
         <ActionButton text="ยกเลิก" icon="bx-x" onClick={onClose} />

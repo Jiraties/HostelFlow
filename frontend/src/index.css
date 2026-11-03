@@ -83,6 +83,16 @@ body {
   appearance: none;
 }
 
+.boxInput:focus-visible {
+  outline: 2px solid #00828d;
+  outline-offset: 2px;
+}
+
+.boxInput--error:focus-visible,
+.boxInput[aria-invalid="true"]:focus-visible {
+  outline-color: var(--field-error-color);
+}
+
 .formField__error {
   color: var(--field-error-color);
   font-size: 0.82rem;
@@ -90,9 +100,192 @@ body {
 }
 
 .boxInput--error,
+.boxInput[aria-invalid="true"],
+.boxInput:has(> input[aria-invalid="true"]),
+.confirmationModal__reason[aria-invalid="true"],
+.manage__auditResolve textarea[aria-invalid="true"],
+.extendBooking__nightsStepper:has(input[aria-invalid="true"]),
 .formField--error .rs__control,
 .formField--error .resolveSelect__control {
   outline: 1px solid var(--field-error-color);
+}
+
+.boxInput[aria-invalid="true"]:focus-visible,
+.boxInput--error:focus-visible,
+.confirmationModal__reason[aria-invalid="true"]:focus-visible,
+.manage__auditResolve textarea[aria-invalid="true"]:focus-visible {
+  outline: 2px solid var(--field-error-color);
+  outline-offset: 2px;
+}
+
+/* Shared two-way selection used throughout booking forms. */
+:is(.cancellation__segmentedControl, .extendBooking__placement, .addBooking__advanceMode) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 0.55rem;
+  background: #f3f3f3;
+}
+
+:is(.cancellation__segment, .extendBooking__placement button, .addBooking__advanceModeButton) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-width: 0;
+  min-height: 2.75rem;
+  padding: 0.4rem 0.75rem;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: #555;
+  cursor: pointer;
+  font: inherit;
+  text-align: center;
+}
+
+:is(.cancellation__segment--active, .extendBooking__placement button.active, .addBooking__advanceModeButton--active) {
+  background: var(--background);
+  box-shadow: var(--light-shadow);
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* Only room availability uses semantic color; the raised segment still marks selection. */
+.cancellation__segment[data-room-availability="available"][aria-pressed="true"] {
+  color: #087443;
+}
+
+.cancellation__segment[data-room-availability="blocked"][aria-pressed="true"] {
+  color: #c42c4b;
+}
+
+/* The remaining-nights room status uses the original white split control. */
+.roomStatusSegmentedControl.cancellation__segmentedControl {
+  gap: 0;
+  padding: 0;
+  border-radius: 0.5rem;
+  background: var(--background);
+  box-shadow: var(--main-shadow);
+}
+
+.roomStatusSegmentedControl .cancellation__segment {
+  min-height: 3.35rem;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  box-shadow: none;
+}
+
+.roomStatusSegmentedControl .cancellation__segment[aria-pressed="true"] {
+  background: transparent;
+  box-shadow: none;
+}
+
+.roomStatusSegmentedControl .cancellation__segment:first-child {
+  border-radius: 0.5rem 0 0 0.5rem;
+  box-shadow: inset -1px 0 #eee;
+}
+
+.roomStatusSegmentedControl .cancellation__segment:last-child {
+  border-radius: 0 0.5rem 0.5rem 0;
+}
+
+.roomStatusSegmentedControl .cancellation__segment[data-room-availability="available"][aria-pressed="true"] {
+  color: var(--green);
+}
+
+.roomStatusSegmentedControl .cancellation__segment[data-room-availability="blocked"][aria-pressed="true"] {
+  color: var(--red);
+}
+
+.roomStatusSegmentedControl .cancellation__segment:focus-visible {
+  outline-offset: -2px;
+}
+
+:is(.cancellation__segment, .extendBooking__placement button, .addBooking__advanceModeButton):focus-visible {
+  outline: 2px solid #00828d;
+  outline-offset: 1px;
+}
+
+:is(.cancellation__segment, .extendBooking__placement button, .addBooking__advanceModeButton):disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.formChoiceGroup {
+  display: grid;
+  gap: 0.65rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.formChoiceGroup legend {
+  margin-bottom: 0.5rem;
+  padding: 0;
+}
+
+label.formChoice,
+.correctCheckIn label.formChoice {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: var(--background);
+  box-shadow: var(--main-shadow);
+  cursor: pointer;
+}
+
+label.formChoice:has(input:focus-visible) {
+  outline: 2px solid #00828d;
+  outline-offset: 2px;
+}
+
+.formChoice__copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.2rem;
+  line-height: 1.4;
+}
+
+.formChoice__title {
+  font-weight: 400;
+}
+
+.formChoice__copy small {
+  color: #6b7280;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.formChoice input[type="radio"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.formChoice__indicator {
+  color: var(--primary-color);
+  font-size: 1.25rem;
+  visibility: hidden;
+}
+
+.formChoice:has(input:checked) .formChoice__indicator {
+  visibility: visible;
 }
 
 .boxButton {

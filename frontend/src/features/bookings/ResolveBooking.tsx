@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import Select, { type SingleValue } from "react-select";
 import axios from "axios";
 import toast from "react-hot-toast";
@@ -47,7 +47,6 @@ type MoneyActionConfig = {
   id: Exclude<MoneyActionId, "none">;
   label: string;
   helper: string;
-  icon: string;
   row: Omit<SettlementRow, "id" | "amount" | "note" | "relatedTransactionId">;
 };
 
@@ -105,7 +104,6 @@ const moneyActions: MoneyActionConfig[] = [
     id: "refund_guest",
     label: "คืนเงินลูกค้า",
     helper: "บันทึกเงินที่จ่ายคืนให้ลูกค้า",
-    icon: "bx-undo",
     row: {
       type: "roomRefund",
       paymentMethod: "Cash",
@@ -116,7 +114,6 @@ const moneyActions: MoneyActionConfig[] = [
     id: "collect_extra",
     label: "เก็บเงินเพิ่ม",
     helper: "บันทึกเงินที่รับเพิ่มจากลูกค้า",
-    icon: "bx-plus-circle",
     row: {
       type: "settlementCharge",
       paymentMethod: "Cash",
@@ -127,7 +124,6 @@ const moneyActions: MoneyActionConfig[] = [
     id: "correct_payment",
     label: "แก้ไขการชำระเงิน",
     helper: "Admin แก้รายการที่บันทึกผิดหลังปิด Booking",
-    icon: "bx-edit",
     row: {
       type: "paymentCorrection",
       paymentMethod: "Cash",
@@ -219,6 +215,7 @@ const ResolveBooking = ({
   const [reasonCode, setReasonCode] = useState(initialReasonCode);
   const [note, setNote] = useState("");
   const [moneyAction, setMoneyAction] = useState<MoneyActionId>("none");
+  const moneyActionName = useId();
   const [advancedRowsOpen, setAdvancedRowsOpen] = useState(false);
   const [rows, setRows] = useState<SettlementRow[]>(() => [
     createRow(Date.now()),
@@ -612,7 +609,7 @@ const ResolveBooking = ({
   );
 
   const roomReleaseControl = (
-    <div className="cancellation__segmentedControl resolveBooking__segmentedControl">
+    <div className="cancellation__segmentedControl roomStatusSegmentedControl resolveBooking__segmentedControl" role="group" aria-label="สถานะห้องสำหรับคืนที่เหลือ">
       <button
         type="button"
         className={`cancellation__segment${
@@ -621,6 +618,7 @@ const ResolveBooking = ({
             : ""
         }`}
         aria-pressed={roomReleaseStatus === "released"}
+        data-room-availability="available"
         onClick={() => setRoomReleaseStatus("released")}
       >
         <i className="bx bx-door-open" aria-hidden="true" />
@@ -634,6 +632,7 @@ const ResolveBooking = ({
             : ""
         }`}
         aria-pressed={roomReleaseStatus === "blocked"}
+        data-room-availability="blocked"
         onClick={() => setRoomReleaseStatus("blocked")}
       >
         <i className="bx bx-lock-keyhole" aria-hidden="true" />
@@ -742,42 +741,37 @@ const ResolveBooking = ({
 
       {!isNoShow ? (
         <section className="resolveBooking__section">
-          <p className="addBooking__label">
-            ต้องบันทึกรายการเงินพร้อมการปิดเคสหรือไม่?
-          </p>
-          <div className="resolveBooking__quickActions">
-            <button
-              type="button"
-              className={`resolveBooking__quickAction${
-                moneyAction === "none"
-                  ? " resolveBooking__quickAction--active"
-                  : ""
-              }`}
-              aria-pressed={moneyAction === "none"}
-              onClick={() => applyMoneyAction("none")}
-            >
-              <i className="bx bx-check" aria-hidden="true" />
-              <span>ไม่มีรายการเงิน</span>
-              <small>ปิดเคสโดยไม่คืนหรือรับเงินเพิ่ม</small>
-            </button>
+          <fieldset className="formChoiceGroup">
+            <legend>ต้องบันทึกรายการเงินพร้อมการปิดเคสหรือไม่?</legend>
+            <label className="formChoice">
+              <span className="formChoice__copy">
+                <span className="formChoice__title">ไม่มีรายการเงิน</span>
+                <small>ปิดเคสโดยไม่คืนหรือรับเงินเพิ่ม</small>
+              </span>
+              <input
+                type="radio"
+                name={moneyActionName}
+                checked={moneyAction === "none"}
+                onChange={() => applyMoneyAction("none")}
+              />
+              <i className="bx bx-check formChoice__indicator" aria-hidden="true" />
+            </label>
             {availableMoneyActions.map((action) => (
-              <button
-                type="button"
-                key={action.id}
-                className={`resolveBooking__quickAction${
-                  moneyAction === action.id
-                    ? " resolveBooking__quickAction--active"
-                    : ""
-                }`}
-                aria-pressed={moneyAction === action.id}
-                onClick={() => applyMoneyAction(action.id)}
-              >
-                <i className={`bx ${action.icon}`} aria-hidden="true" />
-                <span>{action.label}</span>
-                <small>{action.helper}</small>
-              </button>
+              <label className="formChoice" key={action.id}>
+                <span className="formChoice__copy">
+                  <span className="formChoice__title">{action.label}</span>
+                  <small>{action.helper}</small>
+                </span>
+                <input
+                  type="radio"
+                  name={moneyActionName}
+                  checked={moneyAction === action.id}
+                  onChange={() => applyMoneyAction(action.id)}
+                />
+                <i className="bx bx-check formChoice__indicator" aria-hidden="true" />
+              </label>
             ))}
-          </div>
+          </fieldset>
 
           {moneyAction !== "none" ? (
             <div className="resolveBooking__rows">
@@ -1023,12 +1017,15 @@ const ResolveBooking = ({
               <input
                 type="checkbox"
                 checked={confirmedDepositReturn}
+                aria-invalid={submitAttempted && !confirmedDepositReturn}
+                aria-describedby={submitAttempted && !confirmedDepositReturn ? "resolve-deposit-error" : undefined}
                 onChange={(event) =>
                   setConfirmedDepositReturn(event.target.checked)
                 }
               />
               <span className="box" />
             </label>
+            {submitAttempted && !confirmedDepositReturn && <p id="resolve-deposit-error" className="formField__error">กรุณายืนยันการคืนมัดจำ</p>}
           </div>
         </section>
       ) : null}
@@ -1090,8 +1087,9 @@ const ResolveBooking = ({
         </div>
       </section>
 
-      <section className="resolveBooking__summary" aria-live="polite">
+      <div>
         <p className="addBooking__label">หลังบันทึก</p>
+        <section className="resolveBooking__summary" aria-live="polite">
         <ul>
           <li>
             <i className="bx bx-check-circle" aria-hidden="true" />
@@ -1123,7 +1121,8 @@ const ResolveBooking = ({
             </li>
           ) : null}
         </ul>
-      </section>
+        </section>
+      </div>
 
       <div className="resolveBooking__actions">
         <ActionButton text="ยกเลิก" icon="bx-x" onClick={() => onClose?.()} />

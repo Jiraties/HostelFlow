@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import toast from "react-hot-toast";
 import ActionButton from "./ActionButton";
 import ModalCloseButton from "./ModalCloseButton";
@@ -29,6 +29,8 @@ const CreateNewUser = ({
   onDirtyChange?: (isDirty: boolean) => void;
 }) => {
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [validationAttempted, setValidationAttempted] = useState(false);
+  const fieldId = useId();
 
   useEffect(() => {
     onDirtyChange?.(
@@ -45,6 +47,7 @@ const CreateNewUser = ({
   }, [confirmPassword, form, onDirtyChange]);
 
   const submitHandler = async () => {
+    setValidationAttempted(true);
     if (form.password !== confirmPassword) {
       throw new Error("รหัสผ่านไม่ตรงกัน");
     }
@@ -68,22 +71,30 @@ const CreateNewUser = ({
           <input
             type="text"
             className="boxInput"
+            aria-invalid={validationAttempted && !form.username}
+            aria-label="Username"
+            aria-describedby={validationAttempted && !form.username ? `${fieldId}-username-error` : undefined}
             placeholder="เช่น staff01"
             value={form.username}
             autoComplete="username"
             onChange={(e) => onChange("username", e.target.value)}
           />
+          {validationAttempted && !form.username && <p id={`${fieldId}-username-error`} className="formField__error">กรุณากรอก Username</p>}
         </div>
         <div>
           <p className="addBooking__label">ชื่อ-นามสกุล</p>
           <input
             type="text"
             className="boxInput"
+            aria-invalid={validationAttempted && !form.name}
+            aria-label="ชื่อ-นามสกุล"
+            aria-describedby={validationAttempted && !form.name ? `${fieldId}-name-error` : undefined}
             placeholder="เช่น Staff Name"
             value={form.name}
             autoComplete="name"
             onChange={(e) => onChange("name", e.target.value)}
           />
+          {validationAttempted && !form.name && <p id={`${fieldId}-name-error`} className="formField__error">กรุณากรอกชื่อ-นามสกุล</p>}
         </div>
         <div>
           <p className="addBooking__label">รหัสผ่าน</p>
@@ -92,10 +103,14 @@ const CreateNewUser = ({
             minLength={12}
             autoComplete="new-password"
             className="boxInput"
+            aria-invalid={validationAttempted && form.password.length < 12}
+            aria-label="รหัสผ่าน"
+            aria-describedby={validationAttempted && form.password.length < 12 ? `${fieldId}-password-error` : undefined}
             placeholder="รหัสผ่านใหม่"
             value={form.password}
             onChange={(e) => onChange("password", e.target.value)}
           />
+          {validationAttempted && form.password.length < 12 && <p id={`${fieldId}-password-error`} className="formField__error">รหัสผ่านต้องมีอย่างน้อย 12 ตัวอักษร</p>}
         </div>
         <div>
           <p className="addBooking__label">ยืนยันรหัสผ่าน</p>
@@ -104,21 +119,25 @@ const CreateNewUser = ({
             minLength={12}
             autoComplete="new-password"
             className="boxInput"
+            aria-invalid={validationAttempted && form.password !== confirmPassword}
+            aria-label="ยืนยันรหัสผ่าน"
+            aria-describedby={validationAttempted && form.password !== confirmPassword ? `${fieldId}-confirm-error` : undefined}
             placeholder="ยืนยันรหัสผ่านใหม่"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
           />
+          {validationAttempted && form.password !== confirmPassword && <p id={`${fieldId}-confirm-error`} className="formField__error">รหัสผ่านไม่ตรงกัน</p>}
         </div>
         <div>
           <p className="addBooking__label">สิทธิ์ผู้ใช้</p>
-          <div className="cancellation__segmentedControl createNewUser__roleToggle">
+          <div className="cancellation__segmentedControl createNewUser__roleToggle" role="group" aria-label="สิทธิ์ผู้ใช้">
             <button
               type="button"
               className={
                 "cancellation__segment" +
                 (!form.admin ? " cancellation__segment--active" : "")
               }
-              style={{ borderRight: "1px #eee solid" }}
+              aria-pressed={!form.admin}
               onClick={() => onChange("admin", false)}
             >
               <i className="bx bx-user" />
@@ -130,6 +149,7 @@ const CreateNewUser = ({
                 "cancellation__segment" +
                 (form.admin ? " cancellation__segment--active" : "")
               }
+              aria-pressed={form.admin}
               onClick={() => onChange("admin", true)}
             >
               <i className="bx bx-shield-quarter" />

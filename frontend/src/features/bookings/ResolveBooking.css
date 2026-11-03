@@ -28,68 +28,6 @@
   gap: 1rem;
 }
 
-.resolveBooking__quickActions {
-  display: grid;
-  gap: 0.75rem;
-  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
-}
-
-.resolveBooking__quickAction {
-  background-color: var(--background);
-  border: none;
-  border-radius: 1.5rem;
-  box-shadow: var(--light-shadow);
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  font-family: inherit;
-  gap: 0.55rem;
-  min-height: 9rem;
-  min-width: 0;
-  padding: 1.25rem;
-  text-align: left;
-  transition:
-    background-color 0.2s ease,
-    box-shadow 0.2s ease,
-    transform 0.2s ease;
-}
-
-.resolveBooking__quickAction:hover {
-  box-shadow: var(--main-shadow);
-  transform: translateY(-1px);
-}
-
-.resolveBooking__quickAction--active {
-  background-color: color-mix(in srgb, var(--primary-color) 7%, #fff);
-
-  box-shadow: var(--main-shadow);
-}
-
-.resolveBooking__quickAction i {
-  align-items: center;
-  background-color: color-mix(in srgb, var(--primary-color) 14%, #fff);
-  border-radius: 50%;
-  color: var(--primary-color);
-  display: inline-flex;
-  font-size: 1.4rem;
-  height: 2.5rem;
-  justify-content: center;
-  width: 2.5rem;
-}
-
-.resolveBooking__quickAction span {
-  color: var(--text);
-  font-weight: 500;
-  font-size: 1rem;
-  line-height: 1.35;
-}
-
-.resolveBooking__quickAction small {
-  font-size: 1rem;
-  line-height: 1.45;
-  color: #414141;
-}
-
 .resolveBooking__twoColumn {
   display: grid;
   gap: 1rem;
@@ -369,8 +307,9 @@
 }
 
 .resolveBooking__summary {
-  background: #00000005;
-  border-radius: 0.75rem;
+  background: var(--background);
+  border-radius: 0.5rem;
+  box-shadow: var(--main-shadow);
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
@@ -409,7 +348,6 @@
     width: calc(100vw - 1.5rem);
   }
 
-  .resolveBooking__quickActions,
   .resolveBooking__twoColumn {
     grid-template-columns: 1fr;
   }

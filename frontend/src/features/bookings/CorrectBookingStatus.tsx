@@ -86,6 +86,7 @@ const CorrectBookingStatus = ({
       ? Number(currentBooking.checkout?.depositRefundAmount || 0)
       : 0;
   const [reason, setReason] = useState("");
+  const [validationAttempted, setValidationAttempted] = useState(false);
   const [depositDecision, setDepositDecision] =
     useState<DepositDecision>("not_applicable");
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -168,6 +169,7 @@ const CorrectBookingStatus = ({
   };
 
   const submit = async () => {
+    setValidationAttempted(true);
     if (!reason.trim()) {
       throw new Error("กรุณาระบุเหตุผลที่แก้ไข");
     }
@@ -218,9 +220,13 @@ const CorrectBookingStatus = ({
       </header>
 
       {depositAmount > 0 && (
-        <fieldset className="correctBookingStatus__deposit">
+        <fieldset className="correctBookingStatus__deposit formChoiceGroup">
           <legend>เงินมัดจำ ฿{depositAmount} ถูกคืนให้แขกจริงหรือไม่</legend>
-          <label>
+          <label className="formChoice">
+            <span className="formChoice__copy">
+              <span className="formChoice__title">ยังไม่ได้คืนมัดจำจริง</span>
+              <small>ชดเชยเฉพาะรายการคืนเงินที่บันทึกผิด โดยเก็บประวัติเดิมไว้</small>
+            </span>
             <input
               type="radio"
               name="deposit-decision"
@@ -231,14 +237,13 @@ const CorrectBookingStatus = ({
                 setPreviewing(true);
               }}
             />
-            <span>
-              <span>ยังไม่ได้คืนมัดจำจริง</span>
-              <small>
-                ชดเชยเฉพาะรายการคืนเงินที่บันทึกผิด โดยเก็บประวัติเดิมไว้
-              </small>
-            </span>
+            <i className="bx bx-check formChoice__indicator" aria-hidden="true" />
           </label>
-          <label>
+          <label className="formChoice">
+            <span className="formChoice__copy">
+              <span className="formChoice__title">คืนมัดจำให้แขกแล้ว</span>
+              <small>คงรายการคืนเงินไว้ หากต้องรับมัดจำใหม่ให้ใช้ขั้นตอนรับมัดจำปกติ</small>
+            </span>
             <input
               type="radio"
               name="deposit-decision"
@@ -249,12 +254,7 @@ const CorrectBookingStatus = ({
                 setPreviewing(true);
               }}
             />
-            <span>
-              <span>คืนมัดจำให้แขกแล้ว</span>
-              <small>
-                คงรายการคืนเงินไว้ หากต้องรับมัดจำใหม่ให้ใช้ขั้นตอนรับมัดจำปกติ
-              </small>
-            </span>
+            <i className="bx bx-check formChoice__indicator" aria-hidden="true" />
           </label>
         </fieldset>
       )}
@@ -266,6 +266,8 @@ const CorrectBookingStatus = ({
         <textarea
           id="status-correction-reason"
           className="boxInput"
+          aria-invalid={validationAttempted && !reason.trim()}
+          aria-describedby={validationAttempted && !reason.trim() ? "status-correction-reason-error" : undefined}
           value={reason}
           maxLength={500}
           onChange={(event) => {
@@ -273,13 +275,15 @@ const CorrectBookingStatus = ({
           }}
           placeholder="เช่น เลือก Booking ผิดรายการ"
         />
+        {validationAttempted && !reason.trim() && <p id="status-correction-reason-error" className="formField__error">กรุณาระบุเหตุผลที่แก้ไข</p>}
       </div>
 
-      <section
-        className="resolveBooking__summary correctBookingStatus__summary"
-        aria-live="polite"
-      >
+      <div>
         <p className="addBooking__label">หลังบันทึก</p>
+        <section
+          className="resolveBooking__summary correctBookingStatus__summary"
+          aria-live="polite"
+        >
         <ul>
           <li>
             <i className="bx bx-user" aria-hidden="true" />
@@ -328,7 +332,8 @@ const CorrectBookingStatus = ({
             <i className="bx bx-error-circle" /> {warning.message}
           </p>
         ))}
-      </section>
+        </section>
+      </div>
 
       <div className="correctBookingStatus__actions">
         <ActionButton

@@ -1,5 +1,5 @@
 import axios from "axios";
-import { useState } from "react";
+import { useId, useState } from "react";
 import Select, { type SingleValue } from "react-select";
 import toast from "react-hot-toast";
 import ActionButton from "../../components/ActionButton";
@@ -67,6 +67,8 @@ const StandaloneSaleModal = ({
   const [submitting, setSubmitting] = useState(false);
   const [showOptionalDetails, setShowOptionalDetails] = useState(false);
   const [formData, setFormData] = useState<SaleFormData>(emptyForm);
+  const [validationAttempted, setValidationAttempted] = useState(false);
+  const fieldId = useId();
 
   const updateForm = (field: keyof SaleFormData, value: string) => {
     if (submitting) return;
@@ -90,6 +92,7 @@ const StandaloneSaleModal = ({
   };
 
   const createSale = async () => {
+    setValidationAttempted(true);
     const amount = Number(formData.amount);
     if (
       !formData.type ||
@@ -128,6 +131,9 @@ const StandaloneSaleModal = ({
   };
 
   const numericAmount = Number(formData.amount);
+  const typeError = validationAttempted && !formData.type;
+  const amountError = validationAttempted && (!Number.isFinite(numericAmount) || numericAmount <= 0);
+  const paymentError = validationAttempted && !formData.paymentMethod;
   const validAmount =
     Number.isFinite(numericAmount) && numericAmount > 0 ? numericAmount : 0;
   const hasCashMovement = formData.paymentMethod === "Cash" && validAmount > 0;
@@ -154,8 +160,12 @@ const StandaloneSaleModal = ({
         {hasCashMovement && <CashShiftNudge />}
 
         <div>
-          <p className="addBooking__label">ประเภทรายการ</p>
+          <label className="addBooking__label" htmlFor={`${fieldId}-type`}>ประเภทรายการ</label>
           <Select<OptionType>
+            inputId={`${fieldId}-type`}
+            className={typeError ? "formField--error" : undefined}
+            aria-invalid={typeError}
+            aria-errormessage={typeError ? `${fieldId}-type-error` : undefined}
             styles={customStyles<OptionType>()}
             classNamePrefix="rs"
             options={standaloneTransactionTypeOptions}
@@ -172,23 +182,32 @@ const StandaloneSaleModal = ({
               selectTransactionType(option?.value || "")
             }
           />
+          {typeError && <p id={`${fieldId}-type-error`} className="formField__error">กรุณาเลือกประเภทรายการ</p>}
         </div>
 
         <div>
-          <p className="addBooking__label">จำนวนเงิน (฿)</p>
+          <label className="addBooking__label" htmlFor={`${fieldId}-amount`}>จำนวนเงิน (฿)</label>
           <input
-            className="boxInput"
+            id={`${fieldId}-amount`}
+            className={`boxInput${amountError ? " boxInput--error" : ""}`}
+            aria-invalid={amountError}
+            aria-describedby={amountError ? `${fieldId}-amount-error` : undefined}
             type="number"
             min="0"
             value={formData.amount}
             placeholder="เช่น 500"
             onChange={(event) => updateForm("amount", event.target.value)}
           />
+          {amountError && <p id={`${fieldId}-amount-error`} className="formField__error">จำนวนเงินต้องมากกว่า 0</p>}
         </div>
 
         <div>
-          <p className="addBooking__label">จ่ายผ่าน</p>
+          <label className="addBooking__label" htmlFor={`${fieldId}-payment`}>จ่ายผ่าน</label>
           <Select<OptionType>
+            inputId={`${fieldId}-payment`}
+            className={paymentError ? "formField--error" : undefined}
+            aria-invalid={paymentError}
+            aria-errormessage={paymentError ? `${fieldId}-payment-error` : undefined}
             styles={customStyles<OptionType>()}
             classNamePrefix="rs"
             options={addTransactionPaymentMethodOptions}
@@ -204,14 +223,16 @@ const StandaloneSaleModal = ({
               updateForm("paymentMethod", option?.value || "")
             }
           />
+          {paymentError && <p id={`${fieldId}-payment-error`} className="formField__error">กรุณาเลือกช่องทางการชำระเงิน</p>}
         </div>
 
         <div>
-          <p className="addBooking__label">
+          <label className="addBooking__label" htmlFor={`${fieldId}-note`}>
             หมายเหตุรายการ
             <span className="addTransaction__optionalLabel">(ไม่บังคับ)</span>
-          </p>
+          </label>
           <input
+            id={`${fieldId}-note`}
             className="boxInput"
             value={formData.note}
             maxLength={500}
@@ -223,11 +244,12 @@ const StandaloneSaleModal = ({
         {showOptionalDetails && (
           <div className="standaloneSale__optionalFields">
             <div>
-              <p className="addBooking__label">
+              <label className="addBooking__label" htmlFor={`${fieldId}-customer`}>
                 ชื่อลูกค้า
                 <span className="addTransaction__optionalLabel">(ไม่บังคับ)</span>
-              </p>
+              </label>
               <input
+                id={`${fieldId}-customer`}
                 className="boxInput"
                 value={formData.customerName}
                 onChange={(event) =>

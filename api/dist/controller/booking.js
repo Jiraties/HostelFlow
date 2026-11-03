@@ -1447,6 +1447,19 @@ const removeBooking = async (req, res) => {
                 booking,
             });
         }
+        const effectiveTransactions = (0, transactionCorrections_1.effectiveBookingTransactions)(booking);
+        const blockingTransactions = effectiveTransactions.filter((transaction) => Math.abs(Number(transaction.amount || 0)) > 0 &&
+            transaction.paymentMethod !== "Unpaid" &&
+            transaction.type !== "roomChargeWriteOff");
+        if (blockingTransactions.length > 0) {
+            return res.status(409).json({
+                error: "BOOKING_HAS_RECORDED_PAYMENTS",
+                message: "ไม่สามารถ void การจองที่มียอดรับเงินหรือคืนเงินได้ กรุณาใช้การยกเลิกการจอง (Cancel) สำหรับรายการจริง หรือแก้รายการที่บันทึกผิดเป็น 0 บาทก่อน void",
+                blockingTransactionIds: blockingTransactions.map((transaction) => transaction.originalTransactionId),
+                financialSummary: (0, transactionCorrections_1.summarizeBookingFinancialPosition)(effectiveTransactions),
+                booking,
+            });
+        }
         const voidedBooking = await (0, mutationIdempotency_1.withMutationIdempotency)(req, () => booking_1.default.findOneAndUpdate({
             bookingId,
             status: "booked",

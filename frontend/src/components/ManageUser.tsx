@@ -1,5 +1,5 @@
 import { Modal } from "@mui/material";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import toast from "react-hot-toast";
 import ActionButton from "./ActionButton";
 import ModalCloseButton from "./ModalCloseButton";
@@ -53,6 +53,8 @@ const EditUserModal = ({
   onDirtyChange?: (isDirty: boolean) => void;
 }) => {
   const [name, setName] = useState(user.name);
+  const [validationAttempted, setValidationAttempted] = useState(false);
+  const fieldId = useId();
   const [admin, setAdmin] = useState(user.admin);
   const [active, setActive] = useState(user.active);
 
@@ -65,6 +67,7 @@ const EditUserModal = ({
   }, [active, admin, name, onDirtyChange, user.active, user.admin, user.name]);
 
   const saveHandler = async () => {
+    setValidationAttempted(true);
     if (!name.trim()) throw new Error("กรุณากรอกชื่อพนักงาน");
 
     await onSave({
@@ -96,14 +99,18 @@ const EditUserModal = ({
           <input
             type="text"
             className="boxInput"
+            aria-invalid={validationAttempted && !name.trim()}
+            aria-label="ชื่อ-นามสกุล"
+            aria-describedby={validationAttempted && !name.trim() ? `${fieldId}-name-error` : undefined}
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
+          {validationAttempted && !name.trim() && <p id={`${fieldId}-name-error`} className="formField__error">กรุณากรอกชื่อพนักงาน</p>}
         </div>
 
         <div>
           <p className="addBooking__label">สิทธิ์ผู้ใช้</p>
-          <div className="cancellation__segmentedControl manageUser__toggle">
+          <div className="cancellation__segmentedControl manageUser__toggle" role="group" aria-label="สิทธิ์ผู้ใช้">
             <button
               type="button"
               disabled={isSelf}
@@ -111,7 +118,7 @@ const EditUserModal = ({
                 "cancellation__segment" +
                 (!admin ? " cancellation__segment--active" : "")
               }
-              style={{ borderRight: "1px #eee solid" }}
+              aria-pressed={!admin}
               onClick={() => setAdmin(false)}
             >
               <i className="bx bx-user" />
@@ -123,6 +130,7 @@ const EditUserModal = ({
                 "cancellation__segment" +
                 (admin ? " cancellation__segment--active" : "")
               }
+              aria-pressed={admin}
               onClick={() => setAdmin(true)}
             >
               <i className="bx bx-shield-quarter" />
@@ -133,7 +141,7 @@ const EditUserModal = ({
 
         <div>
           <p className="addBooking__label">สถานะบัญชี</p>
-          <div className="cancellation__segmentedControl manageUser__toggle">
+          <div className="cancellation__segmentedControl manageUser__toggle" role="group" aria-label="สถานะบัญชี">
             <button
               type="button"
               disabled={isSelf}
@@ -141,7 +149,7 @@ const EditUserModal = ({
                 "cancellation__segment" +
                 (active ? " cancellation__segment--active" : "")
               }
-              style={{ borderRight: "1px #eee solid" }}
+              aria-pressed={active}
               onClick={() => setActive(true)}
             >
               <i className="bx bx-check-circle" />
@@ -154,6 +162,7 @@ const EditUserModal = ({
                 "cancellation__segment" +
                 (!active ? " cancellation__segment--active" : "")
               }
+              aria-pressed={!active}
               onClick={() => setActive(false)}
             >
               <i className="bx bx-block" />
@@ -198,6 +207,8 @@ const ResetPasswordModal = ({
 }) => {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [validationAttempted, setValidationAttempted] = useState(false);
+  const fieldId = useId();
 
   useEffect(() => {
     onDirtyChange?.(Boolean(password || confirmPassword));
@@ -206,6 +217,7 @@ const ResetPasswordModal = ({
   }, [confirmPassword, onDirtyChange, password]);
 
   const resetPasswordHandler = async () => {
+    setValidationAttempted(true);
     if (!password) throw new Error("กรุณากรอกรหัสผ่านใหม่");
     if (password.length < 12)
       throw new Error("รหัสผ่านต้องมีอย่างน้อย 12 ตัวอักษร");
@@ -232,9 +244,13 @@ const ResetPasswordModal = ({
             minLength={12}
             autoComplete="new-password"
             className="boxInput"
+            aria-invalid={validationAttempted && password.length < 12}
+            aria-label="รหัสผ่านใหม่"
+            aria-describedby={validationAttempted && password.length < 12 ? `${fieldId}-password-error` : undefined}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
+          {validationAttempted && password.length < 12 && <p id={`${fieldId}-password-error`} className="formField__error">รหัสผ่านต้องมีอย่างน้อย 12 ตัวอักษร</p>}
         </div>
         <div>
           <p className="addBooking__label">ยืนยันรหัสผ่าน</p>
@@ -243,9 +259,13 @@ const ResetPasswordModal = ({
             minLength={12}
             autoComplete="new-password"
             className="boxInput"
+            aria-invalid={validationAttempted && password !== confirmPassword}
+            aria-label="ยืนยันรหัสผ่าน"
+            aria-describedby={validationAttempted && password !== confirmPassword ? `${fieldId}-confirm-error` : undefined}
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
           />
+          {validationAttempted && password !== confirmPassword && <p id={`${fieldId}-confirm-error`} className="formField__error">รหัสผ่านไม่ตรงกัน</p>}
         </div>
       </div>
 

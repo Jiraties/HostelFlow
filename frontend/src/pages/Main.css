@@ -241,6 +241,11 @@
   font-size: 0.9rem;
 }
 
+.main__cashCloseForm .formField__error {
+  color: var(--field-error-color);
+  font-size: 0.82rem;
+}
+
 .main__cashCloseTile strong {
   display: block;
   margin: 0.65rem 0 0.2rem;

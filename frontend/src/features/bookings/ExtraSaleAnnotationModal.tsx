@@ -56,6 +56,7 @@ const ExtraSaleAnnotationModal = ({
   const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
   const [kind, setKind] = useState<CalendarAnnotationKind>(annotation?.kind || "EXTRA_SALE");
   const [customReason, setCustomReason] = useState(annotation?.customReason || "");
+  const [customReasonTouched, setCustomReasonTouched] = useState(false);
   const [note, setNote] = useState(annotation?.note || "");
   const [submitting, setSubmitting] = useState(false);
   const isCreate = !annotation;
@@ -151,6 +152,10 @@ const ExtraSaleAnnotationModal = ({
               <p className="checkIn__label">หัวข้อหมายเหตุ</p>
               <input
                 className="boxInput"
+                aria-label="หัวข้อหมายเหตุ"
+                aria-invalid={customReasonTouched && !customReason.trim()}
+                aria-describedby={customReasonTouched && !customReason.trim() ? "extra-sale-reason-error" : undefined}
+                onBlur={() => setCustomReasonTouched(true)}
                 type="text"
                 maxLength={80}
                 value={customReason}
@@ -158,6 +163,7 @@ const ExtraSaleAnnotationModal = ({
                 disabled={submitting}
                 placeholder="ระบุเรื่องที่ต้องการแจ้ง"
               />
+              {customReasonTouched && !customReason.trim() && <p id="extra-sale-reason-error" className="formField__error">กรุณาระบุหัวข้อหมายเหตุ</p>}
             </div>
           )}
 

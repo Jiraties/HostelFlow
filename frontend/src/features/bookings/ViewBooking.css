@@ -1199,6 +1199,12 @@
   font-size: 1.25rem;
 }
 
+.viewBooking__moreActionsDivider {
+  height: 1px;
+  margin: 0.15rem 0;
+  background-color: #f0f0f0;
+}
+
 .viewBooking__moreActionsMenu i.viewBooking__temporaryActionIcon {
   color: #ffbf00;
 }

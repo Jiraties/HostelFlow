@@ -7,6 +7,7 @@ import toast from "react-hot-toast";
 import { API_URL } from "../config/api";
 import { useState } from "react";
 import { getApiErrorMessage } from "../helpers/apiErrorMessage";
+import { bookingHasRecordedPayments } from "../helpers/bookingHelpers";
 
 const ConfirmationModal = ({
   booking,
@@ -31,9 +32,11 @@ const ConfirmationModal = ({
 }) => {
   const [submitting, setSubmitting] = useState(false);
   const [voidReason, setVoidReason] = useState("");
+  const [validationAttempted, setValidationAttempted] = useState(false);
 
   const handleRemoveBooking = async () => {
     if (submitting) return;
+    setValidationAttempted(true);
     if (!booking) {
       throw new Error("ไม่พบการจองที่ต้องการ void");
     }
@@ -68,6 +71,9 @@ const ConfirmationModal = ({
   };
 
   const isDiscardChanges = variant === "discardChanges";
+  const hasRecordedPayments = Boolean(
+    !isDiscardChanges && booking && bookingHasRecordedPayments(booking),
+  );
   const resolvedTitle =
     title ||
     (isDiscardChanges ? (
@@ -84,7 +90,9 @@ const ConfirmationModal = ({
     description ||
     (isDiscardChanges
       ? "ถ้าออกตอนนี้ ข้อมูลที่กรอกไว้จะหายไป"
-      : "รายการและประวัติการเงินจะถูกเก็บไว้ แต่ห้องจะถูกปล่อยออกจากปฏิทิน");
+      : hasRecordedPayments
+        ? "ไม่สามารถ void การจองที่มียอดรับเงินหรือคืนเงินได้ กรุณาใช้การยกเลิกการจอง (Cancel) สำหรับรายการจริง หรือแก้รายการที่บันทึกผิดเป็น 0 บาทก่อน void"
+        : "รายการและประวัติการเงินจะถูกเก็บไว้ แต่ห้องจะถูกปล่อยออกจากปฏิทิน");
   const resolvedConfirmText =
     confirmText || (isDiscardChanges ? "ออกโดยไม่บันทึก" : "Void การจอง");
   const resolvedConfirmIcon =
@@ -107,11 +115,14 @@ const ConfirmationModal = ({
           เหตุผลที่ void
           <textarea
             className="confirmationModal__reason"
+            aria-invalid={validationAttempted && !voidReason.trim()}
+            aria-describedby={validationAttempted && !voidReason.trim() ? "void-reason-error" : undefined}
             value={voidReason}
             onChange={(event) => setVoidReason(event.target.value)}
             placeholder="ระบุเหตุผลเพื่อเก็บในประวัติการตรวจสอบ"
-            disabled={submitting}
+            disabled={submitting || hasRecordedPayments}
           />
+          {validationAttempted && !voidReason.trim() && <span id="void-reason-error" className="formField__error">กรุณาระบุเหตุผลที่ void การจอง</span>}
         </label>
       )}
       <div className="confirmationModal__actions">
@@ -125,7 +136,7 @@ const ConfirmationModal = ({
               ? " confirmationModal__button--destructiveOutline"
               : "")
           }
-          disabled={submitting}
+          disabled={submitting || hasRecordedPayments}
           onClick={() =>
             toast.promise(confirmHandler(), {
               loading: isDiscardChanges

@@ -2018,6 +2018,26 @@ export const removeBooking = async (req: Request, res: Response) => {
       });
     }
 
+    const effectiveTransactions = effectiveBookingTransactions(booking);
+    const blockingTransactions = effectiveTransactions.filter(
+      (transaction) =>
+        Math.abs(Number(transaction.amount || 0)) > 0 &&
+        transaction.paymentMethod !== "Unpaid" &&
+        transaction.type !== "roomChargeWriteOff",
+    );
+    if (blockingTransactions.length > 0) {
+      return res.status(409).json({
+        error: "BOOKING_HAS_RECORDED_PAYMENTS",
+        message:
+          "ไม่สามารถ void การจองที่มียอดรับเงินหรือคืนเงินได้ กรุณาใช้การยกเลิกการจอง (Cancel) สำหรับรายการจริง หรือแก้รายการที่บันทึกผิดเป็น 0 บาทก่อน void",
+        blockingTransactionIds: blockingTransactions.map(
+          (transaction) => transaction.originalTransactionId,
+        ),
+        financialSummary: summarizeBookingFinancialPosition(effectiveTransactions),
+        booking,
+      });
+    }
+
     const voidedBooking = await withMutationIdempotency(req, () =>
       Booking.findOneAndUpdate(
         {

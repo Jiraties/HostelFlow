@@ -73,7 +73,8 @@ const correctionResponse = (record) => ({
     correctedAt: record.correctedAt,
     originalCheckedInAt: record.originalCheckedInAt,
 });
-const validateBaseRequest = (req) => {
+const validateBaseRequest = (req, options = {}) => {
+    const { requireReason = true } = options;
     const expectedRevision = (0, bookingConcurrency_1.expectedBookingRevision)(req.body.expectedRevision);
     const mode = req.body.mode;
     const reason = String(req.body.reason || "").trim();
@@ -84,7 +85,7 @@ const validateBaseRequest = (req) => {
     if (!mode || !MODES.includes(mode)) {
         return { error: { status: 400, code: "INVALID_CHECK_IN_CORRECTION_MODE", message: "กรุณาเลือกวิธีแก้ไข Check-In" } };
     }
-    if (!reason) {
+    if (requireReason && !reason) {
         return { error: { status: 400, code: "CHECK_IN_CORRECTION_REASON_REQUIRED", message: "กรุณาระบุเหตุผลที่แก้ไข Check-In" } };
     }
     if (reason.length > 500) {
@@ -193,25 +194,32 @@ const buildPreview = async ({ booking, body, username, isAdmin, }) => {
             });
         }
         const requestedOutcome = body.depositOutcome;
-        if (requestedOutcome === "retained_for_other_booking") {
+        const effectiveOutcome = remainingDeposit === 0 && !requestedOutcome ? "none" : requestedOutcome;
+        if (effectiveOutcome === "retained_for_other_booking") {
             blockers.push({
                 code: "DEPOSIT_TRANSFER_NOT_SUPPORTED",
                 message: "ไม่รองรับการย้ายมัดจำไป Booking อื่น ต้องคืนเงินจริงก่อน Undo",
             });
         }
-        else if (!requestedOutcome || !DEPOSIT_OUTCOMES.includes(requestedOutcome)) {
+        else if (!effectiveOutcome || !DEPOSIT_OUTCOMES.includes(effectiveOutcome)) {
             blockers.push({
                 code: "DEPOSIT_OUTCOME_REQUIRED",
                 message: "กรุณาระบุสิ่งที่เกิดขึ้นจริงกับมัดจำ",
             });
         }
-        else if (remainingDeposit === 0 && requestedOutcome !== "none") {
+        else if (remainingDeposit > 0 && effectiveOutcome === "none") {
+            blockers.push({
+                code: "DEPOSIT_OUTCOME_REQUIRED",
+                message: "กรุณาระบุสิ่งที่เกิดขึ้นจริงกับมัดจำ",
+            });
+        }
+        else if (remainingDeposit === 0 && effectiveOutcome !== "none") {
             blockers.push({
                 code: "DEPOSIT_OUTCOME_MISMATCH",
                 message: "Booking นี้ไม่มียอดมัดจำคงเหลือ กรุณาเลือกไม่มีมัดจำ",
             });
         }
-        else if (requestedOutcome === "refunded" && body.refundConfirmed !== true) {
+        else if (effectiveOutcome === "refunded" && body.refundConfirmed !== true) {
             blockers.push({
                 code: "DEPOSIT_REFUND_CONFIRMATION_REQUIRED",
                 message: `กรุณายืนยันว่าได้คืนเงินสด ${remainingDeposit} บาทให้แขกจริงแล้ว`,
@@ -245,6 +253,13 @@ const buildPreview = async ({ booking, body, username, isAdmin, }) => {
             });
         }
     }
+    const depositMessage = remainingDeposit === 0
+        ? "ไม่มีมัดจำคงเหลือจาก Check-In นี้"
+        : body.depositOutcome === "not_received"
+            ? `แก้ยอดมัดจำ ฿${remainingDeposit.toLocaleString("th-TH")} เป็น 0 บาท โดยเก็บประวัติรายการเดิมไว้`
+            : body.depositOutcome === "refunded"
+                ? `คงรายการรับมัดจำเดิม และบันทึกรายการคืนเงินมัดจำสด ฿${remainingDeposit.toLocaleString("th-TH")}`
+                : `มีมัดจำจาก Check-In ฿${remainingDeposit.toLocaleString("th-TH")} กรุณาเลือกสิ่งที่เกิดขึ้นจริง`;
     return {
         eligible: blockers.length === 0,
         requiresAdmin,
@@ -262,6 +277,7 @@ const buildPreview = async ({ booking, body, username, isAdmin, }) => {
             remainingAmount: remainingDeposit,
             generatedAtCheckIn: generatedDeposits.length === 1,
             requestedOutcome: body.depositOutcome || null,
+            message: depositMessage,
         },
         blockers,
         warnings,
@@ -322,7 +338,7 @@ const sendStoredResult = async (res, record) => {
 };
 const previewCheckInCorrection = async (req, res) => {
     try {
-        const validated = validateBaseRequest(req);
+        const validated = validateBaseRequest(req, { requireReason: false });
         if (validated.error) {
             return res.status(validated.error.status).json({
                 error: validated.error.code,
@@ -433,8 +449,7 @@ const correctCheckIn = async (req, res) => {
                         checkInByStaffUsername: 1,
                         checkInMode: 1,
                     };
-                    if ((req.body.depositOutcome === "none" ||
-                        req.body.depositOutcome === "not_received") &&
+                    if (req.body.depositOutcome === "not_received" &&
                         depositAmount > 0) {
                         const deposit = effectiveTransactions.find((transaction) => transaction.type === "deposit" &&
                             transaction.sourceAction === "CHECK_IN" &&
@@ -459,12 +474,22 @@ const correctCheckIn = async (req, res) => {
                         update.$push = { transactionCorrections: correction };
                     }
                     if (req.body.depositOutcome === "refunded" && depositAmount > 0) {
+                        const openShift = preview.withinStaffShift && preview.staffShiftId
+                            ? {
+                                _id: preview.staffShiftId,
+                                businessDate: businessDateKey(correctedAt),
+                            }
+                            : await cashShift_1.default.findOne({ status: "open" })
+                                .sort({ startedAt: -1 })
+                                .session(session)
+                                .lean();
                         const refund = (0, financeHelpers_1.normalizeTransaction)({
                             _id: String(new mongoose_1.default.Types.ObjectId()),
                             type: "depositRefund",
                             paymentMethod: "Cash",
                             amount: depositAmount,
                             direction: "out",
+                            cashShiftId: openShift ? String(openShift._id) : undefined,
                         }, {
                             createdBy: username,
                             sourceAction: "CORRECT_CHECK_IN",
@@ -482,13 +507,14 @@ const correctCheckIn = async (req, res) => {
                 }, update, { returnDocument: "after", runValidators: true, session });
                 if (!updatedBooking)
                     return null;
+                const resolvedDepositOutcome = validated.mode === "replace_passport" || depositAmount === 0
+                    ? "none"
+                    : req.body.depositOutcome;
                 const record = await new checkInCorrection_1.default({
                     correctionId,
                     bookingId: current.bookingId,
                     mode: validated.mode,
-                    depositOutcome: validated.mode === "replace_passport"
-                        ? "none"
-                        : req.body.depositOutcome,
+                    depositOutcome: resolvedDepositOutcome,
                     depositAmount,
                     affectedTransactionIds,
                     reason: validated.reason,

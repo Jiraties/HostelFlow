@@ -14,6 +14,7 @@ type BookingDateRangePickerProps = {
   checkOut: string;
   dateFormat: DateFormatPreference;
   hasError?: boolean;
+  errorId?: string;
   disabled?: boolean;
   onChange: (checkIn: string, checkOut: string) => void;
   onCheckInChange: (checkIn: string) => void;
@@ -29,6 +30,7 @@ export function BookingDateRangePicker({
   checkOut,
   dateFormat,
   hasError = false,
+  errorId,
   disabled = false,
   onChange,
   onCheckInChange,
@@ -242,6 +244,7 @@ export function BookingDateRangePicker({
           value={checkInDraft}
           aria-label="Check-in date"
           aria-invalid={hasError}
+          aria-describedby={errorId}
           aria-haspopup="dialog"
           aria-expanded={isOpen}
           aria-controls={isOpen ? calendarId : undefined}
@@ -270,6 +273,7 @@ export function BookingDateRangePicker({
           value={checkOutDraft}
           aria-label="Check-out date"
           aria-invalid={hasError}
+          aria-describedby={errorId}
           aria-haspopup="dialog"
           aria-expanded={isOpen}
           aria-controls={isOpen ? calendarId : undefined}

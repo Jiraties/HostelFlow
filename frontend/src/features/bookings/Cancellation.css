@@ -168,55 +168,8 @@
   /* font-weight: 600; */
 }
 
-.cancellation__segmentedControl {
-  background-color: #fff;
-  border-radius: 0.5rem;
-  box-shadow: var(--main-shadow);
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  overflow: hidden;
-}
-
-.cancellation__segment {
-  align-items: center;
-  background-color: transparent;
-  border: 0;
-  border-radius: 0;
-  cursor: pointer;
-  display: flex;
-  font-family: "IBM Plex Sans Thai", sans-serif;
-  gap: 0.4rem;
-  justify-content: center;
-  min-height: 3.35rem;
-  padding: 0 1rem;
-  transition-duration: 0.2s;
-}
-
-.cancellation__segment:first-child {
-  border-radius: 0.5rem 0 0 0.5rem;
-}
-
-.cancellation__segment:last-child {
-  border-radius: 0 0.5rem 0.5rem 0;
-}
-
 .cancellation__segment i {
   font-size: 1.1rem;
-}
-
-.cancellation__segment--active {
-  font-weight: 500;
-  color: var(--red);
-}
-
-.cancellation__segment:first-child.cancellation__segment--active {
-  font-weight: 500;
-  /* background-color: color-mix(in srgb, var(--green) 16%, transparent); */
-  color: var(--green);
-}
-
-.cancellation__segment:not(.cancellation__segment--active):hover {
-  background-color: #00000007;
 }
 
 .cancellation__actions {

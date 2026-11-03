@@ -4,7 +4,7 @@ import {
   nationalitySelectOptions,
 } from "../../helpers/nationalityOptions";
 import { Modal } from "@mui/material";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import Select from "react-select";
 import ActionButton from "../../components/ActionButton";
@@ -82,6 +82,8 @@ const AdditionalGuestsPassport = ({
   const [editingGuestId, setEditingGuestId] = useState<string | null>(null);
   const [formData, setFormData] = useState<PassportData>(emptyPassport);
   const [reason, setReason] = useState("");
+  const [validationAttempted, setValidationAttempted] = useState(false);
+  const fieldId = useId();
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -158,6 +160,7 @@ const AdditionalGuestsPassport = ({
   };
 
   const openAddForm = () => {
+    setValidationAttempted(false);
     setEditingGuestId(null);
     setFormData({
       ...emptyPassport,
@@ -169,6 +172,7 @@ const AdditionalGuestsPassport = ({
 
   const openEditForm = () => {
     if (!revealedGuestId || !revealedPassport) return;
+    setValidationAttempted(false);
     setEditingGuestId(revealedGuestId);
     setFormData(revealedPassport);
     setReason("");
@@ -191,6 +195,7 @@ const AdditionalGuestsPassport = ({
   };
 
   const submitPassport = async () => {
+    setValidationAttempted(true);
     if (
       !formData.namePrefix ||
       !formData.nationality ||
@@ -277,6 +282,8 @@ const AdditionalGuestsPassport = ({
   };
 
   const isThaiGuest = formData.nationality === "TH";
+  const passportNameError = validationAttempted && (!formData.passportName.trim() || (isThaiGuest && formData.passportName.trim().split(/\s+/).length < 2));
+  const passportNumberError = validationAttempted && (!formData.passportNo.trim() || (isThaiGuest && !/^\d{13}$/.test(formData.passportNo.trim())));
   const prefixOptions = isThaiGuest
     ? thaiNamePrefixOptions
     : foreignNamePrefixOptions;
@@ -327,7 +334,7 @@ const AdditionalGuestsPassport = ({
                   <div className="passportView__actions">
                     <button
                       type="button"
-                      className="passportView__hideButton"
+                      className="passportView__hideButton passportView__correctButton"
                       onClick={openEditForm}
                     >
                       <i className="bx bx-edit" /> แก้ไข
@@ -401,6 +408,11 @@ const AdditionalGuestsPassport = ({
               <label>สัญชาติ</label>
               <Select<OptionType>
                 styles={customStyles<OptionType>()}
+                classNamePrefix="rs"
+                className={validationAttempted && !formData.nationality ? "formField--error" : undefined}
+                aria-invalid={validationAttempted && !formData.nationality}
+                aria-label="สัญชาติ"
+                aria-errormessage={validationAttempted && !formData.nationality ? `${fieldId}-nationality-error` : undefined}
                 options={nationalitySelectOptions}
                 value={nationalityOptions.find(
                   (option) => option.value === formData.nationality,
@@ -424,12 +436,18 @@ const AdditionalGuestsPassport = ({
                   }));
                 }}
               />
+              {validationAttempted && !formData.nationality && <p id={`${fieldId}-nationality-error`} className="formField__error">กรุณาเลือกสัญชาติ</p>}
             </div>
             <div className="additionalGuestsPassport__nameFields">
               <div>
                 <label>คำนำหน้า</label>
                 <Select<OptionType>
                   styles={customStyles<OptionType>()}
+                  classNamePrefix="rs"
+                  className={validationAttempted && !formData.namePrefix ? "formField--error" : undefined}
+                  aria-invalid={validationAttempted && !formData.namePrefix}
+                  aria-label="คำนำหน้า"
+                  aria-errormessage={validationAttempted && !formData.namePrefix ? `${fieldId}-prefix-error` : undefined}
                   options={prefixOptions}
                   value={prefixOptions.find(
                     (option) => option.value === formData.namePrefix,
@@ -442,6 +460,7 @@ const AdditionalGuestsPassport = ({
                   }
                   placeholder="เลือก"
                 />
+                {validationAttempted && !formData.namePrefix && <p id={`${fieldId}-prefix-error`} className="formField__error">กรุณาเลือกคำนำหน้า</p>}
               </div>
               <div>
                 <label>
@@ -451,6 +470,9 @@ const AdditionalGuestsPassport = ({
                 </label>
                 <input
                   className="boxInput"
+                  aria-invalid={passportNameError}
+                  aria-label={isThaiGuest ? "ชื่อ-นามสกุลภาษาไทย" : "ชื่อ-นามสกุล Passport"}
+                  aria-describedby={passportNameError ? `${fieldId}-name-error` : undefined}
                   value={formData.passportName}
                   onChange={(event) =>
                     setFormData((current) => ({
@@ -466,6 +488,7 @@ const AdditionalGuestsPassport = ({
                       : "เช่น ROBERT BROWN"
                   }
                 />
+                {passportNameError && <p id={`${fieldId}-name-error`} className="formField__error">กรุณากรอกชื่อ-นามสกุล</p>}
               </div>
             </div>
             <div>
@@ -474,6 +497,9 @@ const AdditionalGuestsPassport = ({
               </label>
               <input
                 className="boxInput"
+                aria-invalid={passportNumberError}
+                aria-label={isThaiGuest ? "เลขประจำตัวประชาชน" : "เลข Passport"}
+                aria-describedby={passportNumberError ? `${fieldId}-number-error` : undefined}
                 value={formData.passportNo}
                 inputMode={isThaiGuest ? "numeric" : undefined}
                 maxLength={isThaiGuest ? 13 : undefined}
@@ -489,16 +515,21 @@ const AdditionalGuestsPassport = ({
                   }))
                 }
               />
+              {passportNumberError && <p id={`${fieldId}-number-error`} className="formField__error">{isThaiGuest ? "กรุณากรอกเลขประจำตัวประชาชน 13 หลัก" : "กรุณากรอกเลข Passport"}</p>}
             </div>
             {editingGuestId && (
               <div>
                 <label>เหตุผลที่แก้ไข</label>
                 <textarea
                   className="boxInput"
+                  aria-invalid={validationAttempted && !reason.trim()}
+                  aria-label="เหตุผลที่แก้ไข"
+                  aria-describedby={validationAttempted && !reason.trim() ? `${fieldId}-reason-error` : undefined}
                   value={reason}
                   onChange={(event) => setReason(event.target.value)}
                   placeholder="เช่น อ่านเลข Passport ผิด"
                 />
+                {validationAttempted && !reason.trim() && <p id={`${fieldId}-reason-error`} className="formField__error">กรุณาระบุเหตุผลที่แก้ไข</p>}
               </div>
             )}
           </div>

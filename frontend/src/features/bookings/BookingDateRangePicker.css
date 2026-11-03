@@ -35,6 +35,11 @@
   box-shadow: var(--light-shadow);
 }
 
+.bookingDateRangePicker__trigger:has(input:focus-visible) {
+  outline: 2px solid #00828d;
+  outline-offset: 2px;
+}
+
 .bookingDateRangePicker__trigger input:focus,
 .bookingDateRangePicker__trigger input:hover {
   background: #00000008;
@@ -43,6 +48,10 @@
 
 .bookingDateRangePicker__trigger--error {
   outline: 1px solid var(--field-error-color);
+}
+
+.bookingDateRangePicker__trigger--error:has(input:focus-visible) {
+  outline-color: var(--field-error-color);
 }
 
 .bookingDateRangePicker__popover {

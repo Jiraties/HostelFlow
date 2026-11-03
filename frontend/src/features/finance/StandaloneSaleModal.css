@@ -15,10 +15,6 @@
   padding-right: 3rem;
 }
 
-.standaloneSale__form {
-  gap: 1.2rem;
-}
-
 .standaloneSale__selectOption {
   display: flex;
   align-items: center;
@@ -34,7 +30,13 @@
 
 .standaloneSale__optionalFields {
   display: grid;
-  gap: 1.2rem;
+  gap: 2rem;
+}
+
+@media (max-width: 760px) {
+  .standaloneSale__optionalFields {
+    gap: 1.25rem;
+  }
 }
 
 .standaloneSale__actions {

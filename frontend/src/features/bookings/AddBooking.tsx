@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import ActionButton from "../../components/ActionButton";
 import ModalCloseButton from "../../components/ModalCloseButton";
 import CashShiftNudge from "../../components/CashShiftNudge";
@@ -123,6 +123,7 @@ const AddBooking = ({
   const [availabilityRangeKey, setAvailabilityRangeKey] = useState("");
   const availabilityRequestIdRef = useRef(0);
   const [formErrors, setFormErrors] = useState<BookingFormErrors>({});
+  const fieldId = useId();
   const [reminderIsOpen, setReminderIsOpen] = useState(
     mode === "edit" && editModeBooking && editModeBooking?.roomStays.length > 1,
   );
@@ -827,18 +828,20 @@ const AddBooking = ({
 
       <div className="addBooking__grid">
         <div>
-          <p className="addBooking__label">ชื่อ-สกุล</p>
+          <label className="addBooking__label" htmlFor={`${fieldId}-name`}>ชื่อ-สกุล</label>
           <input
+            id={`${fieldId}-name`}
             type="text"
             className={`boxInput ${formErrors.name ? "boxInput--error" : ""}`}
             value={formData.name}
             maxLength={30}
             aria-invalid={Boolean(formErrors.name)}
+            aria-describedby={formErrors.name ? `${fieldId}-name-error` : undefined}
             onChange={(e) => formDataChangeHandler("name", e.target.value)}
             placeholder="เช่น Robert Brown"
           />
           {formErrors.name && (
-            <p className="formField__error">{formErrors.name}</p>
+            <p id={`${fieldId}-name-error`} className="formField__error">{formErrors.name}</p>
           )}
         </div>
         <div>
@@ -853,6 +856,7 @@ const AddBooking = ({
                 checkOut={formData.checkOut}
                 dateFormat={dateFormat}
                 hasError={Boolean(formErrors.checkIn || formErrors.checkOut)}
+                errorId={formErrors.checkIn || formErrors.checkOut ? `${fieldId}-dates-error` : undefined}
                 disabled={commercialFieldsLocked}
                 onChange={dateRangeChangeHandler}
                 onCheckInChange={checkInInputChangeHandler}
@@ -860,8 +864,9 @@ const AddBooking = ({
               />
             </div>
             <div className="addBooking__nightsField">
-              <p className="addBooking__label">คืน</p>
+              <label className="addBooking__label" htmlFor={`${fieldId}-nights`}>คืน</label>
               <input
+                id={`${fieldId}-nights`}
                 type="number"
                 inputMode="numeric"
                 min="1"
@@ -870,19 +875,18 @@ const AddBooking = ({
                 disabled={commercialFieldsLocked}
                 onChange={(e) => nightsChangeHandler(e.target.value)}
                 className="boxInput addBooking__nightsInput"
-                aria-label="Number of nights"
               />
             </div>
           </div>
           {(formErrors.checkIn || formErrors.checkOut) && (
-            <p className="formField__error">
+            <p id={`${fieldId}-dates-error`} className="formField__error">
               {formErrors.checkIn || formErrors.checkOut}
             </p>
           )}
         </div>
         {!isEditMode && (
           <div>
-            <p className="addBooking__label">ห้อง</p>
+            <label className="addBooking__label" htmlFor={`${fieldId}-rooms`}>ห้อง</label>
             {/* <input
               className="boxInput"
               type="text"
@@ -899,11 +903,13 @@ const AddBooking = ({
               }
             /> */}
             <Select<RoomOptionWithReason, true>
+              inputId={`${fieldId}-rooms`}
               isMulti
               styles={customStyles<OptionType, true>()}
               className={formErrors.roomIds ? "formField--error" : undefined}
               classNamePrefix="rs"
               aria-invalid={Boolean(formErrors.roomIds)}
+              aria-errormessage={formErrors.roomIds ? `${fieldId}-rooms-help` : undefined}
               placeholder="เช่น Veranda 1"
               options={roomOptions}
               isOptionDisabled={(option) => option.isDisabled === true}
@@ -931,6 +937,7 @@ const AddBooking = ({
               }
             />
             <p
+              id={`${fieldId}-rooms-help`}
               className={
                 formErrors.roomIds
                   ? "formField__error"
@@ -949,13 +956,15 @@ const AddBooking = ({
           </div>
         )}
         <div>
-          <p className="addBooking__label">ช่องทางการจอง</p>
+          <label className="addBooking__label" htmlFor={`${fieldId}-platform`}>ช่องทางการจอง</label>
           <Select<OptionType>
+            inputId={`${fieldId}-platform`}
             isDisabled={commercialFieldsLocked}
             styles={customStyles<OptionType>()}
             className={formErrors.platformId ? "formField--error" : undefined}
             classNamePrefix="rs"
             aria-invalid={Boolean(formErrors.platformId)}
+            aria-errormessage={formErrors.platformId ? `${fieldId}-platform-error` : undefined}
             options={platformOptions}
             placeholder="เลือกช่องทางการจอง"
             value={
@@ -969,7 +978,7 @@ const AddBooking = ({
             }
           />
           {formErrors.platformId && (
-            <p className="formField__error">{formErrors.platformId}</p>
+            <p id={`${fieldId}-platform-error`} className="formField__error">{formErrors.platformId}</p>
           )}
           {commercialFieldsLocked && (
             <p className="addBooking__fieldHelper">
@@ -981,32 +990,36 @@ const AddBooking = ({
         {!isEditMode && (
           <>
             <div>
-              <p className="addBooking__label">
+              <label className="addBooking__label" htmlFor={`${fieldId}-price`}>
                 ราคารวมค่าห้องตลอดการเข้าพัก (฿)
-              </p>
+              </label>
               <input
+                id={`${fieldId}-price`}
                 className={`boxInput ${formErrors.price ? "boxInput--error" : ""}`}
                 type="number"
                 value={formData.price}
                 aria-invalid={Boolean(formErrors.price)}
+                aria-describedby={formErrors.price ? `${fieldId}-price-error` : undefined}
                 placeholder="เช่น 1000"
                 onChange={(e) => formDataChangeHandler("price", e.target.value)}
               />
               {formErrors.price && (
-                <p className="formField__error">{formErrors.price}</p>
+                <p id={`${fieldId}-price-error`} className="formField__error">{formErrors.price}</p>
               )}
             </div>
             <div>
-              <p className="addBooking__label">
+              <label className="addBooking__label" htmlFor={`${fieldId}-payment-method`}>
                 {advancePaymentEnabled ? "ช่องทางรับเงินล่วงหน้า" : "จ่ายผ่าน"}
-              </p>
+              </label>
               <Select<OptionType>
+                inputId={`${fieldId}-payment-method`}
                 styles={customStyles<OptionType>()}
                 className={
                   formErrors.paymentMethod ? "formField--error" : undefined
                 }
                 classNamePrefix="rs"
                 aria-invalid={Boolean(formErrors.paymentMethod)}
+                aria-errormessage={formErrors.paymentMethod ? `${fieldId}-payment-error` : undefined}
                 options={visiblePaymentMethodOptions}
                 placeholder="เลือกช่องทางการชำระเงิน"
                 formatOptionLabel={formatPaymentMethodLabel}
@@ -1020,11 +1033,11 @@ const AddBooking = ({
                 }
               />
               {formErrors.paymentMethod && (
-                <p className="formField__error">{formErrors.paymentMethod}</p>
+                <p id={`${fieldId}-payment-error`} className="formField__error">{formErrors.paymentMethod}</p>
               )}
               {formData.platformId === "WALK" && (
                 <div className="addBooking__advanceWrap">
-                  <label className="addBooking__advanceOption">
+                  <label className="checkbox addBooking__advanceOption">
                     <input
                       type="checkbox"
                       checked={advancePaymentEnabled}
@@ -1032,7 +1045,7 @@ const AddBooking = ({
                         advancePaymentChangeHandler(event.target.checked)
                       }
                     />
-                    <span className="addBooking__advanceCheckmark" />
+                    <span className="box" aria-hidden="true" />
                     <span className="addBooking__advanceCopy">
                       <span>รับค่าห้องล่วงหน้า</span>
                       <small>ยกเลิกแล้วไม่คืนเงินล่วงหน้า</small>
@@ -1112,6 +1125,13 @@ const AddBooking = ({
                                 ? formErrors.advancePaymentAmount
                                 : formErrors.advancePaymentPercentage,
                             )}
+                            aria-describedby={
+                              (advancePaymentCalculationMode === "amount"
+                                ? formErrors.advancePaymentAmount
+                                : formErrors.advancePaymentPercentage)
+                                ? `${fieldId}-advance-error`
+                                : undefined
+                            }
                             value={
                               advancePaymentCalculationMode === "amount"
                                 ? advancePaymentAmountInput
@@ -1142,7 +1162,7 @@ const AddBooking = ({
                       {(advancePaymentCalculationMode === "amount"
                         ? formErrors.advancePaymentAmount
                         : formErrors.advancePaymentPercentage) && (
-                        <p className="formField__error">
+                        <p id={`${fieldId}-advance-error`} className="formField__error">
                           {advancePaymentCalculationMode === "amount"
                             ? formErrors.advancePaymentAmount
                             : formErrors.advancePaymentPercentage}
@@ -1179,10 +1199,11 @@ const AddBooking = ({
               )}
             </div>
             <div>
-              <p className="addBooking__label">
+              <label className="addBooking__label" htmlFor={`${fieldId}-booking-id`}>
                 Booking ID / Confirmation Number
-              </p>
+              </label>
               <input
+                id={`${fieldId}-booking-id`}
                 className={`boxInput ${
                   formErrors.bookingId ? "boxInput--error" : ""
                 }`}
@@ -1191,6 +1212,7 @@ const AddBooking = ({
                   formData.platformId === "WALK" ? "numeric" : undefined
                 }
                 aria-invalid={Boolean(formErrors.bookingId)}
+                aria-describedby={formErrors.bookingId ? `${fieldId}-booking-id-error` : undefined}
                 value={formData.bookingId}
                 placeholder={
                   formData.platformId === "WALK"
@@ -1202,17 +1224,18 @@ const AddBooking = ({
                 }
               />
               {formErrors.bookingId && (
-                <p className="formField__error">{formErrors.bookingId}</p>
+                <p id={`${fieldId}-booking-id-error`} className="formField__error">{formErrors.bookingId}</p>
               )}
             </div>
           </>
         )}
         <div>
-          <p className="addBooking__label">
+          <label className="addBooking__label" htmlFor={`${fieldId}-note`}>
             Note
             <span className="addTransaction__optionalLabel">(ไม่บังคับ)</span>
-          </p>
+          </label>
           <input
+            id={`${fieldId}-note`}
             className="boxInput"
             type="text"
             value={formData.note}
