@@ -424,7 +424,7 @@ const CashCloseAudit = ({
           <PreferredDateInput
             className="boxInput manage__dateInput"
             value={financeDate}
-            onChange={(event) => onDateChange(event.target.value)}
+            onChange={onDateChange}
           />
         </div>
       </div>

@@ -42,7 +42,7 @@
   align-items: center;
 }
 
-.analytics__monthControl input {
+.analytics__monthControl .calendarInput {
   padding: 0.35rem 0.65rem;
   border: 1px solid var(--analytics-divider);
   border-radius: 999rem;

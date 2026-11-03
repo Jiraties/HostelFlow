@@ -658,7 +658,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
             disabled={
               masterFilters.search.trim().length >= 3 && !limitSearchToRange
             }
-            onChange={(e) => updateMasterFilter("from", e.target.value)}
+            onChange={(value) => updateMasterFilter("from", value)}
             className="boxInput home__dateInput"
           />
           <PreferredDateInput
@@ -666,7 +666,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
             disabled={
               masterFilters.search.trim().length >= 3 && !limitSearchToRange
             }
-            onChange={(e) => updateMasterFilter("to", e.target.value)}
+            onChange={(value) => updateMasterFilter("to", value)}
             className="boxInput home__dateInput"
           />
         </div>

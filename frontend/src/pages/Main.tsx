@@ -1,3 +1,4 @@
+import MonthInput from "../components/MonthInput";
 import axios from "axios";
 import { Modal } from "@mui/material";
 import { useLocation, useNavigate } from "react-router";
@@ -549,7 +550,6 @@ const Main = () => {
     null,
   );
   const adminRequestIdRef = useRef(0);
-  const dashboardMonthInputRef = useRef<HTMLInputElement>(null);
   const currentDashboardMonth = bangkokMonthKey();
   const [dashboardMonth, setDashboardMonth] = useState(currentDashboardMonth);
   const [revenueRange, setRevenueRange] = useState<RevenueRange>("1m");
@@ -1252,33 +1252,19 @@ const Main = () => {
               <i className="bx bx-bar-chart-big" />
               <h2>ผลการดำเนินงานรายเดือน</h2>
             </div>
-            <label
-              className="main__adminMonthPicker"
-              onClick={(event) => {
-                const monthInput = dashboardMonthInputRef.current;
-                if (
-                  !monthInput ||
-                  typeof monthInput.showPicker !== "function"
-                ) {
-                  return;
-                }
-                event.preventDefault();
-                monthInput.focus();
-                monthInput.showPicker();
-              }}
-            >
+            <label className="main__adminMonthPicker" htmlFor="dashboard-month">
               <span>เลือกเดือน</span>
-              <input
-                ref={dashboardMonthInputRef}
-                type="month"
+              <MonthInput
+                id="dashboard-month"
+                allowClear={false}
                 value={dashboardMonth}
                 max={currentDashboardMonth}
                 aria-label="เลือกเดือนสำหรับผลการดำเนินงาน"
-                onChange={(event) => {
-                  if (!event.target.value) return;
+                onChange={(value) => {
+                  if (!value) return;
                   setAdminLoading(true);
                   setAdminStats(null);
-                  setDashboardMonth(event.target.value);
+                  setDashboardMonth(value);
                 }}
               />
             </label>

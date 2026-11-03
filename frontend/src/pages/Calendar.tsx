@@ -1,3 +1,4 @@
+import MonthPickerPanel from "../components/MonthPickerPanel";
 import ConfirmationModal from "../components/ConfirmationModal.tsx";
 import UnsavedChangesModal from "../components/UnsavedChangesModal.tsx";
 import ViewBooking from "../features/bookings/ViewBooking";
@@ -179,13 +180,6 @@ const getDateInMonth = (year: number, month: number) =>
 
 const startOfCalendarDay = (date: Date) =>
   new Date(date.getFullYear(), date.getMonth(), date.getDate());
-
-const monthNames = Array.from({ length: 12 }, (_, month) =>
-  new Intl.DateTimeFormat("en-GB", {
-    month: "long",
-    calendar: "gregory",
-  }).format(new Date(2024, month, 1)),
-);
 
 const Calendar = () => {
   usePageTitle("HostelFlow · ปฏิทิน");
@@ -1459,44 +1453,13 @@ const Calendar = () => {
                 <i className="bx bx-chevron-down" aria-hidden="true" />
               </button>
               {isMonthPickerOpen && (
-                <span
-                  className="calendar__monthPickerPanel"
-                  role="dialog"
-                  aria-label="Choose month"
-                >
-                  <span className="calendar__monthPickerYear">
-                    <button
-                      type="button"
-                      aria-label="Previous year"
-                      onClick={() => setYear((currentYear) => currentYear - 1)}
-                    >
-                      <i className="bx bx-chevron-left" aria-hidden="true" />
-                    </button>
-                    <span>{year}</span>
-                    <button
-                      type="button"
-                      aria-label="Next year"
-                      onClick={() => setYear((currentYear) => currentYear + 1)}
-                    >
-                      <i className="bx bx-chevron-right" aria-hidden="true" />
-                    </button>
-                  </span>
-                  <span className="calendar__monthPickerMonths">
-                    {monthNames.map((monthName, monthIndex) => (
-                      <button
-                        className={
-                          monthIndex === month
-                            ? "calendar__monthPickerMonth calendar__monthPickerMonth--selected"
-                            : "calendar__monthPickerMonth"
-                        }
-                        type="button"
-                        key={monthName}
-                        onClick={() => selectMonth(monthIndex)}
-                      >
-                        {monthName.slice(0, 3)}
-                      </button>
-                    ))}
-                  </span>
+                <span role="dialog" aria-label="Choose month">
+                  <MonthPickerPanel
+                    year={year}
+                    selectedMonth={month}
+                    onYearChange={setYear}
+                    onMonthChange={selectMonth}
+                  />
                 </span>
               )}
             </span>

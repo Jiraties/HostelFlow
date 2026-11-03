@@ -145,9 +145,9 @@ const CorrectTransaction = ({
     transaction.paymentMethod,
   );
   const [correctedNote, setCorrectedNote] = useState(transaction.note || "");
-  const [reasonCode, setReasonCode] = useState<TransactionCorrectionReason | "">(
-    "",
-  );
+  const [reasonCode, setReasonCode] = useState<
+    TransactionCorrectionReason | ""
+  >("");
   const [submitting, setSubmitting] = useState(false);
   const [validationAttempted, setValidationAttempted] = useState(false);
   const fieldId = useId();
@@ -162,18 +162,18 @@ const CorrectTransaction = ({
     bangkokDateKey(currentBooking.checkIn) >= bangkokDateKey(new Date());
   const canSelectChargeChange =
     Boolean(user?.admin) || isStaffEditablePendingRoomCharge;
-  const categoryOptions = (serviceTypes.includes(transaction.type)
-    ? serviceTypes
-    : [transaction.type]
+  const categoryOptions = (
+    serviceTypes.includes(transaction.type) ? serviceTypes : [transaction.type]
   ).map((type) => ({
     value: type,
     label: transactionLabels[type],
     color: transactionColorByType.get(type),
   }));
-  const correctionPaymentMethodOptions = paymentMethodOptions.filter((option) =>
-    transaction.type === "deposit"
-      ? option.value === transaction.paymentMethod
-      : transaction.paymentMethod === "Unpaid" || option.value !== "Unpaid",
+  const correctionPaymentMethodOptions = paymentMethodOptions.filter(
+    (option) =>
+      transaction.type === "deposit"
+        ? option.value === transaction.paymentMethod
+        : transaction.paymentMethod === "Unpaid" || option.value !== "Unpaid",
   );
   const categoryLocked =
     categoryOptions.length === 1 || isStaffEditablePendingRoomCharge;
@@ -255,9 +255,7 @@ const CorrectTransaction = ({
       onUpdated?.(formatBookingDates(response.data.booking));
       onClose();
     } catch (error) {
-      throw new Error(
-        getApiErrorMessage(error, "ไม่สามารถแก้ไขรายการได้"),
-      );
+      throw new Error(getApiErrorMessage(error, "ไม่สามารถแก้ไขรายการได้"));
     } finally {
       setSubmitting(false);
     }
@@ -278,7 +276,11 @@ const CorrectTransaction = ({
         {canSelectChargeChange && (
           <section className="correctTransaction__section">
             <p className="addBooking__label">สิ่งที่ต้องการทำ</p>
-            <div className="cancellation__segmentedControl" role="group" aria-label="สิ่งที่ต้องการทำ">
+            <div
+              className="cancellation__segmentedControl"
+              role="group"
+              aria-label="สิ่งที่ต้องการทำ"
+            >
               <button
                 type="button"
                 className={`cancellation__segment${
@@ -311,39 +313,68 @@ const CorrectTransaction = ({
 
         <div className="correctTransaction__grid">
           <label>
-            <span id={`${fieldId}-category-label`} className="addBooking__label">
+            <span
+              id={`${fieldId}-category-label`}
+              className="addBooking__label"
+            >
               ประเภทรายการที่ถูกต้อง
             </span>
             <div className="correctTransaction__fieldControl">
-            <Select<OptionType>
-              inputId={`${fieldId}-category`}
-              aria-labelledby={categoryLocked ? `${fieldId}-category-label ${fieldId}-category-lock` : `${fieldId}-category-label`}
-              styles={customStyles<OptionType>()}
-              className={categoryLocked ? "correctTransaction__lockedSelect" : undefined}
-              classNamePrefix="rs"
-              options={categoryOptions}
-              value={categoryOptions.find((item) => item.value === correctedCategory)}
-              formatOptionLabel={formatCategoryLabel}
-              isDisabled={categoryLocked || submitting}
-              menuPortalTarget={document.body}
-              menuPosition="fixed"
-              onChange={(option: SingleValue<OptionType>) =>
-                setCorrectedCategory((option?.value || transaction.type) as TransactionType)
-              }
-            />
-            {categoryLocked && (
-              <span id={`${fieldId}-category-lock`} className="correctTransaction__lockedIcon" role="img" aria-label="แก้ไขไม่ได้" title="แก้ไขไม่ได้">
-                <i className="bx bx-lock-alt" aria-hidden="true" />
-              </span>
-            )}
+              <Select<OptionType>
+                inputId={`${fieldId}-category`}
+                aria-labelledby={
+                  categoryLocked
+                    ? `${fieldId}-category-label ${fieldId}-category-lock`
+                    : `${fieldId}-category-label`
+                }
+                styles={customStyles<OptionType>()}
+                className={
+                  categoryLocked
+                    ? "correctTransaction__lockedSelect"
+                    : undefined
+                }
+                classNamePrefix="rs"
+                options={categoryOptions}
+                value={categoryOptions.find(
+                  (item) => item.value === correctedCategory,
+                )}
+                formatOptionLabel={formatCategoryLabel}
+                isDisabled={categoryLocked || submitting}
+                menuPortalTarget={document.body}
+                menuPosition="fixed"
+                onChange={(option: SingleValue<OptionType>) =>
+                  setCorrectedCategory(
+                    (option?.value || transaction.type) as TransactionType,
+                  )
+                }
+              />
+              {categoryLocked && (
+                <span
+                  id={`${fieldId}-category-lock`}
+                  className="correctTransaction__lockedIcon"
+                  role="img"
+                  aria-label="แก้ไขไม่ได้"
+                  title="แก้ไขไม่ได้"
+                >
+                  <i className="bx bx-lock-alt" aria-hidden="true" />
+                </span>
+              )}
             </div>
           </label>
           <label>
             <span className="addBooking__label">จำนวนเงินที่ถูกต้อง (฿)</span>
             <input
               className="boxInput"
-              aria-invalid={validationAttempted && (!Number.isFinite(numericAmount) || numericAmount < 0)}
-              aria-describedby={validationAttempted && (!Number.isFinite(numericAmount) || numericAmount < 0) ? `${fieldId}-amount-error` : undefined}
+              aria-invalid={
+                validationAttempted &&
+                (!Number.isFinite(numericAmount) || numericAmount < 0)
+              }
+              aria-describedby={
+                validationAttempted &&
+                (!Number.isFinite(numericAmount) || numericAmount < 0)
+                  ? `${fieldId}-amount-error`
+                  : undefined
+              }
               type="number"
               min="0"
               step="0.01"
@@ -351,37 +382,60 @@ const CorrectTransaction = ({
               disabled={submitting}
               onChange={(event) => setCorrectedAmount(event.target.value)}
             />
-            {validationAttempted && (!Number.isFinite(numericAmount) || numericAmount < 0) && <span id={`${fieldId}-amount-error`} className="formField__error">ยอดที่ถูกต้องต้องไม่ติดลบ</span>}
+            {validationAttempted &&
+              (!Number.isFinite(numericAmount) || numericAmount < 0) && (
+                <span
+                  id={`${fieldId}-amount-error`}
+                  className="formField__error"
+                >
+                  ยอดที่ถูกต้องต้องไม่ติดลบ
+                </span>
+              )}
           </label>
           <label>
             <span id={`${fieldId}-payment-label`} className="addBooking__label">
               ช่องทางที่ถูกต้อง
             </span>
             <div className="correctTransaction__fieldControl">
-            <Select<OptionType>
-              inputId={`${fieldId}-payment`}
-              aria-labelledby={paymentMethodLocked ? `${fieldId}-payment-label ${fieldId}-payment-lock` : `${fieldId}-payment-label`}
-              styles={customStyles<OptionType>()}
-              className={paymentMethodLocked ? "correctTransaction__lockedSelect" : undefined}
-              classNamePrefix="rs"
-              options={correctionPaymentMethodOptions}
-              value={correctionPaymentMethodOptions.find(
-                (item) => item.value === correctedPaymentMethod,
+              <Select<OptionType>
+                inputId={`${fieldId}-payment`}
+                aria-labelledby={
+                  paymentMethodLocked
+                    ? `${fieldId}-payment-label ${fieldId}-payment-lock`
+                    : `${fieldId}-payment-label`
+                }
+                styles={customStyles<OptionType>()}
+                className={
+                  paymentMethodLocked
+                    ? "correctTransaction__lockedSelect"
+                    : undefined
+                }
+                classNamePrefix="rs"
+                options={correctionPaymentMethodOptions}
+                value={correctionPaymentMethodOptions.find(
+                  (item) => item.value === correctedPaymentMethod,
+                )}
+                isDisabled={paymentMethodLocked || submitting}
+                menuPortalTarget={document.body}
+                menuPosition="fixed"
+                onChange={(option: SingleValue<OptionType>) =>
+                  setCorrectedPaymentMethod(
+                    (option?.value ||
+                      transaction.paymentMethod) as Transaction["paymentMethod"],
+                  )
+                }
+              />
+              {paymentMethodLocked && (
+                <span
+                  id={`${fieldId}-payment-lock`}
+                  className="correctTransaction__lockedIcon"
+                  role="img"
+                  aria-label="แก้ไขไม่ได้"
+                  title="แก้ไขไม่ได้"
+                >
+                  <i className="bx bx-lock-alt" aria-hidden="true" />
+                </span>
               )}
-              isDisabled={paymentMethodLocked || submitting}
-              menuPortalTarget={document.body}
-              menuPosition="fixed"
-              onChange={(option: SingleValue<OptionType>) =>
-                setCorrectedPaymentMethod(
-                  (option?.value || transaction.paymentMethod) as Transaction["paymentMethod"],
-                )
-              }
-            />
-            {paymentMethodLocked && (
-              <span id={`${fieldId}-payment-lock`} className="correctTransaction__lockedIcon" role="img" aria-label="แก้ไขไม่ได้" title="แก้ไขไม่ได้">
-                <i className="bx bx-lock-alt" aria-hidden="true" />
-              </span>
-            )}
             </div>
           </label>
           <label>
@@ -389,20 +443,36 @@ const CorrectTransaction = ({
             <Select<OptionType>
               styles={customStyles<OptionType>()}
               classNamePrefix="rs"
-              className={validationAttempted && !reasonCode ? "formField--error" : undefined}
+              className={
+                validationAttempted && !reasonCode
+                  ? "formField--error"
+                  : undefined
+              }
               aria-invalid={validationAttempted && !reasonCode}
-              aria-errormessage={validationAttempted && !reasonCode ? `${fieldId}-reason-error` : undefined}
+              aria-errormessage={
+                validationAttempted && !reasonCode
+                  ? `${fieldId}-reason-error`
+                  : undefined
+              }
               options={activeReasonOptions}
               placeholder="เลือกเหตุผล"
-              value={activeReasonOptions.find((item) => item.value === reasonCode)}
+              value={activeReasonOptions.find(
+                (item) => item.value === reasonCode,
+              )}
               isDisabled={submitting}
               menuPortalTarget={document.body}
               menuPosition="fixed"
               onChange={(option: SingleValue<OptionType>) =>
-                setReasonCode((option?.value || "") as TransactionCorrectionReason | "")
+                setReasonCode(
+                  (option?.value || "") as TransactionCorrectionReason | "",
+                )
               }
             />
-            {validationAttempted && !reasonCode && <span id={`${fieldId}-reason-error`} className="formField__error">กรุณาเลือกเหตุผลที่แก้ไข</span>}
+            {validationAttempted && !reasonCode && (
+              <span id={`${fieldId}-reason-error`} className="formField__error">
+                กรุณาเลือกเหตุผลที่แก้ไข
+              </span>
+            )}
           </label>
         </div>
 
@@ -411,18 +481,26 @@ const CorrectTransaction = ({
           <textarea
             className="boxInput correctTransaction__note"
             aria-invalid={validationAttempted && !correctedNote.trim()}
-            aria-describedby={validationAttempted && !correctedNote.trim() ? `${fieldId}-note-error` : undefined}
+            aria-describedby={
+              validationAttempted && !correctedNote.trim()
+                ? `${fieldId}-note-error`
+                : undefined
+            }
             value={correctedNote}
             disabled={submitting}
             placeholder="อธิบายข้อมูลที่ถูกต้องหรือเหตุผลที่แก้ไข"
             onChange={(event) => setCorrectedNote(event.target.value)}
           />
-          {validationAttempted && !correctedNote.trim() && <span id={`${fieldId}-note-error`} className="formField__error">กรุณาระบุหมายเหตุ</span>}
+          {validationAttempted && !correctedNote.trim() && (
+            <span id={`${fieldId}-note-error`} className="formField__error">
+              กรุณาระบุหมายเหตุ
+            </span>
+          )}
         </label>
 
-        <p className="correctTransaction__immutableNotice">
+        {/* <p className="correctTransaction__immutableNotice">
           <i className="bx bx-history" /> รายการเดิมยังดูได้ในประวัติ
-        </p>
+        </p> */}
       </div>
 
       <div className="addTransaction__actions">
@@ -436,7 +514,9 @@ const CorrectTransaction = ({
               loading: "กำลังแก้ไขรายการ...",
               success: "แก้ไขรายการสำเร็จ และเก็บข้อมูลเดิมไว้แล้ว",
               error: (error) =>
-                error instanceof Error ? error.message : "ไม่สามารถแก้ไขรายการได้",
+                error instanceof Error
+                  ? error.message
+                  : "ไม่สามารถแก้ไขรายการได้",
             })
           }
         />

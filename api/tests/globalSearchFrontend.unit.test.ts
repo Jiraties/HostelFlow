@@ -262,7 +262,9 @@ test("check-in slash mode provides preferred-format typing and a calendar picker
   assert.match(palette, /aliases: \["\/check-in"\]/);
   assert.match(palette, /formatDateModeDraft/);
   assert.match(palette, /dateFormatPlaceholder\(dateFormat\)/);
-  assert.match(palette, /type="date"/);
+  assert.match(palette, /<PreferredDateInput/);
+  assert.match(palette, /onChange=\{\(nextDate\) =>/);
+  assert.doesNotMatch(palette, /type="date"/);
   assert.match(palette, /bookingDateField: dateField/);
   assert.match(context, /setMode\("checkInDate"\)/);
 });

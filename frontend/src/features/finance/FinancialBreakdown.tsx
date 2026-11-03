@@ -607,10 +607,9 @@ const FinancialBreakdown = ({
               className="financialBreakdown__dateInput"
               aria-label="เลือกวันที่สำหรับรายได้"
               value={selectedBusinessDate}
-              onChange={(event) => {
-                if (event.target.value) {
-                  setSelectedBusinessDate(event.target.value);
-                }
+              allowClear={false}
+              onChange={(value) => {
+                if (value) setSelectedBusinessDate(value);
               }}
             />
           </label>

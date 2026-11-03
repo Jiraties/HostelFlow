@@ -489,8 +489,7 @@ const ManageRoomStays = ({
                       roomStay.from <= businessDate)
                   }
                   min={restrictHistoricalStays ? businessDate : undefined}
-                  onChange={(e) => {
-                    const newFrom = e.target.value;
+                  onChange={(newFrom) => {
 
                     setRoomStays((prevRoomStays) => {
                       const updated = [...prevRoomStays];
@@ -529,8 +528,7 @@ const ManageRoomStays = ({
                     isHistoricalStay(roomStay)
                   }
                   min={restrictHistoricalStays ? businessDate : undefined}
-                  onChange={(e) => {
-                    const newTo = e.target.value;
+                  onChange={(newTo) => {
 
                     setRoomStays((prevRoomStays) => {
                       const updated = [...prevRoomStays];

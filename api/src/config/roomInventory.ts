@@ -2,6 +2,7 @@ export type RoomInventoryItem = {
   id: string;
   capacity: number;
   active: boolean;
+  category: "private" | "dorm";
 };
 
 const numberedRooms = (prefix: string, count: number): RoomInventoryItem[] =>
@@ -9,14 +10,15 @@ const numberedRooms = (prefix: string, count: number): RoomInventoryItem[] =>
     id: `${prefix} ${index + 1}`,
     capacity: 1,
     active: true,
+    category: "dorm",
   }));
 
 /** Backend-owned room/bed inventory used by validation and calendar output. */
 export const ROOM_INVENTORY: readonly RoomInventoryItem[] = [
-  { id: "Balcony", capacity: 2, active: true },
-  { id: "Window", capacity: 2, active: true },
-  { id: "Pottery 1", capacity: 3, active: true },
-  { id: "Pottery 2", capacity: 3, active: true },
+  { id: "Balcony", capacity: 2, active: true, category: "private" },
+  { id: "Window", capacity: 2, active: true, category: "private" },
+  { id: "Pottery 1", capacity: 3, active: true, category: "private" },
+  { id: "Pottery 2", capacity: 3, active: true, category: "private" },
   ...numberedRooms("Siesta", 14),
   ...numberedRooms("Marquisette", 8),
   ...numberedRooms("Homespan", 8),

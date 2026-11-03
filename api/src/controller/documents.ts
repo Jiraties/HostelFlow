@@ -1,4 +1,7 @@
 import ExcelJs from "exceljs";
+import { buildBookingExportRows, type BookingExportRow } from "../helpers/bookingExportRows";
+import { ExportFilterError, exportPlatformMap, hasEmptyExportDimension, parseExportFilters, usesMultiExportFilters, type ExportFilters } from "../helpers/exportFilters";
+import { businessDateKey } from "../helpers/businessDateHelpers";
 import Booking, {
   ADDITIONAL_GUEST_SENSITIVE_SELECT,
   PASSPORT_SENSITIVE_SELECT,
@@ -24,6 +27,7 @@ import {
   bookingsReportCheckInMonthBounds,
   bookingsReportDepositCollectedTotal,
   bookingsReportTransactionAmount,
+  bookingsReportUnpaidCancellationAdjustments,
 } from "../helpers/bookingsReportHelpers";
 import { getPrimaryRoomId } from "../helpers/roomStayHelpers";
 import { logActivityStrict } from "../services/activityServices";
@@ -41,13 +45,7 @@ const setSensitiveDownloadHeaders = (res: Response) => {
   res.setHeader("Pragma", "no-cache");
 };
 
-const platformMap: Record<string, { label: string; color: string }> = {
-  BOOK: { label: "Booking.com", color: "003580" },
-  HOST: { label: "Hostelworld", color: "F15A24" },
-  AGOD: { label: "Agoda", color: "19AC5B" },
-  TRAV: { label: "Traveloka", color: "00ADEF" },
-  WALK: { label: "Walk-In", color: "F12424" },
-};
+const platformMap = exportPlatformMap;
 
 const transactionMap: Record<string, string> = {
   deposit: "รับมัดจำ",
@@ -56,6 +54,7 @@ const transactionMap: Record<string, string> = {
   cancellationRefund: "คืนเงินยกเลิก",
   roomRefund: "คืนค่าห้อง",
   roomChargeWriteOff: "ปิดยอดค่าห้องที่เหลือ",
+  cancelledUnpaidBalance: "หักยอดค้างรับที่ยกเลิก",
   settlementCharge: "Settlement Charge",
   compensation: "ชดเชยลูกค้า",
   depositKept: "เก็บมัดจำเป็นรายได้",
@@ -440,8 +439,165 @@ const applyStatusCellStyle = (row: ExcelJs.Row, status: string) => {
   statusCell.alignment = { vertical: "middle", horizontal: "center" };
 };
 
+const bookingReportColumns = [
+  { header: "Booking ID", key: "bookingId", width: 18 },
+  { header: "วันที่เข้า", key: "checkIn", width: 14 },
+  { header: "วันที่ออก", key: "checkOut", width: 14 },
+  { header: "คืน", key: "nights", width: 8 },
+  { header: "ชื่อแขก", key: "name", width: 28 },
+  { header: "จองจาก", key: "platformId", width: 12 },
+  { header: "สถานะ", key: "status", width: 14 },
+  { header: "ห้อง", key: "rooms", width: 24 },
+  { header: "ยอดเงิน", key: "amount", width: 14 },
+  { header: "เงินมัดจำที่รับ", key: "depositCollected", width: 16 },
+  { header: "ชำระเงิน", key: "paymentMethods", width: 20 },
+  { header: "Staff", key: "staffName", width: 18 },
+  { header: "Note", key: "note", width: 30 },
+];
+
+const categoryLabels = {
+  private: "ห้องพักส่วนตัว",
+  dorm: "ห้องพักรวม",
+  services: "บริการเสริม",
+  mixed: "Mixed private/dorm — ไม่แบ่งยอด",
+  unclassified: "ไม่ทราบประเภทห้อง — ไม่แบ่งยอด",
+};
+
+const rowKindLabels = {
+  accommodation: "ค่าที่พัก (ช่วงการจอง)",
+  service: "บริการ (รายการใช้จ่าย)",
+  adjustment: "ปรับยอด / รายการเกี่ยวข้อง",
+};
+
+const createFilteredBookingWorkbook = (
+  rows: BookingExportRow[],
+  filters: ExportFilters,
+  month: string,
+  staffName: (username?: string) => string,
+) => {
+  const workbook = new ExcelJs.Workbook();
+  const sheet = workbook.addWorksheet("Bookings");
+  sheet.columns = [
+    ...bookingReportColumns,
+    { header: "ประเภทข้อมูล", key: "category", width: 38 },
+    { header: "ชนิดแถว", key: "rowKind", width: 30 },
+    { header: "รหัสการจองหลัก", key: "parentBookingId", width: 22 },
+    { header: "รหัสรายการต้นทาง", key: "sourceId", width: 28 },
+  ];
+  const header = sheet.getRow(1);
+  header.font = { bold: true, color: { argb: "FFFFFFFF" } };
+  header.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF51D1DC" } };
+  header.alignment = { vertical: "middle", horizontal: "center" };
+  header.height = 26;
+  header.eachCell((cell) => { cell.border = cellBorder; });
+  for (const entry of rows) {
+    const platform = platformMap[entry.platformId];
+    const categoryNote = entry.category === "mixed"
+      ? "ประเภทที่พักโดยประมาณ: รวม private/dorm; ยอดเต็มจำนวน ไม่แบ่งยอดตามประเภท"
+      : entry.category === "unclassified"
+        ? "ไม่สามารถจัดประเภทห้องได้; คงยอดเต็มจำนวน"
+        : "";
+    const row = sheet.addRow({
+      bookingId: entry.channelBookingId,
+      checkIn: businessDateKey(entry.from).replace(/-/g, "/"),
+      checkOut: businessDateKey(entry.to).replace(/-/g, "/"),
+      nights: entry.kind === "accommodation" ? Math.round((entry.to.getTime() - entry.from.getTime()) / 86400000) : "",
+      name: entry.booking.name,
+      platformId: platform?.label || entry.platformId,
+      status: entry.booking.voided ? "Void" : entry.booking.status,
+      rooms: entry.transactionType ? transactionMap[entry.transactionType] || entry.transactionType : entry.rooms.join(", "),
+      amount: entry.amount,
+      depositCollected: entry.depositCollected,
+      paymentMethods: entry.paymentMethod,
+      staffName: staffName(entry.createdBy),
+      note: [entry.note, categoryNote].filter(Boolean).join(" · "),
+      category: categoryLabels[entry.category],
+      rowKind: rowKindLabels[entry.kind],
+      parentBookingId: entry.booking.bookingId,
+      sourceId: entry.sourceId,
+    });
+    applyRowSpacing(row);
+    applyImportantCellStyle(row);
+    if (!entry.booking.voided) applyStatusCellStyle(row, entry.booking.status);
+    row.getCell("platformId").font = { bold: true, color: { argb: `FF${platform?.color || "94A3B8"}` } };
+  }
+  sheet.getColumn("amount").numFmt = '#,##0.00 "บาท"';
+  sheet.getColumn("depositCollected").numFmt = '#,##0.00 "บาท"';
+  sheet.views = [{ state: "frozen", ySplit: 1 }];
+  sheet.autoFilter = { from: "A1", to: "Q1" };
+
+  const info = workbook.addWorksheet("Export Info");
+  info.columns = [{ header: "รายการ", key: "label", width: 32 }, { header: "รายละเอียด", key: "value", width: 100 }];
+  const total = (values: number[]) => Number(values.reduce((sum, value) => sum + value, 0).toFixed(2));
+  const details: [string, string | number][] = [
+    ["เดือน Check-In (Bangkok)", month],
+    ["ช่องทาง", filters.bookingChannels.map((value) => platformMap[value]?.label || value).join(", ") || "ไม่ได้เลือก"],
+    ["สถานะ", filters.bookingStatuses.map((value) => statusMap[value]?.label || value).join(", ") || "ไม่ได้เลือก"],
+    ["วิธีชำระเงิน", filters.paymentMethods.join(", ") || "ไม่ได้เลือก"],
+    ["ประเภทข้อมูล", filters.categories.map((value) => categoryLabels[value as keyof typeof categoryLabels]).join(", ") || "ไม่ได้เลือก"],
+    ["จำนวนการจองไม่ซ้ำ", new Set(rows.map((row) => row.booking.bookingId)).size],
+    ["จำนวนแถวข้อมูล", rows.length],
+    ["ยอดเงินรวมแถวที่เลือก", total(rows.map((row) => row.amount))],
+    ["เงินมัดจำที่รับ (ไม่ใช่รายได้)", total(rows.map((row) => Number(row.depositCollected || 0)))],
+    ["การกรอง", "OR ภายในแต่ละช่อง; AND ระหว่างช่อง; ไม่เลือกค่าในช่องใด = ไม่มีข้อมูล"],
+    ["วันที่", "การจองเริ่ม Check-In ในเดือนที่เลือก; ช่วงการจองต้องทับซ้อนเดือน; บริการของการจองเหล่านั้นใช้ขอบเขตเดิม ไม่ใช่เดือนรับเงิน"],
+    ["การชำระเงิน", "กรองวิธีชำระที่บันทึกบนแถว ไม่ใช่ยอดรับเงินจริงหรือวิธีชำระจากรายการอื่นของ Booking"],
+    ["ยอดยกเลิกที่ยังไม่ชำระ", "แถวหักยอดค้างรับเป็นยอดคำนวณสำหรับรายงาน ไม่ใช่การคืนเงินจริง; หากระบุให้ตรวจสอบใน Note กรุณาตรวจสอบรายการด้วยตนเอง"],
+    ["ขอบเขตบริการ", "เฉพาะบริการที่ผูกกับ Booking ไม่รวมยอดขายแขกนอก; รายการรับเงินซ้ำและเงินมัดจำไม่เพิ่มยอดเงินรายได้"],
+    ["ที่พัก Mixed", "คงยอดเต็มจำนวน 1 แถว ไม่แบ่งหรือประมาณยอดเงิน; เมื่อเลือก private หรือ dorm จะรวมแถว Mixed ไว้ในกลุ่ม Mixed ต่างหาก"],
+    ["Pivot", "ใช้ประเภทข้อมูลและชนิดแถวจัดกลุ่มยอดเงิน; ใช้ distinct count ของรหัสการจองหลักนับ Booking; คอลัมน์คืนมีค่าเฉพาะแถวที่พักเพื่อไม่ให้นับคืนพักซ้ำจากแถวบริการ"],
+    ["สถานะ Void", "แยกจาก Cancelled และ No-Show; ยอดของ Void เป็นข้อมูลตรวจสอบ ไม่ใช่รายได้ดำเนินงาน"],
+  ];
+  for (const category of Object.keys(categoryLabels) as (keyof typeof categoryLabels)[]) {
+    details.push([`ยอด ${categoryLabels[category]}`, total(rows.filter((row) => row.category === category).map((row) => row.amount))]);
+  }
+  for (const [label, value] of details) info.addRow({ label, value });
+  info.getRow(1).font = { bold: true };
+  info.eachRow((row) => {
+    row.alignment = { vertical: "top", wrapText: true };
+    row.height = typeof row.getCell(2).value === "string" && String(row.getCell(2).value).length > 80 ? 48 : 30;
+  });
+  return workbook;
+};
+
+const getFilteredBookingsReport = async (req: Request, res: Response) => {
+  const month = req.query.month;
+  if (typeof month !== "string") return res.status(400).json({ message: "Invalid month format" });
+  const bounds = bookingsReportCheckInMonthBounds(month);
+  if (!bounds) return res.status(400).json({ message: "Invalid month format" });
+  const filters = parseExportFilters(req.query);
+  const normalStatuses = filters.bookingStatuses.filter((status) => status !== "voided");
+  const query: Record<string, unknown> = {
+    checkIn: { $gte: bounds.start, $lt: bounds.end },
+    $and: [
+      { $or: [
+        ...(filters.bookingStatuses.includes("voided") ? [{ voided: true }] : []),
+        { voided: { $ne: true }, status: { $in: normalStatuses } },
+      ] },
+      { $or: [
+        { platformId: { $in: filters.bookingChannels } },
+        { "commercialSegments.platformId": { $in: filters.bookingChannels } },
+        { "transactions.platformId": { $in: filters.bookingChannels } },
+      ] },
+    ],
+  };
+  const records = hasEmptyExportDimension(filters) ? [] : await Booking.find(query).sort({ checkIn: 1, name: 1 });
+  const rows = buildBookingExportRows(records, bounds, filters);
+  const staffUsernames = [...new Set(rows.map((row) => row.createdBy).filter((username): username is string => Boolean(username)))];
+  const staff = await User.find({ username: { $in: staffUsernames } }).select("username name").lean();
+  const staffNames = new Map(staff.map((member) => [member.username, member.name]));
+  const workbook = createFilteredBookingWorkbook(rows, filters, month,
+    (username) => (username && staffNames.get(username)) || "ไม่ทราบชื่อพนักงาน");
+  setSensitiveDownloadHeaders(res);
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename=bookings-${month}.xlsx`);
+  await workbook.xlsx.write(res);
+  res.end();
+};
+
 export const getBookingsReport = async (req: Request, res: Response) => {
   try {
+    if (usesMultiExportFilters(req.query)) return await getFilteredBookingsReport(req, res);
     const month = req.query.month as string;
     const bookingChannel = req.query.bookingChannel as string | undefined;
     const bookingStatus = req.query.bookingStatus as string | undefined;
@@ -513,21 +669,7 @@ export const getBookingsReport = async (req: Request, res: Response) => {
     const workbook = new ExcelJs.Workbook();
     const sheet = workbook.addWorksheet("Bookings");
 
-    sheet.columns = [
-      { header: "Booking ID", key: "bookingId", width: 18 },
-      { header: "วันที่เข้า", key: "checkIn", width: 14 },
-      { header: "วันที่ออก", key: "checkOut", width: 14 },
-      { header: "คืน", key: "nights", width: 8 },
-      { header: "ชื่อแขก", key: "name", width: 28 },
-      { header: "จองจาก", key: "platformId", width: 12 },
-      { header: "สถานะ", key: "status", width: 14 },
-      { header: "ห้อง", key: "rooms", width: 24 },
-      { header: "ยอดเงิน", key: "amount", width: 14 },
-      { header: "เงินมัดจำที่รับ", key: "depositCollected", width: 16 },
-      { header: "ชำระเงิน", key: "paymentMethods", width: 20 },
-      { header: "Staff", key: "staffName", width: 18 },
-      { header: "Note", key: "note", width: 30 },
-    ];
+    sheet.columns = bookingReportColumns;
 
     sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
     sheet.getRow(1).fill = {
@@ -543,6 +685,7 @@ export const getBookingsReport = async (req: Request, res: Response) => {
 
     bookings.forEach((booking) => {
       const transactions = effectiveBookingTransactions(booking);
+      const { adjustments: cancellationAdjustments, needsReview: cancellationNeedsReview } = bookingsReportUnpaidCancellationAdjustments(booking, transactions);
       const financialBooking = { ...booking.toObject(), transactions };
       const roomSlices = commercialRoomSlices(financialBooking);
       effectiveCommercialSegments(financialBooking)
@@ -594,7 +737,7 @@ export const getBookingsReport = async (req: Request, res: Response) => {
             staffName: displayStaffName(
               segment.createdBy || booking.staffUsername,
             ),
-            note: segment.note || booking.note || "",
+            note: [segment.note || booking.note || "", cancellationNeedsReview ? "ตรวจสอบยอดยกเลิก: รายการชำระหรือปิดยอดไม่ระบุค่าห้องที่เกี่ยวข้อง" : ""].filter(Boolean).join(" · "),
           });
 
           const platformCell = row.getCell("platformId");
@@ -609,6 +752,25 @@ export const getBookingsReport = async (req: Request, res: Response) => {
             vertical: "middle",
             horizontal: "center",
           };
+          const cancellationAdjustment = cancellationAdjustments.get(segment.transactionId);
+          if (cancellationAdjustment !== undefined) {
+            const reversal = sheet.addRow({
+              bookingId: segment.channelBookingId || booking.bookingId,
+              checkIn: formatInputDate(new Date(segment.from)),
+              checkOut: formatInputDate(new Date(segment.to)),
+              name: booking.name,
+              platformId: platform.label,
+              status: booking.status,
+              rooms: transactionMap.cancelledUnpaidBalance,
+              amount: cancellationAdjustment,
+              paymentMethods: "Unpaid",
+              staffName: displayStaffName(booking.cancellation?.cancelledByStaffUsername || booking.staffUsername),
+              note: "ยอดค้างรับที่ยกเลิก (คำนวณสำหรับรายงาน ไม่ใช่การคืนเงินจริง)",
+            });
+            applyRowSpacing(reversal);
+            applyImportantCellStyle(reversal);
+            applyStatusCellStyle(reversal, booking.status);
+          }
         });
 
       transactions
@@ -685,6 +847,7 @@ export const getBookingsReport = async (req: Request, res: Response) => {
     await workbook.xlsx.write(res);
     res.end();
   } catch (err) {
+    if (err instanceof ExportFilterError) return res.status(400).json({ message: err.message });
     console.error(err);
     res.status(500).json({ message: "Failed to create bookings report" });
   }

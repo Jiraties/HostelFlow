@@ -1,0 +1,105 @@
+.calendarInput {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+  background-color: var(--background);
+  color: var(--text);
+  border: 0;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.calendarInput:focus-visible,
+.calendarInput__popover button:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+.calendarInput[aria-invalid="true"] {
+  outline: 1px solid var(--field-error-color);
+}
+
+.calendarInput:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.calendarInput__value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendarInput__icon {
+  flex: 0 0 auto;
+  color: #777;
+  font-size: 1.1rem;
+}
+
+.calendarInput--iconOnly {
+  justify-content: center;
+}
+
+.calendarInput__popover {
+  animation: none !important;
+  z-index: 10000;
+  max-width: calc(100vw - 2rem);
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  padding: 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.85rem;
+  box-shadow: 0 0.75rem 2rem #0000001f;
+  background-color: var(--background);
+  color: var(--text);
+  font-family: "IBM Plex Sans Thai", sans-serif;
+  font-size: 0.85rem;
+  text-align: left;
+}
+
+.calendarInput__monthPanel.calendar__monthPickerPanel {
+  position: static;
+  display: block;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  transform: none;
+}
+
+.calendarInput__popover .calendarInput__monthHeading {
+  width: auto;
+  height: auto;
+  padding: 0.4rem;
+  font: inherit;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.calendarInput__popover button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.calendarInput__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.calendarInput__actions button {
+  min-height: 2.75rem;
+  padding: 0 0.4rem;
+  border: 0;
+  border-radius: 0.45rem;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}

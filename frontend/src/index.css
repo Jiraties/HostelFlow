@@ -84,7 +84,7 @@ body {
 }
 
 .boxInput:focus-visible {
-  outline: 2px solid #00828d;
+  outline: 2px solid var(--primary-color);
   outline-offset: 2px;
 }
 
@@ -205,7 +205,7 @@ body {
 }
 
 :is(.cancellation__segment, .extendBooking__placement button, .addBooking__advanceModeButton):focus-visible {
-  outline: 2px solid #00828d;
+  outline: 2px solid var(--primary-color);
   outline-offset: 1px;
 }
 
@@ -245,7 +245,7 @@ label.formChoice,
 }
 
 label.formChoice:has(input:focus-visible) {
-  outline: 2px solid #00828d;
+  outline: 2px solid var(--primary-color);
   outline-offset: 2px;
 }
 

@@ -119,12 +119,15 @@ Keep a predictable vertical sequence: **visible label → control → helper or 
 | Select | `react-select` with [customStyles](frontend/src/helpers/selectStyling.ts); `3.3rem` minimum control height, shared font, radius, and shadow |
 | Checkbox | The shared `.checkbox` and `.box` pattern in [BookingCheckbox.css](frontend/src/features/bookings/BookingCheckbox.css), using a native checkbox and a visible, centered checkmark |
 | Date | [PreferredDateInput](frontend/src/components/PreferredDateInput.tsx) for preference-aware dates; booking forms use [BookingDateRangePicker](frontend/src/features/bookings/BookingDateRangePicker.tsx) for stay ranges |
+| Month | [MonthInput](frontend/src/components/MonthInput.tsx), using the same [MonthPickerPanel](frontend/src/components/MonthPickerPanel.tsx) as the calendar page |
 | Error | `.formField__error`, `.boxInput--error`, and `.formField--error` |
 | Primary / secondary action | [ActionButton](frontend/src/components/ActionButton.tsx) |
 
 Forms commonly use two equal columns with `2rem` gaps on desktop. AddBooking collapses to one column at `720px`, with `1.25rem` gaps. Keep related controls together, such as Check-In/Check-Out and nights, or amount and payment method. Retain the owning form's responsive rules.
 
-Use the same `2rem` field spacing in transaction, correction, and additional-guest forms; use `1.25rem` when those forms stack on narrow screens. Related controls and summary rows may remain closer together. Native inputs and shared selects use the same visible teal focus treatment.
+Reuse the calendar page's custom month grid for month selection and the existing booking-calendar appearance for single dates. Do not introduce MUI picker surfaces or browser-native date/month dialogs. Use the existing `react-select` pattern for dropdowns; retain styled text/number inputs and the shared checkboxes. Calendar controls exchange `YYYY-MM` or `YYYY-MM-DD` strings without UTC conversion and preserve their owning screen's date limits and display preference.
+
+Use the same `2rem` field spacing in transaction, correction, and additional-guest forms; use `1.25rem` when those forms stack on narrow screens. Related controls and summary rows may remain closer together. Use the primary color for visible focus treatments on native inputs and shared selects.
 
 Use explicit, short labels: `ชื่อ-สกุล`, `Check-In`, `Check-Out`, `ห้อง`, and `ช่องทางการจอง`. Use the owning form's established money and payment labels. Place units beside the relevant input or value. Placeholder examples supplement the label. State optionality or a constraint where it helps the user decide what to enter.
 
@@ -147,6 +150,8 @@ Select menus may use `menuPortalTarget={document.body}` and the shared portal la
 
 ### Writing for decisions
 
+- Before adding an eyebrow, description, subtitle, or helper, check whether it helps the user make a decision, take an action, or understand a non-obvious result. Omit copy that repeats the heading, explains an obvious workflow, or only decorates the layout.
+- Use at least `1rem` for main interface text, field labels, readiness messages, and counts. Smaller text is reserved for secondary metadata that is useful and does not need to lead the task.
 - Use short, direct Thai to say what the person needs to choose and what will happen after confirmation. Keep familiar terms such as Booking and Check-In.
 - Summarize the consequences that matter to the decision. Avoid repeating the guest's identity or restating the same explanation in both the choice and summary.
 - Keep financial effects precise: distinguish a correction to a recorded amount from recording money already returned. Keep necessary warnings, blockers, and explicit confirmations even when shortening copy.

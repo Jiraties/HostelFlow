@@ -309,7 +309,7 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .documents__export--hotel {
+  .documents__exports--admin .documents__export--hotel {
     grid-column: 1 / -1;
   }
 }
@@ -320,7 +320,7 @@
     grid-template-columns: 1fr;
   }
 
-  .documents__export--hotel {
+  .documents__exports--admin .documents__export--hotel {
     grid-column: auto;
   }
 
@@ -365,6 +365,194 @@
     height: 3rem;
     border-radius: 0.9rem;
   }
+}
+
+/* Current report states and controls within the committed card layout. */
+.documents__label {
+  display: block;
+}
+
+.documents__filterHelp {
+  color: #666;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.documents__filterHelp summary {
+  cursor: pointer;
+}
+
+.documents__filterHelp p {
+  margin-top: 0.5rem;
+}
+
+.documents__exportTitle {
+  min-width: 0;
+}
+
+.documents__infoTrigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  flex: 0 0 2rem;
+  margin-left: auto;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #666;
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.documents__infoTrigger i {
+  color: var(--primary-color);
+  font-size: 1.1rem;
+}
+
+.documents__infoModal {
+  width: min(34rem, calc(100vw - 2rem));
+  gap: 1.25rem;
+}
+
+.documents__infoModal h2 {
+  font-size: 1.25rem;
+  font-weight: 500;
+}
+
+.documents__infoContent {
+  display: grid;
+  gap: 0.75rem;
+  color: #555;
+  line-height: 1.6;
+}
+
+.documents__infoActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.documents__fieldGrid .exportMultiSelect--open {
+  z-index: 2;
+}
+
+.documents__readiness {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: auto;
+  padding: 0.85rem 1rem;
+  border-radius: 1.25rem;
+  background: var(--light-background);
+}
+
+.documents__readiness > i {
+  display: grid;
+  place-items: center;
+  flex: 0 0 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: #e8e8e8;
+  color: #666;
+  font-size: 1.2rem;
+}
+
+.documents__readiness > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.documents__readiness strong {
+  display: block;
+  color: var(--text);
+}
+
+.documents__readiness--ready {
+  align-self: flex-start;
+  padding: 0;
+  background: transparent;
+  color: #444;
+  font-size: 0.9rem;
+}
+
+.documents__readiness--ready > i {
+  flex-basis: 1.35rem;
+  height: 1.35rem;
+  background: transparent;
+  color: var(--green);
+}
+
+.documents__readiness--incomplete {
+  background: #fff6e6;
+  color: #805000;
+}
+
+.documents__readiness--incomplete > i {
+  background: #966000;
+  color: #fff;
+}
+
+.documents__readiness--error {
+  flex-wrap: wrap;
+  background: var(--light-red);
+  color: var(--field-error-color);
+}
+
+.documents__readiness--error > i {
+  background: var(--field-error-color);
+  color: #fff;
+}
+
+.documents__textButton {
+  border: 0;
+  background: transparent;
+  color: var(--primary-color);
+  font: inherit;
+  cursor: pointer;
+}
+
+.documents__missingDetails {
+  color: #805000;
+}
+
+.documents__missingDetails summary {
+  cursor: pointer;
+}
+
+.documents__missingList {
+  max-height: 14rem;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.documents__missingItem {
+  text-decoration: none;
+}
+
+.documents__missingItem > span,
+.documents__missingItem span span {
+  display: block;
+}
+
+.documents__missingItem span span {
+  color: #666;
+  font-size: 0.875rem;
+}
+
+.documents__action {
+  border-radius: 2rem;
+}
+
+.documents :is(button, summary, a):focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .documents .bx-spin { animation: none; }
 }
 
 @media (max-width: 480px) {

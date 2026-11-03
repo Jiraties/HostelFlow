@@ -19,7 +19,7 @@ export const customStyles = <
     borderRadius: "0.5rem",
     border: "none",
     boxShadow: state.isFocused
-      ? "rgba(149, 157, 165, 0.25) 0px 8px 24px, 0 0 0 2px #00828d"
+      ? "rgba(149, 157, 165, 0.25) 0px 8px 24px, 0 0 0 2px var(--primary-color)"
       : "rgba(149, 157, 165, 0.25) 0px 8px 24px",
     width: "100%",
     color: "var(--text)",

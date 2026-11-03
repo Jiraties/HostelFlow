@@ -5,13 +5,14 @@ const numberedRooms = (prefix, count) => Array.from({ length: count }, (_, index
     id: `${prefix} ${index + 1}`,
     capacity: 1,
     active: true,
+    category: "dorm",
 }));
 /** Backend-owned room/bed inventory used by validation and calendar output. */
 exports.ROOM_INVENTORY = [
-    { id: "Balcony", capacity: 2, active: true },
-    { id: "Window", capacity: 2, active: true },
-    { id: "Pottery 1", capacity: 3, active: true },
-    { id: "Pottery 2", capacity: 3, active: true },
+    { id: "Balcony", capacity: 2, active: true, category: "private" },
+    { id: "Window", capacity: 2, active: true, category: "private" },
+    { id: "Pottery 1", capacity: 3, active: true, category: "private" },
+    { id: "Pottery 2", capacity: 3, active: true, category: "private" },
     ...numberedRooms("Siesta", 14),
     ...numberedRooms("Marquisette", 8),
     ...numberedRooms("Homespan", 8),
