@@ -1,3 +1,4 @@
+import MotionDropdown from "./MotionDropdown";
 import { useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import dayjs, { type Dayjs } from "dayjs";
@@ -19,6 +20,8 @@ type CalendarInputProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "value" 
 };
 
 type PickerState = {
+  open: boolean;
+  origin: "top-left" | "bottom-left";
   viewMonth: Dayjs;
   chooseMonth: boolean;
   position: CSSProperties;
@@ -51,7 +54,7 @@ export const CalendarInput = ({
   const minimum = (min && parseCalendarKey(min, mode)) || dayjs().year(1).startOf("year");
   const maximum = (max && parseCalendarKey(max, mode)) || dayjs().year(9999).endOf("year");
   const accessibleLabel = buttonProps["aria-label"] || (mode === "month" ? "เลือกเดือน" : "เลือกวันที่");
-  const open = Boolean(picker && !disabled);
+  const open = Boolean(picker?.open && !disabled);
 
   const popupPosition = (): CSSProperties => {
     const bounds = triggerRef.current!.getBoundingClientRect();
@@ -77,10 +80,11 @@ export const CalendarInput = ({
     let initial = selected || dayjs();
     if (initial.isBefore(minimum, mode)) initial = minimum;
     if (initial.isAfter(maximum, mode)) initial = maximum;
-    setPicker({ viewMonth: initial.startOf("month"), chooseMonth: mode === "month", position: popupPosition(), container });
+    const position = popupPosition();
+    setPicker({ open: true, origin: Number(position.top) >= trigger.getBoundingClientRect().bottom ? "top-left" : "bottom-left", viewMonth: initial.startOf("month"), chooseMonth: mode === "month", position, container });
   };
   const closeAndRestoreFocus = () => {
-    setPicker(null);
+    setPicker((current) => current ? { ...current, open: false } : null);
     triggerRef.current?.focus({ preventScroll: true });
   };
   const select = (next: Dayjs) => {
@@ -92,19 +96,19 @@ export const CalendarInput = ({
   useEffect(() => {
     if (!open) return;
     const outside = (event: Event) => {
-      if (event.target instanceof Node && !triggerRef.current?.contains(event.target) && !panelRef.current?.contains(event.target)) setPicker(null);
+      if (event.target instanceof Node && !triggerRef.current?.contains(event.target) && !panelRef.current?.contains(event.target)) setPicker((current) => current ? { ...current, open: false } : null);
     };
     const escape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
       event.stopPropagation();
-      setPicker(null);
+      setPicker((current) => current ? { ...current, open: false } : null);
       triggerRef.current?.focus({ preventScroll: true });
     };
-    const closeOnResize = () => setPicker(null);
+    const closeOnResize = () => setPicker((current) => current ? { ...current, open: false } : null);
     const closeOnScroll = (event: Event) => {
       if (event.target instanceof Node && panelRef.current?.contains(event.target)) return;
-      setPicker(null);
+      setPicker((current) => current ? { ...current, open: false } : null);
     };
     document.addEventListener("pointerdown", outside);
     document.addEventListener("focusin", outside);
@@ -160,7 +164,8 @@ export const CalendarInput = ({
         {!iconOnly && <span className="calendarInput__value">{selected ? selected.format(displayFormat) : placeholder}</span>}
         <i className={`bx ${mode === "month" ? "bx-chevron-down" : "bx-calendar"} calendarInput__icon`} aria-hidden="true" />
       </button>
-      {open && picker && createPortal(
+      {picker && createPortal(
+        <MotionDropdown open={open} origin={picker.origin}>
         <div id={dialogId} role="dialog" aria-label={accessibleLabel} ref={panelRef} className="calendarInput__popover" style={picker.position} onKeyDown={(event) => event.stopPropagation()}>
           {picker.chooseMonth ? (
             <MonthPickerPanel
@@ -213,7 +218,8 @@ export const CalendarInput = ({
             {allowClear && <button type="button" disabled={!value} onClick={() => { onChange?.(""); closeAndRestoreFocus(); }}>ล้างค่า</button>}
             <button type="button" onClick={closeAndRestoreFocus}>ปิด</button>
           </div>
-        </div>, picker.container,
+        </div>
+        </MotionDropdown>, picker.container,
       )}
     </>
   );

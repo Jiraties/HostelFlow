@@ -1,3 +1,4 @@
+import MotionDropdown from "./MotionDropdown";
 import { useEffect, useRef, useState } from "react";
 import type { OptionType } from "../helpers/selectStyling";
 import "../features/bookings/BookingCheckbox.css";
@@ -104,7 +105,7 @@ const ExportMultiSelect = ({
         <span id={`${id}-summary`}>{value.length === options.length ? "ทั้งหมด" : value.length === 1 ? selectedLabels[0] : value.length ? `${value.length} ${countLabel}` : "เลือกอย่างน้อย 1 รายการ"}</span>
         <i className={`bx ${expanded ? "bx-chevron-up" : "bx-chevron-down"}`} aria-hidden="true" />
       </button>
-      {expanded && (
+      <MotionDropdown open={expanded} origin={`${openAbove ? "bottom" : "top"}-${alignRight ? "right" : "left"}`}>
         <div id={`${id}-menu`} role="dialog" aria-labelledby={`${id}-label`} className={`exportMultiSelect__menu${openAbove ? " exportMultiSelect__menu--above" : ""}${alignRight ? " exportMultiSelect__menu--right" : ""}`} style={{ maxHeight: availableHeight }}>
           <input
             ref={searchRef}
@@ -134,7 +135,7 @@ const ExportMultiSelect = ({
             {visibleOptions.length === 0 && <p className="exportMultiSelect__empty">ไม่พบตัวเลือก</p>}
           </div>
         </div>
-      )}
+      </MotionDropdown>
     </div>
   );
 };

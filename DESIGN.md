@@ -196,9 +196,9 @@ The banner retains readable error text and alert semantics. If this pattern is d
 
 ### Modal and control motion
 
-- Mobile modal entry: `320ms cubic-bezier(0.22, 0.72, 0.3, 1)`, from `translateY(2.5rem)` / scale `0.995` / opacity `0.9` to the resting state.
-- Mobile backdrop entry: `220ms ease-out` opacity fade.
-- These mobile entry animations already have a reduced-motion override in `App.css`. The replaced ViewBooking skeleton skips the entry replay.
+- Shared [MotionModal](frontend/src/components/MotionModal.tsx) and [MotionDropdown](frontend/src/components/MotionDropdown.tsx) use the BMA PR motion settings in [surfaceMotion.css](frontend/src/styles/surfaceMotion.css): modals open in `200ms` and close in `150ms` at scale `0.98`; dropdowns open in `160ms` and close in `120ms`, with `translateY(-4px)` and scale `0.97` at both ends. Both use `cubic-bezier(0.25, 1, 0.5, 1)` easing; dropdown origin aligns to the trigger.
+- Mobile modals retain the bottom-sheet layout and use the same centered scale motion as desktop. Backdrops follow the same open/close timings. Shared [MotionSelect](frontend/src/components/MotionSelect.tsx) menus use the same dropdown entrance and exit; exiting options immediately become inert and leave the accessibility tree.
+- Reduced-motion preferences disable surface movement and transition waiting. Finished surfaces release their transform so fixed calendars and mobile action sheets keep their viewport positioning. The replaced ViewBooking skeleton does not replay the outer modal entrance.
 - Legacy `.boxButton` has `200ms` hover/press scaling (`1.05` / `0.97`); `ActionButton` does not define the same scale behavior in its base stylesheet. Preserve component-specific behavior instead of assuming one global animation.
 - Avoid hover movement on touch-only devices. For any new motion, respect reduced-motion preferences and keep error text available after the motion ends.
 

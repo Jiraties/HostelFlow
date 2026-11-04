@@ -1,4 +1,4 @@
-import { Modal } from "@mui/material";
+import Modal from "./MotionModal";
 import { useEffect, useId, useState } from "react";
 import toast from "react-hot-toast";
 import ActionButton from "./ActionButton";

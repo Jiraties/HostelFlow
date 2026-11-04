@@ -1,5 +1,5 @@
 import "./Settings.css";
-import Select from "react-select";
+import Select from "../components/MotionSelect";
 import { customStyles, type OptionType } from "../helpers/selectStyling";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";

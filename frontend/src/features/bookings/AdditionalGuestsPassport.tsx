@@ -3,10 +3,10 @@ import {
   nationalityOptions,
   nationalitySelectOptions,
 } from "../../helpers/nationalityOptions";
-import { Modal } from "@mui/material";
+import Modal from "../../components/MotionModal";
 import { useEffect, useId, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import Select from "react-select";
+import Select from "../../components/MotionSelect";
 import ActionButton from "../../components/ActionButton";
 import ModalCloseButton from "../../components/ModalCloseButton";
 import { API_URL } from "../../config/api";

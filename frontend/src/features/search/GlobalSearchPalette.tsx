@@ -1,3 +1,5 @@
+import SurfaceTransition from "../../components/SurfaceTransition";
+import { surfaceDuration } from "../../helpers/surfaceMotion";
 import { PreferredDateInput } from "../../components/PreferredDateInput";
 import { Dialog, DialogContent, useAutocomplete } from "@mui/material";
 import { useForkRef } from "@mui/material/utils";
@@ -1023,6 +1025,8 @@ const GlobalSearchPaletteContent = ({
 
 const GlobalSearchPalette = (props: GlobalSearchPaletteProps) => (
   <Dialog
+    slots={{ transition: SurfaceTransition }}
+    transitionDuration={{ enter: surfaceDuration("modal", "open"), exit: surfaceDuration("modal", "close") }}
     open={props.open}
     onClose={props.onClose}
     fullWidth

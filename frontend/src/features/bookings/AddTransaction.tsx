@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from "react";
-import Select, { type SingleValue } from "react-select";
+import Select from "../../components/MotionSelect";
+import { type SingleValue } from "react-select";
 import toast from "react-hot-toast";
 import axios from "axios";
 import ActionButton from "../../components/ActionButton";

@@ -1,4 +1,5 @@
-import Select, { type MultiValue } from "react-select";
+import Select from "../../components/MotionSelect";
+import { type MultiValue } from "react-select";
 import "./ManageRoomStays.css";
 import type { OptionType } from "../../helpers/selectStyling";
 import { customStyles } from "../../helpers/selectStyling";

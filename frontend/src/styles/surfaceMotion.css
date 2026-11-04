@@ -1,0 +1,151 @@
+/* Motion recipes from Jakubantalik/transitions.dev, with shared HostelFlow tokens. */
+:root {
+  /* Exact modal/select motion values from bma-pr-platform/apps/web/app/globals.css. */
+  --motion-duration: 150ms;
+  --motion-easing: cubic-bezier(0.25, 1, 0.5, 1);
+  --motion-enter-duration: 200ms;
+  --motion-distance: 4px;
+  --modal-open-dur: var(--motion-enter-duration);
+  --modal-close-dur: var(--motion-duration);
+  --modal-scale: 0.98;
+  --modal-scale-close: 0.98;
+  --modal-ease: var(--motion-easing);
+  --dropdown-open-dur: 160ms;
+  --dropdown-close-dur: 120ms;
+  --dropdown-pre-scale: 0.97;
+  --dropdown-closing-scale: 0.97;
+  --dropdown-ease: var(--motion-easing);
+}
+
+.t-modal {
+  transform-origin: center;
+  transform: scale(var(--modal-scale));
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--modal-open-dur) var(--modal-ease),
+    opacity   var(--modal-open-dur) var(--modal-ease);
+  will-change: transform, opacity;
+}
+.t-modal.is-open {
+  transform: scale(1);
+  opacity: 1;
+  pointer-events: auto;
+}
+.t-modal.is-closing {
+  transform: scale(var(--modal-scale-close));
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--modal-close-dur) var(--modal-ease),
+    opacity   var(--modal-close-dur) var(--modal-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-modal { transition: none !important; }
+}
+
+.t-dropdown {
+  transform-origin: top left;
+  transform: translateY(calc(var(--motion-distance) * -1)) scale(var(--dropdown-pre-scale));
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--dropdown-open-dur) var(--dropdown-ease),
+    opacity   var(--dropdown-open-dur) var(--dropdown-ease);
+  will-change: transform, opacity;
+}
+.t-dropdown[data-origin="top-right"]     { transform-origin: top right; }
+.t-dropdown[data-origin="top-center"]    { transform-origin: top center; }
+.t-dropdown[data-origin="bottom-left"]   { transform-origin: bottom left; }
+.t-dropdown[data-origin="bottom-center"] { transform-origin: bottom center; }
+.t-dropdown[data-origin="bottom-right"]  { transform-origin: bottom right; }
+
+.t-dropdown.is-open {
+  transform: scale(1);
+  opacity: 1;
+  pointer-events: auto;
+}
+.t-dropdown.is-closing {
+  transform: translateY(calc(var(--motion-distance) * -1)) scale(var(--dropdown-closing-scale));
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--dropdown-close-dur) var(--dropdown-ease),
+    opacity   var(--dropdown-close-dur) var(--dropdown-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-dropdown { transition: none !important; }
+}
+
+/* Release the transform containing block after entry so fixed calendars and
+   mobile action sheets retain their viewport coordinates. */
+:is(.t-modal, .t-dropdown).is-open[data-motion-settled="true"] {
+  transform: none;
+  will-change: auto;
+}
+
+.motionModal__surface {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+  max-width: 100%;
+  outline: none;
+}
+
+.home__modalCenter.motionModal > .motionModal__surface,
+.home__modalCenter.motionModal > .MuiBackdrop-root {
+  animation: none;
+}
+
+.calendar__monthDropdown {
+  position: absolute;
+  top: calc(100% + 0.55rem);
+  left: 50%;
+  translate: -50% 0;
+  z-index: 10;
+}
+.calendar__monthDropdown .calendar__monthPickerPanel {
+  position: static;
+  transform: none;
+}
+
+/* react-select menus use the same BMA select enter/exit keyframes. */
+@keyframes surfaceDropdownEnter {
+  from { opacity: 0; transform: translateY(calc(var(--motion-distance) * -1)) scale(var(--dropdown-pre-scale)); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes surfaceDropdownExit {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(calc(var(--motion-distance) * -1)) scale(var(--dropdown-closing-scale)); }
+}
+
+@media (max-width: 760px) {
+  .home__modalCenter.motionModal {
+    align-items: flex-end;
+    padding: 0.5rem 0 0;
+  }
+  .motionModal__surface { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is(.t-modal, .t-dropdown) {
+    transform: none !important;
+    will-change: auto;
+  }
+  :is(.rs__menu, .settingsSelect__menu) { animation: none !important; }
+}
+
+/* Keep the backdrop on the surface's CSS timings, including interrupted closes. */
+.motionModal > .MuiBackdrop-root {
+  transition: opacity var(--modal-open-dur) var(--modal-ease) !important;
+}
+.motionModal[data-motion-open="false"] > .MuiBackdrop-root {
+  transition-duration: var(--modal-close-dur) !important;
+}
+.viewBooking__moreActionsMenu.t-dropdown { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .motionModal > .MuiBackdrop-root { transition: none !important; }
+}

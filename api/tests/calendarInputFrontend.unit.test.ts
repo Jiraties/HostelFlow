@@ -47,7 +47,7 @@ const calendarHarness = () => {
         if (name === "react") return react;
         if (name === "react/jsx-runtime") return { jsx, jsxs: jsx };
         if (name === "react-dom") return { createPortal: (content: unknown) => content };
-        if (name.endsWith(".css") || name === "./MonthPickerPanel") return {};
+        if (name.endsWith(".css") || name === "./MonthPickerPanel" || name === "./MotionDropdown") return {};
         if (name.startsWith(".")) return load(path.resolve(path.dirname(file), `${name}.ts`));
         return frontendRequire(name);
       },
@@ -100,7 +100,7 @@ test("calendar Enter and navigation keys stay out of the search autocomplete wit
 
   const calendar = calendarHarness();
   calendar.render().props.children[0].props.onClick({ defaultPrevented: false });
-  const panel = calendar.render().props.children[1];
+  const panel = calendar.render().props.children[1].props.children;
   for (const key of ["Enter", " ", "ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Tab"]) {
     const search = searchHarness();
     const event = keyboardEvent(key);
@@ -113,7 +113,7 @@ test("calendar Enter and navigation keys stay out of the search autocomplete wit
   const days = panel.props.children[0].props.children[2].props.children;
   days.find((day: any) => day.props["data-date"] === "2026-11-04").props.onClick();
   assert.deepEqual(calendar.selections, ["2026-11-04"]);
-  assert.equal(calendar.render().props.children[1], false);
+  assert.equal(calendar.render().props.children[1].props.open, false);
 });
 
 test("calendar trigger activation opens the picker without selecting a search result", () => {

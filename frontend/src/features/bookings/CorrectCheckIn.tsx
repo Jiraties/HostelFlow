@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
-import Select from "react-select";
+import Select from "../../components/MotionSelect";
 import {
   nationalityOptions,
   nationalitySelectOptions,

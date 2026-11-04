@@ -74,7 +74,10 @@ export const customStyles = <
     },
   }),
 
-  menu: (provided) => ({
+  menu: (provided, state) => ({
+    animation: "surfaceDropdownEnter var(--dropdown-open-dur, 160ms) var(--dropdown-ease, cubic-bezier(0.25, 1, 0.5, 1)) both",
+    transformOrigin: state.placement === "top" ? "bottom left" : "top left",
+    "@media (prefers-reduced-motion: reduce)": { animation: "none" },
     ...provided,
     zIndex: 1000,
     borderRadius: "0.5rem",

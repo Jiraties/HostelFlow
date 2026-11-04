@@ -8,7 +8,7 @@ import PageHeader from "../components/PageHeader";
 import { useEffect, useMemo, useState } from "react";
 import { API_URL } from "../config/api";
 import { profilePictureUrl } from "../helpers/profilePictureUrl";
-import { Modal } from "@mui/material";
+import Modal from "../components/MotionModal";
 import type { actionType, activity } from "../types/activitiesTypes";
 import CreateNewUser from "../components/CreateNewUser";
 import ManageUser from "../components/ManageUser";

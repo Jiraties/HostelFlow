@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import axios from "axios";
-import Select, { type MultiValue, type SingleValue } from "react-select";
+import Select from "../../components/MotionSelect";
+import { type MultiValue, type SingleValue } from "react-select";
 import toast from "react-hot-toast";
 import ActionButton from "../../components/ActionButton";
 import CashShiftNudge from "../../components/CashShiftNudge";

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Modal } from "@mui/material";
+import Modal from "../../components/MotionModal";
 import ActionButton from "../../components/ActionButton";
 import ModalCloseButton from "../../components/ModalCloseButton";
 import MonthInput from "../../components/MonthInput";

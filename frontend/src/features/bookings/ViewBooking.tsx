@@ -49,7 +49,9 @@ import {
   formatRoomStayRooms,
   getRoomStayRoomIds,
 } from "../../helpers/roomStayHelpers.ts";
-import { Modal, useMediaQuery } from "@mui/material";
+import Modal from "../../components/MotionModal";
+import MotionDropdown from "../../components/MotionDropdown";
+import { useMediaQuery } from "@mui/material";
 import { useAuth } from "../../context/AuthContext.tsx";
 import {
   formatDisplayDate,
@@ -2371,9 +2373,8 @@ const ViewBooking = ({
                 icon="bx-dots-horizontal-rounded"
                 onClick={() => setMoreActionsIsOpen((isOpen) => !isOpen)}
               />
-              {moreActionsIsOpen && (
-                <>
-                  {isMobileView && (
+              <>
+                  {moreActionsIsOpen && isMobileView && (
                     <button
                       type="button"
                       className="viewBooking__moreActionsBackdrop"
@@ -2381,6 +2382,7 @@ const ViewBooking = ({
                       onClick={() => setMoreActionsIsOpen(false)}
                     />
                   )}
+                  <MotionDropdown open={moreActionsIsOpen} origin={isMobileView ? "bottom-center" : "bottom-left"}>
                   <div className="viewBooking__moreActionsMenu">
                     <button
                       type="button"
@@ -2660,8 +2662,8 @@ const ViewBooking = ({
                         </button>
                       )}
                   </div>
-                </>
-              )}
+                  </MotionDropdown>
+              </>
             </div>
 
             {!data.voided &&

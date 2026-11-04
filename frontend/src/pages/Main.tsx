@@ -1,6 +1,6 @@
 import MonthInput from "../components/MonthInput";
 import axios from "axios";
-import { Modal } from "@mui/material";
+import Modal from "../components/MotionModal";
 import { useLocation, useNavigate } from "react-router";
 import toast from "react-hot-toast";
 import { useCallback, useEffect, useRef, useState } from "react";

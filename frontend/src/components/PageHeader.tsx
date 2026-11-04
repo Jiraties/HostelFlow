@@ -1,3 +1,4 @@
+import MotionDropdown from "./MotionDropdown";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import toast from "react-hot-toast";
 import axios from "axios";
@@ -164,7 +165,7 @@ const PageHeader = ({
             />
           </button>
 
-          {profileMenuOpen && (
+          <MotionDropdown open={profileMenuOpen} origin="top-right">
             <div
               ref={menuRef}
               className="pageHeader__profileMenu"
@@ -239,7 +240,7 @@ const PageHeader = ({
                 </button>
               </div>
             </div>
-          )}
+          </MotionDropdown>
         </div>
       </div>
     </header>

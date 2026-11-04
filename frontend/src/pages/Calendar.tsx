@@ -1,3 +1,4 @@
+import MotionDropdown from "../components/MotionDropdown";
 import MonthPickerPanel from "../components/MonthPickerPanel";
 import ConfirmationModal from "../components/ConfirmationModal.tsx";
 import UnsavedChangesModal from "../components/UnsavedChangesModal.tsx";
@@ -35,7 +36,7 @@ import {
   useState,
   useRef,
 } from "react";
-import { Modal } from "@mui/material";
+import Modal from "../components/MotionModal";
 import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import {
   calculateNights,
@@ -1452,8 +1453,8 @@ const Calendar = () => {
                 }).format(new Date(year, month, 1))}
                 <i className="bx bx-chevron-down" aria-hidden="true" />
               </button>
-              {isMonthPickerOpen && (
-                <span role="dialog" aria-label="Choose month">
+              <MotionDropdown open={isMonthPickerOpen} origin="top-center">
+                <span role="dialog" aria-label="Choose month" className="calendar__monthDropdown">
                   <MonthPickerPanel
                     year={year}
                     selectedMonth={month}
@@ -1461,7 +1462,7 @@ const Calendar = () => {
                     onMonthChange={selectMonth}
                   />
                 </span>
-              )}
+              </MotionDropdown>
             </span>
             <button
               className="calendar__monthNavButton"

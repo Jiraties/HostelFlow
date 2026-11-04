@@ -2,7 +2,7 @@ import { useState, useEffect, useId } from "react";
 import type { booking } from "../../types/bookingTypes";
 import "./BookingCheckbox.css";
 import "./CheckIn.css";
-import Select from "react-select";
+import Select from "../../components/MotionSelect";
 import {
   nationalityOptions,
   nationalitySelectOptions,

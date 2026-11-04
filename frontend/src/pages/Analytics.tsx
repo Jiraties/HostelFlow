@@ -10,7 +10,7 @@ import {
   YAxis,
 } from "recharts";
 import { useState } from "react";
-import { Modal } from "@mui/material";
+import Modal from "../components/MotionModal";
 import PageHeader from "../components/PageHeader";
 import usePageTitle from "../hooks/useTitle";
 import AnalyticsDetails from "./AnalyticsDetails";

@@ -43,11 +43,13 @@ test("filter remains open when clicking an option and closes on outside focus", 
   assert.match(root.props.className, /exportMultiSelect--open/);
   root.props.onBlur({ relatedTarget: null, currentTarget: { contains: () => false } });
   root = render();
-  const menu = root.props.children[2];
+  const transition = root.props.children[2];
+  assert.equal(transition.props.open, true);
+  const menu = transition.props.children;
   assert(menu, "the option click must not close the menu on blur");
   const options = menu.props.children[2].props.children[0];
   options[0].props.children[0].props.onChange({ target: { checked: false } });
   assert.deepEqual(selected, ["two"]);
   root.props.onBlur({ relatedTarget: {}, currentTarget: { contains: () => false } });
-  assert.equal(render().props.children[2], false);
+  assert.equal(render().props.children[2].props.open, false);
 });
