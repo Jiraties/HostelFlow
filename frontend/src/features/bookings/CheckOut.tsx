@@ -40,7 +40,7 @@ const CheckOut = ({
 }: CheckOutProps) => {
   const { user } = useAuth();
   const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
-  const [releaseRemainingNights, setReleaseRemainingNights] = useState(true);
+  const [releaseRemainingNights, setReleaseRemainingNights] = useState(!isEarlyCheckOut);
   const [confirmedDepositReturn, setConfirmedDepositReturn] = useState(false);
   const [confirmedStillUnpaid, setConfirmedStillUnpaid] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -97,7 +97,7 @@ const CheckOut = ({
     onDirtyChange?.(
       confirmedDepositReturn ||
         confirmedStillUnpaid ||
-        (isEarlyCheckOut && !releaseRemainingNights),
+        (isEarlyCheckOut && releaseRemainingNights),
     );
 
     return () => onDirtyChange?.(false);
