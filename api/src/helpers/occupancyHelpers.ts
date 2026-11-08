@@ -100,29 +100,46 @@ export const occupancySummaryForRange = (
   end: Date,
   roomBlocks: OccupancyRoomBlock[] = [],
   inventory = activeRoomInventory(),
+) => createOccupancySummaryCalculator(bookings, roomBlocks, inventory)(start, end);
+
+/** Reuse daily occupancy across overlapping ranges in a single dashboard request. */
+export const createOccupancySummaryCalculator = (
+  bookings: booking[],
+  roomBlocks: OccupancyRoomBlock[] = [],
+  inventory = activeRoomInventory(),
 ) => {
-  let date = new Date(start);
-  let occupiedBedNights = 0;
-  let dayCount = 0;
+  const dailyCapacity = new Map<string, number>();
+  return (start: Date, end: Date) => {
+    let date = new Date(start);
+    let occupiedBedNights = 0;
+    let dayCount = 0;
 
-  while (date < end) {
-    const dayEnd = new Date(
-      Math.min(date.getTime() + 86400000, end.getTime()),
-    );
-    occupiedBedNights += occupiedCapacityOnDate(bookings, date, dayEnd, roomBlocks, inventory);
-    dayCount += 1;
-    date = dayEnd;
-  }
+    while (date < end) {
+      const dayEnd = new Date(
+        Math.min(date.getTime() + 86400000, end.getTime()),
+      );
+      // Include both boundaries: a partial day must not reuse a full-day total.
+      const key = `${date.getTime()}:${dayEnd.getTime()}`;
+      let capacity = dailyCapacity.get(key);
+      if (capacity === undefined) {
+        capacity = occupiedCapacityOnDate(bookings, date, dayEnd, roomBlocks, inventory);
+        dailyCapacity.set(key, capacity);
+      }
+      occupiedBedNights += capacity;
+      dayCount += 1;
+      date = dayEnd;
+    }
 
-  const availableBedNights = inventory.reduce((sum, room) => sum + room.capacity, 0) * dayCount;
-  const averageOccupiedCapacity =
-    dayCount === 0 ? 0 : occupiedBedNights / dayCount;
+    const availableBedNights = inventory.reduce((sum, room) => sum + room.capacity, 0) * dayCount;
+    const averageOccupiedCapacity =
+      dayCount === 0 ? 0 : occupiedBedNights / dayCount;
 
-  return {
-    occupiedBedNights,
-    availableBedNights,
-    averageOccupiedCapacity,
-    occupancyRate:
-      availableBedNights === 0 ? 0 : occupiedBedNights / availableBedNights,
+    return {
+      occupiedBedNights,
+      availableBedNights,
+      averageOccupiedCapacity,
+      occupancyRate:
+        availableBedNights === 0 ? 0 : occupiedBedNights / availableBedNights,
+    };
   };
 };

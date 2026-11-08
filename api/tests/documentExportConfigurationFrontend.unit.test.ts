@@ -65,7 +65,9 @@ test("booking export retains selections across modal closing and sends exact fil
     "./useDocumentExport": { useDocumentExport: () => ({ busy: {}, errors: {}, clearError() {}, download: (request: any) => { requests.push(request); } }) },
   });
   let tree = render();
-  find(tree, (node) => node.props?.text === "ตั้งค่าการส่งออก").props.onClick();
+  const entryButton = find(tree, (node) => node.props?.className === "documents__bookingEntry").props.children.find((node: any) => node.props?.text === "ส่งออก Excel");
+  assert(entryButton);
+  entryButton.props.onClick();
   tree = render();
   const modal = find(tree, (node) => node.props?.["aria-labelledby"] === "documents-export-title");
   assert.equal(modal.props.open, true);
@@ -84,13 +86,14 @@ test("booking export retains selections across modal closing and sends exact fil
   find(tree, (node) => node.props?.id === "export-month").props.onChange("2026-08");
   modal.props.onClose();
   assert.equal(find(render(), (node) => node.props?.["aria-labelledby"] === "documents-export-title").props.open, false);
-  find(render(), (node) => node.props?.text === "ตั้งค่าการส่งออก").props.onClick();
+  entryButton.props.onClick();
   tree = render();
   assert.equal(find(tree, (node) => node.props?.["aria-controls"] === "export-filters").props["aria-expanded"], false);
   find(tree, (node) => node.props?.["aria-controls"] === "export-filters").props.onClick();
   tree = render();
   assert.deepEqual([...find(tree, (node) => node.props?.id === "export-channels").props.value], ["BOOK"]);
-  find(tree, (node) => node.props?.text === "ส่งออก Excel").props.onClick();
+  const footer = (tree: any) => find(tree, (node) => node.type === "footer");
+  find(footer(tree), (node) => node.props?.text === "ส่งออก Excel").props.onClick();
   assert.equal(requests.length, 1);
   assert.equal(requests[0].endpoint, "getBookingsReport");
   assert.equal(requests[0].params.month, "2026-08");
@@ -99,12 +102,12 @@ test("booking export retains selections across modal closing and sends exact fil
   assert(!requests[0].params.bookingStatuses.split(",").includes("cancelled"));
   find(tree, (node) => node.props?.id === "export-categories").props.onChange([]);
   tree = render();
-  const exportButton = find(tree, (node) => node.props?.text === "ส่งออก Excel");
+  const exportButton = find(footer(tree), (node) => node.props?.text === "ส่งออก Excel");
   assert.equal(exportButton.props.disabled, true);
   exportButton.props.onClick();
   assert.equal(requests.length, 1);
   find(tree, (node) => node.type === "button" && node.props.children === "คืนค่าเริ่มต้น").props.onClick();
   tree = render();
-  assert.equal(find(tree, (node) => node.props?.text === "ส่งออก Excel").props.disabled, false);
+  assert.equal(find(footer(tree), (node) => node.props?.text === "ส่งออก Excel").props.disabled, false);
   assert(!find(tree, (node) => node.props?.id === "export-statuses").props.value.includes("cancelled"));
 });

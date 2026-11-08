@@ -70,10 +70,9 @@ test("admin see a booking export entry without exposing configuration on the pag
   const html = render(true);
   assert(html.indexOf("documents-management-title") < html.indexOf("documents-tm30-title"));
   assert(html.indexOf("documents-tm30-title") < html.indexOf("documents-hotel-title"));
-  assert.match(html, /ตั้งค่าการส่งออก/);
   assert.match(html, /Booking Data Export/);
   assert.doesNotMatch(html, /id="export-(month|channels|statuses|payment-methods|categories)"/);
-  assert.equal((html.match(/ส่งออก Excel/g) || []).length, 2);
+  assert.equal((html.match(/ส่งออก Excel/g) || []).length, 3);
 });
 
 test("both reports initially use the current reporting date", () => {

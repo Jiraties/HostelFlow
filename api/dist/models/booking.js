@@ -462,5 +462,6 @@ bookingSchema.index({ searchBookingIds: 1 }, { name: "master_search_booking_ids"
 bookingSchema.index({ searchBookingIdPrefixes: 1 }, { name: "master_search_booking_id_prefixes" });
 bookingSchema.index({ searchNamePrefixes: 1 }, { name: "master_search_name_prefixes" });
 bookingSchema.index({ checkIn: 1, checkOut: 1 }, { name: "master_browse_dates" });
+bookingSchema.index({ "transactions.createdAt": 1 }, { name: "booking_transaction_dates" });
 exports.default = mongoose_1.default.model("Booking", bookingSchema);
 //# sourceMappingURL=booking.js.map

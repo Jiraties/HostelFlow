@@ -1,4 +1,4 @@
-import { effectiveRoomStayEnd, occupiedCapacityOnDate, occupancySummaryForRange } from "../helpers/occupancyHelpers";
+import { createOccupancySummaryCalculator, effectiveRoomStayEnd, occupiedCapacityOnDate } from "../helpers/occupancyHelpers";
 import { summarizeChannelMix } from "../helpers/channelMixHelpers";
 export { occupiedCapacityOnDate, occupancySummaryForRange } from "../helpers/occupancyHelpers";
 import Booking, {
@@ -1513,19 +1513,19 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
       esrBookings,
       occupancyBookings,
       internalUseBlocks,
-      monthBookings,
+      monthBookingCount,
       channelMixBookings,
       unpaidBookings,
     ] = await Promise.all([
         Booking.find({
           "transactions.createdAt": { $gte: startOfMonth, $lt: startOfNextMonth },
-        }),
+        }).select("transactions transactionCorrections").lean<booking[]>(),
         StandaloneSale.find({
           "transactions.createdAt": { $gte: startOfMonth, $lt: startOfNextMonth },
-        }),
+        }).select("saleId customerName transactions createdBy").lean(),
         Booking.find(
           expectedStayRevenueBookingQuery(startOfMonth, startOfNextMonth),
-        ).lean<booking[]>(),
+        ).select("bookingId name platformId staffUsername status voided checkIn checkOut commercialSegments transactions transactionCorrections").lean<booking[]>(),
         Booking.find({
           roomStays: {
             $elemMatch: {
@@ -1533,7 +1533,7 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
               to: { $gt: occupancyQueryStart },
             },
           },
-        }),
+        }).select("status voided roomStays checkout.earlyCheckOut checkout.checkedOutAt").lean<booking[]>(),
         RoomBlock.find({
           from: { $lt: occupancyQueryEnd },
           to: { $gt: occupancyQueryStart },
@@ -1547,13 +1547,13 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
         })
           .select("roomId roomIds from to reason reasonType releasedAt")
           .lean(),
-        Booking.find({
+        Booking.countDocuments({
           checkIn: { $gte: startOfMonth, $lt: startOfNextMonth },
         }),
         Booking.find({
           checkIn: { $lt: startOfNextMonth },
           checkOut: { $gt: startOfMonth },
-        }),
+        }).select("bookingId platformId staffUsername checkIn checkOut commercialSegments transactions transactionCorrections").lean<booking[]>(),
         Booking.find({
           status: { $ne: "checkedOut" },
           $or: [
@@ -1567,7 +1567,7 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
             },
             { "transactionCorrections.after.paymentMethod": "Unpaid" },
           ],
-        }),
+        }).select("status transactions transactionCorrections").lean<booking[]>(),
       ]);
 
     const transactionsInRange = (
@@ -1580,9 +1580,9 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
       end: Date,
     ) =>
       bookings.flatMap((booking) => {
-        const bookingTransactions = "transactionCorrections" in booking
-          ? withEffectiveTransactions(booking as booking).transactions
-          : booking.transactions || [];
+        const bookingTransactions = booking.saleId
+          ? booking.transactions || []
+          : withEffectiveTransactions(booking as booking).transactions;
         return bookingTransactions
           .filter((transaction) => {
             if (!transaction.createdAt) return false;
@@ -1701,28 +1701,25 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
       });
     }
 
-    const wholeMonthOccupancy = occupancySummaryForRange(
-      occupancyBookings,
+    // Month totals, selected range and chart buckets share the same daily work.
+    // The cache lives only for this request, so booking edits stay immediately visible.
+    const occupancyForRange = createOccupancySummaryCalculator(occupancyBookings, internalUseBlocks);
+    const wholeMonthOccupancy = occupancyForRange(
       startOfMonth,
       startOfNextMonth,
-      internalUseBlocks,
     );
-    const selectedRangeOccupancy = occupancySummaryForRange(
-      occupancyBookings,
+    const selectedRangeOccupancy = occupancyForRange(
       chartStart,
       chartEnd,
-      internalUseBlocks,
     );
 
     revenueBuckets.forEach((bucket) => {
       const bucketRevenue = revenueByDate.get(bucket.key);
       if (!bucketRevenue) return;
 
-      const bucketOccupancy = occupancySummaryForRange(
-        occupancyBookings,
+      const bucketOccupancy = occupancyForRange(
         bucket.start < chartStart ? chartStart : bucket.start,
         bucket.end,
-        internalUseBlocks,
       );
       bucketRevenue.occupiedCapacity =
         bucketOccupancy.averageOccupiedCapacity;
@@ -1752,7 +1749,7 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
       monthlyGrossRevenue,
       monthlyCollectedRevenue,
       monthRoomRevenue: monthlyGrossRevenue,
-      monthBookings: monthBookings.length,
+      monthBookings: monthBookingCount,
       unpaidAmount,
       financialSummary: monthFinancialSummary,
       occupancyRate: wholeMonthOccupancy.occupancyRate,

@@ -3,6 +3,7 @@ import { before, beforeEach, after, test } from "node:test";
 import mongoose from "mongoose";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import Booking, { type PlatformId, type Status } from "../src/models/booking";
+import StandaloneSale from "../src/models/standaloneSale";
 import { getAdminDashboardStats } from "../src/controller/booking";
 
 let database: MongoMemoryServer;
@@ -11,7 +12,7 @@ before(async () => {
   database = await MongoMemoryServer.create();
   await mongoose.connect(database.getUri(), { dbName: "synthetic_channel_mix" });
 });
-beforeEach(async () => { await Booking.deleteMany({}); });
+beforeEach(async () => { await Promise.all([Booking.deleteMany({}), StandaloneSale.deleteMany({})]); });
 after(async () => { await mongoose.disconnect(); if (database) await database.stop(); });
 
 const createSyntheticBooking = async (bookingId: string, segments: { from: string; to: string; platformId: PlatformId }[], status: Status = "booked") => {
@@ -59,4 +60,32 @@ test("half-open month boundaries and empty months yield an empty mix without NaN
   assert.equal(body.channelMixTotal, 0);
   assert.deepEqual(body.channelMix, []);
   assert.equal((await dashboard(false)).statusCode, 403);
+});
+
+test("dashboard projections preserve corrected financial totals and standalone sales", async () => {
+  const record = await createSyntheticBooking("SYNTHETIC-CORRECTED", [{ from: "2026-09-01", to: "2026-09-03", platformId: "BOOK" }]);
+  await Booking.collection.updateOne({ _id: record._id }, { $set: { transactionCorrections: [{
+    targetTransactionId: String(record.transactions[0]._id),
+    before: { type: "roomCharge", paymentMethod: "OTA", amount: 100 },
+    after: { type: "roomCharge", paymentMethod: "OTA", amount: 80 },
+    correctionType: "recorded_mistake", reasonCode: "incorrect_amount", note: "Synthetic correction",
+    correctedBy: "synthetic-admin", correctedAt: date("2026-09-02"), financialChange: true,
+  }] } });
+  await StandaloneSale.create({ saleId: "SYNTHETIC-SALE", createdBy: "synthetic-admin", transactions: [{ type: "towel", paymentMethod: "Cash", amount: 50, createdAt: date("2026-09-02") }] });
+  const { statusCode, body } = await dashboard();
+  assert.equal(statusCode, 200);
+  assert.equal(body.monthBookings, 1);
+  assert.equal(body.monthlyGrossRevenue, 130);
+  assert.equal(body.monthlyCollectedRevenue, 130);
+  assert.equal(body.financialSummary.revenue, 130);
+  assert.equal(body.channelMix[0].revenue, 80);
+  assert.equal(body.occupancyRate, 4 / (52 * 30));
+});
+
+test("the monthly transaction lookup has a usable date index", async () => {
+  await Booking.createIndexes();
+  const plan = await Booking.collection.find({ "transactions.createdAt": { $gte: date("2026-09-01"), $lt: date("2026-10-01") } }, { hint: "booking_transaction_dates" })
+    .explain("executionStats");
+  assert.equal(plan.executionStats.totalDocsExamined, 0);
+  assert.match(JSON.stringify(plan.queryPlanner.winningPlan), /booking_transaction_dates/);
 });

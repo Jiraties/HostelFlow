@@ -9,6 +9,29 @@ const frontendSrc = path.resolve(__dirname, "../../frontend/src");
 const readFrontendFile = (relativePath: string) =>
   fs.readFileSync(path.join(frontendSrc, relativePath), "utf8");
 
+// Read JSX expressions through TypeScript so copy and formatting changes do
+// not break checks of the actual control state and handlers.
+const jsxControls = (source: string) => {
+  const file = ts.createSourceFile("component.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const controls: { tag: string; attributes: Record<string, string> }[] = [];
+  const visit = (node: ts.Node) => {
+    if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+      const attributes: Record<string, string> = {};
+      for (const attribute of node.attributes.properties) {
+        if (!ts.isJsxAttribute(attribute) || !attribute.initializer) continue;
+        const value = attribute.initializer;
+        attributes[attribute.name.getText(file)] = ts.isStringLiteral(value)
+          ? value.text
+          : ts.isJsxExpression(value) ? value.expression?.getText(file) || "" : "";
+      }
+      controls.push({ tag: node.tagName.getText(file), attributes });
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return controls;
+};
+
 const loadBookingHelpers = () => {
   const source = readFrontendFile("helpers/bookingHelpers.ts");
   const transpiled = ts.transpileModule(source, {
@@ -155,11 +178,20 @@ test("CorrectCheckIn uses preview endpoint and requires explicit deposit disposi
   );
 
   assert.match(correctCheckIn, /\/check-in-corrections\/preview/);
-  assert.match(correctCheckIn, /depositOutcome === "not_received"/);
-  assert.match(correctCheckIn, /depositOutcome === "refunded"/);
-  assert.match(correctCheckIn, /ยังไม่ได้รับเงินมัดจำจริง/);
-  assert.match(correctCheckIn, /รับเงินมัดจำมาแล้ว และคืนเงินสดให้แขกแล้ว/);
-  assert.match(correctCheckIn, /refundConfirmed/);
+  const inputs = jsxControls(correctCheckIn).filter((control) => control.tag === "input");
+  for (const outcome of ["not_received", "refunded"]) {
+    const radio = inputs.find(({ attributes }) => attributes.type === "radio" && attributes.checked.includes(`"${outcome}"`));
+    assert(radio, `missing deposit disposition ${outcome}`);
+    let selected = "";
+    let confirmed = true;
+    const context = { setDepositOutcome: (value: string) => { selected = value; }, setRefundConfirmed: (value: boolean) => { confirmed = value; } };
+    vm.runInNewContext(`(${radio.attributes.onChange})()`, context);
+    assert.equal(selected, outcome);
+    if (outcome === "not_received") assert.equal(confirmed, false);
+    assert.equal(vm.runInNewContext(radio.attributes.checked, { depositOutcome: outcome }), true);
+    assert.equal(vm.runInNewContext(radio.attributes.checked, { depositOutcome: "" }), false);
+  }
+  assert(inputs.some(({ attributes }) => attributes.type === "checkbox" && attributes.checked === "refundConfirmed"));
 });
 
 test("ViewBooking and CheckOut wire unpaid room charge settlement and gate invalid lifecycle actions", () => {
@@ -176,14 +208,14 @@ test("ViewBooking and CheckOut wire unpaid room charge settlement and gate inval
     viewBooking,
     /\(data\.status === "booked" \|\|\s*data\.status === "checkedIn"\)/,
   );
-  assert.match(
-    viewBooking,
-    /disabled=\{data\.status !== "booked" \|\| Boolean\(data\.voided\)\}/,
-  );
-  assert.match(
-    viewBooking,
-    /user\?\.admin && !data\.voided && data\.status === "booked"/,
-  );
+  const editButton = jsxControls(viewBooking).find((control) => control.tag === "button" && control.attributes.onClick?.includes("setEditBookingIsOpen(true)"));
+  assert(editButton);
+  for (const status of ["booked", "checkedIn", "checkedOut", "cancelled", "noShow"]) {
+    for (const voided of [false, true]) {
+      assert.equal(vm.runInNewContext(editButton.attributes.disabled, { data: { status, voided } }), status !== "booked" || voided);
+    }
+  }
+  assert(viewBooking.replace(/\s+/g, "").includes('user?.admin&&!data.voided&&data.status==="booked"'));
   assert.match(viewBooking, /disabled=\{hasRecordedPayments\}/);
   assert.match(
     viewBooking,
