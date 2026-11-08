@@ -1065,14 +1065,14 @@ const getAdminDashboardStats = async (req, res) => {
     const occupancyQueryStart = new Date(Math.min(chartStart.getTime(), startOfMonth.getTime()));
     const occupancyQueryEnd = new Date(Math.max(chartEnd.getTime(), startOfNextMonth.getTime()));
     try {
-        const [monthFinancialBookings, monthStandaloneSales, esrBookings, occupancyBookings, internalUseBlocks, monthBookings, channelMixBookings, unpaidBookings,] = await Promise.all([
+        const [monthFinancialBookings, monthStandaloneSales, esrBookings, occupancyBookings, internalUseBlocks, monthBookingCount, channelMixBookings, unpaidBookings,] = await Promise.all([
             booking_1.default.find({
                 "transactions.createdAt": { $gte: startOfMonth, $lt: startOfNextMonth },
-            }),
+            }).select("transactions transactionCorrections").lean(),
             standaloneSale_1.default.find({
                 "transactions.createdAt": { $gte: startOfMonth, $lt: startOfNextMonth },
-            }),
-            booking_1.default.find((0, expectedStayRevenueHelpers_1.expectedStayRevenueBookingQuery)(startOfMonth, startOfNextMonth)).lean(),
+            }).select("saleId customerName transactions createdBy").lean(),
+            booking_1.default.find((0, expectedStayRevenueHelpers_1.expectedStayRevenueBookingQuery)(startOfMonth, startOfNextMonth)).select("bookingId name platformId staffUsername status voided checkIn checkOut commercialSegments transactions transactionCorrections").lean(),
             booking_1.default.find({
                 roomStays: {
                     $elemMatch: {
@@ -1080,7 +1080,7 @@ const getAdminDashboardStats = async (req, res) => {
                         to: { $gt: occupancyQueryStart },
                     },
                 },
-            }),
+            }).select("status voided roomStays checkout.earlyCheckOut checkout.checkedOutAt").lean(),
             roomBlock_1.default.find({
                 from: { $lt: occupancyQueryEnd },
                 to: { $gt: occupancyQueryStart },
@@ -1094,13 +1094,13 @@ const getAdminDashboardStats = async (req, res) => {
             })
                 .select("roomId roomIds from to reason reasonType releasedAt")
                 .lean(),
-            booking_1.default.find({
+            booking_1.default.countDocuments({
                 checkIn: { $gte: startOfMonth, $lt: startOfNextMonth },
             }),
             booking_1.default.find({
                 checkIn: { $lt: startOfNextMonth },
                 checkOut: { $gt: startOfMonth },
-            }),
+            }).select("bookingId platformId staffUsername checkIn checkOut commercialSegments transactions transactionCorrections").lean(),
             booking_1.default.find({
                 status: { $ne: "checkedOut" },
                 $or: [
@@ -1114,12 +1114,12 @@ const getAdminDashboardStats = async (req, res) => {
                     },
                     { "transactionCorrections.after.paymentMethod": "Unpaid" },
                 ],
-            }),
+            }).select("status transactions transactionCorrections").lean(),
         ]);
         const transactionsInRange = (bookings, start, end) => bookings.flatMap((booking) => {
-            const bookingTransactions = "transactionCorrections" in booking
-                ? (0, transactionCorrections_1.withEffectiveTransactions)(booking).transactions
-                : booking.transactions || [];
+            const bookingTransactions = booking.saleId
+                ? booking.transactions || []
+                : (0, transactionCorrections_1.withEffectiveTransactions)(booking).transactions;
             return bookingTransactions
                 .filter((transaction) => {
                 if (!transaction.createdAt)
@@ -1195,13 +1195,16 @@ const getAdminDashboardStats = async (req, res) => {
                 occupiedCapacity: 0,
             });
         }
-        const wholeMonthOccupancy = (0, occupancyHelpers_1.occupancySummaryForRange)(occupancyBookings, startOfMonth, startOfNextMonth, internalUseBlocks);
-        const selectedRangeOccupancy = (0, occupancyHelpers_1.occupancySummaryForRange)(occupancyBookings, chartStart, chartEnd, internalUseBlocks);
+        // Month totals, selected range and chart buckets share the same daily work.
+        // The cache lives only for this request, so booking edits stay immediately visible.
+        const occupancyForRange = (0, occupancyHelpers_1.createOccupancySummaryCalculator)(occupancyBookings, internalUseBlocks);
+        const wholeMonthOccupancy = occupancyForRange(startOfMonth, startOfNextMonth);
+        const selectedRangeOccupancy = occupancyForRange(chartStart, chartEnd);
         revenueBuckets.forEach((bucket) => {
             const bucketRevenue = revenueByDate.get(bucket.key);
             if (!bucketRevenue)
                 return;
-            const bucketOccupancy = (0, occupancyHelpers_1.occupancySummaryForRange)(occupancyBookings, bucket.start < chartStart ? chartStart : bucket.start, bucket.end, internalUseBlocks);
+            const bucketOccupancy = occupancyForRange(bucket.start < chartStart ? chartStart : bucket.start, bucket.end);
             bucketRevenue.occupiedCapacity =
                 bucketOccupancy.averageOccupiedCapacity;
             bucketRevenue.occupancyRate = bucketOccupancy.occupancyRate;
@@ -1224,7 +1227,7 @@ const getAdminDashboardStats = async (req, res) => {
             monthlyGrossRevenue,
             monthlyCollectedRevenue,
             monthRoomRevenue: monthlyGrossRevenue,
-            monthBookings: monthBookings.length,
+            monthBookings: monthBookingCount,
             unpaidAmount,
             financialSummary: monthFinancialSummary,
             occupancyRate: wholeMonthOccupancy.occupancyRate,
@@ -1444,6 +1447,19 @@ const removeBooking = async (req, res) => {
             return res.status(409).json({
                 error: "BOOKING_LIFECYCLE_CONFLICT",
                 message: "void ได้เฉพาะ booking ที่ยังไม่ได้ check-in และยังไม่ถูก void",
+                booking,
+            });
+        }
+        const effectiveTransactions = (0, transactionCorrections_1.effectiveBookingTransactions)(booking);
+        const blockingTransactions = effectiveTransactions.filter((transaction) => Math.abs(Number(transaction.amount || 0)) > 0 &&
+            transaction.paymentMethod !== "Unpaid" &&
+            transaction.type !== "roomChargeWriteOff");
+        if (blockingTransactions.length > 0) {
+            return res.status(409).json({
+                error: "BOOKING_HAS_RECORDED_PAYMENTS",
+                message: "ไม่สามารถ void การจองที่มียอดรับเงินหรือคืนเงินได้ กรุณาใช้การยกเลิกการจอง (Cancel) สำหรับรายการจริง หรือแก้รายการที่บันทึกผิดเป็น 0 บาทก่อน void",
+                blockingTransactionIds: blockingTransactions.map((transaction) => transaction.originalTransactionId),
+                financialSummary: (0, transactionCorrections_1.summarizeBookingFinancialPosition)(effectiveTransactions),
                 booking,
             });
         }

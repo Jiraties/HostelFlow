@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useId } from "react";
 import type { booking } from "../../types/bookingTypes";
 import "./BookingCheckbox.css";
 import "./CheckIn.css";
-import Select from "react-select";
+import Select from "../../components/MotionSelect";
 import {
   nationalityOptions,
   nationalitySelectOptions,
@@ -140,6 +140,8 @@ const CheckIn = ({
   const [passportNo, setPassportNo] = useState<string>("");
   const [roundingAdjustment, setRoundingAdjustment] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [validationAttempted, setValidationAttempted] = useState(false);
+  const fieldId = useId();
   const [adjustedRoomChargeInput, setAdjustedRoomChargeInput] = useState<string>(
     String(outstandingRoomChargeAmount),
   );
@@ -223,7 +225,43 @@ const CheckIn = ({
   const hasPaymentToConfirm =
     !hasExistingDeposit || hasOutstandingRoomCharge;
 
+  // Keep the existing submission rules while showing the affected fields in place.
+  const fieldErrors = validationAttempted
+    ? {
+        passportNo: !passportNo
+          ? "กรุณากรอกเลขประจำตัวประชาชนหรือเลข Passport"
+          : isThaiGuest && !/^\d{13}$/.test(passportNo)
+            ? "เลขประจำตัวประชาชนต้องเป็นตัวเลข 13 หลัก"
+            : "",
+        namePrefix: !namePrefix ? "กรุณาเลือกคำนำหน้าชื่อ" : "",
+        passportName:
+          !passportName ||
+          (isThaiGuest && (!thaiNameParts.firstName || !thaiNameParts.lastName))
+            ? "กรุณากรอกชื่อและนามสกุล"
+            : "",
+        nationality: !nationality ? "กรุณาเลือกสัญชาติ" : "",
+        destination: !nextDestinationCountry
+          ? "กรุณาเลือกประเทศปลายทางถัดไป"
+          : "",
+        deposit: deposit === "" || Number.isNaN(deposit)
+          ? "กรุณากรอกยอดมัดจำ"
+          : "",
+        payment: hasPaymentToConfirm && !confirmedPayment
+          ? adminHistoricalCheckIn
+            ? "กรุณายืนยันยอดเงินที่รับไว้ก่อนเริ่มใช้ระบบ"
+            : "กรุณายืนยันยอดชำระจากลูกค้า"
+          : "",
+        adjustedAmount:
+          hasOutstandingRoomCharge && cashRoundingEnabled &&
+          (!Number.isFinite(parsedAdjustedRoomChargeAmount) ||
+            parsedAdjustedRoomChargeAmount < outstandingRoomChargeAmount)
+            ? "ยอดชำระค่าห้องหลังปรับต้องไม่ต่ำกว่าค่าห้อง"
+            : "",
+      }
+    : null;
+
   const checkInHandler = async () => {
+    setValidationAttempted(true);
     if (
       !namePrefix ||
       !nationality ||
@@ -353,11 +391,12 @@ const CheckIn = ({
         <div className="checkIn__left">
           <div>
             {" "}
-            <p className="checkIn__label">
+            <label className="checkIn__label" htmlFor={`${fieldId}-passport`}>
               {isThaiGuest ? "เลขประจำตัวประชาชน" : "เลข Passport"}{" "}
               <i className="bx bx-check-shield" />
-            </p>
+            </label>
             <input
+              id={`${fieldId}-passport`}
               type="text"
               value={passportNo}
               onChange={(e) =>
@@ -369,14 +408,22 @@ const CheckIn = ({
               }
               inputMode={isThaiGuest ? "numeric" : undefined}
               maxLength={isThaiGuest ? 13 : undefined}
-              className="boxInput"
+              className={`boxInput${fieldErrors?.passportNo ? " boxInput--error" : ""}`}
+              aria-invalid={Boolean(fieldErrors?.passportNo)}
+              aria-describedby={fieldErrors?.passportNo ? `${fieldId}-passport-error` : undefined}
               placeholder={isThaiGuest ? "เลข 13 หลัก" : "เช่น A12345678"}
             />
+            {fieldErrors?.passportNo && <p id={`${fieldId}-passport-error`} className="formField__error">{fieldErrors.passportNo}</p>}
           </div>
           <div className="checkIn__nameRow">
             <div className="checkIn__prefixField">
-              <p className="checkIn__label">คำนำหน้าชื่อ</p>
+              <label className="checkIn__label" htmlFor={`${fieldId}-prefix`}>คำนำหน้าชื่อ</label>
               <Select<OptionType>
+                inputId={`${fieldId}-prefix`}
+                className={fieldErrors?.namePrefix ? "formField--error" : undefined}
+                classNamePrefix="rs"
+                aria-invalid={Boolean(fieldErrors?.namePrefix)}
+                aria-errormessage={fieldErrors?.namePrefix ? `${fieldId}-prefix-error` : undefined}
                 styles={customStyles<OptionType>()}
                 options={activeNamePrefixOptions}
                 value={activeNamePrefixOptions.find(
@@ -385,13 +432,15 @@ const CheckIn = ({
                 onChange={(option) => setNamePrefix(option?.value || "")}
                 placeholder="เลือก"
               />
+              {fieldErrors?.namePrefix && <p id={`${fieldId}-prefix-error`} className="formField__error">{fieldErrors.namePrefix}</p>}
             </div>
             <div className="checkIn__passportNameField">
-              <p className="checkIn__label">
+              <label className="checkIn__label" htmlFor={`${fieldId}-name`}>
                 {isThaiGuest ? "ชื่อ-นามสกุลภาษาไทย" : "ชื่อ-นามสกุล Passport"}{" "}
                 <i className="bx bx-check-shield" />
-              </p>
+              </label>
               <input
+                id={`${fieldId}-name`}
                 type="text"
                 value={passportName}
                 onChange={(e) =>
@@ -399,16 +448,24 @@ const CheckIn = ({
                     isThaiGuest ? e.target.value : e.target.value.toUpperCase(),
                   )
                 }
-                className="boxInput"
+                className={`boxInput${fieldErrors?.passportName ? " boxInput--error" : ""}`}
+                aria-invalid={Boolean(fieldErrors?.passportName)}
+                aria-describedby={fieldErrors?.passportName ? `${fieldId}-name-error` : undefined}
                 placeholder={
                   isThaiGuest ? "เช่น สมชาย กลาง ใจดี" : "เช่น ROBERT BROWN"
                 }
               />
+              {fieldErrors?.passportName && <p id={`${fieldId}-name-error`} className="formField__error">{fieldErrors.passportName}</p>}
             </div>
           </div>
           <div>
-            <p className="checkIn__label">ชาติ</p>
+            <label className="checkIn__label" htmlFor={`${fieldId}-nationality`}>สัญชาติ</label>
             <Select<OptionType>
+              inputId={`${fieldId}-nationality`}
+              className={fieldErrors?.nationality ? "formField--error" : undefined}
+              classNamePrefix="rs"
+              aria-invalid={Boolean(fieldErrors?.nationality)}
+              aria-errormessage={fieldErrors?.nationality ? `${fieldId}-nationality-error` : undefined}
               styles={customStyles<OptionType>()}
               options={nationalitySelectOptions}
               value={nationalityOptions.find(
@@ -435,11 +492,17 @@ const CheckIn = ({
                 }
                 setNationality(nextNationality);
               }}
-            />{" "}
+            />
+            {fieldErrors?.nationality && <p id={`${fieldId}-nationality-error`} className="formField__error">{fieldErrors.nationality}</p>}
           </div>
           <div>
-            <p className="checkIn__label">ประเทศปลายทางถัดไป</p>
+            <label className="checkIn__label" htmlFor={`${fieldId}-destination`}>ประเทศปลายทางถัดไป</label>
             <Select<OptionType>
+              inputId={`${fieldId}-destination`}
+              className={fieldErrors?.destination ? "formField--error" : undefined}
+              classNamePrefix="rs"
+              aria-invalid={Boolean(fieldErrors?.destination)}
+              aria-errormessage={fieldErrors?.destination ? `${fieldId}-destination-error` : undefined}
               styles={customStyles<OptionType>()}
               options={destinationCountryOptions}
               value={destinationCountryOptions.find(
@@ -450,17 +513,21 @@ const CheckIn = ({
               }
               placeholder="เลือกประเทศที่จะเดินทางต่อ"
             />
+            {fieldErrors?.destination && <p id={`${fieldId}-destination-error`} className="formField__error">{fieldErrors.destination}</p>}
           </div>
         </div>
         <div className="checkIn__right">
           <div>
-              <p className="checkIn__label">
+              <label className="checkIn__label" htmlFor={`${fieldId}-deposit`}>
                 {adminHistoricalCheckIn
                   ? "มัดจำที่รับไว้ก่อนเริ่มระบบ (บาท)"
                   : "มัดจำ (บาท)"}
-              </p>
+              </label>
             <input
-              className="boxInput"
+              id={`${fieldId}-deposit`}
+              className={`boxInput${fieldErrors?.deposit ? " boxInput--error" : ""}`}
+              aria-invalid={Boolean(fieldErrors?.deposit)}
+              aria-describedby={fieldErrors?.deposit ? `${fieldId}-deposit-error` : undefined}
               type="number"
               max={1000}
               min={0}
@@ -472,6 +539,7 @@ const CheckIn = ({
                 setConfirmedPayment(false);
               }}
             />
+            {fieldErrors?.deposit && <p id={`${fieldId}-deposit-error`} className="formField__error">{fieldErrors.deposit}</p>}
             {hasExistingDeposit && (
               <p className="checkIn__label">
                 รับมัดจำรายการนี้ไว้แล้ว ระบบจะนำมาใช้กับการ check-in
@@ -481,8 +549,9 @@ const CheckIn = ({
 
           {hasOutstandingRoomCharge && (
             <div>
-              <p className="checkIn__label">ช่องทางการจ่ายค่าห้อง</p>
+              <label className="checkIn__label" htmlFor={`${fieldId}-payment-method`}>ช่องทางการจ่ายค่าห้อง</label>
               <Select<OptionType>
+                inputId={`${fieldId}-payment-method`}
                 styles={customStyles<OptionType>()}
                 options={paymentMethodOptions}
                 value={paymentMethodOptions.find(
@@ -503,11 +572,14 @@ const CheckIn = ({
 
           {cashRoundingEnabled && (
             <div>
-              <p className="checkIn__label">
+              <label className="checkIn__label" htmlFor={`${fieldId}-adjusted-amount`}>
                 ยอดชำระค่าห้องหลังปรับ (บาท)
-              </p>
+              </label>
               <input
-                className="boxInput"
+                id={`${fieldId}-adjusted-amount`}
+                className={`boxInput${fieldErrors?.adjustedAmount ? " boxInput--error" : ""}`}
+                aria-invalid={Boolean(fieldErrors?.adjustedAmount)}
+                aria-describedby={fieldErrors?.adjustedAmount ? `${fieldId}-adjusted-error` : undefined}
                 type="number"
                 min={outstandingRoomChargeAmount}
                 step="0.01"
@@ -518,6 +590,7 @@ const CheckIn = ({
                   setConfirmedPayment(false);
                 }}
               />
+              {fieldErrors?.adjustedAmount && <p id={`${fieldId}-adjusted-error`} className="formField__error">{fieldErrors.adjustedAmount}</p>}
             </div>
           )}
 
@@ -605,6 +678,8 @@ const CheckIn = ({
                     <input
                       type="checkbox"
                       checked={confirmedPayment}
+                      aria-invalid={Boolean(fieldErrors?.payment)}
+                      aria-describedby={fieldErrors?.payment ? `${fieldId}-payment-error` : undefined}
                       onChange={(e) => setConfirmedPayment(e.target.checked)}
                     />
                     <span className="box"></span>
@@ -612,6 +687,7 @@ const CheckIn = ({
                 )}
               </div>{" "}
             </div>
+            {fieldErrors?.payment && <p id={`${fieldId}-payment-error`} className="formField__error">{fieldErrors.payment}</p>}
           </div>
         </div>
       </div>

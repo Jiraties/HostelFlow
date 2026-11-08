@@ -63,6 +63,12 @@
   gap: 0.6rem;
 }
 
+.passportView__actions .passportView__hideButton {
+  border: 0;
+  background-color: #fff;
+  box-shadow: var(--light-shadow);
+}
+
 .passportView__correctButton {
   color: var(--text);
 }

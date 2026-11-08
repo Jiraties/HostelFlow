@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
-import Select, { type SingleValue } from "react-select";
+import { useEffect, useId, useState } from "react";
+import Select from "../../components/MotionSelect";
+import { type SingleValue } from "react-select";
 import toast from "react-hot-toast";
 import axios from "axios";
 import ActionButton from "../../components/ActionButton";
 import ModalCloseButton from "../../components/ModalCloseButton";
+import { useAppConfirmation } from "../../components/useAppConfirmation";
 import CashShiftNudge from "../../components/CashShiftNudge";
 import { API_URL } from "../../config/api";
 import {
@@ -115,6 +117,9 @@ const AddTransaction = ({
   onDirtyChange?: (isDirty: boolean) => void;
 }) => {
   const [submitting, setSubmitting] = useState(false);
+  const confirmation = useAppConfirmation();
+  const [validationAttempted, setValidationAttempted] = useState(false);
+  const fieldId = useId();
   const [formData, setFormData] = useState<AddTransactionFormData>({
     type: "",
     paymentMethod: "",
@@ -350,7 +355,9 @@ const AddTransaction = ({
 
   const submitHandler = async () => {
     if (submitting) return;
+    setValidationAttempted(true);
     setSubmitting(true);
+    let loadingToast: string | undefined;
 
     try {
       if (!formData.type || !formData.paymentMethod || !formData.amount) {
@@ -385,11 +392,15 @@ const AddTransaction = ({
       if (isFocusedFinancialAction) {
         let largeAmountConfirmed = false;
         if (amount >= 10000 && amount % 10 === 0) {
-          largeAmountConfirmed = window.confirm(
-            `ยืนยันยอด ${formatCurrency(amount)} บาท? ระบบตรวจพบว่ายอดอาจมีศูนย์เกิน`,
-          );
+          largeAmountConfirmed = (await confirmation.ask({
+            title: `ยืนยันยอด ${formatCurrency(amount)} บาท?`,
+            description: "กรุณาตรวจสอบยอดอีกครั้ง ระบบพบว่าอาจมีศูนย์เกิน",
+            confirmText: "ยืนยันยอด",
+            confirmIcon: "bx-check",
+          })) !== null;
           if (!largeAmountConfirmed) return;
         }
+        loadingToast = toast.loading("กำลังบันทึกรายการ...");
         response = await axios.post(
           `${API_URL}/bookings/${currentBooking.bookingId}/financial-actions`,
           {
@@ -411,6 +422,7 @@ const AddTransaction = ({
           },
         );
       } else {
+        loadingToast = toast.loading("กำลังบันทึกรายการ...");
         const transaction: Transaction = {
           type: formData.type,
           paymentMethod: formData.paymentMethod,
@@ -435,8 +447,15 @@ const AddTransaction = ({
         onUpdated?.(formatBookingDates(response.data.booking));
       }
 
+      toast.success(isRefund ? "บันทึกการคืนเงินสำเร็จ" : isCompensation ? "บันทึกค่าชดเชยสำเร็จ" : "เพิ่มรายการใช้จ่ายสำเร็จ");
       onClose();
+    } catch (err) {
+      const message = axios.isAxiosError(err)
+        ? err.response?.data?.message || "เกิดข้อผิดพลาดในการเพิ่มรายการใช้จ่าย"
+        : err instanceof Error ? err.message : "เกิดข้อผิดพลาดในการเพิ่มรายการใช้จ่าย";
+      toast.error(message);
     } finally {
+      if (loadingToast) toast.dismiss(loadingToast);
       setSubmitting(false);
     }
   };
@@ -462,8 +481,12 @@ const AddTransaction = ({
       <div className="addTransaction__form">
         {hasCashMovement && <CashShiftNudge />}
         <div>
-          <p className="addBooking__label">ประเภทรายการ</p>
+          <label className="addBooking__label" htmlFor={`${fieldId}-type`}>ประเภทรายการ</label>
           <Select<OptionType>
+            inputId={`${fieldId}-type`}
+            className={validationAttempted && !formData.type ? "formField--error" : undefined}
+            aria-invalid={validationAttempted && !formData.type}
+            aria-errormessage={validationAttempted && !formData.type ? `${fieldId}-type-error` : undefined}
             styles={customStyles<OptionType>()}
             classNamePrefix="rs"
             options={transactionTypeOptionGroups}
@@ -480,24 +503,29 @@ const AddTransaction = ({
               transactionTypeChangeHandler(option?.value || "")
             }
           />
+          {validationAttempted && !formData.type && <p id={`${fieldId}-type-error`} className="formField__error">กรุณาเลือกประเภทรายการ</p>}
         </div>
 
         <div>
-          <p className="addBooking__label">จำนวนเงิน (฿)</p>
+          <label className="addBooking__label" htmlFor={`${fieldId}-amount`}>จำนวนเงิน (฿)</label>
           <input
-            className="boxInput"
+            id={`${fieldId}-amount`}
+            className={`boxInput${validationAttempted && (!formData.amount || !Number.isFinite(amount) || amount <= 0) ? " boxInput--error" : ""}`}
+            aria-invalid={validationAttempted && (!formData.amount || !Number.isFinite(amount) || amount <= 0)}
+            aria-describedby={validationAttempted && (!formData.amount || !Number.isFinite(amount) || amount <= 0) ? `${fieldId}-amount-error` : undefined}
             type="number"
             min="0"
             value={formData.amount}
             placeholder="เช่น 500"
             onChange={(e) => formDataChangeHandler("amount", e.target.value)}
           />
+          {validationAttempted && (!formData.amount || !Number.isFinite(amount) || amount <= 0) && <p id={`${fieldId}-amount-error`} className="formField__error">จำนวนเงินต้องมากกว่า 0</p>}
         </div>
 
         {formData.type === "adjustment" && (
           <div>
             <p className="addBooking__label">ทิศทางการปรับยอด</p>
-            <div className="cancellation__segmentedControl">
+            <div className="cancellation__segmentedControl" role="group" aria-label="ทิศทางการปรับยอด">
               <button
                 type="button"
                 className={
@@ -506,7 +534,7 @@ const AddTransaction = ({
                     ? " cancellation__segment--active"
                     : "")
                 }
-                style={{ borderRight: "1px #eee solid" }}
+                aria-pressed={formData.adjustmentDirection === "in"}
                 onClick={() =>
                   formDataChangeHandler("adjustmentDirection", "in")
                 }
@@ -522,6 +550,7 @@ const AddTransaction = ({
                     ? " cancellation__segment--active"
                     : "")
                 }
+                aria-pressed={formData.adjustmentDirection === "out"}
                 onClick={() =>
                   formDataChangeHandler("adjustmentDirection", "out")
                 }
@@ -535,10 +564,14 @@ const AddTransaction = ({
 
         {canAttachTransaction && (
           <div>
-            <p className="addBooking__label">
+            <label className="addBooking__label" htmlFor={`${fieldId}-related`}>
               {isRefund ? "รายการรับเงินเดิม (จำเป็น)" : "แนบรายการที่ปรับ"}
-            </p>
+            </label>
             <Select<OptionType>
+              inputId={`${fieldId}-related`}
+              className={validationAttempted && (isRefund || formData.type === "adjustment") && !formData.relatedTransactionId ? "formField--error" : undefined}
+              aria-invalid={validationAttempted && (isRefund || formData.type === "adjustment") && !formData.relatedTransactionId}
+              aria-errormessage={validationAttempted && (isRefund || formData.type === "adjustment") && !formData.relatedTransactionId ? `${fieldId}-related-error` : undefined}
               styles={customStyles<OptionType>()}
               classNamePrefix="rs"
               options={transactionAttachmentOptions}
@@ -560,6 +593,7 @@ const AddTransaction = ({
                 )
               }
             />
+            {validationAttempted && (isRefund || formData.type === "adjustment") && !formData.relatedTransactionId && <p id={`${fieldId}-related-error`} className="formField__error">{isRefund ? "กรุณาเลือกรายการรับเงินเดิมที่ต้องการคืน" : "กรุณาเลือกรายการเดิมที่ต้องการปรับยอด"}</p>}
             {isRefund && transactionAttachmentOptions.length === 0 ? (
               <p className="formField__error">
                 ไม่พบรายการรับเงินเดิมที่สามารถคืนเงินได้
@@ -569,8 +603,12 @@ const AddTransaction = ({
         )}
 
         <div>
-          <p className="addBooking__label">จ่ายผ่าน</p>
+          <label className="addBooking__label" htmlFor={`${fieldId}-payment`}>จ่ายผ่าน</label>
           <Select<OptionType>
+            inputId={`${fieldId}-payment`}
+            className={validationAttempted && !formData.paymentMethod ? "formField--error" : undefined}
+            aria-invalid={validationAttempted && !formData.paymentMethod}
+            aria-errormessage={validationAttempted && !formData.paymentMethod ? `${fieldId}-payment-error` : undefined}
             styles={customStyles<OptionType>()}
             classNamePrefix="rs"
             options={availablePaymentMethodOptions}
@@ -587,13 +625,17 @@ const AddTransaction = ({
               formDataChangeHandler("paymentMethod", option?.value || "")
             }
           />
+          {validationAttempted && !formData.paymentMethod && <p id={`${fieldId}-payment-error`} className="formField__error">กรุณาเลือกช่องทางการชำระเงิน</p>}
         </div>
 
         {isFocusedFinancialAction ? (
           <div>
-            <p className="addBooking__label">เหตุผล (จำเป็น)</p>
+            <label className="addBooking__label" htmlFor={`${fieldId}-reason`}>เหตุผล (จำเป็น)</label>
             <input
-              className="boxInput"
+              id={`${fieldId}-reason`}
+              className={`boxInput${validationAttempted && !formData.reason.trim() ? " boxInput--error" : ""}`}
+              aria-invalid={validationAttempted && !formData.reason.trim()}
+              aria-describedby={validationAttempted && !formData.reason.trim() ? `${fieldId}-reason-error` : undefined}
               type="text"
               value={formData.reason}
               maxLength={200}
@@ -606,11 +648,12 @@ const AddTransaction = ({
                 formDataChangeHandler("reason", event.target.value)
               }
             />
+            {validationAttempted && !formData.reason.trim() && <p id={`${fieldId}-reason-error`} className="formField__error">กรุณาระบุเหตุผลสำหรับรายการนี้</p>}
           </div>
         ) : null}
 
         <div>
-          <p className="addBooking__label">
+          <label className="addBooking__label" htmlFor={`${fieldId}-note`}>
             {formData.type === "misc"
               ? "เหตุผล (จำเป็น)"
               : needsNote
@@ -623,9 +666,12 @@ const AddTransaction = ({
                       </span>
                     </>
                   )}
-          </p>
+          </label>
           <input
-            className="boxInput"
+            id={`${fieldId}-note`}
+            className={`boxInput${validationAttempted && needsNote && !formData.note.trim() ? " boxInput--error" : ""}`}
+            aria-invalid={validationAttempted && needsNote && !formData.note.trim()}
+            aria-describedby={validationAttempted && needsNote && !formData.note.trim() ? `${fieldId}-note-error` : undefined}
             type="text"
             value={formData.note}
             maxLength={500}
@@ -638,15 +684,17 @@ const AddTransaction = ({
             }
             onChange={(e) => formDataChangeHandler("note", e.target.value)}
           />
+          {validationAttempted && needsNote && !formData.note.trim() && <p id={`${fieldId}-note-error`} className="formField__error">{formData.type === "misc" ? "กรุณาระบุเหตุผลสำหรับรายการ Misc" : "กรุณาระบุหมายเหตุสำหรับรายการนี้"}</p>}
         </div>
 
         {isFocusedFinancialAction ? (
           <div>
-            <p className="addBooking__label">
+            <label className="addBooking__label" htmlFor={`${fieldId}-reference`}>
               เลขอ้างอิง
               <span className="addTransaction__optionalLabel">(ไม่บังคับ)</span>
-            </p>
+            </label>
             <input
+              id={`${fieldId}-reference`}
               className="boxInput"
               type="text"
               value={formData.reference}
@@ -660,8 +708,9 @@ const AddTransaction = ({
         ) : null}
 
         {isFocusedFinancialAction && validAmount > 0 ? (
-          <section className="resolveBooking__summary" aria-live="polite">
+          <div>
             <p className="addBooking__label">ตรวจสอบก่อนบันทึก</p>
+            <section className="resolveBooking__summary" aria-live="polite">
             <ul>
               <li>
                 <i className="bx bx-user" />
@@ -684,7 +733,8 @@ const AddTransaction = ({
                 {formatCurrency(Math.max(-afterDifference, 0))} บาท
               </li>
             </ul>
-          </section>
+            </section>
+          </div>
         ) : null}
 
         {isFocusedFinancialAction && validAmount > 2000 ? (
@@ -735,29 +785,10 @@ const AddTransaction = ({
           icon="bx-save"
           highlight
           disabled={submitting}
-          onClick={() =>
-            toast.promise(submitHandler(), {
-              loading: "กำลังบันทึกรายการ...",
-              success: isRefund
-                ? "บันทึกการคืนเงินสำเร็จ"
-                : isCompensation
-                  ? "บันทึกค่าชดเชยสำเร็จ"
-                  : "เพิ่มรายการใช้จ่ายสำเร็จ",
-              error: (err) => {
-                if (axios.isAxiosError(err)) {
-                  return (
-                    err.response?.data?.message ||
-                    "เกิดข้อผิดพลาดในการเพิ่มรายการใช้จ่าย"
-                  );
-                }
-
-                if (err instanceof Error) return err.message;
-                return "เกิดข้อผิดพลาดในการเพิ่มรายการใช้จ่าย";
-              },
-            })
-          }
+          onClick={() => void submitHandler()}
         />
       </div>
+      {confirmation.dialog}
     </div>
   );
 };

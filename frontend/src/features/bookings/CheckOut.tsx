@@ -6,7 +6,11 @@ import ModalCloseButton from "../../components/ModalCloseButton";
 import type { booking } from "../../types/bookingTypes";
 
 import { API_URL } from "../../config/api";
-import { formatBookingDates } from "../../helpers/bookingHelpers";
+import {
+  effectiveTransactions,
+  formatBookingDates,
+  roomChargeOutstandingAmount,
+} from "../../helpers/bookingHelpers";
 import { platformMap } from "../../helpers/maps";
 import { formatRoomStayRooms } from "../../helpers/roomStayHelpers";
 import { useAuth } from "../../context/AuthContext";
@@ -36,10 +40,11 @@ const CheckOut = ({
 }: CheckOutProps) => {
   const { user } = useAuth();
   const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
-  const [releaseRemainingNights, setReleaseRemainingNights] = useState(true);
+  const [releaseRemainingNights, setReleaseRemainingNights] = useState(!isEarlyCheckOut);
   const [confirmedDepositReturn, setConfirmedDepositReturn] = useState(false);
   const [confirmedStillUnpaid, setConfirmedStillUnpaid] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [validationAttempted, setValidationAttempted] = useState(false);
   const today = new Date();
   const todayDateOnly = new Date(
     today.getFullYear(),
@@ -67,17 +72,18 @@ const CheckOut = ({
       currency: "THB",
     }).format(num);
 
-  const depositTransactions = booking.transactions.filter(
+  const currentTransactions = effectiveTransactions(booking);
+  const depositTransactions = currentTransactions.filter(
     (transaction) => transaction.type === "deposit",
   );
   const depositAmount = depositTransactions.reduce(
     (total, transaction) => total + transaction.amount,
     0,
   );
-  const refundedDepositAmount = booking.transactions
+  const refundedDepositAmount = currentTransactions
     .filter((transaction) => transaction.type === "depositRefund")
     .reduce((total, transaction) => total + transaction.amount, 0);
-  const retainedDepositAmount = booking.transactions
+  const retainedDepositAmount = currentTransactions
     .filter((transaction) => transaction.type === "depositKept")
     .reduce((total, transaction) => total + transaction.amount, 0);
   const remainingDepositAmount = Math.max(
@@ -85,41 +91,13 @@ const CheckOut = ({
     0,
   );
   const depositPaymentMethod = depositTransactions[0]?.paymentMethod || "Cash";
-  const unpaidRoomChargeAmount = Math.max(
-    Number(
-      booking.transactions
-        .reduce((sum, transaction) => {
-          if (transaction.type === "roomCharge") {
-            return (
-              sum +
-              (transaction.paymentMethod === "Unpaid"
-                ? Math.abs(transaction.amount || 0)
-                : 0)
-            );
-          }
-
-          if (
-            ["settlementCharge", "paymentCorrection"].includes(
-              transaction.type,
-            ) &&
-            transaction.relatedTransactionType === "roomCharge" &&
-            transaction.paymentMethod !== "Unpaid"
-          ) {
-            return sum - Math.abs(transaction.amount || 0);
-          }
-
-          return sum;
-        }, 0)
-        .toFixed(2),
-    ),
-    0,
-  );
+  const unpaidRoomChargeAmount = roomChargeOutstandingAmount(booking);
   const hasUnpaidBalance = unpaidRoomChargeAmount > 0;
   useEffect(() => {
     onDirtyChange?.(
       confirmedDepositReturn ||
         confirmedStillUnpaid ||
-        (isEarlyCheckOut && !releaseRemainingNights),
+        (isEarlyCheckOut && releaseRemainingNights),
     );
 
     return () => onDirtyChange?.(false);
@@ -132,6 +110,7 @@ const CheckOut = ({
   ]);
 
   const checkOutHandler = async () => {
+    setValidationAttempted(true);
     if (remainingDepositAmount > 0 && !confirmedDepositReturn) {
       throw new Error("กรุณายืนยันการคืนมัดจำก่อนเช็คเอาท์");
     }
@@ -257,11 +236,14 @@ const CheckOut = ({
                   <input
                     type="checkbox"
                     checked={confirmedStillUnpaid}
+                    aria-invalid={validationAttempted && !confirmedStillUnpaid}
+                    aria-describedby={validationAttempted && !confirmedStillUnpaid ? "checkout-unpaid-error" : undefined}
                     onChange={(e) => setConfirmedStillUnpaid(e.target.checked)}
                   />
                   <span className="box"></span>
                 </label>
               </div>
+              {validationAttempted && !confirmedStillUnpaid && <p id="checkout-unpaid-error" className="formField__error">กรุณายืนยันการเช็คเอาท์โดยยังค้างชำระ</p>}
             </section>
           )}
 
@@ -305,6 +287,8 @@ const CheckOut = ({
                   <input
                     type="checkbox"
                     checked={confirmedDepositReturn}
+                    aria-invalid={validationAttempted && !confirmedDepositReturn}
+                    aria-describedby={validationAttempted && !confirmedDepositReturn ? "checkout-deposit-error" : undefined}
                     onChange={(event) =>
                       setConfirmedDepositReturn(event.target.checked)
                     }
@@ -312,13 +296,14 @@ const CheckOut = ({
                   <span className="box" />
                 </label>
               )}
+              {remainingDepositAmount > 0 && validationAttempted && !confirmedDepositReturn && <p id="checkout-deposit-error" className="formField__error">กรุณายืนยันการคืนมัดจำ</p>}
             </div>
           </div>
 
           {isEarlyCheckOut && (
             <section className="checkOut__section">
               <p className="checkIn__label">สถานะห้องสำหรับคืนที่เหลือ</p>
-              <div className="cancellation__segmentedControl">
+              <div className="cancellation__segmentedControl roomStatusSegmentedControl" role="group" aria-label="สถานะห้องสำหรับคืนที่เหลือ">
                 <button
                   type="button"
                   className={
@@ -327,7 +312,8 @@ const CheckOut = ({
                       ? " cancellation__segment--active"
                       : "")
                   }
-                  style={{ borderRight: "1px #eee solid" }}
+                  aria-pressed={releaseRemainingNights}
+                  data-room-availability="available"
                   onClick={() => setReleaseRemainingNights(true)}
                 >
                   <i className="bx bx-door-open" />
@@ -341,6 +327,8 @@ const CheckOut = ({
                       ? " cancellation__segment--active"
                       : "")
                   }
+                  aria-pressed={!releaseRemainingNights}
+                  data-room-availability="blocked"
                   onClick={() => setReleaseRemainingNights(false)}
                 >
                   <i className="bx bx-lock-keyhole" />

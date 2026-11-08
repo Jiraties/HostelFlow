@@ -216,10 +216,15 @@ export const correctTransaction = async (
         message: "ไม่พบ booking นี้",
       });
     }
-    if (booking.voided) {
+    if (
+      booking.voided &&
+      (!req.user?.admin || correctionType !== "recorded_mistake")
+    ) {
       return res.status(409).json({
         error: "BOOKING_VOIDED",
-        message: "ไม่สามารถแก้ไขรายการของ Booking ที่ถูก void",
+        message: !req.user?.admin
+          ? "Booking ที่ถูก void แล้วต้องให้ Admin เป็นผู้แก้ไขรายการที่บันทึกผิด"
+          : "Booking ที่ถูก void แล้วสามารถแก้ไขได้เฉพาะรายการที่บันทึกผิด (recorded_mistake)",
       });
     }
     if (Number(booking.revision || 0) !== expectedRevision) {

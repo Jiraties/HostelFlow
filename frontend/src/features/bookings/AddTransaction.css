@@ -37,7 +37,7 @@
 
 .addTransaction__form {
   display: grid;
-  gap: 1.2rem;
+  gap: 2rem;
 }
 
 .addTransaction__cardPreview {
@@ -126,6 +126,12 @@
   justify-content: flex-end;
   gap: 1rem;
   flex-wrap: wrap;
+}
+
+@media (max-width: 760px) {
+  .addTransaction__form {
+    gap: 1.25rem;
+  }
 }
 
 @media (max-width: 480px) {

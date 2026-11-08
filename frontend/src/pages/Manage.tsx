@@ -8,7 +8,7 @@ import PageHeader from "../components/PageHeader";
 import { useEffect, useMemo, useState } from "react";
 import { API_URL } from "../config/api";
 import { profilePictureUrl } from "../helpers/profilePictureUrl";
-import { Modal } from "@mui/material";
+import Modal from "../components/MotionModal";
 import type { actionType, activity } from "../types/activitiesTypes";
 import CreateNewUser from "../components/CreateNewUser";
 import ManageUser from "../components/ManageUser";
@@ -321,6 +321,7 @@ const CashCloseAudit = ({
     Record<string, string>
   >({});
   const [resolvingShiftId, setResolvingShiftId] = useState<string | null>(null);
+  const [invalidResolutionShiftId, setInvalidResolutionShiftId] = useState<string | null>(null);
   const shifts = audit?.shifts || [];
   const closedShiftCount = shifts.filter(
     (shift) => shift.status === "closed",
@@ -346,6 +347,7 @@ const CashCloseAudit = ({
   const resolveShift = async (shiftId: string) => {
     const note = resolutionNotes[shiftId]?.trim();
     if (!note) {
+      setInvalidResolutionShiftId(shiftId);
       toast.error("กรุณาระบุสรุปการตรวจสอบก่อนรับทราบ");
       return;
     }
@@ -422,7 +424,7 @@ const CashCloseAudit = ({
           <PreferredDateInput
             className="boxInput manage__dateInput"
             value={financeDate}
-            onChange={(event) => onDateChange(event.target.value)}
+            onChange={onDateChange}
           />
         </div>
       </div>
@@ -674,6 +676,8 @@ const CashCloseAudit = ({
                     ) : shift.warnings.length > 0 ? (
                       <div className="manage__auditResolve">
                         <textarea
+                          aria-invalid={invalidResolutionShiftId === shift._id && !resolutionNotes[shift._id]?.trim()}
+                          aria-describedby={invalidResolutionShiftId === shift._id && !resolutionNotes[shift._id]?.trim() ? `audit-note-error-${shift._id}` : undefined}
                           value={resolutionNotes[shift._id] || ""}
                           onChange={(event) =>
                             setResolutionNotes((current) => ({
@@ -683,6 +687,7 @@ const CashCloseAudit = ({
                           }
                           placeholder="สรุปสิ่งที่ตรวจพบและการดำเนินการ"
                         />
+                        {invalidResolutionShiftId === shift._id && !resolutionNotes[shift._id]?.trim() && <p id={`audit-note-error-${shift._id}`} className="formField__error">กรุณาระบุสรุปการตรวจสอบ</p>}
                         <button
                           type="button"
                           disabled={resolvingShiftId === shift._id}

@@ -27,9 +27,12 @@ import { getApiErrorMessage } from "../../helpers/apiErrorMessage";
 import {
   advanceRoomPaymentTransaction,
   bookingFinancialPosition,
+  bookingHasRecordedPayments,
+  firstUnpaidRoomChargeTransaction,
   formatBookingDates,
   isRoomChargeSettlementTransaction,
   isSameDay,
+  remainingForRoomCharge as getRemainingForRoomCharge,
   roomChargeOutstandingAmount,
   roomChargeSettlementTransactions,
   transactionRequiresReview,
@@ -46,7 +49,9 @@ import {
   formatRoomStayRooms,
   getRoomStayRoomIds,
 } from "../../helpers/roomStayHelpers.ts";
-import { Modal, useMediaQuery } from "@mui/material";
+import Modal from "../../components/MotionModal";
+import MotionDropdown from "../../components/MotionDropdown";
+import { useMediaQuery } from "@mui/material";
 import { useAuth } from "../../context/AuthContext.tsx";
 import {
   formatDisplayDate,
@@ -171,6 +176,8 @@ const ViewBooking = ({
   const [roomPaymentTransaction, setRoomPaymentTransaction] = useState<
     booking["transactions"][number] | null
   >(null);
+  const [reopenCheckOutAfterRoomPayment, setReopenCheckOutAfterRoomPayment] =
+    useState(false);
   const [closedRoomAvailabilityIsOpen, setClosedRoomAvailabilityIsOpen] =
     useState(false);
   const [transactionEditMode, setTransactionEditMode] = useState(false);
@@ -244,7 +251,9 @@ const ViewBooking = ({
   const { user, resolveStaffName } = useAuth();
   const isMobileView = useMediaQuery("(max-width:760px)");
   const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
-  const statusCorrectionType = statusCorrectionForStatus(data?.status || "");
+  const statusCorrectionType = data?.voided
+    ? null
+    : statusCorrectionForStatus(data?.status || "");
   const statusCorrectionLabel =
     statusCorrectionActionLabel(statusCorrectionType);
   const statusCorrectionBookingId = statusCorrectionType
@@ -748,13 +757,16 @@ const ViewBooking = ({
         key={`${data.bookingId}-${data.revision}`}
         bookingId={data.bookingId}
         correctionDisabled={
+          data.status !== "checkedIn" ||
           checkInCorrectionEligibility.loading ||
           !checkInCorrectionEligibility.allowed
         }
         correctionDisabledReason={
-          checkInCorrectionEligibility.loading
-            ? "กำลังตรวจสอบสิทธิ์..."
-            : checkInCorrectionEligibility.message || undefined
+          data.status !== "checkedIn"
+            ? "แก้ไขข้อมูล Passport ผู้จองหลักได้เฉพาะระหว่างที่กำลังเข้าพัก (Checked-In)"
+            : checkInCorrectionEligibility.loading
+              ? "กำลังตรวจสอบสิทธิ์..."
+              : checkInCorrectionEligibility.message || undefined
         }
         onCorrectPassport={() => {
           void openCheckInCorrection("replace_passport");
@@ -891,26 +903,16 @@ const ViewBooking = ({
   const outstandingRoomChargeAmount = roomChargeOutstandingAmount(data);
   const remainingForRoomCharge = (
     roomCharge: booking["transactions"][number],
-  ) => {
-    if (!roomCharge._id) return 0;
-    const appliedAmount = data.transactions.reduce((total, transaction) => {
-      if (transaction.relatedTransactionId !== roomCharge._id) return total;
-      return (["settlementCharge", "paymentCorrection"].includes(
-        transaction.type,
-      ) &&
-        transaction.paymentMethod !== "Unpaid") ||
-        transaction.type === "roomChargeWriteOff"
-        ? total + Math.abs(transaction.amount || 0)
-        : total;
-    }, 0);
-    return Math.max(
-      Number((Math.abs(roomCharge.amount || 0) - appliedAmount).toFixed(2)),
-      0,
-    );
-  };
+  ) => getRemainingForRoomCharge(data, roomCharge);
   const selectedRoomPaymentRemaining = roomPaymentTransaction
     ? remainingForRoomCharge(roomPaymentTransaction)
     : 0;
+  const hasRecordedPayments = bookingHasRecordedPayments(data);
+  const hasCorrectableTransactions =
+    (!data.voided || Boolean(user?.admin)) &&
+    data.transactions.some((transaction) =>
+      correctableTransactionTypes.has(transaction.type),
+    );
   const financialPosition = bookingFinancialPosition(data);
   const advancePaymentTransaction = advanceRoomPaymentTransaction(data);
   let attachNextSettlementCardSurchargeToRoomCharge = false;
@@ -1244,7 +1246,8 @@ const ViewBooking = ({
     compact = false,
   ) => {
     const canEditTransaction =
-      !data.voided && correctableTransactionTypes.has(transaction.type);
+      (!data.voided || Boolean(user?.admin)) &&
+      correctableTransactionTypes.has(transaction.type);
 
     return (
       <div
@@ -1476,11 +1479,15 @@ const ViewBooking = ({
         onClose={() =>
           requestUnsavedModalClose(
             roomPaymentIsDirty,
-            () => setRoomPaymentTransaction(null),
+            () => {
+              setReopenCheckOutAfterRoomPayment(false);
+              setRoomPaymentTransaction(null);
+            },
             () =>
-              setPendingUnsavedClose(
-                () => () => setRoomPaymentTransaction(null),
-              ),
+              setPendingUnsavedClose(() => () => {
+                setReopenCheckOutAfterRoomPayment(false);
+                setRoomPaymentTransaction(null);
+              }),
           )
         }
       >
@@ -1489,11 +1496,23 @@ const ViewBooking = ({
             booking={data}
             transaction={roomPaymentTransaction}
             remainingAmount={selectedRoomPaymentRemaining}
-            onClose={() => setRoomPaymentTransaction(null)}
+            onClose={() => {
+              setReopenCheckOutAfterRoomPayment(false);
+              setRoomPaymentTransaction(null);
+            }}
             onDirtyChange={setRoomPaymentIsDirty}
             onUpdated={(updatedBooking) => {
               updateBooking(updatedBooking);
               setRoomPaymentTransaction(null);
+              if (
+                reopenCheckOutAfterRoomPayment &&
+                roomChargeOutstandingAmount(updatedBooking) === 0
+              ) {
+                setReopenCheckOutAfterRoomPayment(false);
+                setCheckOutIsOpen(true);
+              } else {
+                setReopenCheckOutAfterRoomPayment(false);
+              }
             }}
           />
         ) : (
@@ -1693,6 +1712,13 @@ const ViewBooking = ({
           onClose={() => setCheckOutIsOpen(false)}
           onDirtyChange={setCheckOutIsDirty}
           onRecordPayment={() => {
+            const unpaidRoomCharge = firstUnpaidRoomChargeTransaction(data);
+            if (unpaidRoomCharge) {
+              setCheckOutIsOpen(false);
+              setReopenCheckOutAfterRoomPayment(true);
+              setRoomPaymentTransaction(unpaidRoomCharge);
+              return;
+            }
             setCheckOutIsOpen(false);
             setAddTransactionIsOpen(true);
           }}
@@ -2206,7 +2232,9 @@ const ViewBooking = ({
                                       {transactionName(transaction)}
                                     </p>
                                     {renderCorrectionActions(transaction)}
-                                    {data.status === "booked" &&
+                                    {!data.voided &&
+                                      (data.status === "booked" ||
+                                        data.status === "checkedIn") &&
                                       !transactionEditMode &&
                                       transaction.type === "roomCharge" &&
                                       transaction.paymentMethod === "Unpaid" &&
@@ -2215,11 +2243,14 @@ const ViewBooking = ({
                                         <button
                                           type="button"
                                           className="viewBooking__receiveRoomPayment"
-                                          onClick={() =>
+                                          onClick={() => {
+                                            setReopenCheckOutAfterRoomPayment(
+                                              false,
+                                            );
                                             setRoomPaymentTransaction(
                                               transaction,
-                                            )
-                                          }
+                                            );
+                                          }}
                                         >
                                           <i
                                             className="bx bx-credit-card"
@@ -2254,13 +2285,15 @@ const ViewBooking = ({
                   </div>
                 )}
               </div>
-              <div
-                className="viewBooking__addTransaction"
-                onClick={() => setAddTransactionIsOpen(true)}
-              >
-                <i className="bx bx-plus" />
-                <p>เพิ่มรายการใช้จ่าย</p>
-              </div>
+              {!data.voided && (
+                <div
+                  className="viewBooking__addTransaction"
+                  onClick={() => setAddTransactionIsOpen(true)}
+                >
+                  <i className="bx bx-plus" />
+                  <p>เพิ่มรายการใช้จ่าย</p>
+                </div>
+              )}
             </div>
 
             <div className="viewBooking__roomStays">
@@ -2340,9 +2373,8 @@ const ViewBooking = ({
                 icon="bx-dots-horizontal-rounded"
                 onClick={() => setMoreActionsIsOpen((isOpen) => !isOpen)}
               />
-              {moreActionsIsOpen && (
-                <>
-                  {isMobileView && (
+              <>
+                  {moreActionsIsOpen && isMobileView && (
                     <button
                       type="button"
                       className="viewBooking__moreActionsBackdrop"
@@ -2350,9 +2382,22 @@ const ViewBooking = ({
                       onClick={() => setMoreActionsIsOpen(false)}
                     />
                   )}
+                  <MotionDropdown open={moreActionsIsOpen} origin={isMobileView ? "bottom-center" : "bottom-left"}>
                   <div className="viewBooking__moreActionsMenu">
                     <button
                       type="button"
+                      disabled={
+                        data.status !== "booked" || Boolean(data.voided)
+                      }
+                      title={
+                        data.voided
+                          ? "ไม่สามารถแก้ไขการจองที่ void แล้ว"
+                          : data.status === "checkedIn"
+                            ? "แก้ไขข้อมูลการจองทั่วไปได้เฉพาะก่อน Check-In (ใช้จัดการช่วงการเข้าพักหรือเพิ่มจำนวนคืนแทน)"
+                            : data.status !== "booked"
+                              ? "ไม่สามารถแก้ไขข้อมูลการจองของรายการที่ปิดแล้ว"
+                              : undefined
+                      }
                       onClick={() => {
                         setEditBookingIsOpen(true);
                         setMoreActionsIsOpen(false);
@@ -2404,6 +2449,14 @@ const ViewBooking = ({
                     </button>
                     <button
                       type="button"
+                      disabled={!hasCorrectableTransactions}
+                      title={
+                        !hasCorrectableTransactions
+                          ? data.voided
+                            ? "Booking ที่ void แล้วต้องให้ Admin เป็นผู้แก้ไขรายการที่บันทึกผิด"
+                            : "ไม่มีรายการใช้จ่ายที่แก้ไขได้"
+                          : undefined
+                      }
                       className={
                         transactionEditMode
                           ? "viewBooking__moreActionsMenuToggle--active"
@@ -2419,23 +2472,18 @@ const ViewBooking = ({
                         ? "ซ่อนปุ่มแก้ไขรายการ"
                         : "แก้ไขรายการใช้จ่าย"}
                     </button>
-                    {user?.admin &&
-                      (data.status === "checkedOut" ||
-                        data.status === "cancelled" ||
-                        data.status === "noShow") && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setClosedRoomAvailabilityIsOpen(true);
-                            setMoreActionsIsOpen(false);
-                          }}
-                        >
-                          <i className="bx bx-bed" />
-                          แก้ไขการเปิดห้อง
-                          <span className="viewBooking__adminTag">Admin</span>
-                        </button>
+
+                    {!data.voided &&
+                      (data.status === "checkedIn" ||
+                        Boolean(statusCorrectionType) ||
+                        data.status === "booked") && (
+                        <div
+                          className="viewBooking__moreActionsDivider"
+                          role="separator"
+                        />
                       )}
-                    {data.status === "checkedIn" && (
+
+                    {!data.voided && data.status === "checkedIn" && (
                       <button
                         type="button"
                         disabled={
@@ -2497,21 +2545,61 @@ const ViewBooking = ({
                         )}
                       </button>
                     )}
-                    {user?.admin && data.status === "checkedIn" && (
+                    {!data.voided && data.status === "booked" && (
                       <button
                         type="button"
                         onClick={() => {
-                          setResolveVariant("specialCase");
-                          setResolveBookingIsOpen(true);
+                          setCancellationIsOpen(true);
                           setMoreActionsIsOpen(false);
                         }}
                       >
-                        <i className="bx bx-receipt" />
-                        Resolve สำรอง
-                        <span className="viewBooking__adminTag">Admin</span>
+                        <i className="bx bx-calendar-x" />
+                        ยกเลิกการจอง
                       </button>
                     )}
+
+                    {user?.admin && !data.voided && (
+                      <div
+                        className="viewBooking__moreActionsDivider"
+                        role="separator"
+                      />
+                    )}
+
                     {user?.admin &&
+                      !data.voided &&
+                      (data.status === "checkedOut" ||
+                        data.status === "cancelled" ||
+                        data.status === "noShow") && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setClosedRoomAvailabilityIsOpen(true);
+                            setMoreActionsIsOpen(false);
+                          }}
+                        >
+                          <i className="bx bx-bed" />
+                          แก้ไขการเปิดห้อง
+                          <span className="viewBooking__adminTag">Admin</span>
+                        </button>
+                      )}
+                    {user?.admin &&
+                      !data.voided &&
+                      data.status === "checkedIn" && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setResolveVariant("specialCase");
+                            setResolveBookingIsOpen(true);
+                            setMoreActionsIsOpen(false);
+                          }}
+                        >
+                          <i className="bx bx-receipt" />
+                          Resolve สำรอง
+                          <span className="viewBooking__adminTag">Admin</span>
+                        </button>
+                      )}
+                    {user?.admin &&
+                      !data.voided &&
                       (data.status === "checkedOut" ||
                         data.status === "cancelled" ||
                         data.status === "noShow") && (
@@ -2529,6 +2617,7 @@ const ViewBooking = ({
                         </button>
                       )}
                     {user?.admin &&
+                      !data.voided &&
                       data.status === "booked" &&
                       checkInIsBeforeToday && (
                         <button
@@ -2544,36 +2633,37 @@ const ViewBooking = ({
                           <span className="viewBooking__adminTag">Admin</span>
                         </button>
                       )}
-                    {data.status === "booked" && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCancellationIsOpen(true);
-                          setMoreActionsIsOpen(false);
-                        }}
-                      >
-                        <i className="bx bx-calendar-x" />
-                        ยกเลิกการจอง
-                      </button>
-                    )}
-                    {user?.admin && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          removeBookingHandler(data);
-                          setMoreActionsIsOpen(false);
-                        }}
-                      >
-                        <i
-                          className="bx bx-trash"
-                          style={{ color: "var(--red)" }}
-                        />
-                        ลบ
-                      </button>
-                    )}
+                    {user?.admin &&
+                      !data.voided &&
+                      data.status === "booked" && (
+                        <button
+                          type="button"
+                          disabled={hasRecordedPayments}
+                          title={
+                            hasRecordedPayments
+                              ? "ไม่สามารถลบ Booking ที่มียอดรับเงินแล้ว กรุณาใช้ยกเลิกการจอง หรือแก้รายการที่บันทึกผิดเป็น 0 บาทก่อน"
+                              : "Void การจองที่สร้างผิดพลาดและยังไม่มียอดรับเงิน"
+                          }
+                          onClick={() => {
+                            removeBookingHandler(data);
+                            setMoreActionsIsOpen(false);
+                          }}
+                        >
+                          <i
+                            className="bx bx-trash"
+                            style={{
+                              color: hasRecordedPayments
+                                ? "#bbb"
+                                : "var(--red)",
+                            }}
+                          />
+                          <span>ลบ</span>
+                          <span className="viewBooking__adminTag">Admin</span>
+                        </button>
+                      )}
                   </div>
-                </>
-              )}
+                  </MotionDropdown>
+              </>
             </div>
 
             {!data.voided &&

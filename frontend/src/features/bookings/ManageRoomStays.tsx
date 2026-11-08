@@ -1,9 +1,10 @@
-import Select, { type MultiValue } from "react-select";
+import Select from "../../components/MotionSelect";
+import { type MultiValue } from "react-select";
 import "./ManageRoomStays.css";
 import type { OptionType } from "../../helpers/selectStyling";
 import { customStyles } from "../../helpers/selectStyling";
 import { roomIdOptions } from "../../helpers/options";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import ActionButton from "../../components/ActionButton";
 import ModalCloseButton from "../../components/ModalCloseButton";
 import { PreferredDateInput } from "../../components/PreferredDateInput";
@@ -141,6 +142,9 @@ const ManageRoomStays = ({
     Record<number, string[]>
   >({});
   const [submitting, setSubmitting] = useState(false);
+  const [validationAttempted, setValidationAttempted] = useState(false);
+  const [reasonTouched, setReasonTouched] = useState(false);
+  const fieldId = useId();
   const [historicalCorrectionReason, setHistoricalCorrectionReason] =
     useState("");
 
@@ -308,6 +312,7 @@ const ManageRoomStays = ({
 
   const patchRoomStays = async () => {
     if (submitting) return;
+    setValidationAttempted(true);
     if (closedHistoryIsReadOnly) {
       throw new Error("การแก้ประวัติห้องหลัง Check-Out ทำได้เฉพาะ Admin");
     }
@@ -379,7 +384,7 @@ const ManageRoomStays = ({
       </div>
 
       <div className="manageRoomStays__list">
-        {roomStays.map((roomStay, index) => (
+        {applyBookingBoundaries(roomStays).map((roomStay, index) => (
           <div
             className={`manageRoomStays__listItem${
               isHistoricalStay(roomStay)
@@ -418,6 +423,10 @@ const ManageRoomStays = ({
                 isMulti
                 styles={customStyles<OptionType, true>()}
                 classNamePrefix="rs"
+                className={validationAttempted && !getRoomStayRoomIds(roomStay).length ? "formField--error" : undefined}
+                aria-invalid={validationAttempted && !getRoomStayRoomIds(roomStay).length}
+                aria-label={`ห้องพักช่วงพักที่ ${index + 1}`}
+                aria-errormessage={validationAttempted && !getRoomStayRoomIds(roomStay).length ? `${fieldId}-room-${index}-error` : undefined}
                 options={roomOptionsByStay[index] || roomIdOptions}
                 placeholder="เช่น Veranda 1"
                 isDisabled={
@@ -441,6 +450,7 @@ const ManageRoomStays = ({
                   });
                 }}
               />
+              {validationAttempted && !getRoomStayRoomIds(roomStay).length && <p id={`${fieldId}-room-${index}-error`} className="formField__error">กรุณาเลือกห้องพัก</p>}
             </div>
 
             <div>
@@ -466,6 +476,9 @@ const ManageRoomStays = ({
               </div>
               <div className="addBooking__dateInputs">
                 <PreferredDateInput
+                  aria-invalid={validationAttempted && (!roomStay.from || (!!roomStay.to && new Date(roomStay.from) >= new Date(roomStay.to)))}
+                  aria-label={`วันที่เข้าพักช่วงที่ ${index + 1}`}
+                  aria-describedby={validationAttempted && (!roomStay.from || !roomStay.to || new Date(roomStay.from) >= new Date(roomStay.to)) ? `${fieldId}-date-${index}-error` : undefined}
                   value={
                     isFirstStay(index) ? bookingCheckIn : roomStay.from || ""
                   }
@@ -477,8 +490,7 @@ const ManageRoomStays = ({
                       roomStay.from <= businessDate)
                   }
                   min={restrictHistoricalStays ? businessDate : undefined}
-                  onChange={(e) => {
-                    const newFrom = e.target.value;
+                  onChange={(newFrom) => {
 
                     setRoomStays((prevRoomStays) => {
                       const updated = [...prevRoomStays];
@@ -505,6 +517,9 @@ const ManageRoomStays = ({
                   className="boxInput addBooking__dateInput manageRoomStays__boundaryDate"
                 />
                 <PreferredDateInput
+                  aria-invalid={validationAttempted && (!roomStay.to || (!!roomStay.from && new Date(roomStay.from) >= new Date(roomStay.to)))}
+                  aria-label={`วันที่ออกช่วงที่ ${index + 1}`}
+                  aria-describedby={validationAttempted && (!roomStay.from || !roomStay.to || new Date(roomStay.from) >= new Date(roomStay.to)) ? `${fieldId}-date-${index}-error` : undefined}
                   value={
                     isLastStay(index) ? bookingCheckOut : roomStay.to || ""
                   }
@@ -514,8 +529,7 @@ const ManageRoomStays = ({
                     isHistoricalStay(roomStay)
                   }
                   min={restrictHistoricalStays ? businessDate : undefined}
-                  onChange={(e) => {
-                    const newTo = e.target.value;
+                  onChange={(newTo) => {
 
                     setRoomStays((prevRoomStays) => {
                       const updated = [...prevRoomStays];
@@ -539,6 +553,7 @@ const ManageRoomStays = ({
                   className="boxInput addBooking__dateInput manageRoomStays__boundaryDate"
                 />
               </div>
+              {validationAttempted && (!roomStay.from || !roomStay.to || new Date(roomStay.from) >= new Date(roomStay.to)) && <p id={`${fieldId}-date-${index}-error`} className="formField__error">กรุณาตรวจสอบวันที่เข้าพักและวันที่ออก</p>}
             </div>
           </div>
         ))}
@@ -548,6 +563,9 @@ const ManageRoomStays = ({
           <span className="addBooking__label">เหตุผลที่แก้ประวัติห้องพัก</span>
           <textarea
             className="boxInput"
+            aria-invalid={reasonTouched && !historicalCorrectionReason.trim()}
+            aria-describedby={reasonTouched && !historicalCorrectionReason.trim() ? `${fieldId}-reason-error` : undefined}
+            onBlur={() => setReasonTouched(true)}
             value={historicalCorrectionReason}
             maxLength={500}
             disabled={submitting}
@@ -556,6 +574,7 @@ const ManageRoomStays = ({
               setHistoricalCorrectionReason(event.target.value)
             }
           />
+          {reasonTouched && !historicalCorrectionReason.trim() && <span id={`${fieldId}-reason-error`} className="formField__error">กรุณาระบุเหตุผลที่แก้ไขประวัติห้องพัก</span>}
           <small>ระบบจะบันทึกเหตุผลพร้อมข้อมูลก่อนและหลังแก้ไข</small>
         </label>
       )}

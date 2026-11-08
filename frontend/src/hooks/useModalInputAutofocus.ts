@@ -19,6 +19,7 @@ export const useModalInputAutofocus = () => {
       if (
         focusedModals.has(modal) ||
         scheduledModals.has(modal) ||
+        modal.getAttribute("data-motion-open") === "false" ||
         modal.hasAttribute("data-disable-input-autofocus")
       ) {
         return;
@@ -28,7 +29,11 @@ export const useModalInputAutofocus = () => {
       window.requestAnimationFrame(() => {
         window.requestAnimationFrame(() => {
           scheduledModals.delete(modal);
-          if (!modal.isConnected || focusedModals.has(modal)) return;
+          if (
+            !modal.isConnected ||
+            focusedModals.has(modal) ||
+            modal.getAttribute("data-motion-open") === "false"
+          ) return;
 
           const activeElement = document.activeElement;
           if (
@@ -70,11 +75,20 @@ export const useModalInputAutofocus = () => {
 
     document.querySelectorAll(".MuiModal-root").forEach(focusFirstField);
     const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) =>
-        mutation.addedNodes.forEach(inspectNode),
-      );
+      mutations.forEach((mutation) => {
+        if (mutation.type === "attributes" && mutation.target instanceof Element) {
+          const modal = mutation.target;
+          // A quick reopen can interrupt the exit before MUI unmounts the root.
+          // Give that new opening the same field focus as a fresh mount.
+          if (modal.matches(".MuiModal-root") && modal.getAttribute("data-motion-open") === "true") {
+            focusedModals.delete(modal);
+            scheduledModals.delete(modal);
+            focusFirstField(modal);
+          }
+        } else mutation.addedNodes.forEach(inspectNode);
+      });
     });
-    observer.observe(document.body, { childList: true, subtree: true });
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-motion-open"] });
 
     return () => observer.disconnect();
   }, []);

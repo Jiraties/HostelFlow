@@ -1,0 +1,19 @@
+.appConfirmation {
+  width: min(34rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+}
+
+.appConfirmation__actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+@media (max-width: 760px) {
+  .appConfirmation__actions > * {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+}

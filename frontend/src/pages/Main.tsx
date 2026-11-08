@@ -1,5 +1,6 @@
+import MonthInput from "../components/MonthInput";
 import axios from "axios";
-import { Modal } from "@mui/material";
+import Modal from "../components/MotionModal";
 import { useLocation, useNavigate } from "react-router";
 import toast from "react-hot-toast";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -549,13 +550,13 @@ const Main = () => {
     null,
   );
   const adminRequestIdRef = useRef(0);
-  const dashboardMonthInputRef = useRef<HTMLInputElement>(null);
   const currentDashboardMonth = bangkokMonthKey();
   const [dashboardMonth, setDashboardMonth] = useState(currentDashboardMonth);
   const [revenueRange, setRevenueRange] = useState<RevenueRange>("1m");
   const [chartMetric, setChartMetric] = useState<ChartMetric>("occupancy");
   const [cashCloseLoading, setCashCloseLoading] = useState(false);
   const [cashCloseSaving, setCashCloseSaving] = useState(false);
+  const [cashValidationAttempted, setCashValidationAttempted] = useState(false);
   const [cashPosition, setCashPosition] = useState<CashPositionData | null>(
     null,
   );
@@ -824,6 +825,7 @@ const Main = () => {
   const startCashShift = async (
     openingMode: "counted" | "accepted_handoff",
   ) => {
+    setCashValidationAttempted(true);
     if (
       openingMode === "counted" &&
       openingVarianceNeedsNote &&
@@ -843,6 +845,7 @@ const Main = () => {
         { withCredentials: true },
       );
       await fetchCashClose();
+      setCashValidationAttempted(false);
     } finally {
       setCashCloseSaving(false);
     }
@@ -852,6 +855,7 @@ const Main = () => {
     closeDay = false,
     depositReminder?: { calculationToken: string },
   ) => {
+    setCashValidationAttempted(true);
     if (!activeCashShift) {
       throw new Error("ยังไม่มีกะเงินสดที่เปิดอยู่");
     }
@@ -1248,33 +1252,19 @@ const Main = () => {
               <i className="bx bx-bar-chart-big" />
               <h2>ผลการดำเนินงานรายเดือน</h2>
             </div>
-            <label
-              className="main__adminMonthPicker"
-              onClick={(event) => {
-                const monthInput = dashboardMonthInputRef.current;
-                if (
-                  !monthInput ||
-                  typeof monthInput.showPicker !== "function"
-                ) {
-                  return;
-                }
-                event.preventDefault();
-                monthInput.focus();
-                monthInput.showPicker();
-              }}
-            >
+            <label className="main__adminMonthPicker" htmlFor="dashboard-month">
               <span>เลือกเดือน</span>
-              <input
-                ref={dashboardMonthInputRef}
-                type="month"
+              <MonthInput
+                id="dashboard-month"
+                allowClear={false}
                 value={dashboardMonth}
                 max={currentDashboardMonth}
                 aria-label="เลือกเดือนสำหรับผลการดำเนินงาน"
-                onChange={(event) => {
-                  if (!event.target.value) return;
+                onChange={(value) => {
+                  if (!value) return;
                   setAdminLoading(true);
                   setAdminStats(null);
-                  setDashboardMonth(event.target.value);
+                  setDashboardMonth(value);
                 }}
               />
             </label>
@@ -1540,11 +1530,14 @@ const Main = () => {
                       min="0"
                       disabled={!canCloseActiveShift}
                       value={operatingActualCash}
+                      aria-invalid={cashValidationAttempted && Boolean(activeCashShift) && operatingActualCash === ""}
+                      aria-describedby={cashValidationAttempted && Boolean(activeCashShift) && operatingActualCash === "" ? "cash-actual-error" : undefined}
                       placeholder={`${formatMoney(operatingExpectedCash)} คาดไว้`}
                       onChange={(event) =>
                         setOperatingActualCash(event.target.value)
                       }
                     />
+                    {cashValidationAttempted && operatingActualCash === "" && <span id="cash-actual-error" className="formField__error">กรุณากรอกยอดเงินสดที่นับได้</span>}
                   </label>
                 ) : !cashDayIsFinalized ? (
                   <label>
@@ -1568,11 +1561,14 @@ const Main = () => {
                       <span>หมายเหตุยอดต่าง</span>
                       <input
                         className="boxInput"
+                        aria-invalid={cashValidationAttempted && !closeNote.trim() && (activeCashShift ? ordinaryCloseVarianceNeedsNote : openingVarianceNeedsNote)}
+                        aria-describedby={cashValidationAttempted && !closeNote.trim() && (activeCashShift ? ordinaryCloseVarianceNeedsNote : openingVarianceNeedsNote) ? "cash-note-error" : undefined}
                         type="text"
                         value={closeNote}
                         placeholder="เช่น รับส่งเงินไม่ตรง / พบเงินเกิน"
                         onChange={(event) => setCloseNote(event.target.value)}
                       />
+                      {cashValidationAttempted && !closeNote.trim() && (activeCashShift ? ordinaryCloseVarianceNeedsNote : openingVarianceNeedsNote) && <span id="cash-note-error" className="formField__error">กรุณาระบุหมายเหตุเมื่อยอดเงินสดไม่ตรงกัน</span>}
                     </label>
                   )}
                 {!activeCashShift &&

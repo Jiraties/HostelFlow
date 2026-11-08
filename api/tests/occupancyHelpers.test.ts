@@ -6,12 +6,43 @@ import {
   occupiedCapacityOnDate,
 } from "../src/controller/booking";
 import type { booking } from "../src/models/booking";
+import { createOccupancySummaryCalculator } from "../src/helpers/occupancyHelpers";
 import { HOUSE_USE_ROOM_BLOCK_REASON, type roomBlock } from "../src/models/roomBlock";
 
 const dayStart = new Date("2026-07-17T17:00:00.000Z");
 const dayEnd = new Date("2026-07-18T17:00:00.000Z");
 const secondDayEnd = new Date("2026-07-19T17:00:00.000Z");
 const thirdDayEnd = new Date("2026-07-20T17:00:00.000Z");
+
+test("dashboard ranges reuse daily occupancy without retaining results across requests", () => {
+  let reads = 0;
+  const record = {
+    status: "booked",
+    get roomStays() {
+      reads += 1;
+      return [{ roomIds: ["Balcony"], from: dayStart, to: thirdDayEnd }];
+    },
+  } as booking;
+  const calculate = createOccupancySummaryCalculator([record]);
+  const month = calculate(dayStart, thirdDayEnd);
+  assert.equal(month.occupiedBedNights, 6);
+  const afterFirstRange = reads;
+  assert.deepEqual(calculate(dayStart, thirdDayEnd), month);
+  assert.equal(calculate(dayStart, dayEnd).occupiedBedNights, 2);
+  assert.equal(calculate(dayEnd, secondDayEnd).occupiedBedNights, 2);
+  assert.equal(reads, afterFirstRange, "chart buckets must reuse the daily results");
+  record.status = "cancelled";
+  assert.equal(createOccupancySummaryCalculator([record])(dayStart, thirdDayEnd).occupiedBedNights, 0);
+});
+
+test("partial-day ranges cannot reuse a different interval's occupancy", () => {
+  const noon = new Date(dayStart.getTime() + 12 * 3600000);
+  const record = { status: "booked", roomStays: [{ roomIds: ["Balcony"], from: noon, to: dayEnd }] } as booking;
+  const calculate = createOccupancySummaryCalculator([record]);
+  assert.equal(calculate(dayStart, dayEnd).occupiedBedNights, 2);
+  assert.equal(calculate(dayStart, noon).occupiedBedNights, 0);
+  assert.equal(calculate(noon, dayEnd).occupiedBedNights, 2);
+});
 
 const occupancyBooking = (
   roomIds: string[],

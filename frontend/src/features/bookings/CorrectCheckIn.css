@@ -19,11 +19,33 @@
 .correctCheckIn__passportGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 1.25rem;
+  gap: 2rem;
 }
 
 .correctCheckIn__wide {
   grid-column: 1 / -1;
+}
+
+.correctCheckIn__undoFlow {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.correctCheckIn__confirmCheckbox {
+  display: flex !important;
+  align-items: flex-start;
+  gap: 0.65rem;
+  margin-top: 0.25rem;
+  padding: 0.75rem !important;
+  border-radius: 0.75rem;
+  border: 1px dashed var(--border-color);
+  background: rgba(15, 23, 42, 0.02);
+  cursor: pointer;
+}
+
+.correctCheckIn__confirmCheckbox .box {
+  margin-top: 0.2rem;
 }
 
 .correctCheckIn__undoExplanation {
@@ -106,6 +128,7 @@
 
   .correctCheckIn__passportGrid {
     grid-template-columns: 1fr;
+    gap: 1.25rem;
   }
 
   .correctCheckIn__wide {

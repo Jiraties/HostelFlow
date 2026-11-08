@@ -41,8 +41,9 @@
   align-items: center;
   gap: 1rem;
   padding: 1rem;
-  border-radius: 0.75rem;
-  background: #fafafa;
+  border-radius: 0.5rem;
+  background: var(--background);
+  box-shadow: var(--main-shadow);
 }
 
 .receiveRoomPayment__summary div {

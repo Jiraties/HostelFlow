@@ -25,6 +25,10 @@
   margin-bottom: 0.5rem;
 }
 
+label.addBooking__label {
+  display: block;
+}
+
 .addBooking__fieldHelper {
   color: #6b7280;
   font-size: 0.82rem;
@@ -119,6 +123,10 @@
     background-color 0.2s ease;
 }
 
+.addBooking__advanceOption.checkbox {
+  align-items: flex-start;
+}
+
 .addBooking__advanceOption:hover {
   background-color: #00000004;
 }
@@ -128,45 +136,8 @@
   background-color: color-mix(in srgb, var(--green) 5%, transparent);
 }
 
-.addBooking__advanceOption input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-}
-
-.addBooking__advanceCheckmark {
-  flex: 0 0 1.05rem;
-  width: 1.05rem;
-  height: 1.05rem;
+.addBooking__advanceOption .box {
   margin-top: 0.1rem;
-  border: 1px solid #cbd5e1;
-  border-radius: 0.3rem;
-  box-sizing: border-box;
-  background-color: #fff;
-  display: grid;
-  place-items: center;
-}
-
-.addBooking__advanceOption input:focus-visible + .addBooking__advanceCheckmark {
-  outline: 2px solid color-mix(in srgb, var(--green) 45%, transparent);
-  outline-offset: 2px;
-}
-
-.addBooking__advanceOption input:checked + .addBooking__advanceCheckmark {
-  border-color: var(--green);
-  background-color: var(--green);
-}
-
-.addBooking__advanceOption
-  input:checked
-  + .addBooking__advanceCheckmark::after {
-  content: "";
-  width: 0.28rem;
-  height: 0.52rem;
-  border: solid #fff;
-  border-width: 0 0.12rem 0.12rem 0;
-  transform: rotate(45deg);
 }
 
 .addBooking__advanceCopy {
@@ -188,36 +159,7 @@
 }
 
 .addBooking__advanceMode {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
   margin-top: 0.55rem;
-  padding: 0.2rem;
-  border-radius: 0.55rem;
-  background-color: #00000008;
-}
-
-.addBooking__advanceModeButton {
-  min-height: 2rem;
-  padding: 0.3rem 0.65rem;
-  border: 0;
-  border-radius: 0.4rem;
-  background-color: transparent;
-  color: #6b7280;
-  font-family: "IBM Plex Sans Thai", sans-serif;
-  font-weight: 400;
-  cursor: pointer;
-}
-
-.addBooking__advanceModeButton--active {
-  background-color: #fff;
-  color: var(--text);
-  box-shadow: var(--light-shadow);
-  font-weight: 500;
-}
-
-.addBooking__advanceModeButton:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--green) 45%, transparent);
-  outline-offset: 1px;
 }
 
 .addBooking__advancePercentage {

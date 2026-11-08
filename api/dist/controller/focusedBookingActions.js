@@ -30,16 +30,23 @@ const STAFF_FINANCIAL_LIMIT = 2000;
 const CARD_SURCHARGE_RATE = 0.03;
 const roundMoney = (value) => Number(value.toFixed(2));
 const remainingUnpaidRoomChargeAmount = (transactions, relatedTransactionId) => {
-    const roomCharge = transactions.find((transaction) => String(transaction._id || "") === relatedTransactionId &&
-        transaction.type === "roomCharge" &&
-        transaction.paymentMethod === "Unpaid");
+    const unpaidRoomCharges = transactions.filter((transaction) => transaction.type === "roomCharge" &&
+        transaction.paymentMethod === "Unpaid" &&
+        Math.abs(transaction.amount || 0) > 0);
+    const roomCharge = unpaidRoomCharges.find((transaction) => String(transaction._id || "") === relatedTransactionId);
     if (!roomCharge)
         return null;
+    const allowLegacyUnlinked = unpaidRoomCharges.length === 1;
     const settled = transactions.reduce((total, transaction) => {
-        if (transaction.relatedTransactionId !== relatedTransactionId)
+        const matchesLinked = transaction.relatedTransactionId === relatedTransactionId;
+        const matchesLegacyUnlinked = allowLegacyUnlinked &&
+            !transaction.relatedTransactionId &&
+            transaction.relatedTransactionType === "roomCharge";
+        if (!matchesLinked && !matchesLegacyUnlinked)
             return total;
         if (["settlementCharge", "paymentCorrection"].includes(transaction.type) &&
-            transaction.paymentMethod !== "Unpaid") {
+            transaction.paymentMethod !== "Unpaid" &&
+            transaction.direction !== "out") {
             return total + Math.abs(transaction.amount || 0);
         }
         if (transaction.type === "roomChargeWriteOff") {
@@ -501,10 +508,11 @@ const recordPreArrivalRoomPayment = async (req, res) => {
         if (Number(initial.revision || 0) !== validated.expectedRevision) {
             return (0, bookingConcurrency_1.sendBookingRevisionConflict)(res, req.params.bookingId);
         }
-        if (initial.voided || initial.status !== "booked") {
+        if (initial.voided ||
+            (initial.status !== "booked" && initial.status !== "checkedIn")) {
             return res.status(409).json({
                 error: "BOOKING_LIFECYCLE_CONFLICT",
-                message: "รับชำระก่อน Check-In ได้เฉพาะ Booking ที่ยังไม่ Check-In",
+                message: "รับชำระค่าห้องค้างชำระได้เฉพาะ Booking ที่ยังไม่ Check-In หรือกำลังเข้าพัก",
             });
         }
         const effectiveTransactions = (0, transactionCorrections_1.effectiveBookingTransactions)(initial);
@@ -531,7 +539,10 @@ const recordPreArrivalRoomPayment = async (req, res) => {
         }
         const settlementId = String(new mongoose_1.default.Types.ObjectId());
         const receivedAt = new Date();
-        const transactionNote = note || "รับชำระค่าห้องก่อน Check-In";
+        const defaultNote = initial.status === "checkedIn"
+            ? "รับชำระค่าห้องค้างชำระ"
+            : "รับชำระค่าห้องก่อน Check-In";
+        const transactionNote = note || defaultNote;
         const newTransactions = [
             (0, financeHelpers_1.normalizeTransaction)({
                 _id: settlementId,
@@ -562,7 +573,9 @@ const recordPreArrivalRoomPayment = async (req, res) => {
             }, {
                 createdBy: validated.username,
                 sourceAction: "RECORD_PRE_ARRIVAL_ROOM_PAYMENT",
-                note: "ค่าธรรมเนียมบัตร 3% สำหรับค่าห้องที่รับก่อน Check-In",
+                note: initial.status === "checkedIn"
+                    ? "ค่าธรรมเนียมบัตร 3% สำหรับค่าห้องค้างชำระ"
+                    : "ค่าธรรมเนียมบัตร 3% สำหรับค่าห้องที่รับก่อน Check-In",
                 sameTypeCount: initial.transactions.filter((transaction) => transaction.type === "cardSurcharge").length,
             }));
         }
@@ -574,7 +587,7 @@ const recordPreArrivalRoomPayment = async (req, res) => {
                 const assignedTransactions = await (0, cashLedgerTransaction_1.assignCashTransactionsInSession)(newTransactions, session);
                 const updated = await booking_1.default.findOneAndUpdate({
                     bookingId: initial.bookingId,
-                    status: "booked",
+                    status: initial.status,
                     voided: { $ne: true },
                     ...(0, bookingConcurrency_1.bookingRevisionPredicate)(validated.expectedRevision),
                     transactions: {

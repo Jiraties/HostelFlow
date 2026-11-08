@@ -34,6 +34,7 @@ export function ReopenFinalCashShiftModal({
   onConfirm,
 }: Props) {
   const [reason, setReason] = useState("");
+  const [reasonTouched, setReasonTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [idempotencyKey] = useState(() => crypto.randomUUID());
@@ -119,12 +120,16 @@ export function ReopenFinalCashShiftModal({
         <span className="addBooking__label">เหตุผลที่เปิดกะอีกครั้ง</span>
         <textarea
           className="boxInput resolveBooking__note"
+          aria-invalid={reasonTouched && !reason.trim()}
+          aria-describedby={reasonTouched && !reason.trim() ? "reopen-shift-reason-error" : undefined}
+          onBlur={() => setReasonTouched(true)}
           value={reason}
           maxLength={500}
           autoFocus
           placeholder="เช่น แขกมาชำระเงินสดหลังปิดยอด"
           onChange={(event) => setReason(event.target.value)}
         />
+        {reasonTouched && !reason.trim() && <span id="reopen-shift-reason-error" className="formField__error">กรุณาระบุเหตุผล</span>}
       </label>
 
       {error && <p className="reopenCashShift__error" role="alert">{error}</p>}

@@ -72,8 +72,8 @@ const bookedFixture = (overrides: Record<string, unknown> = {}) => {
     revision: 1,
     name: "Focused Guest",
     bookingId: "FOCUSED-1",
-    status: "booked",
-    platformId: "BOOK",
+    status: "booked" as const,
+    platformId: "BOOK" as const,
     staffUsername: "frontdesk",
     checkIn: dates.from,
     checkOut: dates.to,
@@ -782,4 +782,49 @@ test("staff financial boundary is inclusive at 2,000 and escalates at 2,001", as
   );
   assert.equal(escalated.statusCode, 403);
   assert.equal(escalated.body.error, "ADMIN_APPROVAL_REQUIRED");
+});
+
+test("checked-in unpaid room charge can be settled before checkout", async () => {
+  const created = await Booking.findOne({ bookingId: "FOCUSED-1" });
+  created!.status = "checkedIn";
+  created!.checkedInAt = new Date();
+  created!.transactions.push({
+    type: "roomCharge",
+    paymentMethod: "Unpaid",
+    amount: 1200,
+    direction: "in",
+    sourceAction: "NEW_BOOKING",
+  });
+  await created!.save();
+  const roomChargeId = String(created!.transactions[0]._id);
+
+  const res = response();
+  await recordPreArrivalRoomPayment(
+    request(
+      {
+        expectedRevision: 1,
+        relatedTransactionId: roomChargeId,
+        amount: 1200,
+        paymentMethod: "Transfer",
+        note: "Settled at checkout counter",
+      },
+      {
+        key: "checked-in-room-settlement",
+        path: "/bookings/FOCUSED-1/pre-arrival-room-payments",
+      },
+    ),
+    res,
+  );
+
+  assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+  assert.equal(res.body.remainingAmount, 0);
+  assert.equal(res.body.financialSummary.outstandingBalance, 0);
+  assert.equal(res.body.booking.status, "checkedIn");
+  const settlement = res.body.booking.transactions.find(
+    (transaction: any) => transaction.type === "settlementCharge",
+  );
+  assert.ok(settlement);
+  assert.equal(settlement.relatedTransactionId, roomChargeId);
+  assert.equal(settlement.relatedTransactionType, "roomCharge");
+  assert.equal(settlement.amount, 1200);
 });

@@ -92,6 +92,24 @@ const Tooltip = ({
 
   useEffect(() => () => cancelClose(), []);
 
+  useEffect(() => {
+    if (!open) return;
+    const dismissOutside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !triggerRef.current?.contains(event.target) && !tooltipRef.current?.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", dismissOutside);
+    document.addEventListener("keydown", dismissOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", dismissOutside);
+      document.removeEventListener("keydown", dismissOnEscape);
+    };
+  }, [open]);
+
   useLayoutEffect(() => {
     if (!open) return;
 
@@ -119,6 +137,7 @@ const Tooltip = ({
         onBlur={scheduleClose}
         onClick={(event) => {
           if (stopClickPropagation) event.stopPropagation();
+          showTooltip();
         }}
       >
         {children}

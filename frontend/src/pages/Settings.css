@@ -132,21 +132,9 @@
 }
 
 .settings__select {
-  box-shadow: var(--light-shadow);
-  border: none;
-  border-radius: 0.65rem;
+  min-width: 14.5rem;
   font-family: "IBM Plex Sans Thai", sans-serif;
   font-size: 0.92rem;
-  line-height: 1.2;
-  min-height: 2.55rem;
-  min-width: 14.5rem;
-  padding: 0 2.25rem 0 0.85rem;
-  appearance: none;
-}
-
-.settings__select:focus {
-  border-color: var(--primary-color);
-  outline: none;
 }
 
 .settings__logout {

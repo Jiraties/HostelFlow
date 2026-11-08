@@ -258,7 +258,7 @@ const Sidebar = () => {
 
       {settingsItem && (
         <>
-          <p className="sidebar__version">HostelFlow v1.1</p>
+          <p className="sidebar__version">HostelFlow v1.1.1</p>
           <Link
             to={settingsItem.link}
             title={settingsItem.label}

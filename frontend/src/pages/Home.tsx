@@ -1,6 +1,6 @@
 import StatCard from "../features/dashboard/StatCard";
 import axios from "axios";
-import Select from "react-select";
+import Select from "../components/MotionSelect";
 import type { SingleValue } from "react-select";
 
 import ActionButton from "../components/ActionButton";
@@ -15,7 +15,7 @@ import ConfirmationModal from "../components/ConfirmationModal";
 import UnsavedChangesModal from "../components/UnsavedChangesModal";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Modal } from "@mui/material";
+import Modal from "../components/MotionModal";
 import { useLocation, useSearchParams } from "react-router";
 import {
   formatBookingDates,
@@ -658,7 +658,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
             disabled={
               masterFilters.search.trim().length >= 3 && !limitSearchToRange
             }
-            onChange={(e) => updateMasterFilter("from", e.target.value)}
+            onChange={(value) => updateMasterFilter("from", value)}
             className="boxInput home__dateInput"
           />
           <PreferredDateInput
@@ -666,7 +666,7 @@ const Home = ({ status }: { status: HomeStatus }) => {
             disabled={
               masterFilters.search.trim().length >= 3 && !limitSearchToRange
             }
-            onChange={(e) => updateMasterFilter("to", e.target.value)}
+            onChange={(value) => updateMasterFilter("to", value)}
             className="boxInput home__dateInput"
           />
         </div>

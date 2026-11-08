@@ -1,3 +1,4 @@
+import MonthInput from "../components/MonthInput";
 import {
   Bar,
   CartesianGrid,
@@ -9,7 +10,7 @@ import {
   YAxis,
 } from "recharts";
 import { useState } from "react";
-import { Modal } from "@mui/material";
+import Modal from "../components/MotionModal";
 import PageHeader from "../components/PageHeader";
 import usePageTitle from "../hooks/useTitle";
 import AnalyticsDetails from "./AnalyticsDetails";
@@ -59,7 +60,7 @@ const Analytics = () => {
       <PageHeader
         title={`Analytics | ${monthLabel}`}
         meta={<div className="analytics__pageMeta">
-          {user?.admin && <label className="analytics__monthControl">เดือน <input type="month" aria-label="เลือกเดือน Analytics" value={month} min="1901-01" max="9997-12" onChange={(event) => selectMonth(event.target.value)} /></label>}
+          {user?.admin && <label className="analytics__monthControl">เดือน <MonthInput aria-label="เลือกเดือน Analytics" value={month} min="1901-01" max="9997-12" allowClear={false} onChange={selectMonth} /></label>}
           <span>อัปเดตล่าสุด {data ? new Date(data.generatedAt).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" }) : "--:--"}</span>
         </div>}
         lastUpdated={data ? new Date(data.generatedAt) : null}

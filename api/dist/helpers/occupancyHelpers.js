@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.occupancySummaryForRange = exports.occupiedCapacityOnDate = exports.bookingOccupiedRoomIdsOnDate = exports.effectiveRoomStayEnd = exports.bookingKeepsRoomForOccupancy = void 0;
+exports.createOccupancySummaryCalculator = exports.occupancySummaryForRange = exports.occupiedCapacityOnDate = exports.bookingOccupiedRoomIdsOnDate = exports.effectiveRoomStayEnd = exports.bookingKeepsRoomForOccupancy = void 0;
 const roomBlock_1 = require("../models/roomBlock");
 const roomInventory_1 = require("../config/roomInventory");
 const roomStayHelpers_1 = require("./roomStayHelpers");
@@ -55,24 +55,37 @@ const occupiedCapacityOnDate = (bookings, start, end, roomBlocks = [], inventory
     return Array.from(occupiedRoomIds).reduce((total, roomId) => total + (inventory.find((room) => room.id === roomId)?.capacity ?? 0), 0);
 };
 exports.occupiedCapacityOnDate = occupiedCapacityOnDate;
-const occupancySummaryForRange = (bookings, start, end, roomBlocks = [], inventory = (0, roomInventory_1.activeRoomInventory)()) => {
-    let date = new Date(start);
-    let occupiedBedNights = 0;
-    let dayCount = 0;
-    while (date < end) {
-        const dayEnd = new Date(Math.min(date.getTime() + 86400000, end.getTime()));
-        occupiedBedNights += (0, exports.occupiedCapacityOnDate)(bookings, date, dayEnd, roomBlocks, inventory);
-        dayCount += 1;
-        date = dayEnd;
-    }
-    const availableBedNights = inventory.reduce((sum, room) => sum + room.capacity, 0) * dayCount;
-    const averageOccupiedCapacity = dayCount === 0 ? 0 : occupiedBedNights / dayCount;
-    return {
-        occupiedBedNights,
-        availableBedNights,
-        averageOccupiedCapacity,
-        occupancyRate: availableBedNights === 0 ? 0 : occupiedBedNights / availableBedNights,
+const occupancySummaryForRange = (bookings, start, end, roomBlocks = [], inventory = (0, roomInventory_1.activeRoomInventory)()) => (0, exports.createOccupancySummaryCalculator)(bookings, roomBlocks, inventory)(start, end);
+exports.occupancySummaryForRange = occupancySummaryForRange;
+/** Reuse daily occupancy across overlapping ranges in a single dashboard request. */
+const createOccupancySummaryCalculator = (bookings, roomBlocks = [], inventory = (0, roomInventory_1.activeRoomInventory)()) => {
+    const dailyCapacity = new Map();
+    return (start, end) => {
+        let date = new Date(start);
+        let occupiedBedNights = 0;
+        let dayCount = 0;
+        while (date < end) {
+            const dayEnd = new Date(Math.min(date.getTime() + 86400000, end.getTime()));
+            // Include both boundaries: a partial day must not reuse a full-day total.
+            const key = `${date.getTime()}:${dayEnd.getTime()}`;
+            let capacity = dailyCapacity.get(key);
+            if (capacity === undefined) {
+                capacity = (0, exports.occupiedCapacityOnDate)(bookings, date, dayEnd, roomBlocks, inventory);
+                dailyCapacity.set(key, capacity);
+            }
+            occupiedBedNights += capacity;
+            dayCount += 1;
+            date = dayEnd;
+        }
+        const availableBedNights = inventory.reduce((sum, room) => sum + room.capacity, 0) * dayCount;
+        const averageOccupiedCapacity = dayCount === 0 ? 0 : occupiedBedNights / dayCount;
+        return {
+            occupiedBedNights,
+            availableBedNights,
+            averageOccupiedCapacity,
+            occupancyRate: availableBedNights === 0 ? 0 : occupiedBedNights / availableBedNights,
+        };
     };
 };
-exports.occupancySummaryForRange = occupancySummaryForRange;
+exports.createOccupancySummaryCalculator = createOccupancySummaryCalculator;
 //# sourceMappingURL=occupancyHelpers.js.map

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import Select, { type SingleValue } from "react-select";
+import Select from "../../components/MotionSelect";
+import { type SingleValue } from "react-select";
 import axios from "axios";
 import toast from "react-hot-toast";
 import ActionButton from "../../components/ActionButton";
@@ -221,14 +222,15 @@ const Cancellation = ({
           </div>
           <div>
             <p className="addBooking__label">สถานะห้องหลังยกเลิก</p>
-            <div className="cancellation__segmentedControl">
+            <div className="cancellation__segmentedControl" role="group" aria-label="สถานะห้องหลังยกเลิก">
               <button
                 type="button"
                 className={
                   "cancellation__segment" +
                   (reopenRoom ? " cancellation__segment--active" : "")
                 }
-                style={{ borderRight: "1px #eee solid" }}
+                aria-pressed={reopenRoom}
+                data-room-availability="available"
                 onClick={() => setReopenRoom(true)}
               >
                 <i className="bx bx-door-open" />
@@ -240,6 +242,8 @@ const Cancellation = ({
                   "cancellation__segment" +
                   (!reopenRoom ? " cancellation__segment--active" : "")
                 }
+                aria-pressed={!reopenRoom}
+                data-room-availability="blocked"
                 onClick={() => setReopenRoom(false)}
               >
                 <i className="bx bx-lock-keyhole" />

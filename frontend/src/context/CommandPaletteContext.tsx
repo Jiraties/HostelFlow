@@ -5,7 +5,7 @@ import {
   useEffect,
   useState,
 } from "react";
-import { Modal } from "@mui/material";
+import Modal from "../components/MotionModal";
 import { useNavigate } from "react-router";
 import toast from "react-hot-toast";
 import type { booking } from "../types/bookingTypes";

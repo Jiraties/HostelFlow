@@ -70,11 +70,19 @@
   justify-content: center;
 }
 
-.extendBooking__nightsStepper button:hover:not(:disabled),
-.extendBooking__nightsStepper button:focus-visible {
+.extendBooking__nightsStepper button:hover:not(:disabled) {
   background: color-mix(in srgb, var(--primary-color) 8%, #fff);
   color: var(--primary-color);
-  outline: 0;
+}
+
+.extendBooking__nightsStepper button:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: -2px;
+}
+
+.extendBooking__nightsStepper:has(input:focus-visible) {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 .extendBooking__nightsStepper button:disabled {
@@ -107,37 +115,6 @@
 
 .extendBooking__field--full {
   grid-column: 1 / -1;
-}
-
-.extendBooking__placement {
-  background: #f3f3f3;
-  border-radius: 0.55rem;
-  display: grid;
-  gap: 0.25rem;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  padding: 0.25rem;
-}
-
-.extendBooking__placement button {
-  background: transparent;
-  border: 0;
-  border-radius: 0.4rem;
-  color: #666;
-  cursor: pointer;
-  font: inherit;
-  min-height: 2.75rem;
-}
-
-.extendBooking__placement button.active {
-  background: #fff;
-  box-shadow: var(--main-shadow);
-  color: var(--text);
-  font-weight: 500;
-}
-
-.extendBooking__placement button:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
 }
 
 .extendBooking__anchorNotice {

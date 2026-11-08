@@ -44,7 +44,7 @@
 .additionalGuestsPassport__form {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 2rem;
   margin: 1.5rem 0;
 }
 
@@ -55,7 +55,7 @@
 
 .additionalGuestsPassport__form label {
   display: block;
-  margin-bottom: 0.4rem;
+  margin-bottom: 0.5rem;
 }
 
 .additionalGuestsPassport__form textarea {
@@ -70,6 +70,10 @@
 }
 
 @media (max-width: 600px) {
+  .additionalGuestsPassport__form {
+    gap: 1.25rem;
+  }
+
   .additionalGuestsPassport__modal {
     width: calc(100vw - 1.5rem);
     max-height: calc(100vh - 1.5rem);

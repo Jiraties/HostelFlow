@@ -815,5 +815,9 @@ bookingSchema.index(
   { checkIn: 1, checkOut: 1 },
   { name: "master_browse_dates" },
 );
+bookingSchema.index(
+  { "transactions.createdAt": 1 },
+  { name: "booking_transaction_dates" },
+);
 
 export default mongoose.model<booking>("Booking", bookingSchema);

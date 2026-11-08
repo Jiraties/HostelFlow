@@ -81,19 +81,30 @@ const remainingUnpaidRoomChargeAmount = (
   transactions: transcation[],
   relatedTransactionId: string,
 ) => {
-  const roomCharge = transactions.find(
+  const unpaidRoomCharges = transactions.filter(
     (transaction) =>
-      String(transaction._id || "") === relatedTransactionId &&
       transaction.type === "roomCharge" &&
-      transaction.paymentMethod === "Unpaid",
+      transaction.paymentMethod === "Unpaid" &&
+      Math.abs(transaction.amount || 0) > 0,
+  );
+  const roomCharge = unpaidRoomCharges.find(
+    (transaction) => String(transaction._id || "") === relatedTransactionId,
   );
   if (!roomCharge) return null;
+  const allowLegacyUnlinked = unpaidRoomCharges.length === 1;
 
   const settled = transactions.reduce((total, transaction) => {
-    if (transaction.relatedTransactionId !== relatedTransactionId) return total;
+    const matchesLinked =
+      transaction.relatedTransactionId === relatedTransactionId;
+    const matchesLegacyUnlinked =
+      allowLegacyUnlinked &&
+      !transaction.relatedTransactionId &&
+      transaction.relatedTransactionType === "roomCharge";
+    if (!matchesLinked && !matchesLegacyUnlinked) return total;
     if (
       ["settlementCharge", "paymentCorrection"].includes(transaction.type) &&
-      transaction.paymentMethod !== "Unpaid"
+      transaction.paymentMethod !== "Unpaid" &&
+      transaction.direction !== "out"
     ) {
       return total + Math.abs(transaction.amount || 0);
     }
@@ -650,10 +661,14 @@ export const recordPreArrivalRoomPayment = async (
     if (Number(initial.revision || 0) !== validated.expectedRevision) {
       return sendBookingRevisionConflict(res, req.params.bookingId);
     }
-    if (initial.voided || initial.status !== "booked") {
+    if (
+      initial.voided ||
+      (initial.status !== "booked" && initial.status !== "checkedIn")
+    ) {
       return res.status(409).json({
         error: "BOOKING_LIFECYCLE_CONFLICT",
-        message: "รับชำระก่อน Check-In ได้เฉพาะ Booking ที่ยังไม่ Check-In",
+        message:
+          "รับชำระค่าห้องค้างชำระได้เฉพาะ Booking ที่ยังไม่ Check-In หรือกำลังเข้าพัก",
       });
     }
 
@@ -685,7 +700,11 @@ export const recordPreArrivalRoomPayment = async (
 
     const settlementId = String(new mongoose.Types.ObjectId());
     const receivedAt = new Date();
-    const transactionNote = note || "รับชำระค่าห้องก่อน Check-In";
+    const defaultNote =
+      initial.status === "checkedIn"
+        ? "รับชำระค่าห้องค้างชำระ"
+        : "รับชำระค่าห้องก่อน Check-In";
+    const transactionNote = note || defaultNote;
     const newTransactions: transcation[] = [
       normalizeTransaction(
         {
@@ -724,7 +743,10 @@ export const recordPreArrivalRoomPayment = async (
           {
             createdBy: validated.username,
             sourceAction: "RECORD_PRE_ARRIVAL_ROOM_PAYMENT",
-            note: "ค่าธรรมเนียมบัตร 3% สำหรับค่าห้องที่รับก่อน Check-In",
+            note:
+              initial.status === "checkedIn"
+                ? "ค่าธรรมเนียมบัตร 3% สำหรับค่าห้องค้างชำระ"
+                : "ค่าธรรมเนียมบัตร 3% สำหรับค่าห้องที่รับก่อน Check-In",
             sameTypeCount: initial.transactions.filter(
               (transaction) => transaction.type === "cardSurcharge",
             ).length,
@@ -750,7 +772,7 @@ export const recordPreArrivalRoomPayment = async (
         const updated = await Booking.findOneAndUpdate(
           {
             bookingId: initial.bookingId,
-            status: "booked",
+            status: initial.status,
             voided: { $ne: true },
             ...bookingRevisionPredicate(validated.expectedRevision),
             transactions: {

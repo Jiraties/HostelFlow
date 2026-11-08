@@ -1,4 +1,6 @@
 import "./Settings.css";
+import Select from "../components/MotionSelect";
+import { customStyles, type OptionType } from "../helpers/selectStyling";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router";
@@ -11,6 +13,20 @@ import SettingsItem from "../features/settings/SettingsItem";
 import toast from "react-hot-toast";
 import { paymentMethodOptions, platformOptions } from "../helpers/options";
 import type { UserSettings } from "../types/userSettings";
+
+const baseSelectStyles = customStyles<OptionType>();
+const settingsSelectStyles: ReturnType<typeof customStyles<OptionType>> = {
+  ...baseSelectStyles,
+  control: (provided, state) => ({
+    ...baseSelectStyles.control?.(provided, state),
+    minHeight: "2.55rem",
+    padding: "0.2rem 0.35rem",
+    boxShadow: state.isFocused
+      ? "var(--light-shadow), 0 0 0 2px var(--primary-color)"
+      : "var(--light-shadow)",
+  }),
+  dropdownIndicator: (provided) => ({ ...provided, color: "#777" }),
+};
 
 const settingsSelectOptions = {
   calendarColorMode: [
@@ -221,28 +237,25 @@ const Settings = () => {
 
           {/* <div className="settings__fields"> */}
           {settingsFields.map((field) => (
-            <label className="settings__field" key={field.key}>
+            <label className="settings__field" key={field.key} htmlFor={`setting-${field.key}`}>
               <span className="settings__fieldCopy">
                 <span className="settings__fieldLabel">{field.label}</span>
               </span>
               <span className="settings__selectWrap">
-                <select
+                <Select<OptionType>
+                  inputId={`setting-${field.key}`}
+                  instanceId={`setting-${field.key}`}
                   className="settings__select"
-                  value={String(user?.settings[field.key] ?? "")}
-                  onChange={(event) =>
-                    updateSetting(
-                      field.key,
-                      event.target.value as UserSettings[typeof field.key],
-                    )
-                  }
-                >
-                  {field.options.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-                <i className="bx bx-chevron-down" aria-hidden="true" />
+                  classNamePrefix="settingsSelect"
+                  styles={settingsSelectStyles}
+                  options={field.options}
+                  value={field.options.find((option) => option.value === String(user?.settings[field.key] ?? "")) || null}
+                  isSearchable={false}
+                  menuPortalTarget={document.body}
+                  onChange={(option) => {
+                    if (option) updateSetting(field.key, option.value as UserSettings[typeof field.key]);
+                  }}
+                />
               </span>
             </label>
           ))}

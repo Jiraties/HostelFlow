@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
-import Select, { type SingleValue } from "react-select";
+import Select from "../../components/MotionSelect";
+import { type SingleValue } from "react-select";
 import ActionButton from "../../components/ActionButton";
 import ModalCloseButton from "../../components/ModalCloseButton";
 import { API_URL } from "../../config/api";
@@ -57,6 +58,8 @@ const RoomBlockModal = ({
   const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
   const [reasonOption, setReasonOption] = useState<RoomBlockReasonOption>();
   const [customReason, setCustomReason] = useState("");
+  const [reasonTouched, setReasonTouched] = useState(false);
+  const [customReasonTouched, setCustomReasonTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const isCreate = Boolean(selection);
   const roomIds = selection?.roomIds?.length
@@ -204,6 +207,11 @@ const RoomBlockModal = ({
             autoFocus
             styles={customStyles<OptionType>()}
             classNamePrefix="rs"
+            className={reasonTouched && !reasonOption ? "formField--error" : undefined}
+            aria-invalid={reasonTouched && !reasonOption}
+            aria-label="เหตุผลที่บล็อกห้อง"
+            aria-errormessage={reasonTouched && !reasonOption ? "room-block-reason-error" : undefined}
+            onBlur={() => setReasonTouched(true)}
             options={roomBlockReasonOptions}
             isDisabled={submitting}
             value={
@@ -217,10 +225,15 @@ const RoomBlockModal = ({
               )
             }
           />
+          {reasonTouched && !reasonOption && <span id="room-block-reason-error" className="formField__error">กรุณาเลือกเหตุผล</span>}
           {reasonOption === "other" && (
             <>
               <textarea
                 className="boxInput"
+                aria-label="ระบุเหตุผลที่บล็อกห้อง"
+                aria-invalid={customReasonTouched && !customReason.trim()}
+                aria-describedby={customReasonTouched && !customReason.trim() ? "room-block-custom-reason-error" : undefined}
+                onBlur={() => setCustomReasonTouched(true)}
                 maxLength={500}
                 value={customReason}
                 disabled={submitting}
@@ -228,6 +241,7 @@ const RoomBlockModal = ({
                 placeholder="ระบุเหตุผล"
                 onChange={(event) => setCustomReason(event.target.value)}
               />
+              {customReasonTouched && !customReason.trim() && <span id="room-block-custom-reason-error" className="formField__error">กรุณาระบุเหตุผล</span>}
               <small>{customReason.length}/500</small>
             </>
           )}

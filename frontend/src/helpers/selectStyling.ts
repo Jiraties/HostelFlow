@@ -11,14 +11,16 @@ export const customStyles = <
   T,
   IsMulti extends boolean = false,
 >(): StylesConfig<T, IsMulti> => ({
-  control: (provided) => ({
+  control: (provided, state) => ({
     ...provided,
     fontFamily: '"IBM Plex Sans Thai", sans-serif',
     minHeight: "3.3rem",
     padding: "0.45rem 0.55rem",
     borderRadius: "0.5rem",
     border: "none",
-    boxShadow: "rgba(149, 157, 165, 0.25) 0px 8px 24px",
+    boxShadow: state.isFocused
+      ? "rgba(149, 157, 165, 0.25) 0px 8px 24px, 0 0 0 2px var(--primary-color)"
+      : "rgba(149, 157, 165, 0.25) 0px 8px 24px",
     width: "100%",
     color: "var(--text)",
     backgroundColor: "#fff",
@@ -72,7 +74,10 @@ export const customStyles = <
     },
   }),
 
-  menu: (provided) => ({
+  menu: (provided, state) => ({
+    animation: "surfaceDropdownEnter var(--dropdown-open-dur, 160ms) var(--dropdown-ease, cubic-bezier(0.25, 1, 0.5, 1)) both",
+    transformOrigin: state.placement === "top" ? "bottom left" : "top left",
+    "@media (prefers-reduced-motion: reduce)": { animation: "none" },
     ...provided,
     zIndex: 1000,
     borderRadius: "0.5rem",

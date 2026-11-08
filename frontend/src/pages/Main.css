@@ -241,6 +241,11 @@
   font-size: 0.9rem;
 }
 
+.main__cashCloseForm .formField__error {
+  color: var(--field-error-color);
+  font-size: 0.82rem;
+}
+
 .main__cashCloseTile strong {
   display: block;
   margin: 0.65rem 0 0.2rem;
@@ -418,7 +423,7 @@
   white-space: nowrap;
 }
 
-.main__adminMonthPicker input {
+.main__adminMonthPicker .calendarInput {
   min-height: 2rem;
   padding: 0.25rem 0.55rem;
   border: 1px solid #e5e5e5;
@@ -429,7 +434,7 @@
   cursor: pointer;
 }
 
-.main__adminMonthPicker input:focus-visible {
+.main__adminMonthPicker .calendarInput:focus-visible {
   border-color: var(--primary-color);
   outline: 2px solid color-mix(in srgb, var(--primary-color) 22%, transparent);
   outline-offset: 1px;

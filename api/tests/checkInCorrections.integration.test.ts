@@ -61,7 +61,7 @@ const baseBody = (overrides: Record<string, unknown> = {}) => ({
   expectedRevision: 1,
   mode: "undo_check_in",
   reason: "Selected the wrong arrival",
-  depositOutcome: "none",
+  depositOutcome: "not_received",
   ...overrides,
 });
 
@@ -77,8 +77,8 @@ const fixture = (overrides: Record<string, unknown> = {}) => ({
   revision: 1,
   name: "Wrong Guest",
   bookingId: "RECOVERY-1",
-  status: "checkedIn",
-  platformId: "WALK",
+  status: "checkedIn" as const,
+  platformId: "WALK" as const,
   staffUsername: "frontdesk",
   checkInByStaffUsername: "frontdesk",
   checkedInAt: new Date(),
@@ -94,11 +94,11 @@ const fixture = (overrides: Record<string, unknown> = {}) => ({
   ],
   transactions: [
     {
-      type: "deposit",
-      paymentMethod: "Cash",
+      type: "deposit" as const,
+      paymentMethod: "Cash" as const,
       amount: 200,
-      direction: "in",
-      sourceAction: "CHECK_IN",
+      direction: "in" as const,
+      sourceAction: "CHECK_IN" as const,
       createdBy: "frontdesk",
       createdAt: new Date(),
     },
@@ -171,13 +171,29 @@ after(async () => {
 test("preview reports eligibility and the deposit effect", async () => {
   const res = response();
   await previewCheckInCorrection(
-    request(baseBody(), { path: "preview" }),
+    request(baseBody({ reason: "" }), { path: "preview" }),
     res,
   );
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.eligible, true);
   assert.equal(res.body.deposit.remainingAmount, 200);
   assert.equal(res.body.requiresAdmin, false);
+
+  const missingDepositChoice = response();
+  await previewCheckInCorrection(
+    request(baseBody({ reason: "", depositOutcome: "none" }), {
+      path: "preview",
+    }),
+    missingDepositChoice,
+  );
+  assert.equal(missingDepositChoice.statusCode, 200);
+  assert.equal(missingDepositChoice.body.eligible, false);
+  assert.equal(
+    missingDepositChoice.body.blockers.some(
+      (blocker: any) => blocker.code === "DEPOSIT_OUTCOME_REQUIRED",
+    ),
+    true,
+  );
 });
 
 test("eligibility lasts for the whole cash shift and keeps admin access after close", async () => {

@@ -1,3 +1,6 @@
+import SurfaceTransition from "../../components/SurfaceTransition";
+import { surfaceDuration } from "../../helpers/surfaceMotion";
+import { PreferredDateInput } from "../../components/PreferredDateInput";
 import { Dialog, DialogContent, useAutocomplete } from "@mui/material";
 import { useForkRef } from "@mui/material/utils";
 import axios from "axios";
@@ -847,24 +850,19 @@ const GlobalSearchPaletteContent = ({
             }}
           />
           {bookingDateField && (
-            <span
+            <PreferredDateInput
+              iconOnly
               className="globalSearch__datePicker"
               title={`เลือกวัน ${bookingDateField === "checkIn" ? "Check-in" : "Check-out"}`}
-            >
-              <i className="bx bx-calendar" aria-hidden="true" />
-              <input
-                type="date"
-                value={bookingDateKey || ""}
-                aria-label={`เลือกวัน ${bookingDateField === "checkIn" ? "Check-in" : "Check-out"} จากปฏิทิน`}
-                onChange={(event) => {
-                  const nextDate = event.currentTarget.value;
-                  setQuery(formatDateInputValue(nextDate, dateFormat));
-                  setResponse(null);
-                  setError("");
-                  setLoading(Boolean(nextDate));
-                }}
-              />
-            </span>
+              value={bookingDateKey || ""}
+              aria-label={`เลือกวัน ${bookingDateField === "checkIn" ? "Check-in" : "Check-out"} จากปฏิทิน`}
+              onChange={(nextDate) => {
+                setQuery(formatDateInputValue(nextDate, dateFormat));
+                setResponse(null);
+                setError("");
+                setLoading(Boolean(nextDate));
+              }}
+            />
           )}
           {showLoading && loading && (
             <span
@@ -1027,6 +1025,8 @@ const GlobalSearchPaletteContent = ({
 
 const GlobalSearchPalette = (props: GlobalSearchPaletteProps) => (
   <Dialog
+    slots={{ transition: SurfaceTransition }}
+    transitionDuration={{ enter: surfaceDuration("modal", "open"), exit: surfaceDuration("modal", "close") }}
     open={props.open}
     onClose={props.onClose}
     fullWidth

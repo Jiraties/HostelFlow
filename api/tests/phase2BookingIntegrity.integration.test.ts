@@ -10,6 +10,7 @@ import CashShift from "../src/models/cashShift";
 import MutationIdempotencyKey from "../src/models/mutationIdempotencyKey";
 import RoomMutationLock from "../src/models/roomMutationLock";
 import { recordFinancialAction } from "../src/controller/focusedBookingActions";
+import { correctTransaction } from "../src/controller/transactionCorrections";
 
 type BookingController = typeof import("../src/controller/booking");
 type CapturedResponse = {
@@ -500,8 +501,8 @@ test("staff can submit a refund above THB 2,000 for admin review", async () => {
     revision: 0,
     name: "Large Refund Guest",
     bookingId: "STAFF-LARGE-REFUND",
-    status: "booked",
-    platformId: "BOOKING",
+    status: "booked" as const,
+    platformId: "BOOK" as const,
     staffUsername: "staff",
     checkIn: new Date(`${localDate(1)}T00:00:00`),
     checkOut: new Date(`${localDate(2)}T00:00:00`),
@@ -515,10 +516,10 @@ test("staff can submit a refund above THB 2,000 for admin review", async () => {
     ],
     transactions: [
       {
-        type: "roomCharge",
-        paymentMethod: "Transfer",
+        type: "roomCharge" as const,
+        paymentMethod: "Transfer" as const,
         amount: 2500,
-        direction: "in",
+        direction: "in" as const,
         createdBy: "staff",
         createdAt: new Date(),
       },
@@ -1620,15 +1621,57 @@ test("only admins can correct checked-out room history and the reason is audited
   assert.equal((activity?.details as any)?.summary?.bookingStatus, "checkedOut");
 });
 
-test("admin void preserves paid history, actor and reason while releasing inventory", async () => {
+test("admin void blocks active recorded payments and preserves history once corrected to zero", async () => {
   const booking = await bookingFixture("VOID-PAID");
   booking.transactions[0].paymentMethod = "Transfer";
   await booking.save();
+  const paidTransactionId = String(booking.transactions[0]._id);
+
+  const blockedVoidResponse = response();
+  await controller.removeBooking(
+    request({
+      body: { expectedRevision: 0, reason: "synthetic duplicate booking" },
+      params: { bookingId: "VOID-PAID" },
+      method: "DELETE",
+      url: "/bookings/removeBooking/VOID-PAID",
+      key: "void-paid-blocked",
+    }),
+    blockedVoidResponse as any,
+  );
+  assert.equal(blockedVoidResponse.statusCode, 409);
+  assert.equal(blockedVoidResponse.body.error, "BOOKING_HAS_RECORDED_PAYMENTS");
+  assert.deepEqual(blockedVoidResponse.body.blockingTransactionIds, [
+    paidTransactionId,
+  ]);
+
+  const correctionResponse = response();
+  await correctTransaction(
+    request({
+      params: {
+        bookingId: "VOID-PAID",
+        transactionId: paidTransactionId,
+      },
+      body: {
+        expectedRevision: 0,
+        correctionType: "recorded_mistake",
+        reasonCode: "incorrect_amount",
+        note: "Duplicate booking entered in error",
+        correctedAmount: 0,
+        correctedPaymentMethod: "Transfer",
+        correctedCategory: "roomCharge",
+      },
+      method: "POST",
+      url: `/bookings/VOID-PAID/transactions/${paidTransactionId}/corrections`,
+      key: "void-paid-zero-correction",
+    }),
+    correctionResponse as any,
+  );
+  assert.equal(correctionResponse.statusCode, 200);
 
   const voidResponse = response();
   await controller.removeBooking(
     request({
-      body: { expectedRevision: 0, reason: "synthetic duplicate booking" },
+      body: { expectedRevision: 1, reason: "synthetic duplicate booking" },
       params: { bookingId: "VOID-PAID" },
       method: "DELETE",
       url: "/bookings/removeBooking/VOID-PAID",
@@ -1645,6 +1688,7 @@ test("admin void preserves paid history, actor and reason while releasing invent
   assert.equal(stored?.voidReason, "synthetic duplicate booking");
   assert.equal(stored?.transactions.length, 1);
   assert.equal(stored?.transactions[0].amount, 500);
+  assert.equal(stored?.transactionCorrections.length, 1);
 
   const calendarResponse = response();
   const now = new Date();
@@ -1659,6 +1703,82 @@ test("admin void preserves paid history, actor and reason while releasing invent
     ),
     false,
   );
+});
+
+test("historical voided bookings allow admin recorded_mistake corrections while blocking staff and charge_change", async () => {
+  const booking = await bookingFixture("VOID-LEGACY-PAID");
+  booking.transactions[0].paymentMethod = "Transfer";
+  booking.voided = true;
+  booking.status = "cancelled";
+  await booking.save();
+  const txId = String(booking.transactions[0]._id);
+
+  const staffDenied = response();
+  await correctTransaction(
+    request({
+      admin: false,
+      params: { bookingId: "VOID-LEGACY-PAID", transactionId: txId },
+      body: {
+        expectedRevision: 0,
+        correctionType: "recorded_mistake",
+        reasonCode: "incorrect_amount",
+        note: "Mistaken transfer entry",
+        correctedAmount: 0,
+        correctedPaymentMethod: "Transfer",
+        correctedCategory: "roomCharge",
+      },
+      method: "POST",
+      url: `/bookings/VOID-LEGACY-PAID/transactions/${txId}/corrections`,
+      key: "void-legacy-staff",
+    }),
+    staffDenied as any,
+  );
+  assert.equal(staffDenied.statusCode, 409);
+  assert.equal(staffDenied.body.error, "BOOKING_VOIDED");
+
+  const chargeChangeDenied = response();
+  await correctTransaction(
+    request({
+      params: { bookingId: "VOID-LEGACY-PAID", transactionId: txId },
+      body: {
+        expectedRevision: 0,
+        correctionType: "charge_change",
+        reasonCode: "manager_discount",
+        note: "Attempted commercial change on voided booking",
+        correctedAmount: 300,
+        correctedPaymentMethod: "Transfer",
+        correctedCategory: "roomCharge",
+      },
+      method: "POST",
+      url: `/bookings/VOID-LEGACY-PAID/transactions/${txId}/corrections`,
+      key: "void-legacy-charge-change",
+    }),
+    chargeChangeDenied as any,
+  );
+  assert.equal(chargeChangeDenied.statusCode, 409);
+  assert.equal(chargeChangeDenied.body.error, "BOOKING_VOIDED");
+
+  const adminMistakeAllowed = response();
+  await correctTransaction(
+    request({
+      params: { bookingId: "VOID-LEGACY-PAID", transactionId: txId },
+      body: {
+        expectedRevision: 0,
+        correctionType: "recorded_mistake",
+        reasonCode: "incorrect_amount",
+        note: "Admin correcting mistaken receipt on historical voided booking",
+        correctedAmount: 0,
+        correctedPaymentMethod: "Transfer",
+        correctedCategory: "roomCharge",
+      },
+      method: "POST",
+      url: `/bookings/VOID-LEGACY-PAID/transactions/${txId}/corrections`,
+      key: "void-legacy-admin-ok",
+    }),
+    adminMistakeAllowed as any,
+  );
+  assert.equal(adminMistakeAllowed.statusCode, 200);
+  assert.equal(adminMistakeAllowed.body.booking.transactionCorrections.length, 1);
 });
 
 test("calendar keeps blocked early-checkout nights and hides released nights", async () => {
