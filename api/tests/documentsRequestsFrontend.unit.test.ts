@@ -200,3 +200,20 @@ test("cancelling the existing incomplete-TM30 confirmation sends no export reque
   harness.calls[0].resolve({ data: new Blob(["SYNTHETIC_WORKBOOK_BYTES"]) });
   await pending;
 });
+
+test("an asynchronous export confirmation blocks duplicates and sends nothing when dismissed", async () => {
+  const harness = downloadHarness();
+  let decide!: (value: boolean) => void;
+  const decision = new Promise<boolean>((resolve) => { decide = resolve; });
+  const first = harness.render().download(exportRequest({ confirm: () => decision }));
+  await harness.render().download(exportRequest());
+  assert.equal(harness.calls.length, 0);
+  decide(false);
+  await first;
+  assert.equal(harness.calls.length, 0);
+  const confirmed = harness.render().download(exportRequest({ confirm: () => Promise.resolve(true) }));
+  await flush();
+  assert.equal(harness.calls.length, 1);
+  harness.calls[0].resolve({ data: new Blob(["SYNTHETIC_WORKBOOK_BYTES"]) });
+  await confirmed;
+});

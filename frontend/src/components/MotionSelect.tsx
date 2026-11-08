@@ -9,6 +9,7 @@ import BaseSelect, {
 } from "react-select";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { surfaceDuration } from "../helpers/surfaceMotion";
+import { ModalPortalContext } from "./ModalPortalContext";
 
 const ClosingContext = createContext(false);
 
@@ -31,6 +32,7 @@ const MotionSelect = <Option, IsMulti extends boolean = false, Group extends Gro
   onKeyDown, styles, components: customComponents, ...props
 }: Props<Option, IsMulti, Group>) => {
   const selectRef = useRef<SelectInstance<Option, IsMulti, Group>>(null);
+  const modalPortalTarget = useContext(ModalPortalContext);
   const [internalOpen, setInternalOpen] = useState(defaultMenuIsOpen);
   const open = !props.isDisabled && (menuIsOpen ?? internalOpen);
   const [retained, setRetained] = useState(open);
@@ -50,6 +52,10 @@ const MotionSelect = <Option, IsMulti extends boolean = false, Group extends Gro
     <ClosingContext.Provider value={closing}>
       <BaseSelect<Option, IsMulti, Group>
         {...props}
+        menuPortalTarget={modalPortalTarget ?? props.menuPortalTarget}
+        menuPosition={modalPortalTarget ? "fixed" : props.menuPosition}
+        menuPlacement={modalPortalTarget ? "auto" : props.menuPlacement}
+        menuShouldScrollIntoView={modalPortalTarget ? false : props.menuShouldScrollIntoView}
         ref={selectRef}
         menuIsOpen={open || retained}
         tabSelectsValue={closing ? false : props.tabSelectsValue}

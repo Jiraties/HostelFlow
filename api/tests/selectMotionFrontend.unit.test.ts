@@ -6,7 +6,7 @@ import test from "node:test";
 import ts from "typescript";
 
 // Fabricated select state verifies that exit retention never enables selection.
-const harness = () => {
+const harness = (modalTarget: object | null = null, selectProps: Record<string, unknown> = {}) => {
   const slots: any[] = [];
   const timers = new Map<number, () => void>();
   let cursor = 0;
@@ -14,7 +14,7 @@ const harness = () => {
   let timerId = 0;
   const react = {
     createContext: () => ({ Provider: "provider" }),
-    useContext: () => closing,
+    useContext: (context: unknown) => context === modalContext ? modalTarget : closing,
     useRef(initial: unknown) {
       const index = cursor++;
       if (!(index in slots)) slots[index] = { current: initial };
@@ -34,6 +34,7 @@ const harness = () => {
     },
   };
   const jsx = (type: unknown, props: unknown) => ({ type, props });
+  const modalContext = {};
   const module = { exports: {} as any };
   const source = fs.readFileSync(path.resolve(__dirname, "../../frontend/src/components/MotionSelect.tsx"), "utf8");
   vm.runInNewContext(ts.transpileModule(source, {
@@ -53,12 +54,13 @@ const harness = () => {
       if (name === "react/jsx-runtime") return { jsx, jsxs: jsx };
       if (name === "react-select") return { default: "select", components: { Menu: "menu", Input: "input" } };
       if (name === "@mui/material/useMediaQuery") return () => false;
+      if (name === "./ModalPortalContext") return { ModalPortalContext: modalContext };
       return { surfaceDuration: () => 120 };
     },
   });
   const render = () => {
     cursor = 0;
-    const tree = module.exports.default({ options: [{ value: "one", label: "Synthetic one" }] });
+    const tree = module.exports.default({ options: [{ value: "one", label: "Synthetic one" }], ...selectProps });
     closing = tree.props.value;
     const props = tree.props.children.props;
     props.ref.current = { openMenu: props.onMenuOpen };
@@ -68,6 +70,23 @@ const harness = () => {
   const close = () => { render().onMenuClose(); return render(); };
   return { render, open, close, timers };
 };
+
+test("modal selects render outside the scrolling form without scrolling it into view", () => {
+  const modalTarget = {};
+  const bodyTarget = {};
+  const select = harness(modalTarget, { menuPortalTarget: bodyTarget, menuPosition: "absolute" }).render();
+  assert.equal(select.menuPortalTarget, modalTarget);
+  assert.equal(select.menuPosition, "fixed");
+  assert.equal(select.menuPlacement, "auto");
+  assert.equal(select.menuShouldScrollIntoView, false);
+});
+
+test("selects outside modals retain their caller's portal settings", () => {
+  const target = {};
+  const select = harness(null, { menuPortalTarget: target, menuPosition: "fixed" }).render();
+  assert.equal(select.menuPortalTarget, target);
+  assert.equal(select.menuPosition, "fixed");
+});
 
 test("select exits last 120ms while options are inert, hidden, and cannot be selected by Enter or Tab", () => {
   const select = harness();

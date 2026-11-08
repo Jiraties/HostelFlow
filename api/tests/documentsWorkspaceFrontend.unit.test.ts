@@ -66,16 +66,14 @@ test("staff see both daily reports without management export controls", () => {
   assert.match(html, /id="documents-hotel-date"/);
 });
 
-test("admin see three export cards with every existing booking filter", () => {
+test("admin see a booking export entry without exposing configuration on the page", () => {
   const html = render(true);
   assert(html.indexOf("documents-management-title") < html.indexOf("documents-tm30-title"));
   assert(html.indexOf("documents-tm30-title") < html.indexOf("documents-hotel-title"));
-  for (const id of ["export-month", "export-channels", "export-statuses", "export-payment-methods", "export-categories"]) assert(html.includes(`id="${id}"`), id);
-  assert.match(html, /ไม่รวม Booking ที่ยกเลิก/);
-  assert.match(html, /No-Show/);
-  assert.match(html, /Void/);
-  assert.match(html, /ส่งออก Excel/);
-  assert.doesNotMatch(html, /documents-export-preview-title/);
+  assert.match(html, /ตั้งค่าการส่งออก/);
+  assert.match(html, /Booking Data Export/);
+  assert.doesNotMatch(html, /id="export-(month|channels|statuses|payment-methods|categories)"/);
+  assert.equal((html.match(/ส่งออก Excel/g) || []).length, 2);
 });
 
 test("both reports initially use the current reporting date", () => {
@@ -89,21 +87,35 @@ test("both reports initially use the current reporting date", () => {
 test("TM30 and hotel cards keep their actual independent readiness counts", () => {
   const html = render(false);
   assert.equal((html.match(/>Passport ครบ/g) || []).length, 2);
-  assert.match(html, /พร้อม 2\/2/);
-  assert.match(html, /พร้อม 1\/1/);
+  assert.match(html, /ครบ 2 \/ 2 รายการ/);
+  assert.match(html, /ครบ 1 \/ 1 รายการ/);
   assert.equal((html.match(/data-readiness="ready"/g) || []).length, 2);
-  assert.match(html, /documents__overview/);
+  assert.doesNotMatch(html, /documents__overview/);
 });
 
-test("missing guest records show a warning and link to the relevant booking", () => {
+test("missing guest records show a warning and a button to open details", () => {
   const html = render(false, { getImmigrationReportStatus: {
     ...ready(2), data: { total: 2, complete: 1, missing: 1, missingBookings: [{ bookingId: "SYNTH & 1", name: "Synthetic guest", guestLabel: "Synthetic additional guest", reason: "Synthetic missing passport" }] },
   } });
   assert.match(html, /data-readiness="incomplete"/);
-  assert.match(html, /ขาดข้อมูล Passport 1 รายการ/);
-  assert.match(html, /href="\/master\?bookingId=SYNTH%20%26%201"/);
-  assert.match(html, /Synthetic additional guest/);
-  assert.match(html, /Synthetic missing passport/);
+  assert.match(html, /ยังไม่พร้อมส่งออก 1 รายการ/);
+  assert.match(html, /aria-haspopup="dialog"[^>]*><span>ยังไม่พร้อมส่งออก 1 รายการ<\/span>/);
+  assert.doesNotMatch(html, /Synthetic additional guest|Synthetic missing passport/);
+});
+
+test("pending arrivals show one of three complete instead of a ready state", () => {
+  const status = {
+    ...ready(3),
+    data: { total: 3, complete: 1, missing: 2, missingBookings: [
+      { bookingId: "SYNTH-PENDING-ONE", name: "Synthetic One", reason: "ยังไม่ Check-In" },
+      { bookingId: "SYNTH-PENDING-TWO", name: "Synthetic Two", reason: "ยังไม่ Check-In" },
+    ] },
+  };
+  const html = render(false, { getImmigrationReportStatus: status, getHotelAccommodationReportStatus: status });
+  assert.equal((html.match(/data-readiness="incomplete"/g) || []).length, 2);
+  assert.match(html, /ยังไม่พร้อมส่งออก 2 รายการ/);
+  assert.equal((html.match(/class="documents__missingTrigger"/g) || []).length, 2);
+  assert.doesNotMatch(html, /data-readiness="ready"|พร้อม 1\/1/);
 });
 
 test("empty, loading, and failed readiness render neutral or error feedback instead of success", () => {

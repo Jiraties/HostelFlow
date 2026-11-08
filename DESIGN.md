@@ -150,6 +150,7 @@ Select menus may use `menuPortalTarget={document.body}` and the shared portal la
 
 ### Writing for decisions
 
+- Use the Check-In modal heading, `h1.checkIn__title`, for modal titles. Do not add a descriptive subtitle beneath modal titles. Keep necessary instructions, warnings, and financial consequences in the relevant part of the modal body.
 - Before adding an eyebrow, description, subtitle, or helper, check whether it helps the user make a decision, take an action, or understand a non-obvious result. Omit copy that repeats the heading, explains an obvious workflow, or only decorates the layout.
 - Use at least `1rem` for main interface text, field labels, readiness messages, and counts. Smaller text is reserved for secondary metadata that is useful and does not need to lead the task.
 - Use short, direct Thai to say what the person needs to choose and what will happen after confirmation. Keep familiar terms such as Booking and Check-In.

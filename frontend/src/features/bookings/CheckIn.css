@@ -37,10 +37,6 @@
   color: var(--red);
 }
 
-.checkIn__title {
-  font-weight: 500;
-}
-
 .checkIn__grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

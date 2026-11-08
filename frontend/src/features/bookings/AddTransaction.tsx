@@ -5,6 +5,7 @@ import toast from "react-hot-toast";
 import axios from "axios";
 import ActionButton from "../../components/ActionButton";
 import ModalCloseButton from "../../components/ModalCloseButton";
+import { useAppConfirmation } from "../../components/useAppConfirmation";
 import CashShiftNudge from "../../components/CashShiftNudge";
 import { API_URL } from "../../config/api";
 import {
@@ -116,6 +117,7 @@ const AddTransaction = ({
   onDirtyChange?: (isDirty: boolean) => void;
 }) => {
   const [submitting, setSubmitting] = useState(false);
+  const confirmation = useAppConfirmation();
   const [validationAttempted, setValidationAttempted] = useState(false);
   const fieldId = useId();
   const [formData, setFormData] = useState<AddTransactionFormData>({
@@ -355,6 +357,7 @@ const AddTransaction = ({
     if (submitting) return;
     setValidationAttempted(true);
     setSubmitting(true);
+    let loadingToast: string | undefined;
 
     try {
       if (!formData.type || !formData.paymentMethod || !formData.amount) {
@@ -389,11 +392,15 @@ const AddTransaction = ({
       if (isFocusedFinancialAction) {
         let largeAmountConfirmed = false;
         if (amount >= 10000 && amount % 10 === 0) {
-          largeAmountConfirmed = window.confirm(
-            `ยืนยันยอด ${formatCurrency(amount)} บาท? ระบบตรวจพบว่ายอดอาจมีศูนย์เกิน`,
-          );
+          largeAmountConfirmed = (await confirmation.ask({
+            title: `ยืนยันยอด ${formatCurrency(amount)} บาท?`,
+            description: "กรุณาตรวจสอบยอดอีกครั้ง ระบบพบว่าอาจมีศูนย์เกิน",
+            confirmText: "ยืนยันยอด",
+            confirmIcon: "bx-check",
+          })) !== null;
           if (!largeAmountConfirmed) return;
         }
+        loadingToast = toast.loading("กำลังบันทึกรายการ...");
         response = await axios.post(
           `${API_URL}/bookings/${currentBooking.bookingId}/financial-actions`,
           {
@@ -415,6 +422,7 @@ const AddTransaction = ({
           },
         );
       } else {
+        loadingToast = toast.loading("กำลังบันทึกรายการ...");
         const transaction: Transaction = {
           type: formData.type,
           paymentMethod: formData.paymentMethod,
@@ -439,8 +447,15 @@ const AddTransaction = ({
         onUpdated?.(formatBookingDates(response.data.booking));
       }
 
+      toast.success(isRefund ? "บันทึกการคืนเงินสำเร็จ" : isCompensation ? "บันทึกค่าชดเชยสำเร็จ" : "เพิ่มรายการใช้จ่ายสำเร็จ");
       onClose();
+    } catch (err) {
+      const message = axios.isAxiosError(err)
+        ? err.response?.data?.message || "เกิดข้อผิดพลาดในการเพิ่มรายการใช้จ่าย"
+        : err instanceof Error ? err.message : "เกิดข้อผิดพลาดในการเพิ่มรายการใช้จ่าย";
+      toast.error(message);
     } finally {
+      if (loadingToast) toast.dismiss(loadingToast);
       setSubmitting(false);
     }
   };
@@ -770,29 +785,10 @@ const AddTransaction = ({
           icon="bx-save"
           highlight
           disabled={submitting}
-          onClick={() =>
-            toast.promise(submitHandler(), {
-              loading: "กำลังบันทึกรายการ...",
-              success: isRefund
-                ? "บันทึกการคืนเงินสำเร็จ"
-                : isCompensation
-                  ? "บันทึกค่าชดเชยสำเร็จ"
-                  : "เพิ่มรายการใช้จ่ายสำเร็จ",
-              error: (err) => {
-                if (axios.isAxiosError(err)) {
-                  return (
-                    err.response?.data?.message ||
-                    "เกิดข้อผิดพลาดในการเพิ่มรายการใช้จ่าย"
-                  );
-                }
-
-                if (err instanceof Error) return err.message;
-                return "เกิดข้อผิดพลาดในการเพิ่มรายการใช้จ่าย";
-              },
-            })
-          }
+          onClick={() => void submitHandler()}
         />
       </div>
+      {confirmation.dialog}
     </div>
   );
 };

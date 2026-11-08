@@ -1,8 +1,10 @@
 import { useState } from "react";
 import MuiModal, { type ModalProps } from "@mui/material/Modal";
 import SurfaceTransition from "./SurfaceTransition";
+import { ModalPortalContext } from "./ModalPortalContext";
 
 const MotionModal = ({ children, open, className = "", ...props }: ModalProps) => {
+  const [portalTarget, setPortalTarget] = useState<HTMLDivElement | null>(null);
   // Callers often clear the selected record when closing. Retain the last open
   // element for the short exit so the sheet does not turn into empty content.
   const [lastOpenChildren, setLastOpenChildren] = useState(children);
@@ -11,6 +13,7 @@ const MotionModal = ({ children, open, className = "", ...props }: ModalProps) =
     <MuiModal {...props} open={open} className={`${className} motionModal`} data-motion-open={open} closeAfterTransition>
       <SurfaceTransition in={open}>
         <div
+          ref={setPortalTarget}
           className="motionModal__surface"
           role="dialog"
           aria-modal="true"
@@ -20,7 +23,9 @@ const MotionModal = ({ children, open, className = "", ...props }: ModalProps) =
           aria-hidden={!open || undefined}
           inert={!open}
         >
-          {open ? children : lastOpenChildren}
+          <ModalPortalContext.Provider value={portalTarget}>
+            {open ? children : lastOpenChildren}
+          </ModalPortalContext.Provider>
         </div>
       </SurfaceTransition>
     </MuiModal>

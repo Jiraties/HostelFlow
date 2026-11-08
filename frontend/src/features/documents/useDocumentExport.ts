@@ -12,7 +12,7 @@ type ExportRequest = {
   filename: string;
   successMessage: string;
   failureMessage: string;
-  confirm?: () => boolean;
+  confirm?: () => boolean | Promise<boolean>;
 };
 
 const exportErrorMessage = async (error: unknown, fallback: string) => {
@@ -31,7 +31,10 @@ export const useDocumentExport = () => {
   const [errors, setErrors] = useState<Record<string, string | null>>({});
 
   const download = (request: ExportRequest) => withDocumentExportLock(locks.current, request.key, async () => {
-    if (request.confirm && !request.confirm()) return;
+    if (request.confirm) {
+      const result = request.confirm();
+      if (!(typeof result === "boolean" ? result : await result)) return;
+    }
     setBusy((previous) => ({ ...previous, [request.key]: true }));
     setErrors((previous) => ({ ...previous, [request.key]: null }));
     try {

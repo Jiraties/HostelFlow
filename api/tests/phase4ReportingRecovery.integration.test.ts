@@ -7,7 +7,7 @@ import mongoose from "mongoose";
 import { MongoMemoryReplSet } from "mongodb-memory-server";
 
 import Activity from "../src/models/activity";
-import Booking from "../src/models/booking";
+import Booking, { type NamePrefix, type Status } from "../src/models/booking";
 import CashShift from "../src/models/cashShift";
 import DailyClose from "../src/models/dailyClose";
 import User from "../src/models/user";
@@ -38,8 +38,8 @@ const reportBooking = (
   revision: 1,
   name,
   bookingId,
-  status: "checkedIn",
-  platformId: "WALK",
+  status: "checkedIn" as Status,
+  platformId: "WALK" as const,
   staffUsername: "admin",
   checkedInAt: new Date("2026-07-14T10:00:00+07:00"),
   checkIn: new Date("2026-07-14T00:00:00+07:00"),
@@ -55,7 +55,7 @@ const reportBooking = (
   transactions: [],
   passport: {
     passportHash: crypto.createHash("sha256").update(bookingId).digest("hex"),
-    namePrefix: "Ms",
+    namePrefix: "Ms" as NamePrefix,
     nationality,
     nextDestinationCountry,
     passportNo: encrypt(`SYNTH-${bookingId}`),
@@ -499,7 +499,7 @@ test("TM30 expands foreign additional guests while hotel report stays primary-on
   assert.equal(hotelSheet.getRow(6).getCell(1).value, null);
 });
 
-test("passport report alerts use the actual arrival date and exclude guests who never checked in", async () => {
+test("passport readiness includes pending arrivals alongside actual arrivals and excludes no-shows", async () => {
   const lateArrival = reportBooking(
     "LATE-ARRIVAL",
     "Late Arrival",
@@ -534,12 +534,10 @@ test("passport report alerts use the actual arrival date and exclude guests who 
     immigrationStatus,
   );
   assert.equal(immigrationStatus.statusCode, 200);
-  assert.equal(immigrationStatus.body.total, 1);
-  assert.equal(immigrationStatus.body.missing, 1);
-  assert.equal(
-    immigrationStatus.body.missingBookings[0].bookingId,
-    "LATE-ARRIVAL",
-  );
+  assert.equal(immigrationStatus.body.total, 2);
+  assert.equal(immigrationStatus.body.missing, 2);
+  assert.deepEqual(immigrationStatus.body.missingBookings.map((entry: any) => entry.bookingId), ["LATE-ARRIVAL", "NOT-CHECKED-IN"]);
+  assert.equal(immigrationStatus.body.missingBookings[1].reason, "ยังไม่ Check-In");
 
   const hotelStatus = jsonResponse();
   await documents.getHotelAccomodationReportStatus(
@@ -547,9 +545,55 @@ test("passport report alerts use the actual arrival date and exclude guests who 
     hotelStatus,
   );
   assert.equal(hotelStatus.statusCode, 200);
-  assert.equal(hotelStatus.body.total, 1);
-  assert.equal(hotelStatus.body.missing, 1);
+  assert.equal(hotelStatus.body.total, 2);
+  assert.equal(hotelStatus.body.missing, 2);
   assert.equal(hotelStatus.body.missingBookings[0].bookingId, "LATE-ARRIVAL");
+});
+
+test("three arrivals remain incomplete until both pending bookings check in with passport data", async () => {
+  const complete = reportBooking("SYNTH-ARRIVED", "Synthetic Arrived", "LAO");
+  const pendingWithPassport = { ...reportBooking("SYNTH-PENDING-READY", "Synthetic Pending Ready", "LAO"), status: "booked" as const, checkedInAt: undefined };
+  const pendingMissingPassport = { ...reportBooking("SYNTH-PENDING-MISSING", "Synthetic Pending Missing", "LAO"), status: "booked" as const, checkedInAt: undefined, passport: undefined };
+  await Booking.create([
+    complete, pendingWithPassport, pendingMissingPassport,
+    { ...reportBooking("SYNTH-CANCELLED", "Synthetic Cancelled", "LAO"), status: "cancelled", checkedInAt: undefined },
+    { ...reportBooking("SYNTH-VOIDED", "Synthetic Voided", "LAO"), status: "booked", checkedInAt: undefined, voided: true },
+    { ...reportBooking("SYNTH-TOMORROW", "Synthetic Tomorrow", "LAO"), status: "booked", checkedInAt: undefined, checkIn: new Date("2026-07-15T00:00:00+07:00") },
+  ]);
+  const assertReadiness = async (expectedComplete: number, expectedMissing: number) => {
+    for (const handler of [documents.getImmigrationReportStatus, documents.getHotelAccomodationReportStatus]) {
+      const response = jsonResponse();
+      await handler({ query: { date: "2026-07-14" } } as any, response);
+      assert.equal(response.statusCode, 200);
+      assert.equal(response.body.total, 3);
+      assert.equal(response.body.complete, expectedComplete);
+      assert.equal(response.body.missing, expectedMissing);
+      if (expectedComplete === 1) assert(response.body.missingBookings.every((entry: any) => entry.reason === "ยังไม่ Check-In"));
+    }
+  };
+  await assertReadiness(1, 2);
+
+  // Readiness must not add pending guests to official report rows.
+  for (const handler of [documents.getImmigrationReport, documents.getHotelAccomodationReport]) {
+    const response = binaryResponse();
+    const chunks: Buffer[] = [];
+    response.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+    await handler({ query: { date: "2026-07-14" }, user: { username: "admin" } } as any, response as any);
+    assert.equal(response.statusCode, 200);
+    const workbook = new ExcelJs.Workbook();
+    await workbook.xlsx.load(Buffer.concat(chunks) as any);
+    const sheet = handler === documents.getImmigrationReport
+      ? workbook.getWorksheet("แบบแจ้งที่พัก Inform Accom")!
+      : workbook.getWorksheet("Sheet1") || workbook.worksheets[0];
+    const firstRow = handler === documents.getImmigrationReport ? 2 : 5;
+    assert.notEqual(sheet.getRow(firstRow).getCell(1).value, null);
+    assert.equal(sheet.getRow(firstRow + 1).getCell(1).value, null);
+  }
+
+  await Booking.updateMany({ bookingId: { $in: [pendingWithPassport.bookingId, pendingMissingPassport.bookingId] } }, { $set: { status: "checkedIn", checkedInAt: complete.checkedInAt } });
+  await assertReadiness(2, 1);
+  await Booking.updateOne({ bookingId: pendingMissingPassport.bookingId }, { $set: { passport: reportBooking("SYNTH-PASSPORT-FILLED", "Synthetic Filled", "LAO").passport } });
+  await assertReadiness(3, 0);
 });
 
 test("passport report alerts retain the scheduled-date fallback for legacy completed stays", async () => {

@@ -19,20 +19,51 @@ const ConfirmationModal = ({
   confirmText,
   confirmIcon,
   onConfirm,
+  reasonLabel,
+  dialogId,
+  destructive = false,
 }: {
   booking?: booking | null;
   onClose?: () => void;
   closeAllModals?: () => void;
-  variant?: "deleteBooking" | "discardChanges";
+  variant?: "deleteBooking" | "discardChanges" | "custom";
   title?: React.ReactNode;
   description?: string;
   confirmText?: string;
   confirmIcon?: string;
-  onConfirm?: () => void;
+  onConfirm?: (reason?: string) => void;
+  reasonLabel?: string;
+  dialogId?: string;
+  destructive?: boolean;
 }) => {
   const [submitting, setSubmitting] = useState(false);
   const [voidReason, setVoidReason] = useState("");
   const [validationAttempted, setValidationAttempted] = useState(false);
+
+  if (variant === "custom") {
+    const reasonError = Boolean(reasonLabel && validationAttempted && !voidReason.trim());
+    return (
+      <div className="confirmationModal appConfirmation">
+        {onClose && <ModalCloseButton onClick={onClose} />}
+        <div className="confirmationModal__text">
+          <h1 id={dialogId ? `${dialogId}-title` : undefined} className="confirmationModal__headerText">{title}</h1>
+          {description && <p id={dialogId ? `${dialogId}-description` : undefined}>{description}</p>}
+        </div>
+        {reasonLabel && <label className="confirmationModal__reasonLabel" htmlFor={dialogId ? `${dialogId}-reason` : undefined}>
+          {reasonLabel}
+          <textarea id={dialogId ? `${dialogId}-reason` : undefined} className="boxInput confirmationModal__reason" value={voidReason} onChange={(event) => setVoidReason(event.target.value)} aria-invalid={reasonError} aria-describedby={reasonError && dialogId ? `${dialogId}-reason-error` : undefined} autoFocus />
+          {reasonError && <span id={dialogId ? `${dialogId}-reason-error` : undefined} className="formField__error">กรุณาระบุเหตุผล</span>}
+        </label>}
+        <div className="appConfirmation__actions">
+          <ActionButton text="ยกเลิก" icon="bx-x" onClick={() => onClose?.()} />
+          <ActionButton text={confirmText || "ยืนยัน"} icon={confirmIcon || "bx-check"} highlight className={destructive ? "confirmationModal__button" : ""} onClick={() => {
+            setValidationAttempted(true);
+            if (!reasonLabel || voidReason.trim()) onConfirm?.(voidReason.trim());
+          }} />
+        </div>
+      </div>
+    );
+  }
 
   const handleRemoveBooking = async () => {
     if (submitting) return;

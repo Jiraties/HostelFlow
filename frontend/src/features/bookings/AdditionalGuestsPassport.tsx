@@ -9,6 +9,8 @@ import toast from "react-hot-toast";
 import Select from "../../components/MotionSelect";
 import ActionButton from "../../components/ActionButton";
 import ModalCloseButton from "../../components/ModalCloseButton";
+import { useAppConfirmation } from "../../components/useAppConfirmation";
+import UnsavedChangesModal from "../../components/UnsavedChangesModal";
 import { API_URL } from "../../config/api";
 import { customStyles } from "../../helpers/selectStyling";
 import type { OptionType } from "../../helpers/selectStyling";
@@ -85,6 +87,8 @@ const AdditionalGuestsPassport = ({
   const [validationAttempted, setValidationAttempted] = useState(false);
   const fieldId = useId();
   const [submitting, setSubmitting] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const confirmation = useAppConfirmation();
 
   useEffect(() => {
     revisionRef.current = revision;
@@ -186,9 +190,9 @@ const AdditionalGuestsPassport = ({
         formData.nationality ||
         formData.passportNo ||
         formData.passportName ||
-        reason) &&
-      !window.confirm("ปิดโดยไม่บันทึกข้อมูล Passport หรือไม่?")
+        reason)
     ) {
+      setDiscardOpen(true);
       return;
     }
     setFormOpen(false);
@@ -251,15 +255,22 @@ const AdditionalGuestsPassport = ({
   };
 
   const removeGuest = async () => {
-    if (!revealedGuestId) return;
-    const removalReason = window.prompt("ระบุเหตุผลที่ลบ Passport นี้");
-    if (!removalReason?.trim()) return;
-    if (!window.confirm("ยืนยันการลบ Passport ผู้เข้าพักรายการนี้?")) return;
+    if (!revealedGuestId || submitting) return;
+    const guestId = revealedGuestId;
+    const removalReason = await confirmation.ask({
+      title: "ลบ Passport ผู้เข้าพัก?",
+      description: "ระบุเหตุผลและยืนยันการลบ Passport รายการนี้",
+      reasonLabel: "เหตุผลที่ลบ",
+      confirmText: "ลบ Passport",
+      confirmIcon: "bx-trash",
+      destructive: true,
+    });
+    if (removalReason === null) return;
 
     try {
       setSubmitting(true);
       const response = await axios.delete<{ revision: number }>(
-        `${API_URL}/bookings/${bookingId}/additional-guests/${revealedGuestId}`,
+        `${API_URL}/bookings/${bookingId}/additional-guests/${guestId}`,
         {
           withCredentials: true,
           data: {
@@ -269,7 +280,7 @@ const AdditionalGuestsPassport = ({
         },
       );
       setGuests((current) =>
-        current.filter((guest) => guest.guestId !== revealedGuestId),
+        current.filter((guest) => guest.guestId !== guestId),
       );
       applyRevision(response.data.revision);
       hidePassport();
@@ -545,6 +556,10 @@ const AdditionalGuestsPassport = ({
           </div>
         </div>
       </Modal>
+      <Modal open={discardOpen} onClose={() => setDiscardOpen(false)} className="home__modalCenter" aria-label="ยืนยันออกโดยไม่บันทึก">
+        <UnsavedChangesModal onClose={() => setDiscardOpen(false)} onDiscard={() => { setDiscardOpen(false); setFormOpen(false); }} />
+      </Modal>
+      {confirmation.dialog}
     </div>
   );
 };

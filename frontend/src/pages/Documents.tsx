@@ -8,7 +8,7 @@ import ManagementExportPanel from "../features/documents/ManagementExportPanel";
 import { currentReportingDate } from "../features/documents/documentReports";
 import { usePassportReportStatus } from "../features/documents/usePassportReportStatus";
 import { useDocumentExport } from "../features/documents/useDocumentExport";
-import { passportReadinessKind } from "../features/documents/documentReports";
+import { useAppConfirmation } from "../components/useAppConfirmation";
 import "./Documents.css";
 
 const Documents = () => {
@@ -25,6 +25,7 @@ const Documents = () => {
     hotelDate,
   );
   const { busy, errors, download, clearError } = useDocumentExport();
+  const confirmation = useAppConfirmation();
   const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
   const lastUpdated =
     immigration.updatedAt && hotel.updatedAt
@@ -32,16 +33,6 @@ const Documents = () => {
           Math.min(immigration.updatedAt.getTime(), hotel.updatedAt.getTime()),
         )
       : null;
-  const reportStates = [
-    passportReadinessKind(immigration),
-    passportReadinessKind(hotel),
-  ];
-  const readyReports = reportStates.some(
-    (state) => state === "loading" || state === "error",
-  )
-    ? "–"
-    : reportStates.filter((state) => state === "ready").length;
-
   const exportImmigration = () => {
     if (!immigrationDate) return;
     void download({
@@ -51,11 +42,14 @@ const Documents = () => {
       filename: `tm30-${immigrationDate}.xlsx`,
       successMessage: "ส่งออกไฟล์ ตม. สำเร็จ",
       failureMessage: "ไม่สามารถส่งออกรายงาน ตม.30 ได้ กรุณาลองใหม่",
-      confirm: () =>
+      confirm: async () =>
         !immigration.data?.missing ||
-        window.confirm(
-          `ยังมีข้อมูล Passport ขาด ${immigration.data.missing} รายการ ต้องการส่งออกต่อหรือไม่?`,
-        ),
+        (await confirmation.ask({
+          title: "ข้อมูลยังไม่พร้อมส่งออก",
+          description: `ยังมี ${immigration.data.missing} รายการที่ยังไม่ Check-In หรือข้อมูล Passport ไม่ครบ`,
+          confirmText: "ส่งออกต่อ",
+          confirmIcon: "bx-arrow-to-bottom",
+        })) !== null,
     });
   };
   const exportHotel = () => {
@@ -79,77 +73,67 @@ const Documents = () => {
         lastUpdated={lastUpdated}
         onRefresh={() => Promise.all([immigration.refresh(), hotel.refresh()])}
       />
-      <section className="documents__overview" aria-label="ภาพรวมรายงาน">
-        <div>
-          <i className="bx bx-file" aria-hidden="true" />
-          <p>รายงานพร้อมส่งออก</p>
-          <strong>{readyReports}</strong>
-        </div>
-        <div>
-          <i className="bx bx-user-id-card" aria-hidden="true" />
-          <p>ตม. Passport ครบ</p>
-          <strong>
-            {immigration.data
-              ? `${immigration.data.complete}/${immigration.data.total}`
-              : "-/-"}
-          </strong>
-        </div>
-        <div>
-          <i className="bx bx-building-house" aria-hidden="true" />
-          <p>รร. Passport ครบ</p>
-          <strong>
-            {hotel.data ? `${hotel.data.complete}/${hotel.data.total}` : "-/-"}
-          </strong>
-        </div>
-      </section>
+
+      {user?.admin && <ManagementExportPanel />}
       <section
-        className={`documents__exports${user?.admin ? " documents__exports--admin" : ""}`}
-        aria-label="เอกสารสำหรับส่งออก"
+        className="documents__daily"
+        aria-labelledby="documents-daily-title"
       >
-        {user?.admin && <ManagementExportPanel />}
-        <DailyReportCard
-          id="documents-tm30"
-          title="ตม.30"
-          subtitle="Immigration Report"
-          icon="bx-user-id-card"
-          accent="tm30"
-          readiness={immigration}
-          exporting={Boolean(busy.tm30)}
-          exportError={errors.tm30}
-          exportLabel="ส่งออก Excel"
-          date={immigrationDate}
-          onDateChange={(value) => {
-            setImmigrationDate(value);
-            clearError("tm30");
-          }}
-          disabled={!immigrationDate}
-          onExport={exportImmigration}
-          onRetry={() => {
-            void immigration.refresh().catch(() => {});
-          }}
-        />
-        <DailyReportCard
-          id="documents-hotel"
-          title="รายงาน รร."
-          subtitle="Hotel Accommodation Report"
-          icon="bx-building-house"
-          accent="hotel"
-          readiness={hotel}
-          exporting={Boolean(busy.hotel)}
-          exportError={errors.hotel}
-          exportLabel="ส่งออก Excel"
-          date={hotelDate}
-          onDateChange={(value) => {
-            setHotelDate(value);
-            clearError("hotel");
-          }}
-          disabled={!hotelDate}
-          onExport={exportHotel}
-          onRetry={() => {
-            void hotel.refresh().catch(() => {});
-          }}
-        />
+        <header className="documents__sectionHeader">
+          <div>
+            <h2 id="documents-daily-title">รายงานประจำวัน</h2>
+            <p>เลือกวันที่เข้าพักสำหรับแต่ละรายงาน</p>
+          </div>
+          <span className="documents__format">
+            <i className="bx bx-spreadsheet" aria-hidden="true" /> Excel .xlsx
+          </span>
+        </header>
+        <div className="documents__reports">
+          <DailyReportCard
+            id="documents-tm30"
+            title="ตม.30"
+            subtitle="Immigration Report"
+            icon="bx-user-id-card"
+            accent="tm30"
+            readiness={immigration}
+            exporting={Boolean(busy.tm30)}
+            exportError={errors.tm30}
+            exportLabel="ส่งออก Excel"
+            date={immigrationDate}
+            onDateChange={(value) => {
+              setImmigrationDate(value);
+              clearError("tm30");
+            }}
+            disabled={!immigrationDate}
+            onExport={exportImmigration}
+            onRetry={() => {
+              void immigration.refresh().catch(() => {});
+            }}
+          />
+          <DailyReportCard
+            id="documents-hotel"
+            title="รายงาน รร."
+            subtitle="Hotel Accommodation Report"
+            icon="bx-building-house"
+            accent="hotel"
+            readiness={hotel}
+            exporting={Boolean(busy.hotel)}
+            exportError={errors.hotel}
+            exportLabel="ส่งออก Excel"
+            date={hotelDate}
+            onDateChange={(value) => {
+              setHotelDate(value);
+              clearError("hotel");
+            }}
+            disabled={!hotelDate}
+            onExport={exportHotel}
+            onRetry={() => {
+              void hotel.refresh().catch(() => {});
+            }}
+          />
+        </div>
       </section>
+      {confirmation.dialog}
     </main>
   );
 };

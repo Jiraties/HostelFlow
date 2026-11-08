@@ -191,6 +191,23 @@ const hotelAccommodationDateQuery = (date: string) => {
   return checkedInGuestDateQuery(date);
 };
 
+// Readiness includes expected arrivals; official reports still contain only
+// guests who actually checked in on the reporting date.
+const passportReadinessDateQuery = (date: string) => {
+  const bounds = dateQuery(date);
+  if (!bounds) return null;
+  return {
+    $or: [
+      checkedInGuestDateQuery(date)!,
+      {
+        status: "booked" as const,
+        voided: { $ne: true },
+        checkIn: { $gte: bounds.start, $lt: bounds.end },
+      },
+    ],
+  };
+};
+
 type MaybeEncryptedField = Partial<EncryptedField> | null | undefined;
 
 const encryptedFieldIsComplete = (
@@ -859,7 +876,7 @@ export const getImmigrationReportStatus = async (
 ) => {
   try {
     const date = (req.query.date || req.query.month) as string;
-    const query = immigrationDateQuery(date);
+    const query = passportReadinessDateQuery(date);
 
     if (!query) {
       return res.status(400).json({ message: "Invalid date format" });
@@ -867,7 +884,7 @@ export const getImmigrationReportStatus = async (
 
     const bookings = await Booking.find(query)
       .select(
-        `bookingId name checkOut passport.namePrefix passport.nationality ${PASSPORT_SENSITIVE_SELECT} ${ADDITIONAL_GUEST_SENSITIVE_SELECT}`,
+        `bookingId name status checkOut passport.namePrefix passport.nationality ${PASSPORT_SENSITIVE_SELECT} ${ADDITIONAL_GUEST_SENSITIVE_SELECT}`,
       )
       .sort({
         checkIn: 1,
@@ -877,14 +894,14 @@ export const getImmigrationReportStatus = async (
 
     const entries = immigrationEntries(bookings);
     const missingBookings = entries
-      .filter((entry) => !passportInfoIsComplete(entry.passport))
+      .filter((entry) => entry.booking.status === "booked" || !passportInfoIsComplete(entry.passport))
       .map((entry) => ({
         bookingId: entry.booking.bookingId,
         name: entry.booking.name,
         checkOut: entry.booking.checkOut,
         guestId: entry.guestId,
         guestLabel: entry.guestLabel,
-        reason: "ข้อมูล Passport ไม่ครบ",
+        reason: entry.booking.status === "booked" ? "ยังไม่ Check-In" : "ข้อมูล Passport ไม่ครบ",
       }));
     const total = entries.length;
     const missing = missingBookings.length;
@@ -1188,7 +1205,7 @@ export const getHotelAccomodationReportStatus = async (
 ) => {
   try {
     const date = req.query.date as string;
-    const query = hotelAccommodationDateQuery(date);
+    const query = passportReadinessDateQuery(date);
 
     if (!query) {
       return res.status(400).json({ message: "Invalid date format" });
@@ -1196,7 +1213,7 @@ export const getHotelAccomodationReportStatus = async (
 
     const bookings = await Booking.find(query)
       .select(
-        `bookingId name checkOut passport.namePrefix passport.nationality passport.nextDestinationCountry ${PASSPORT_SENSITIVE_SELECT}`,
+        `bookingId name status checkOut passport.namePrefix passport.nationality passport.nextDestinationCountry ${PASSPORT_SENSITIVE_SELECT}`,
       )
       .sort({
         checkIn: 1,
@@ -1207,7 +1224,7 @@ export const getHotelAccomodationReportStatus = async (
     const missingBookings = bookings
       .map((booking) => ({
         booking,
-        reason: hotelPassportInfoIssue(booking.passport),
+        reason: booking.status === "booked" ? "ยังไม่ Check-In" : hotelPassportInfoIssue(booking.passport),
       }))
       .filter(({ reason }) => reason)
       .map(({ booking, reason }) => ({
