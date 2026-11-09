@@ -235,6 +235,96 @@ export const transactionRefundAmount = (transaction: transcation) =>
 const transactionIsPositiveRevenueAdjustment = (transaction: transcation) =>
   transaction.type === "adjustment" && transactionDirection(transaction) === "in";
 
+export const isCheckInRoundingAdjustment = (transaction: transcation) =>
+  transactionIsPositiveRevenueAdjustment(transaction) &&
+  transaction.reasonOfAdjustment === "rounding";
+
+export const targetSegmentForCheckInRounding = (
+  currentBooking: Pick<
+    booking,
+    | "checkIn"
+    | "checkOut"
+    | "bookingId"
+    | "platformId"
+    | "staffUsername"
+    | "transactions"
+    | "commercialSegments"
+  >,
+  roundingTransaction: transcation,
+) => {
+  if (
+    (currentBooking as { sourceType?: string }).sourceType === "standaloneSale"
+  ) {
+    return undefined;
+  }
+
+  const segments = effectiveCommercialSegments(currentBooking);
+  if (!segments.length) return undefined;
+
+  const matchSegmentByExplicitLink = (candidate: transcation | undefined) => {
+    if (!candidate) return undefined;
+    if (candidate.commercialSegmentId) {
+      const bySegmentId = segments.find(
+        (segment) =>
+          String(segment._id || "") === candidate.commercialSegmentId,
+      );
+      if (bySegmentId) return bySegmentId;
+    }
+    if (candidate.relatedTransactionId) {
+      const byTransactionId = segments.find(
+        (segment) => segment.transactionId === candidate.relatedTransactionId,
+      );
+      if (byTransactionId) return byTransactionId;
+    }
+    return undefined;
+  };
+
+  const directMatch = matchSegmentByExplicitLink(roundingTransaction);
+  if (directMatch) return directMatch;
+
+  const transactions = currentBooking.transactions || [];
+  if (roundingTransaction.relatedTransactionId) {
+    const relatedTransaction = transactions.find(
+      (candidate) =>
+        ((candidate as transcation & { originalTransactionId?: string })
+          .originalTransactionId || String(candidate._id || "")) ===
+        roundingTransaction.relatedTransactionId,
+    );
+    const indirectMatch = matchSegmentByExplicitLink(relatedTransaction);
+    if (indirectMatch) return indirectMatch;
+  }
+
+  const roundingIndex = transactions.indexOf(roundingTransaction);
+  const adjacentSettlement =
+    roundingIndex >= 0
+      ? [
+          transactions[roundingIndex + 1],
+          transactions[roundingIndex - 1],
+        ].find(
+          (candidate) =>
+            candidate?.type === "settlementCharge" &&
+            candidate.relatedTransactionType === "roomCharge" &&
+            (Boolean(candidate.commercialSegmentId) ||
+              Boolean(candidate.relatedTransactionId)),
+        )
+      : undefined;
+  const adjacentMatch = matchSegmentByExplicitLink(adjacentSettlement);
+  if (adjacentMatch) return adjacentMatch;
+
+  const fallbackSettlement = transactions.find(
+    (candidate) =>
+      candidate.type === "settlementCharge" &&
+      candidate.sourceAction === "CHECK_IN" &&
+      candidate.relatedTransactionType === "roomCharge" &&
+      (Boolean(candidate.commercialSegmentId) ||
+        Boolean(candidate.relatedTransactionId)),
+  );
+  const fallbackMatch = matchSegmentByExplicitLink(fallbackSettlement);
+  if (fallbackMatch) return fallbackMatch;
+
+  return segments.find((segment) => segment.kind === "original") || segments[0];
+};
+
 const transactionIsRevenueReduction = (transaction: transcation) =>
   (transaction.type === "adjustment" && transactionDirection(transaction) === "out") ||
   (dashboardRevenueRefundTransactionTypes.includes(transaction.type) &&
@@ -295,7 +385,12 @@ export const transactionDashboardGrossRevenueAmount = (transaction: transcation)
 };
 
 export const transactionTodayExtrasRevenueAmount = (transaction: transcation) => {
-  if (transaction.type === "roomCharge") return 0;
+  if (
+    transaction.type === "roomCharge" ||
+    isCheckInRoundingAdjustment(transaction)
+  ) {
+    return 0;
+  }
 
   const amount = transactionDashboardGrossRevenueAmount(transaction);
   return amount > 0 ? amount : 0;
@@ -393,14 +488,15 @@ export const calculateTodayRevenueSummary = (
   start: Date,
   end: Date,
 ) => {
-  const aggregateArrivals = bookings.filter((booking) => {
+  const nonVoidedBookings = bookings.filter((booking) => !booking.voided);
+  const aggregateArrivals = nonVoidedBookings.filter((booking) => {
     const checkIn = new Date(booking.checkIn);
     return checkIn >= start && checkIn < end;
   });
   const retainedValueArrivals = aggregateArrivals.filter((booking) =>
     ["cancelled", "noShow"].includes(booking.status),
   );
-  const activeSegmentCohorts = bookings.flatMap((booking) =>
+  const activeSegmentCohorts = nonVoidedBookings.flatMap((booking) =>
     ["cancelled", "noShow"].includes(booking.status)
       ? []
       : effectiveCommercialSegments(booking)
@@ -410,7 +506,26 @@ export const calculateTodayRevenueSummary = (
           })
           .map((segment) => ({ booking, segment })),
   );
-  const todayTransactions = bookings.flatMap((booking) =>
+  const activeCohortRoundingTransactions = nonVoidedBookings.flatMap(
+    (booking) => {
+      if (["cancelled", "noShow"].includes(booking.status)) return [];
+      return (booking.transactions || []).flatMap((transaction) => {
+        if (!isCheckInRoundingAdjustment(transaction)) return [];
+        const amount = Math.abs(transaction.amount || 0);
+        if (amount <= 0) return [];
+        const targetSegment = targetSegmentForCheckInRounding(
+          booking,
+          transaction,
+        );
+        if (!targetSegment) return [];
+        const segmentStart = new Date(targetSegment.from);
+        return segmentStart >= start && segmentStart < end
+          ? [{ booking, transaction, amount }]
+          : [];
+      });
+    },
+  );
+  const todayTransactions = nonVoidedBookings.flatMap((booking) =>
     (booking.transactions || [])
       .filter((transaction) => {
         if (!transaction.createdAt) return false;
@@ -430,6 +545,10 @@ export const calculateTodayRevenueSummary = (
         );
         return sum + Math.abs(charge?.amount ?? segment.amount ?? 0);
       },
+      0,
+    ) +
+    activeCohortRoundingTransactions.reduce(
+      (sum, { amount }) => sum + amount,
       0,
     );
   const todayExtrasRevenue = todayTransactions.reduce(
@@ -511,6 +630,7 @@ export const calculateTodayRevenueSummary = (
       const segmentTransactions = (booking.transactions || []).filter(
         (transaction) =>
           transaction.type !== "cardSurcharge" &&
+          !isCheckInRoundingAdjustment(transaction) &&
           (String(transaction._id) === segment.transactionId ||
             transaction.commercialSegmentId === String(segment._id) ||
             transaction.relatedTransactionId === segment.transactionId ||
@@ -532,6 +652,15 @@ export const calculateTodayRevenueSummary = (
         )
       );
     }, 0) +
+    activeCohortRoundingTransactions.reduce(
+      (sum, { booking, transaction }) =>
+        sum +
+        transactionDashboardCollectedRevenueAmount(
+          transaction,
+          booking.transactions || [],
+        ),
+      0,
+    ) +
     todayTransactions.reduce(
       (sum, { booking, transaction }) =>
         transactionTodayExtrasRevenueAmount(transaction) > 0
@@ -544,13 +673,25 @@ export const calculateTodayRevenueSummary = (
       0,
     );
 
+  const normalizedTodayArrivalRevenue = Number(todayArrivalRevenue.toFixed(2));
+  const normalizedTodayExtrasRevenue = Number(todayExtrasRevenue.toFixed(2));
+  const normalizedTodayReductions = Number(todayReductions.toFixed(2));
+  const normalizedTodayCollectedRevenue = Number(
+    todayCollectedRevenue.toFixed(2),
+  );
+
   return {
-    todayRevenue:
-      todayArrivalRevenue + todayExtrasRevenue - todayReductions,
-    todayArrivalRevenue,
-    todayExtrasRevenue,
-    todayReductions,
-    todayCollectedRevenue,
+    todayRevenue: Number(
+      (
+        normalizedTodayArrivalRevenue +
+        normalizedTodayExtrasRevenue -
+        normalizedTodayReductions
+      ).toFixed(2),
+    ),
+    todayArrivalRevenue: normalizedTodayArrivalRevenue,
+    todayExtrasRevenue: normalizedTodayExtrasRevenue,
+    todayReductions: normalizedTodayReductions,
+    todayCollectedRevenue: normalizedTodayCollectedRevenue,
     todayServiceHighlights: Array.from(serviceHighlights.values()).sort(
       (first, second) => second.total - first.total,
     ),
