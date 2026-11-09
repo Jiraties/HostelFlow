@@ -2268,15 +2268,17 @@ export const checkIn = async (req: Request, res: Response) => {
       );
     }
 
-    const roundingAdjustment = Number(
+    const rawRoundingAdjustment = Number(
       checkInData.unpaidPayment?.roundingAdjustment || 0,
     );
 
-    if (!Number.isFinite(roundingAdjustment) || roundingAdjustment < 0) {
+    if (!Number.isFinite(rawRoundingAdjustment) || rawRoundingAdjustment < 0) {
       return res.status(400).json({
         message: "ยอดปรับเศษเงินไม่ถูกต้อง",
       });
     }
+
+    const roundingAdjustment = Number(rawRoundingAdjustment.toFixed(2));
 
     if (
       roundingAdjustment > 0 &&

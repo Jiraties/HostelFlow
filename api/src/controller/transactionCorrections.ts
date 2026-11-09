@@ -35,7 +35,13 @@ import {
   summarizeBookingFinancialPosition,
   transactionIsCharge,
 } from "../services/transactionCorrections";
-import { transactionCorrectionNeedsReview } from "../helpers/financeHelpers";
+import {
+  ROUNDING_ADJUSTMENT_REVIEW_THRESHOLD,
+  isCheckInRoundingAdjustment,
+  transactionCorrectionNeedsReview,
+  transactionDirection,
+  transactionSignedAmount,
+} from "../helpers/financeHelpers";
 import {
   assessOrdinaryRefundEntitlements,
   isOrdinaryRefund,
@@ -118,6 +124,151 @@ const findLinkedCardSurcharge = (
       (transaction.relatedTransactionId === targetTransactionId ||
         (!transaction.relatedTransactionId && index === targetIndex + 1)),
   );
+};
+
+const findLinkedCheckInRoundingAdjustment = (
+  transactions: Array<transcation & { originalTransactionId?: string }>,
+  targetTransactionId: string,
+) => {
+  const targetIndex = transactions.findIndex(
+    (transaction) =>
+      (transaction.originalTransactionId || String(transaction._id)) ===
+      targetTransactionId,
+  );
+  if (targetIndex < 0) return undefined;
+
+  const target = transactions[targetIndex];
+  if (
+    target.type !== "settlementCharge" ||
+    target.relatedTransactionType !== "roomCharge"
+  ) {
+    return undefined;
+  }
+
+  const adjacentCandidates = [
+    transactions[targetIndex - 1],
+    transactions[targetIndex + 1],
+  ].filter(
+    (candidate): candidate is transcation & { originalTransactionId?: string } =>
+      candidate !== undefined &&
+      isCheckInRoundingAdjustment(candidate) &&
+      (candidate.sourceAction === "CHECK_IN" ||
+        target.sourceAction === "CHECK_IN"),
+  );
+  const activeAdjacent = adjacentCandidates.find(
+    (candidate) => Math.abs(candidate.amount || 0) > 0,
+  );
+  if (activeAdjacent) return activeAdjacent;
+  if (adjacentCandidates[0]) return adjacentCandidates[0];
+
+  if (target.sourceAction === "CHECK_IN") {
+    const checkInCandidates = transactions.filter(
+      (candidate) =>
+        isCheckInRoundingAdjustment(candidate) &&
+        candidate.sourceAction === "CHECK_IN",
+    );
+    return (
+      checkInCandidates.find(
+        (candidate) => Math.abs(candidate.amount || 0) > 0,
+      ) || checkInCandidates[0]
+    );
+  }
+
+  return undefined;
+};
+
+const resolveSettlementPrincipalAmount = (
+  effectiveTransactions: Array<transcation & { originalTransactionId?: string }>,
+  currentSettlement: transcation & { originalTransactionId?: string },
+  currentSettlementId: string,
+  linkedRoundingId?: string,
+) => {
+  const relatedRoomCharge = currentSettlement.relatedTransactionId
+    ? effectiveTransactions.find(
+        (candidate) =>
+          (candidate.originalTransactionId || String(candidate._id || "")) ===
+            currentSettlement.relatedTransactionId &&
+          candidate.type === "roomCharge",
+      )
+    : currentSettlement.commercialSegmentId
+      ? effectiveTransactions.find(
+          (candidate) =>
+            candidate.type === "roomCharge" &&
+            candidate.commercialSegmentId ===
+              currentSettlement.commercialSegmentId,
+        )
+      : effectiveTransactions.find(
+          (candidate) =>
+            candidate.type === "roomCharge" &&
+            candidate.sourceAction !== "EXTEND_BOOKING",
+        );
+  if (!relatedRoomCharge) return undefined;
+
+  const relatedRoomChargeId =
+    relatedRoomCharge.originalTransactionId ||
+    String(relatedRoomCharge._id || "");
+  const isOriginalRoomCharge =
+    relatedRoomCharge.sourceAction !== "EXTEND_BOOKING";
+  let netRoomCharge = Math.abs(relatedRoomCharge.amount || 0);
+  let otherPaymentsReceived =
+    relatedRoomCharge.paymentMethod !== "Unpaid"
+      ? transactionSignedAmount(relatedRoomCharge)
+      : 0;
+
+  effectiveTransactions.forEach((candidate) => {
+    const candidateId =
+      candidate.originalTransactionId || String(candidate._id || "");
+    if (
+      candidateId === currentSettlementId ||
+      candidateId === relatedRoomChargeId ||
+      (linkedRoundingId && candidateId === linkedRoundingId)
+    ) {
+      return;
+    }
+
+    const targetsExplicitly =
+      (Boolean(relatedRoomChargeId) &&
+        candidate.relatedTransactionId === relatedRoomChargeId) ||
+      (Boolean(relatedRoomCharge.commercialSegmentId) &&
+        candidate.commercialSegmentId ===
+          relatedRoomCharge.commercialSegmentId);
+    const targetsOriginalImplicitly =
+      isOriginalRoomCharge &&
+      !candidate.relatedTransactionId &&
+      !candidate.commercialSegmentId &&
+      candidate.relatedTransactionType === "roomCharge";
+
+    if (!targetsExplicitly && !targetsOriginalImplicitly) return;
+
+    if (candidate.type === "roomChargeWriteOff") {
+      netRoomCharge -= Math.abs(candidate.amount || 0);
+      return;
+    }
+
+    if (
+      candidate.type === "adjustment" &&
+      candidate.reasonOfAdjustment !== "rounding"
+    ) {
+      const signedAdjustment =
+        transactionDirection(candidate) === "out"
+          ? -Math.abs(candidate.amount || 0)
+          : Math.abs(candidate.amount || 0);
+      netRoomCharge += signedAdjustment;
+      if (candidate.paymentMethod !== "Unpaid") {
+        otherPaymentsReceived += transactionSignedAmount(candidate);
+      }
+      return;
+    }
+
+    if (
+      ["settlementCharge", "paymentCorrection"].includes(candidate.type) &&
+      candidate.paymentMethod !== "Unpaid"
+    ) {
+      otherPaymentsReceived += transactionSignedAmount(candidate);
+    }
+  });
+
+  return Math.max(Number((netRoomCharge - otherPaymentsReceived).toFixed(2)), 0);
 };
 
 const correctionRecord = ({
@@ -305,14 +456,82 @@ export const correctTransaction = async (
     }
 
     const before = snapshotTransaction(current);
+    const requestedAmount = Number(correctedAmount.toFixed(2));
     const after = {
       ...before,
       type: correctedCategory,
       paymentMethod: correctedPaymentMethod,
-      amount: Number(correctedAmount.toFixed(2)),
+      amount: requestedAmount,
       note: req.body.correctedNote?.trim() || undefined,
     };
     if (correctedPaymentMethod !== "Cash") delete after.cashShiftId;
+
+    const linkedRounding = findLinkedCheckInRoundingAdjustment(
+      effectiveTransactions,
+      transactionId,
+    );
+    const roundingBefore = linkedRounding
+      ? snapshotTransaction(linkedRounding)
+      : undefined;
+    let roundingAfter = roundingBefore ? { ...roundingBefore } : undefined;
+
+    if (
+      linkedRounding &&
+      roundingBefore &&
+      roundingAfter &&
+      correctionChangesFinancialFields(before, after)
+    ) {
+      const combinedCashBefore = Number(
+        (before.amount + roundingBefore.amount).toFixed(2),
+      );
+      if (
+        before.paymentMethod === "Cash" &&
+        correctedPaymentMethod === "Cash" &&
+        correctedCategory === current.type &&
+        requestedAmount === combinedCashBefore
+      ) {
+        return res.status(409).json({
+          error: "ROUNDING_ALREADY_INCLUDED",
+          message: `ยอดรับเงินสดรวมปัดเศษเป็น ${requestedAmount.toLocaleString("th-TH")} บาทอยู่แล้ว (${before.amount.toLocaleString("th-TH")} + ปัดเศษ ${roundingBefore.amount.toLocaleString("th-TH")} บาท) ไม่ต้องแก้ซ้ำ`,
+        });
+      }
+
+      const linkedRoundingIdForPrincipal =
+        linkedRounding.originalTransactionId || String(linkedRounding._id || "");
+      const settlementPrincipalAmount = resolveSettlementPrincipalAmount(
+        effectiveTransactions,
+        current,
+        transactionId,
+        linkedRoundingIdForPrincipal,
+      );
+      const roundingDeltaAbovePrincipal =
+        settlementPrincipalAmount !== undefined
+          ? Number((requestedAmount - settlementPrincipalAmount).toFixed(2))
+          : undefined;
+
+      if (
+        correctedPaymentMethod === "Cash" &&
+        correctedCategory === current.type &&
+        settlementPrincipalAmount !== undefined &&
+        roundingDeltaAbovePrincipal !== undefined &&
+        roundingDeltaAbovePrincipal > 0 &&
+        roundingDeltaAbovePrincipal <= ROUNDING_ADJUSTMENT_REVIEW_THRESHOLD
+      ) {
+        after.amount = settlementPrincipalAmount;
+        roundingAfter = {
+          ...roundingBefore,
+          paymentMethod: "Cash",
+          amount: roundingDeltaAbovePrincipal,
+        };
+      } else {
+        roundingAfter = {
+          ...roundingBefore,
+          amount: 0,
+        };
+        delete roundingAfter.cashShiftId;
+      }
+    }
+
     const isPendingFutureRoomCharge =
       booking.status === "booked" &&
       current.type === "roomCharge" &&
@@ -334,12 +553,29 @@ export const correctTransaction = async (
       });
     }
 
-    const financialChange = correctionChangesFinancialFields(before, after);
-    const previewTransactions = effectiveTransactions.map((transaction) =>
-      transaction.originalTransactionId === transactionId
-        ? { ...transaction, ...after, _id: transaction._id }
-        : transaction,
+    const roundingFinancialChange = Boolean(
+      roundingBefore &&
+        roundingAfter &&
+        correctionChangesFinancialFields(roundingBefore, roundingAfter),
     );
+    const financialChange =
+      correctionChangesFinancialFields(before, after) || roundingFinancialChange;
+    const linkedRoundingId = linkedRounding
+      ? linkedRounding.originalTransactionId || String(linkedRounding._id)
+      : undefined;
+    const previewTransactions = effectiveTransactions.map((transaction) => {
+      if (transaction.originalTransactionId === transactionId) {
+        return { ...transaction, ...after, _id: transaction._id };
+      }
+      if (
+        linkedRoundingId &&
+        roundingAfter &&
+        transaction.originalTransactionId === linkedRoundingId
+      ) {
+        return { ...transaction, ...roundingAfter, _id: transaction._id };
+      }
+      return transaction;
+    });
     const currentRefundAssessment = assessOrdinaryRefundEntitlements(
       effectiveTransactions,
     );
@@ -505,6 +741,23 @@ export const correctTransaction = async (
           );
         }
         if (requiresNewCashShift) after.cashShiftId = assigned[0]?.cashShiftId;
+        if (roundingAfter) {
+          if (
+            correctedPaymentMethod === "Cash" &&
+            roundingAfter.amount > 0
+          ) {
+            roundingAfter.paymentMethod = "Cash";
+            roundingAfter.cashShiftId =
+              after.cashShiftId ||
+              roundingBefore?.cashShiftId ||
+              assigned[0]?.cashShiftId;
+          } else if (
+            correctedPaymentMethod !== "Cash" ||
+            roundingAfter.amount === 0
+          ) {
+            delete roundingAfter.cashShiftId;
+          }
+        }
 
         const corrections: TransactionCorrection[] = [
           correctionRecord({
@@ -565,6 +818,34 @@ export const correctTransaction = async (
           });
         }
 
+        if (
+          roundingFinancialChange &&
+          linkedRounding &&
+          linkedRoundingId &&
+          roundingBefore &&
+          roundingAfter
+        ) {
+          corrections.push(
+            correctionRecord({
+              targetTransactionId: linkedRoundingId,
+              before: roundingBefore,
+              after: roundingAfter,
+              correctionType,
+              reasonCode,
+              note: `ปรับยอดปัดเศษเงินสดตามรายการรับชำระที่แก้ไข: ${auditNote}`,
+              correctedBy: req.user?.username || "system",
+              correctedByName,
+              originalBusinessDate: businessDateKey(
+                new Date(
+                  linkedRounding.createdAt ||
+                    current.createdAt ||
+                    booking.checkIn,
+                ),
+              ),
+            }),
+          );
+        }
+
         const update: Record<string, unknown> = {
           $push: {
             transactionCorrections: { $each: corrections },
@@ -591,9 +872,13 @@ export const correctTransaction = async (
     const effectiveTransaction = projectedTransactions.find(
       (transaction) => transaction.originalTransactionId === transactionId,
     );
-    const correction = updatedBooking.transactionCorrections[
-      updatedBooking.transactionCorrections.length - 1
-    ];
+    const correction =
+      [...updatedBooking.transactionCorrections]
+        .reverse()
+        .find((item) => item.targetTransactionId === transactionId) ||
+      updatedBooking.transactionCorrections[
+        updatedBooking.transactionCorrections.length - 1
+      ];
 
     await logActivity(
       req.user?.username,

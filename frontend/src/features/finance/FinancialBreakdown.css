@@ -237,6 +237,27 @@
   filter: brightness(0.96);
 }
 
+.financialBreakdown__basisNote {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0 1.25rem 1.15rem 4.75rem;
+  color: #666666;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.financialBreakdown__basisInfo {
+  flex: 0 0 auto;
+  cursor: help;
+  font-size: 1rem;
+}
+
+.financialBreakdown__basisInfo:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 3px;
+}
+
 .financialBreakdown__section {
   margin-top: 2rem;
 }
@@ -287,6 +308,14 @@
 }
 
 .financialBreakdown__category--open .financialBreakdown__categoryHeader {
+  background-color: color-mix(in srgb, var(--primary-color) 5%, #ffffff);
+}
+
+.financialBreakdown__category--cash .financialBreakdown__categoryHeader {
+  padding-bottom: 0.35rem;
+}
+
+.financialBreakdown__category--open .financialBreakdown__basisNote {
   background-color: color-mix(in srgb, var(--primary-color) 5%, #ffffff);
 }
 
@@ -426,6 +455,7 @@
 
 .financialBreakdown__transactionMeta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.4rem;
   min-width: 0;
@@ -435,6 +465,8 @@
   min-width: 0;
   color: #666666;
   font-size: 0.9rem;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .financialBreakdown__transactionRemark {

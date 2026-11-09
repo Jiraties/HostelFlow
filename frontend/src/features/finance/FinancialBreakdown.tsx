@@ -37,6 +37,7 @@ type ExpectedStayRevenueBreakdownTransaction = {
   paymentMethod: PaymentMethod;
   paymentMethodLabel?: string;
   stayChargeKind?: "original" | "extension";
+  stayStartDate?: string;
   direction?: TransactionDirection;
   createdAt?: string | Date;
   createdBy?: string;
@@ -77,6 +78,7 @@ type ExpectedStayRevenueBreakdownResponse = {
     basis:
       | "bookingOrExtensionStart"
       | "bookingOrExtensionStartAndServiceCreatedAt"
+      | "commercialSegmentStartAndServiceCreatedAt"
       | "checkInAndTransactionCreatedAt";
   };
   totals: {
@@ -162,10 +164,52 @@ const formatMoney = (value: number) =>
     maximumFractionDigits: 2,
   });
 
+const BUSINESS_TIME_ZONE = "Asia/Bangkok";
+
+const bangkokDateKey = (value: string | Date | undefined) => {
+  if (!value) return null;
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
+  }
+
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: BUSINESS_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(parsed);
+  const partValue = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value;
+
+  return `${partValue("year")}-${partValue("month")}-${partValue("day")}`;
+};
+
+const isNormalizedUtcMidnight = (value: string | Date) => {
+  const parsed = value instanceof Date ? value : new Date(value);
+  return (
+    !Number.isNaN(parsed.getTime()) &&
+    parsed.getUTCHours() === 0 &&
+    parsed.getUTCMinutes() === 0 &&
+    parsed.getUTCSeconds() === 0 &&
+    parsed.getUTCMilliseconds() === 0
+  );
+};
+
 const formatDateTime = (
   date: string | Date | undefined,
   dateFormat: DateFormatPreference,
-) => (date ? formatDisplayDateTime(date, dateFormat) : "-");
+) => {
+  if (!date) return "-";
+  if (typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return formatDisplayDate(date, dateFormat);
+  }
+  return isNormalizedUtcMidnight(date)
+    ? formatDisplayDate(date, dateFormat)
+    : formatDisplayDateTime(date, dateFormat);
+};
 
 const formatDate = (date: string, dateFormat: DateFormatPreference) =>
   formatDisplayDate(`${date}T00:00:00`, dateFormat);
@@ -234,6 +278,7 @@ const BreakdownSection = ({
   groupUnit,
   dateFormat,
   negative = false,
+  showCashBasisNote = false,
 }: {
   title: string;
   emptyText: string;
@@ -241,6 +286,7 @@ const BreakdownSection = ({
   groupUnit: "แหล่ง" | "ช่องทาง";
   dateFormat: DateFormatPreference;
   negative?: boolean;
+  showCashBasisNote?: boolean;
 }) => {
   const navigate = useNavigate();
   const [openGroupKey, setOpenGroupKey] = useState<string | null | undefined>(
@@ -268,14 +314,11 @@ const BreakdownSection = ({
         <div className="financialBreakdown__categoryList">
           {groups.map((group) => {
             const isOpen = activeOpenGroupKey === group.key;
+            const hasCashBasisNote = showCashBasisNote && group.paymentMethod === "Cash";
 
             return (
               <article
-                className={
-                  isOpen
-                    ? "financialBreakdown__category financialBreakdown__category--open"
-                    : "financialBreakdown__category"
-                }
+                className={`financialBreakdown__category${isOpen ? " financialBreakdown__category--open" : ""}${hasCashBasisNote ? " financialBreakdown__category--cash" : ""}`}
                 key={`${negative ? "reduction" : "revenue"}-${group.key}`}
               >
                 <button
@@ -317,6 +360,23 @@ const BreakdownSection = ({
                     />
                   </div>
                 </button>
+
+                {hasCashBasisNote && (
+                  <div className="financialBreakdown__basisNote">
+                    <span>รายได้ที่ชำระด้วยเงินสด · ไม่ใช่เงินสดในลิ้นชัก</span>
+                    <Tooltip
+                      className="financialBreakdown__basisInfo"
+                      ariaLabel="รายละเอียดการคำนวณยอด Cash"
+                      content={
+                        <span>
+                          ยอด Cash คือรายได้ของวันที่เลือกที่ชำระด้วยเงินสด รวมค่าห้องที่รับชำระล่วงหน้าหรือชำระวันถัดไป แต่ไม่รวมเงินมัดจำ สำหรับยอดเงินสดรับ-จ่ายจริงและยอดนับปิดกะ ให้ดูที่ลิ้นชักเงินสด / ปิดกะ
+                        </span>
+                      }
+                    >
+                      <i className="bx bx-info-circle" aria-hidden="true" />
+                    </Tooltip>
+                  </div>
+                )}
 
                 {isOpen && (
                   <div className="financialBreakdown__transactions">
@@ -374,10 +434,19 @@ const BreakdownSection = ({
                             <span className="financialBreakdown__transactionMetaText">
                               {transaction.saleId || transaction.bookingId} ·{" "}
                               {transaction.label} ·{" "}
-                              {formatDateTime(
-                                transaction.createdAt,
-                                dateFormat,
-                              )}
+                              {transaction.createdAt
+                                ? formatDateTime(
+                                    transaction.createdAt,
+                                    dateFormat,
+                                  )
+                                : "หลายรายการรับชำระ"}
+                              {transaction.stayStartDate &&
+                                bangkokDateKey(transaction.createdAt) !==
+                                  transaction.stayStartDate &&
+                                ` · ช่วงพักเริ่ม ${formatDate(
+                                  transaction.stayStartDate,
+                                  dateFormat,
+                                )}`}
                             </span>
                             {transaction.staff && (
                               // <Tooltip
@@ -690,7 +759,13 @@ const FinancialBreakdown = ({
           <div className="financialBreakdown__analysisHeader">
             <div>
               <h2>{activeTitle}</h2>
-              <p>สัดส่วนรายได้และรายละเอียดรายการ</p>
+              <p>
+                {breakdownMode === "type"
+                  ? "สัดส่วนรายได้และรายละเอียดรายการ"
+                  : mode === "today"
+                    ? "สัดส่วนช่องทางชำระของรายได้วันที่เลือก (ค่าห้องนับตามวันเริ่มเข้าพัก/ต่อคืน ไม่รวมเงินมัดจำ)"
+                    : "สัดส่วนช่องทางชำระของรายได้เดือนที่เลือก (ค่าห้องนับตามวันเริ่มเข้าพัก/ต่อคืน ไม่รวมเงินมัดจำและค่าธรรมเนียมบัตร)"}
+              </p>
             </div>
             <div
               className={
@@ -782,6 +857,7 @@ const FinancialBreakdown = ({
                 groups={activeGroups}
                 groupUnit={breakdownMode === "type" ? "แหล่ง" : "ช่องทาง"}
                 dateFormat={dateFormat}
+                showCashBasisNote={mode === "today" && breakdownMode === "payment"}
               />
               <BreakdownSection
                 title="Reductions"

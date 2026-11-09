@@ -762,7 +762,7 @@ const getCashShiftAuditForDate = async (businessDate) => {
         gaps,
     };
 };
-const addBreakdownTransaction = (categories, transaction, booking, amount, direction, paymentMethodLabel, stayChargeKind) => {
+const addBreakdownTransaction = (categories, transaction, booking, amount, direction, paymentMethodLabel, stayChargeKind, stayStartDate) => {
     const meta = expectedStayRevenueTransactionMeta[transaction.type] || {
         label: transaction.type,
         color: "#94a3b8",
@@ -794,6 +794,7 @@ const addBreakdownTransaction = (categories, transaction, booking, amount, direc
         paymentMethod: transaction.paymentMethod,
         paymentMethodLabel,
         stayChargeKind,
+        stayStartDate,
         direction,
         createdAt: transaction.createdAt,
         createdBy: transaction.createdBy || booking.staffUsername,
@@ -819,18 +820,86 @@ const paymentAllocationDisplay = (paymentAmounts, fallback) => {
             : undefined,
     };
 };
-const addPaymentAllocationBreakdown = (paymentMethods, transaction, booking, paymentAmounts) => {
+const resolveSegmentPaymentTransaction = (booking, segment, roomCharge, paymentMethod) => {
+    if (paymentMethod === "Unpaid") {
+        return { transaction: roomCharge, isAggregatePayment: false };
+    }
+    const currentSegmentId = segment._id ? String(segment._id) : "";
+    const matchingPayments = (booking.transactions || []).filter((candidate) => {
+        if (String(candidate._id || "") === String(roomCharge._id || "")) {
+            return false;
+        }
+        if (candidate.paymentMethod !== paymentMethod ||
+            (0, financeHelpers_1.transactionDirection)(candidate) !== "in" ||
+            Math.abs(candidate.amount || 0) <= 0) {
+            return false;
+        }
+        if (!["settlementCharge", "paymentCorrection", "adjustment"].includes(candidate.type) ||
+            candidate.reasonOfAdjustment === "rounding") {
+            return false;
+        }
+        const targetsExplicitly = (Boolean(currentSegmentId) &&
+            candidate.commercialSegmentId === currentSegmentId) ||
+            candidate.relatedTransactionId === segment.transactionId;
+        const targetsOriginalImplicitly = !candidate.commercialSegmentId &&
+            !candidate.relatedTransactionId &&
+            candidate.relatedTransactionType === "roomCharge" &&
+            segment.kind === "original";
+        return targetsExplicitly || targetsOriginalImplicitly;
+    });
+    const contributingReceipts = [
+        ...(roomCharge.paymentMethod === paymentMethod &&
+            Math.abs(roomCharge.amount || 0) > 0
+            ? [roomCharge]
+            : []),
+        ...matchingPayments,
+    ];
+    if (!contributingReceipts.length) {
+        return { transaction: roomCharge, isAggregatePayment: false };
+    }
+    if (contributingReceipts.length > 1) {
+        return {
+            transaction: {
+                ...roomCharge,
+                _id: undefined,
+                createdAt: undefined,
+                createdBy: undefined,
+                note: undefined,
+                reference: undefined,
+            },
+            isAggregatePayment: true,
+        };
+    }
+    const singleReceipt = contributingReceipts[0];
+    return {
+        transaction: {
+            ...roomCharge,
+            _id: singleReceipt._id || roomCharge._id,
+            createdAt: singleReceipt.createdAt || roomCharge.createdAt,
+            createdBy: singleReceipt.createdBy || roomCharge.createdBy,
+            note: singleReceipt.note ?? roomCharge.note,
+            reference: singleReceipt.reference ?? roomCharge.reference,
+        },
+        isAggregatePayment: false,
+    };
+};
+const addPaymentAllocationBreakdown = (paymentMethods, transaction, booking, paymentAmounts, options) => {
     const entries = paymentAllocationEntries(paymentAmounts);
     if (!entries.length) {
-        addPaymentMethodBreakdownTransaction(paymentMethods, transaction, booking, Math.abs(transaction.amount || 0), (0, financeHelpers_1.transactionDirection)(transaction));
+        addPaymentMethodBreakdownTransaction(paymentMethods, transaction, booking, Math.abs(transaction.amount || 0), (0, financeHelpers_1.transactionDirection)(transaction), options);
         return;
     }
     entries.forEach(([paymentMethod, amount]) => {
         const direction = paymentMethod === "Unpaid" ? "neutral" : "in";
-        addPaymentMethodBreakdownTransaction(paymentMethods, { ...transaction, paymentMethod, amount, direction }, booking, amount, direction);
+        const resolvedPayment = options?.resolvePaymentTransaction?.(paymentMethod);
+        const baseTransaction = resolvedPayment?.transaction || transaction;
+        addPaymentMethodBreakdownTransaction(paymentMethods, { ...baseTransaction, paymentMethod, amount, direction }, booking, amount, direction, {
+            ...options,
+            isAggregatePayment: resolvedPayment?.isAggregatePayment,
+        });
     });
 };
-const addPaymentMethodBreakdownTransaction = (paymentMethods, transaction, booking, amount, direction) => {
+const addPaymentMethodBreakdownTransaction = (paymentMethods, transaction, booking, amount, direction, options) => {
     const methodMeta = paymentMethodMeta[transaction.paymentMethod];
     const transactionMeta = expectedStayRevenueTransactionMeta[transaction.type] || {
         label: transaction.type,
@@ -850,7 +919,11 @@ const addPaymentMethodBreakdownTransaction = (paymentMethods, transaction, booki
     existingPaymentMethod.total += amount;
     existingPaymentMethod.transactionCount += 1;
     existingPaymentMethod.transactions.push({
-        transactionId: transaction._id ? String(transaction._id) : undefined,
+        transactionId: options?.isAggregatePayment
+            ? undefined
+            : transaction._id
+                ? String(transaction._id)
+                : undefined,
         ...standaloneTransactionMeta(booking),
         guestName: booking.name,
         platformId: (0, commercialSegmentHelpers_1.transactionPlatformId)(booking, transaction),
@@ -860,23 +933,61 @@ const addPaymentMethodBreakdownTransaction = (paymentMethods, transaction, booki
         icon: transactionMeta.icon,
         amount,
         paymentMethod: transaction.paymentMethod,
+        stayChargeKind: options?.stayChargeKind,
+        stayStartDate: options?.stayStartDate,
         direction,
-        createdAt: transaction.createdAt,
-        createdBy: transaction.createdBy || booking.staffUsername,
-        note: transaction.note,
-        reference: transaction.reference,
+        createdAt: options?.isAggregatePayment ? undefined : transaction.createdAt,
+        createdBy: options?.isAggregatePayment
+            ? undefined
+            : transaction.createdBy || booking.staffUsername,
+        note: options?.isAggregatePayment ? undefined : transaction.note,
+        reference: options?.isAggregatePayment ? undefined : transaction.reference,
     });
     paymentMethods.set(transaction.paymentMethod, existingPaymentMethod);
 };
-const todayArrivalPaymentMethod = (booking, roomCharge) => {
-    if (roomCharge.paymentMethod !== "Unpaid")
-        return roomCharge.paymentMethod;
-    const settlement = (booking.transactions || []).find((transaction) => transaction.type === "settlementCharge" &&
+const resolveTodayArrivalPaymentTransaction = (booking, roomCharge) => {
+    if (roomCharge.paymentMethod !== "Unpaid") {
+        return { transaction: roomCharge, isAggregatePayment: false };
+    }
+    const settlements = (booking.transactions || []).filter((transaction) => transaction.type === "settlementCharge" &&
         transaction.paymentMethod !== "Unpaid" &&
+        (0, financeHelpers_1.transactionDirection)(transaction) === "in" &&
+        Math.abs(transaction.amount || 0) > 0 &&
         transaction.relatedTransactionType === "roomCharge" &&
         transaction.relatedTransactionId === String(roomCharge._id));
-    return settlement?.paymentMethod || roomCharge.paymentMethod;
+    if (!settlements.length) {
+        return { transaction: roomCharge, isAggregatePayment: false };
+    }
+    if (settlements.length > 1) {
+        return {
+            transaction: {
+                ...roomCharge,
+                _id: undefined,
+                paymentMethod: settlements[0].paymentMethod,
+                createdAt: undefined,
+                createdBy: undefined,
+                note: undefined,
+                reference: undefined,
+            },
+            isAggregatePayment: true,
+        };
+    }
+    const settlement = settlements[0];
+    return {
+        transaction: {
+            ...roomCharge,
+            _id: settlement._id || roomCharge._id,
+            paymentMethod: settlement.paymentMethod,
+            createdAt: settlement.createdAt || roomCharge.createdAt,
+            createdBy: settlement.createdBy || roomCharge.createdBy,
+            note: settlement.note ?? roomCharge.note,
+            reference: settlement.reference ?? roomCharge.reference,
+        },
+        isAggregatePayment: false,
+    };
 };
+const todayArrivalPaymentMethod = (booking, roomCharge) => resolveTodayArrivalPaymentTransaction(booking, roomCharge).transaction
+    .paymentMethod;
 const finalizeBreakdownCategories = (categories, expectedStayRevenue) => Array.from(categories.values())
     .map((category) => ({
     ...category,
@@ -970,23 +1081,29 @@ const getExpectedStayRevenueBreakdown = async (req, res) => {
         const reductions = new Map();
         const paymentMethods = new Map();
         summary.entries.forEach((entry) => {
-            addBreakdownTransaction(categories, entry.roomCharge, entry.booking, Math.abs(entry.roomCharge.amount ?? entry.segment.amount ?? 0), "in", undefined, entry.segment.kind);
+            const stayStartDate = formatBusinessDateKey(new Date(entry.segment.from));
+            addBreakdownTransaction(categories, entry.roomCharge, entry.booking, Math.abs(entry.roomCharge.amount ?? entry.segment.amount ?? 0), "in", undefined, entry.segment.kind, stayStartDate);
             entry.chargeAdjustments.forEach(({ transaction, amount }) => {
-                addBreakdownTransaction(categories, transaction, entry.booking, amount, "in");
+                addBreakdownTransaction(categories, transaction, entry.booking, amount, "in", undefined, undefined, stayStartDate);
             });
             entry.reductions.forEach(({ transaction, amount }) => {
-                addBreakdownTransaction(reductions, transaction, entry.booking, amount, "out");
+                addBreakdownTransaction(reductions, transaction, entry.booking, amount, "out", undefined, undefined, stayStartDate);
             });
             Object.entries(entry.paymentAmounts).forEach(([paymentMethod, amount]) => {
                 if (amount <= 0)
                     return;
+                const resolvedPayment = resolveSegmentPaymentTransaction(entry.booking, entry.segment, entry.roomCharge, paymentMethod);
+                const direction = paymentMethod === "Unpaid" ? "neutral" : "in";
                 addPaymentMethodBreakdownTransaction(paymentMethods, {
-                    ...entry.roomCharge,
+                    ...resolvedPayment.transaction,
                     paymentMethod,
                     amount,
-                    direction: paymentMethod === "Unpaid" ? "neutral" : "in",
-                    createdAt: entry.segment.from,
-                }, entry.booking, amount, paymentMethod === "Unpaid" ? "neutral" : "in");
+                    direction,
+                }, entry.booking, amount, direction, {
+                    stayChargeKind: entry.segment.kind,
+                    stayStartDate,
+                    isAggregatePayment: resolvedPayment.isAggregatePayment,
+                });
             });
         });
         summary.serviceEntries.forEach((entry) => {
@@ -999,7 +1116,6 @@ const getExpectedStayRevenueBreakdown = async (req, res) => {
                     paymentMethod,
                     amount,
                     direction: paymentMethod === "Unpaid" ? "neutral" : "in",
-                    createdAt: entry.start,
                 }, entry.booking, amount, paymentMethod === "Unpaid" ? "neutral" : "in");
             });
         });
@@ -1051,6 +1167,7 @@ const getTodayRevenueBreakdown = async (req, res) => {
         }
         const [bookingRecords, standaloneSales] = await Promise.all([
             booking_1.default.find({
+                voided: { $ne: true },
                 $or: [
                     { checkIn: { $gte: bounds.start, $lt: bounds.end } },
                     {
@@ -1082,6 +1199,8 @@ const getTodayRevenueBreakdown = async (req, res) => {
         const reductions = new Map();
         const paymentMethods = new Map();
         bookings.forEach((booking) => {
+            if (booking.voided)
+                return;
             const isTodayArrival = new Date(booking.checkIn) >= bounds.start &&
                 new Date(booking.checkIn) < bounds.end;
             if (isTodayArrival &&
@@ -1089,15 +1208,26 @@ const getTodayRevenueBreakdown = async (req, res) => {
                 const arrivalAmount = (0, financeHelpers_1.bookingTodayArrivalRevenueAmount)(booking);
                 const roomCharge = (booking.transactions || []).find((transaction) => transaction.type === "roomCharge");
                 if (arrivalAmount > 0 && roomCharge) {
-                    const arrivalTransaction = {
+                    const stayStartDate = formatBusinessDateKey(new Date(booking.checkIn));
+                    const resolvedArrivalPayment = resolveTodayArrivalPaymentTransaction(booking, roomCharge);
+                    const paymentMethod = resolvedArrivalPayment.transaction.paymentMethod;
+                    const arrivalCategoryTransaction = {
                         ...roomCharge,
                         amount: arrivalAmount,
-                        createdAt: booking.checkIn,
-                        paymentMethod: todayArrivalPaymentMethod(booking, roomCharge),
+                        paymentMethod,
                     };
-                    const direction = (0, financeHelpers_1.transactionDirection)(arrivalTransaction);
-                    addBreakdownTransaction(categories, arrivalTransaction, booking, arrivalAmount, direction, undefined, "original");
-                    addPaymentMethodBreakdownTransaction(paymentMethods, arrivalTransaction, booking, arrivalAmount, direction);
+                    const arrivalPaymentTransaction = {
+                        ...resolvedArrivalPayment.transaction,
+                        amount: arrivalAmount,
+                        paymentMethod,
+                    };
+                    const direction = (0, financeHelpers_1.transactionDirection)(arrivalCategoryTransaction);
+                    addBreakdownTransaction(categories, arrivalCategoryTransaction, booking, arrivalAmount, direction, undefined, "original", stayStartDate);
+                    addPaymentMethodBreakdownTransaction(paymentMethods, arrivalPaymentTransaction, booking, arrivalAmount, direction, {
+                        stayChargeKind: "original",
+                        stayStartDate,
+                        isAggregatePayment: resolvedArrivalPayment.isAggregatePayment,
+                    });
                 }
             }
             if (!["cancelled", "noShow"].includes(booking.status)) {
@@ -1110,11 +1240,11 @@ const getTodayRevenueBreakdown = async (req, res) => {
                     const roomCharge = (booking.transactions || []).find((transaction) => String(transaction._id) === segment.transactionId);
                     if (!roomCharge)
                         return;
+                    const stayStartDate = formatBusinessDateKey(new Date(segment.from));
                     const amount = Math.abs(roomCharge.amount ?? segment.amount ?? 0);
                     const segmentTransaction = {
                         ...roomCharge,
                         amount,
-                        createdAt: segment.from,
                     };
                     const paymentAmounts = roomPaymentAmounts.get(paymentAllocationKey(booking, segment.transactionId));
                     const displayPayment = paymentAllocationDisplay(paymentAmounts, segmentTransaction.paymentMethod);
@@ -1123,8 +1253,29 @@ const getTodayRevenueBreakdown = async (req, res) => {
                         paymentMethod: displayPayment.paymentMethod,
                     };
                     const direction = (0, financeHelpers_1.transactionDirection)(displayTransaction);
-                    addBreakdownTransaction(categories, displayTransaction, booking, amount, direction, displayPayment.paymentMethodLabel, segment.kind);
-                    addPaymentAllocationBreakdown(paymentMethods, segmentTransaction, booking, paymentAmounts);
+                    addBreakdownTransaction(categories, displayTransaction, booking, amount, direction, displayPayment.paymentMethodLabel, segment.kind, stayStartDate);
+                    addPaymentAllocationBreakdown(paymentMethods, segmentTransaction, booking, paymentAmounts, {
+                        stayChargeKind: segment.kind,
+                        stayStartDate,
+                        resolvePaymentTransaction: (paymentMethod) => resolveSegmentPaymentTransaction(booking, segment, roomCharge, paymentMethod),
+                    });
+                });
+                (booking.transactions || []).forEach((transaction) => {
+                    if (!(0, financeHelpers_1.isCheckInRoundingAdjustment)(transaction))
+                        return;
+                    const roundingAmount = Math.abs(transaction.amount || 0);
+                    if (roundingAmount <= 0)
+                        return;
+                    const targetSegment = (0, financeHelpers_1.targetSegmentForCheckInRounding)(booking, transaction);
+                    if (!targetSegment)
+                        return;
+                    const segmentStart = new Date(targetSegment.from);
+                    if (segmentStart < bounds.start || segmentStart >= bounds.end)
+                        return;
+                    const stayStartDate = formatBusinessDateKey(segmentStart);
+                    const roundingDirection = (0, financeHelpers_1.transactionDirection)(transaction);
+                    addBreakdownTransaction(categories, transaction, booking, roundingAmount, roundingDirection, undefined, undefined, stayStartDate);
+                    addPaymentMethodBreakdownTransaction(paymentMethods, transaction, booking, roundingAmount, roundingDirection, { stayStartDate });
                 });
             }
             (booking.transactions || []).forEach((transaction) => {
@@ -1198,6 +1349,7 @@ const getTodayRevenueSummary = async (req, res) => {
         }
         const [bookingRecords, standaloneSales] = await Promise.all([
             booking_1.default.find({
+                voided: { $ne: true },
                 $or: [
                     { checkIn: { $gte: bounds.start, $lt: bounds.end } },
                     {

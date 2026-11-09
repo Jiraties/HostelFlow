@@ -10,6 +10,7 @@ import {
   summarizeReceivedPaymentsByMethod,
   summarizeCashStashes,
   summarizeTransactions,
+  targetSegmentForCheckInRounding,
   transactionDashboardCollectedRevenueAmount,
   transactionDashboardGrossRevenueAmount,
   transactionFallsOnBusinessDate,
@@ -713,5 +714,251 @@ test("transactionFallsOnBusinessDate honors explicit Bangkok business-day UTC bo
       businessDateEnd,
     ),
     true,
+  );
+});
+
+test("today revenue attributes check-in cash rounding to the arrival segment date instead of splitting across a late check-in date", () => {
+  const day1Start = new Date("2026-08-09T17:00:00.000Z");
+  const day1End = new Date("2026-08-10T17:00:00.000Z");
+  const day2End = new Date("2026-08-11T17:00:00.000Z");
+
+  const lateCheckInBooking = {
+    bookingId: "SYNTHETIC-LATE-ROUNDING",
+    checkIn: new Date("2026-08-10T00:00:00.000Z"),
+    checkOut: new Date("2026-08-12T00:00:00.000Z"),
+    status: "checkedIn",
+    platformId: "HW",
+    commercialSegments: [
+      {
+        _id: "seg-original-1",
+        kind: "original",
+        from: new Date("2026-08-10T00:00:00.000Z"),
+        to: new Date("2026-08-12T00:00:00.000Z"),
+        platformId: "HW",
+        amount: 448.25,
+        transactionId: "tx-room-1",
+      },
+    ],
+    transactions: [
+      {
+        _id: "tx-room-1",
+        type: "roomCharge",
+        paymentMethod: "Unpaid",
+        amount: 448.25,
+        createdAt: new Date("2026-08-05T04:00:00.000Z"),
+      },
+      {
+        _id: "tx-rounding-1",
+        type: "adjustment",
+        paymentMethod: "Cash",
+        amount: 1.75,
+        direction: "in",
+        reasonOfAdjustment: "rounding",
+        sourceAction: "CHECK_IN",
+        createdAt: new Date("2026-08-11T02:15:00.000Z"),
+      },
+      {
+        _id: "tx-settlement-1",
+        type: "settlementCharge",
+        paymentMethod: "Cash",
+        amount: 448.25,
+        direction: "in",
+        relatedTransactionType: "roomCharge",
+        relatedTransactionId: "tx-room-1",
+        sourceAction: "CHECK_IN",
+        createdAt: new Date("2026-08-11T02:15:01.000Z"),
+      },
+    ],
+  } as unknown as booking;
+
+  assert.deepEqual(
+    calculateTodayRevenueSummary([lateCheckInBooking], day1Start, day1End),
+    {
+      todayRevenue: 450,
+      todayArrivalRevenue: 450,
+      todayExtrasRevenue: 0,
+      todayReductions: 0,
+      todayCollectedRevenue: 450,
+      todayServiceHighlights: [],
+    },
+  );
+
+  assert.deepEqual(
+    calculateTodayRevenueSummary([lateCheckInBooking], day1End, day2End),
+    {
+      todayRevenue: 0,
+      todayArrivalRevenue: 0,
+      todayExtrasRevenue: 0,
+      todayReductions: 0,
+      todayCollectedRevenue: 0,
+      todayServiceHighlights: [],
+    },
+  );
+});
+
+test("today revenue summary excludes voided bookings", () => {
+  const start = new Date("2026-08-09T17:00:00.000Z");
+  const end = new Date("2026-08-10T17:00:00.000Z");
+
+  const bookings = [
+    {
+      bookingId: "SYNTHETIC-VOIDED",
+      voided: true,
+      checkIn: new Date("2026-08-10T00:00:00.000Z"),
+      checkOut: new Date("2026-08-11T00:00:00.000Z"),
+      status: "checkedIn",
+      transactions: [
+        {
+          _id: "voided-room",
+          type: "roomCharge",
+          paymentMethod: "Cash",
+          amount: 800,
+          createdAt: new Date("2026-08-10T03:00:00.000Z"),
+        },
+        {
+          _id: "voided-towel",
+          type: "towel",
+          paymentMethod: "Cash",
+          amount: 40,
+          createdAt: new Date("2026-08-10T04:00:00.000Z"),
+        },
+      ],
+    },
+    {
+      bookingId: "SYNTHETIC-ACTIVE",
+      voided: false,
+      checkIn: new Date("2026-08-10T00:00:00.000Z"),
+      checkOut: new Date("2026-08-11T00:00:00.000Z"),
+      status: "checkedIn",
+      transactions: [
+        {
+          _id: "active-room",
+          type: "roomCharge",
+          paymentMethod: "Cash",
+          amount: 600,
+          createdAt: new Date("2026-08-10T03:30:00.000Z"),
+        },
+      ],
+    },
+  ] as unknown as booking[];
+
+  assert.deepEqual(calculateTodayRevenueSummary(bookings, start, end), {
+    todayRevenue: 600,
+    todayArrivalRevenue: 600,
+    todayExtrasRevenue: 0,
+    todayReductions: 0,
+    todayCollectedRevenue: 600,
+    todayServiceHighlights: [],
+  });
+});
+
+test("rounding adjustment explicitly linked to an extension segment via commercialSegmentId is attributed to the extension start date", () => {
+  const day1Start = new Date("2026-08-09T17:00:00.000Z");
+  const day1End = new Date("2026-08-10T17:00:00.000Z");
+  const day2End = new Date("2026-08-11T17:00:00.000Z");
+
+  const bookingWithExtensionRounding = {
+    bookingId: "SYNTHETIC-EXT-SEGMENT-ROUNDING",
+    checkIn: new Date("2026-08-10T00:00:00.000Z"),
+    checkOut: new Date("2026-08-12T00:00:00.000Z"),
+    status: "checkedIn",
+    platformId: "HOST",
+    commercialSegments: [
+      {
+        _id: "seg-orig-1",
+        kind: "original",
+        from: new Date("2026-08-10T00:00:00.000Z"),
+        to: new Date("2026-08-11T00:00:00.000Z"),
+        platformId: "HOST",
+        amount: 448.25,
+        transactionId: "tx-room-orig",
+      },
+      {
+        _id: "seg-ext-1",
+        kind: "extension",
+        from: new Date("2026-08-11T00:00:00.000Z"),
+        to: new Date("2026-08-12T00:00:00.000Z"),
+        platformId: "WALK",
+        amount: 248.5,
+        transactionId: "tx-room-ext",
+      },
+    ],
+    transactions: [
+      {
+        _id: "tx-room-orig",
+        type: "roomCharge",
+        paymentMethod: "Unpaid",
+        amount: 448.25,
+        createdAt: new Date("2026-08-08T04:00:00.000Z"),
+      },
+      {
+        _id: "tx-settle-orig",
+        type: "settlementCharge",
+        paymentMethod: "Transfer",
+        amount: 448.25,
+        direction: "in",
+        relatedTransactionType: "roomCharge",
+        relatedTransactionId: "tx-room-orig",
+        sourceAction: "CHECK_IN",
+        createdAt: new Date("2026-08-10T06:00:00.000Z"),
+      },
+      {
+        _id: "tx-room-ext",
+        type: "roomCharge",
+        paymentMethod: "Cash",
+        amount: 248.5,
+        direction: "in",
+        sourceAction: "EXTEND_BOOKING",
+        createdAt: new Date("2026-08-10T09:00:00.000Z"),
+      },
+      {
+        _id: "tx-rounding-ext",
+        type: "adjustment",
+        paymentMethod: "Cash",
+        amount: 1.5,
+        direction: "in",
+        reasonOfAdjustment: "rounding",
+        commercialSegmentId: "seg-ext-1",
+        createdAt: new Date("2026-08-10T09:00:01.000Z"),
+      },
+    ],
+  } as unknown as booking;
+
+  const targetSegment = targetSegmentForCheckInRounding(
+    bookingWithExtensionRounding,
+    bookingWithExtensionRounding.transactions[3],
+  );
+  assert.equal(String(targetSegment?._id), "seg-ext-1");
+
+  assert.deepEqual(
+    calculateTodayRevenueSummary(
+      [bookingWithExtensionRounding],
+      day1Start,
+      day1End,
+    ),
+    {
+      todayRevenue: 448.25,
+      todayArrivalRevenue: 448.25,
+      todayExtrasRevenue: 0,
+      todayReductions: 0,
+      todayCollectedRevenue: 448.25,
+      todayServiceHighlights: [],
+    },
+  );
+
+  assert.deepEqual(
+    calculateTodayRevenueSummary(
+      [bookingWithExtensionRounding],
+      day1End,
+      day2End,
+    ),
+    {
+      todayRevenue: 250,
+      todayArrivalRevenue: 250,
+      todayExtrasRevenue: 0,
+      todayReductions: 0,
+      todayCollectedRevenue: 250,
+      todayServiceHighlights: [{ type: "roomCharge", count: 1, total: 248.5 }],
+    },
   );
 });
