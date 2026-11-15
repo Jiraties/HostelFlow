@@ -1,3 +1,8 @@
+import FinancialCorrectionRequest from "../src/models/financialCorrectionRequest";
+import CashShiftMutationLock from "../src/models/cashShiftMutationLock";
+import StandaloneSale from "../src/models/standaloneSale";
+import { reconcileHistoricalCorrection, submitCorrectionRequest, previewCorrectionRequest, decideCorrectionRequest, listCorrectionRequests } from "../src/controller/financialCorrectionRequests";
+import { getCashShiftAudit, reopenFinalCashShift, closeCashShift } from "../src/controller/finance";
 import assert from "node:assert/strict";
 import { after, before, beforeEach, test } from "node:test";
 import mongoose from "mongoose";
@@ -96,6 +101,9 @@ before(async () => {
     dbName: "hostelflow_transaction_corrections",
   });
   await Promise.all([
+    FinancialCorrectionRequest.syncIndexes(),
+    CashShiftMutationLock.syncIndexes(),
+    StandaloneSale.syncIndexes(),
     Activity.syncIndexes(),
     Booking.syncIndexes(),
     CashShift.syncIndexes(),
@@ -617,7 +625,7 @@ test("a paid transaction cannot be corrected into Unpaid", async () => {
   );
 });
 
-test("financial correction affecting a closed cash shift is rejected", async () => {
+test("admin historical correction preserves a closed cash shift", async () => {
   const shift = await CashShift.create({
     businessDate: businessDateKey(),
     shiftNumber: 1,
@@ -642,9 +650,14 @@ test("financial correction affecting a closed cash shift is rejected", async () 
     overrides: { correctedPaymentMethod: "Cash" },
   });
 
-  assert.equal(result.statusCode, 409);
-  assert.equal(result.body.error, "FINANCIAL_PERIOD_CLOSED");
-  assert.equal((await Booking.findById(booking._id).lean())?.transactionCorrections.length, 0);
+  assert.equal(result.statusCode, 200, JSON.stringify(result.body));
+  assert.equal((await Booking.findById(booking._id).lean())?.transactionCorrections[0].historical, true);
+  assert.equal((await CashShift.findById(shift._id).lean())?.operatingExpectedCash, 1200);
+  const audit = response();
+  await getCashShiftAudit({ query: { date: businessDateKey() }, user: { admin: true } } as any, audit as any);
+  assert.equal(audit.statusCode, 200, JSON.stringify(audit.body));
+  assert.equal(audit.body.shifts[0].operatingExpectedCash, 1200);
+  assert.equal(audit.body.shifts[0].correctionCashDelta, -200);
 });
 
 // Synthetic metadata regressions: do not involve any operating cash movement.
@@ -725,7 +738,7 @@ test("financial correction for a checked-in booking after daily close is rejecte
   });
   const booking = await createBooking({ status: "checkedIn" });
   const transactionId = String(booking.transactions[0]._id);
-  const financial = await callCorrection({ transactionId });
+  const financial = await callCorrection({ transactionId, admin: false });
   const metadata = await callCorrection({
     transactionId,
     key: "metadata-only",
@@ -737,7 +750,7 @@ test("financial correction for a checked-in booking after daily close is rejecte
     },
   });
 
-  assert.equal(financial.statusCode, 409);
+  assert.equal(financial.statusCode, 403);
   assert.equal(metadata.statusCode, 200);
   assert.equal(metadata.body.correction.financialChange, false);
 });
@@ -972,4 +985,172 @@ test("duplicate idempotency key cannot append a second correction", async () => 
     (await Booking.findById(booking._id).lean())?.transactionCorrections.length,
     1,
   );
+});
+
+// All records below are synthetic workflow fixtures.
+const requestCall = async (handler: Function, body: any = {}, params: any = {}, admin = false) => {
+  const result = response();
+  (result as any).sendStatus = (code: number) => result.status(code).json({ error: "FORBIDDEN" });
+  await handler({ body, params, query: {}, user: { username: admin ? "admin" : "staff", userId: admin ? "admin-id" : "staff-id", admin },
+    method: "POST", originalUrl: "/finance/correction-requests", get: () => crypto.randomUUID() }, result);
+  return result;
+};
+const requestFixture = async () => {
+  const booking = await createBooking({ status: "checkedOut", paymentMethod: "Transfer", amount: 250 });
+  const body = { sourceType: "booking", sourceId: booking.bookingId, transactionId: String(booking.transactions[0]._id), expectedRevision: 0,
+    correctedAmount: 350, correctedPaymentMethod: "Transfer", correctedCategory: "roomCharge", correctedNote: "Synthetic recording mistake",
+    correctionType: "recorded_mistake", reasonCode: "incorrect_amount", note: "Synthetic recording mistake" };
+  return { booking, body };
+};
+test("preview and submission never change source balances; admin approval applies once", async () => {
+  const { booking, body } = await requestFixture();
+  const preview = await requestCall(previewCorrectionRequest, body);
+  assert.equal(preview.body.requiresApproval, true);
+  const submitted = await requestCall(submitCorrectionRequest, body);
+  assert.equal(submitted.statusCode, 201, JSON.stringify(submitted.body));
+  const id = String(submitted.body.request._id);
+  assert.equal((await Booking.findById(booking._id).lean())?.transactionCorrections.length, 0);
+  const approved = await requestCall(decideCorrectionRequest, {}, { requestId: id, action: "approve" }, true);
+  assert.equal(approved.statusCode, 200, JSON.stringify(approved.body));
+  assert.equal((await FinancialCorrectionRequest.findById(id))?.status, "approved");
+  assert.equal((await Booking.findById(booking._id).lean())?.transactions[0].amount, 250);
+  assert.equal((await Booking.findById(booking._id).lean())?.transactionCorrections[0].after.amount, 350);
+  const duplicate = await requestCall(decideCorrectionRequest, {}, { requestId: id, action: "approve" }, true);
+  assert.equal(duplicate.statusCode, 409);
+  assert.equal(await Activity.countDocuments({ action: "CORRECT_TRANSACTION" }), 1);
+});
+test("duplicate pending requests are rejected and staff cannot approve", async () => {
+  const { body } = await requestFixture();
+  const first = await requestCall(submitCorrectionRequest, body);
+  const second = await requestCall(submitCorrectionRequest, body);
+  assert.equal(second.statusCode, 409);
+  const decision = await requestCall(decideCorrectionRequest, {}, { requestId: String(first.body.request._id), action: "approve" });
+  assert.equal(decision.statusCode, 403);
+});
+test("reject requires a reason and preserves the original proposal", async () => {
+  const { body } = await requestFixture();
+  const submitted = await requestCall(submitCorrectionRequest, body);
+  const params = { requestId: String(submitted.body.request._id), action: "reject" };
+  assert.equal((await requestCall(decideCorrectionRequest, {}, params, true)).statusCode, 400);
+  const rejected = await requestCall(decideCorrectionRequest, { reason: "Synthetic insufficient evidence" }, params, true);
+  assert.equal(rejected.body.request.status, "rejected");
+  assert.equal(rejected.body.request.proposal.after.amount, 350);
+});
+test("changed source revision makes the request stale without applying", async () => {
+  const { body, booking } = await requestFixture();
+  const submitted = await requestCall(submitCorrectionRequest, body);
+  await Booking.updateOne({ _id: booking._id }, { $inc: { revision: 1 } });
+  const result = await requestCall(decideCorrectionRequest, {}, { requestId: String(submitted.body.request._id), action: "approve" }, true);
+  assert.equal(result.body.error, "CORRECTION_REQUEST_STALE");
+  assert.equal((await FinancialCorrectionRequest.findById(submitted.body.request._id))?.status, "stale");
+  assert.equal((await Booking.findById(booking._id).lean())?.transactionCorrections.length, 0);
+});
+test("standalone sale uses the same proposal and approval validation", async () => {
+  const sale = await StandaloneSale.create({ saleId: "SYNTHETIC-SALE", createdBy: "staff", transactions: [{ type: "slowBoat", paymentMethod: "Transfer", amount: 250 }] });
+  const { body } = await requestFixture();
+  const submitted = await requestCall(submitCorrectionRequest, { ...body, sourceType: "standaloneSale", sourceId: sale.saleId, transactionId: String(sale.transactions[0]._id), correctedCategory: "slowBoat" });
+  assert.equal(submitted.statusCode, 201, JSON.stringify(submitted.body));
+  const result = await requestCall(decideCorrectionRequest, {}, { requestId: String(submitted.body.request._id), action: "approve" }, true);
+  assert.equal(result.statusCode, 200, JSON.stringify(result.body));
+  const stored = await StandaloneSale.findById(sale._id).lean();
+  assert.equal(stored?.transactions[0].amount, 250);
+  assert.equal(stored?.transactionCorrections[0].after.amount, 350);
+});
+
+test("historical service correction reconciles yesterday without changing today's shift", async () => {
+  const yesterday = new Date(Date.now() - 86400000);
+  const original = await CashShift.create({ businessDate: businessDateKey(yesterday), shiftNumber: 1, staffUsername: "staff", status: "closed", openingMode: "counted", operatingOpeningCash: 0, operatingCashIn: 250, operatingCashOut: 0, operatingExpectedCash: 250, operatingActualCash: 350, operatingVariance: 100, createdBy: "staff", closedBy: "staff", startedAt: yesterday, endedAt: yesterday, isFinalDayClose: true });
+  const today = await CashShift.create({ businessDate: businessDateKey(), shiftNumber: 1, staffUsername: "staff", status: "open", openingMode: "counted", operatingOpeningCash: 350, operatingExpectedCash: 350, createdBy: "staff" });
+  const booking = await createBooking({ paymentMethod: "Cash", cashShiftId: String(original._id), amount: 250, status: "checkedOut", checkIn: yesterday });
+  booking.transactions[0].type = "slowBoat";
+  booking.transactions[0].createdAt = yesterday;
+  await booking.save();
+  const corrected = await callCorrection({ transactionId: String(booking.transactions[0]._id), overrides: { correctedCategory: "slowBoat", correctedAmount: 350, correctedPaymentMethod: "Cash" } });
+  assert.equal(corrected.statusCode, 200, JSON.stringify(corrected.body));
+  const toTransfer = await callCorrection({ expectedRevision: 1, transactionId: String(booking.transactions[0]._id), overrides: { correctedCategory: "slowBoat", correctedAmount: 350, correctedPaymentMethod: "Transfer" } });
+  assert.equal(toTransfer.statusCode, 200, JSON.stringify(toTransfer.body));
+  const backToCash = await callCorrection({ expectedRevision: 2, transactionId: String(booking.transactions[0]._id), overrides: { correctedCategory: "slowBoat", correctedAmount: 350, correctedPaymentMethod: "Cash" } });
+  assert.equal(backToCash.statusCode, 200, JSON.stringify(backToCash.body));
+  assert.equal((await CashShift.findById(today._id))?.ledgerRevision, 0);
+  assert.equal((await CashShift.findById(today._id))?.operatingExpectedCash, 350);
+  const audit = response();
+  await getCashShiftAudit({ query: { date: businessDateKey(yesterday) }, user: { admin: true } } as any, audit as any);
+  assert.equal(audit.body.shifts[0].operatingExpectedCash, 250);
+  assert.equal(audit.body.shifts[0].operatingActualCash, 350);
+  assert.equal(audit.body.shifts[0].adjustedExpectedCash, 350);
+  assert.equal(audit.body.shifts[0].adjustedVariance, 0);
+  const breakdown = response();
+  await getTodayRevenueBreakdown({ query: { businessDate: businessDateKey() }, user: { admin: true } } as any, breakdown as any);
+  assert.equal(breakdown.body.categories.some((c: any) => c.type === "slowBoat" && c.total > 0), false);
+});
+test("simultaneous approvals apply one correction", async () => {
+  const { body, booking } = await requestFixture();
+  const submitted = await requestCall(submitCorrectionRequest, body);
+  const params = { requestId: String(submitted.body.request._id), action: "approve" };
+  const results = await Promise.all([requestCall(decideCorrectionRequest, {}, { ...params }, true), requestCall(decideCorrectionRequest, {}, { ...params }, true)]);
+  assert.equal(results.filter((r) => r.statusCode === 200).length, 1);
+  assert.equal((await Booking.findById(booking._id))?.transactionCorrections.length, 1);
+});
+test("withdrawal changes no balances and permits a new proposal", async () => {
+  const { body, booking } = await requestFixture();
+  const submitted = await requestCall(submitCorrectionRequest, body);
+  const withdrawn = await requestCall(decideCorrectionRequest, {}, { requestId: String(submitted.body.request._id), action: "withdraw" });
+  assert.equal(withdrawn.body.request.status, "withdrawn");
+  assert.equal((await Booking.findById(booking._id))?.transactionCorrections.length, 0);
+  assert.equal((await requestCall(submitCorrectionRequest, body)).statusCode, 201);
+});
+
+test("reopening and reclosing incorporates a historical correction once and retains the first close", async () => {
+  const endedAt = new Date(Date.now() - 60000);
+  const shift = await CashShift.create({ businessDate: businessDateKey(), shiftNumber: 1, staffUsername: "staff", status: "closed", openingMode: "counted", operatingOpeningCash: 0, operatingExpectedCash: 250, operatingCashIn: 250, operatingCashOut: 0, operatingActualCash: 350, operatingVariance: 100, createdBy: "staff", closedBy: "staff", endedAt, isFinalDayClose: true });
+  const booking = await createBooking({ paymentMethod: "Cash", cashShiftId: String(shift._id), amount: 250 });
+  const correction = await callCorrection({ transactionId: String(booking.transactions[0]._id), overrides: { correctedAmount: 350, correctedPaymentMethod: "Cash" } });
+  assert.equal(correction.statusCode, 200);
+  const reopened = response();
+  await reopenFinalCashShift({ params: { shiftId: String(shift._id) }, body: { reason: "Synthetic reopen test", expectedLedgerRevision: 0 }, user: { username: "admin", admin: true }, get: () => "synthetic-reopen-correction" } as any, reopened as any);
+  assert.equal(reopened.statusCode, 200, JSON.stringify(reopened.body));
+  const closed = response();
+  await closeCashShift({ params: { shiftId: String(shift._id) }, body: { operatingActualCash: 350, closeDay: false }, user: { username: "admin", admin: true }, method: "POST", originalUrl: "/synthetic-close", get: () => "synthetic-reclose-correction" } as any, closed as any);
+  assert.equal(closed.statusCode, 200, JSON.stringify(closed.body));
+  const audit = response();
+  await getCashShiftAudit({ query: { date: businessDateKey() }, user: { admin: true } } as any, audit as any);
+  assert.equal(audit.body.shifts[0].operatingExpectedCash, 350);
+  assert.equal(audit.body.shifts[0].correctionCashDelta, 0);
+  assert.equal(audit.body.shifts[0].reopenCorrections[0].originalClose.operatingExpectedCash, 250);
+});
+
+test("strict audit failure rolls back approval, correction and source revision together", async () => {
+  const { body, booking } = await requestFixture();
+  const submitted = await requestCall(submitCorrectionRequest, body);
+  const save = Activity.prototype.save;
+  (Activity.prototype as any).save = function (...args: any[]) {
+    if (this.action === "CORRECT_TRANSACTION") throw new Error("Synthetic audit failure");
+    return (save as any).apply(this, args);
+  };
+  try {
+    const result = await requestCall(decideCorrectionRequest, {}, { requestId: String(submitted.body.request._id), action: "approve" }, true);
+    assert.equal(result.statusCode, 500);
+    const stored = await Booking.findById(booking._id);
+    assert.equal(stored?.revision, 0);
+    assert.equal(stored?.transactionCorrections.length, 0);
+    assert.equal((await FinancialCorrectionRequest.findById(submitted.body.request._id))?.status, "pending");
+  } finally { Activity.prototype.save = save; }
+});
+
+test("historical corrections without an original shift require an audited reconciliation note", async () => {
+  const { booking, body } = await requestFixture();
+  await DailyClose.create({ businessDate: businessDateKey(), staffUsername: "staff", openingCash: 0, expectedCash: 0, actualCash: 0, variance: 0, cashIn: 0, cashOut: 0, createdBy: "staff" });
+  const submitted = await requestCall(submitCorrectionRequest, body);
+  const approved = await requestCall(decideCorrectionRequest, {}, { requestId: String(submitted.body.request._id), action: "approve" }, true);
+  assert.equal(approved.statusCode, 200);
+  const stored = await Booking.findById(booking._id);
+  const params = { sourceType: "booking", sourceId: booking.bookingId, correctionId: String(stored?.transactionCorrections[0]._id) };
+  assert.equal((await requestCall(reconcileHistoricalCorrection, {}, params, true)).statusCode, 400);
+  assert.equal((await requestCall(reconcileHistoricalCorrection, { note: "Synthetic reconciliation" }, params)).statusCode, 403);
+  assert.equal((await requestCall(reconcileHistoricalCorrection, { note: "Synthetic reconciliation" }, params, true)).statusCode, 200);
+  assert.equal((await requestCall(reconcileHistoricalCorrection, { note: "Attempted replacement" }, params, true)).statusCode, 409);
+  const reconciled = await Booking.findById(booking._id);
+  assert.equal(reconciled?.transactions[0].amount, 250);
+  assert.equal(reconciled?.transactionCorrections[0].after.amount, 350);
+  assert.equal(reconciled?.transactionCorrections[0].reconciliation?.note, "Synthetic reconciliation");
 });

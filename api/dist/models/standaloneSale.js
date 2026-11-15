@@ -11,6 +11,7 @@ const standaloneSaleSchema = new mongoose_1.default.Schema({
     reference: { type: String, trim: true, maxlength: 200 },
     revision: { type: Number, default: 0, required: true },
     transactions: { type: [booking_1.transactionSchema], default: [] },
+    transactionCorrections: { type: [booking_1.transactionCorrectionSchema], default: [] },
     createdBy: { type: String, required: true },
 }, { timestamps: true });
 standaloneSaleSchema.index({ createdAt: -1 });

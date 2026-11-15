@@ -11,6 +11,7 @@
     "build": "tsc",
     "test": "node --test -r ts-node/register tests/**/*.test.ts",
     "migrate:preproduction-integrity": "ts-node src/scripts/migratePreProductionIntegrity.ts",
+    "migrate:financial-correction-indexes": "ts-node src/scripts/migrateFinancialCorrectionIndexes.ts",
     "migrate:roomIds": "ts-node src/scripts/migrateRoomStayRoomIds.ts",
     "migrate:booking-extension-indexes": "ts-node src/scripts/migrateBookingExtensionIndexes.ts",
     "migrate:status-correction-indexes": "ts-node src/scripts/migrateStatusCorrectionIndexes.ts",

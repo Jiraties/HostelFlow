@@ -1,3 +1,4 @@
+import CorrectionRequests from "../finance/CorrectionRequests";
 import ActionButton from "../../components/ActionButton";
 import ModalCloseButton from "../../components/ModalCloseButton";
 import UnsavedChangesModal from "../../components/UnsavedChangesModal";
@@ -909,7 +910,6 @@ const ViewBooking = ({
     : 0;
   const hasRecordedPayments = bookingHasRecordedPayments(data);
   const hasCorrectableTransactions =
-    (!data.voided || Boolean(user?.admin)) &&
     data.transactions.some((transaction) =>
       correctableTransactionTypes.has(transaction.type),
     );
@@ -1246,7 +1246,6 @@ const ViewBooking = ({
     compact = false,
   ) => {
     const canEditTransaction =
-      (!data.voided || Boolean(user?.admin)) &&
       correctableTransactionTypes.has(transaction.type);
 
     return (
@@ -2116,6 +2115,7 @@ const ViewBooking = ({
           </div>
           <div className="viewBooking__mainRight">
             {/* <p>ค่าใช้จ่าย</p> */}
+            <CorrectionRequests key={`${data.bookingId}-${data.revision}`} sourceId={data.bookingId} admin={Boolean(user?.admin)} />
             <div className="viewBooking__transactions">
               <div className="viewBooking__priceListWrap">
                 {data.advancePayment && advancePaymentTransaction && (

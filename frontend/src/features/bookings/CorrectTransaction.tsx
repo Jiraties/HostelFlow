@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import ActionButton from "../../components/ActionButton";
 import CashShiftNudge from "../../components/CashShiftNudge";
 import ModalCloseButton from "../../components/ModalCloseButton";
+import { notifyReviewQueueUpdated } from "../../helpers/reviewQueue";
 import { API_URL } from "../../config/api";
 import { useAuth } from "../../context/AuthContext";
 import { formatBookingDates } from "../../helpers/bookingHelpers";
@@ -126,8 +127,18 @@ const CorrectTransaction = ({
   onClose,
   onUpdated,
   onDirtyChange,
+  sourceType = "booking",
+  review,
 }: {
   booking: booking;
+  sourceType?: "booking" | "standaloneSale";
+  review?: {
+    after: Transaction;
+    note: string;
+    status: string;
+    admin: boolean;
+    onDecide: (action: string, reason?: string) => Promise<void>;
+  };
   transaction: Transaction;
   onClose: () => void;
   onUpdated?: (booking: booking) => void;
@@ -151,6 +162,12 @@ const CorrectTransaction = ({
   >("");
   const [submitting, setSubmitting] = useState(false);
   const [validationAttempted, setValidationAttempted] = useState(false);
+  const [preview, setPreview] = useState<{
+    requiresApproval: boolean;
+    historical: boolean;
+    cashDelta: number;
+  } | null>(null);
+  const [decisionReason, setDecisionReason] = useState("");
   const fieldId = useId();
   const [idempotencyKey] = useState(() => crypto.randomUUID());
   const numericAmount = Number(correctedAmount);
@@ -210,6 +227,7 @@ const CorrectTransaction = ({
 
   const chooseCorrectionType = (value: TransactionCorrectionType) => {
     if (submitting) return;
+    setPreview(null);
     setCorrectionType(value);
     setReasonCode("");
   };
@@ -234,25 +252,46 @@ const CorrectTransaction = ({
 
     setSubmitting(true);
     try {
+      const payload = {
+        sourceType,
+        sourceId: currentBooking.bookingId,
+        transactionId: transaction.originalTransactionId || transaction._id,
+        expectedRevision: currentBooking.revision,
+        correctedAmount: numericAmount,
+        correctedPaymentMethod,
+        correctedCategory,
+        correctedNote,
+        correctionType,
+        reasonCode,
+        note: correctedNote.trim(),
+      };
+      if (!preview) {
+        const { data } = await axios.post(
+          `${API_URL}/finance/correction-requests/preview`,
+          payload,
+          { withCredentials: true },
+        );
+        setPreview(data);
+        return;
+      }
+      const requestOnly = preview.requiresApproval && !user?.admin;
       const response = await axios.post(
-        `${API_URL}/bookings/${currentBooking.bookingId}/transactions/${
-          transaction.originalTransactionId || transaction._id
-        }/corrections`,
-        {
-          expectedRevision: currentBooking.revision,
-          correctedAmount: numericAmount,
-          correctedPaymentMethod,
-          correctedCategory,
-          correctedNote,
-          correctionType,
-          reasonCode,
-          note: correctedNote.trim(),
-        },
+        requestOnly
+          ? `${API_URL}/finance/correction-requests`
+          : sourceType === "standaloneSale"
+            ? `${API_URL}/finance/standalone-sales/${currentBooking.bookingId}/transactions/${payload.transactionId}/corrections`
+            : `${API_URL}/bookings/${currentBooking.bookingId}/transactions/${payload.transactionId}/corrections`,
+        payload,
         {
           withCredentials: true,
           headers: { "Idempotency-Key": idempotencyKey },
         },
       );
+      notifyReviewQueueUpdated();
+      if (requestOnly || sourceType === "standaloneSale") {
+        onClose();
+        return;
+      }
       onUpdated?.(formatBookingDates(response.data.booking));
       onClose();
     } catch (error) {
@@ -261,6 +300,90 @@ const CorrectTransaction = ({
       setSubmitting(false);
     }
   };
+
+  if (review) {
+    const decide = async (action: string) => {
+      if (submitting) return;
+      if (action === "reject" && !decisionReason.trim()) {
+        toast.error("กรุณาระบุเหตุผลที่ไม่อนุมัติ");
+        return;
+      }
+      setSubmitting(true);
+      try {
+        await review.onDecide(action, decisionReason);
+      } catch (error) {
+        toast.error(getApiErrorMessage(error, "ดำเนินการไม่สำเร็จ กรุณารีเฟรช"));
+      } finally {
+        setSubmitting(false);
+      }
+    };
+    return (
+      <div className="addBooking__wrapper correctTransaction__wrapper">
+        <ModalCloseButton onClick={onClose} />
+        <header className="correctTransaction__header">
+          <h1 className="addBooking__title">ตรวจสอบคำขอแก้ไข</h1>
+          <p>
+            {currentBooking.name} · {currentBooking.bookingId}
+          </p>
+        </header>
+        <div className="correctTransaction__form">
+          <p>
+            รายการ: {transactionLabels[transaction.type]} →{" "}
+            {transactionLabels[review.after.type]}
+          </p>
+          <p>
+            จำนวนเงิน: {transaction.amount} → {review.after.amount} ฿
+          </p>
+          <p>
+            ช่องทาง: {transaction.paymentMethod} → {review.after.paymentMethod}
+          </p>
+          <p>เหตุผล: {review.note}</p>
+          <p>สถานะ: {review.status}</p>
+          <p>
+            แก้ไขประวัติเดิม โดยไม่รับหรือจ่ายเงินใหม่ การปิดยอดและเงินที่นับไว้จะยังอยู่ในประวัติ
+          </p>
+          {review.status === "pending" && review.admin && (
+            <label>
+              <span className="addBooking__label">เหตุผลที่ไม่อนุมัติ</span>
+              <textarea
+                className="boxInput"
+                value={decisionReason}
+                onChange={(event) => setDecisionReason(event.target.value)}
+              />
+            </label>
+          )}
+        </div>
+        {review.status === "pending" && (
+          <div className="addTransaction__actions">
+            {review.admin ? (
+              <>
+                <ActionButton
+                  icon="bx-x"
+                  text="ไม่อนุมัติ"
+                  disabled={submitting}
+                  onClick={() => void decide("reject")}
+                />
+                <ActionButton
+                  icon="bx-check"
+                  text="อนุมัติการแก้ไข"
+                  highlight
+                  disabled={submitting}
+                  onClick={() => void decide("approve")}
+                />
+              </>
+            ) : (
+              <ActionButton
+                icon="bx-undo"
+                text="ถอนคำขอ"
+                disabled={submitting}
+                onClick={() => void decide("withdraw")}
+              />
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="addBooking__wrapper correctTransaction__wrapper">
@@ -271,9 +394,9 @@ const CorrectTransaction = ({
       </header>
 
       <div className="correctTransaction__form">
-        {financialChanged && correctedPaymentMethod === "Cash" && (
-          <CashShiftNudge />
-        )}
+        {financialChanged &&
+          !preview?.historical &&
+          correctedPaymentMethod === "Cash" && <CashShiftNudge />}
         {canSelectChargeChange && (
           <section className="correctTransaction__section">
             <p className="addBooking__label">สิ่งที่ต้องการทำ</p>
@@ -343,11 +466,12 @@ const CorrectTransaction = ({
                 isDisabled={categoryLocked || submitting}
                 menuPortalTarget={document.body}
                 menuPosition="fixed"
-                onChange={(option: SingleValue<OptionType>) =>
+                onChange={(option: SingleValue<OptionType>) => (
+                  setPreview(null),
                   setCorrectedCategory(
                     (option?.value || transaction.type) as TransactionType,
                   )
-                }
+                )}
               />
               {categoryLocked && (
                 <span
@@ -381,7 +505,10 @@ const CorrectTransaction = ({
               step="0.01"
               value={correctedAmount}
               disabled={submitting}
-              onChange={(event) => setCorrectedAmount(event.target.value)}
+              onChange={(event) => {
+                setPreview(null);
+                setCorrectedAmount(event.target.value);
+              }}
             />
             {validationAttempted &&
               (!Number.isFinite(numericAmount) || numericAmount < 0) && (
@@ -419,12 +546,13 @@ const CorrectTransaction = ({
                 isDisabled={paymentMethodLocked || submitting}
                 menuPortalTarget={document.body}
                 menuPosition="fixed"
-                onChange={(option: SingleValue<OptionType>) =>
+                onChange={(option: SingleValue<OptionType>) => (
+                  setPreview(null),
                   setCorrectedPaymentMethod(
                     (option?.value ||
                       transaction.paymentMethod) as Transaction["paymentMethod"],
                   )
-                }
+                )}
               />
               {paymentMethodLocked && (
                 <span
@@ -463,11 +591,12 @@ const CorrectTransaction = ({
               isDisabled={submitting}
               menuPortalTarget={document.body}
               menuPosition="fixed"
-              onChange={(option: SingleValue<OptionType>) =>
+              onChange={(option: SingleValue<OptionType>) => (
+                setPreview(null),
                 setReasonCode(
                   (option?.value || "") as TransactionCorrectionReason | "",
                 )
-              }
+              )}
             />
             {validationAttempted && !reasonCode && (
               <span id={`${fieldId}-reason-error`} className="formField__error">
@@ -490,7 +619,10 @@ const CorrectTransaction = ({
             value={correctedNote}
             disabled={submitting}
             placeholder="อธิบายข้อมูลที่ถูกต้องหรือเหตุผลที่แก้ไข"
-            onChange={(event) => setCorrectedNote(event.target.value)}
+            onChange={(event) => {
+              setPreview(null);
+              setCorrectedNote(event.target.value);
+            }}
           />
           {validationAttempted && !correctedNote.trim() && (
             <span id={`${fieldId}-note-error`} className="formField__error">
@@ -504,20 +636,45 @@ const CorrectTransaction = ({
         </p> */}
       </div>
 
+      {preview && (
+        <section className="resolveBooking__summary" aria-live="polite">
+          <p>
+            เดิม {transaction.amount} → ใหม่ {numericAmount} ฿ ·{" "}
+            {transaction.paymentMethod} → {correctedPaymentMethod}
+          </p>
+          {preview.historical && (
+            <p>
+              รายการนี้ปิดรอบแล้ว การแก้ไขไม่เปลี่ยนเงินสดวันนี้ · ผลต่างเงินสดเดิม{" "}
+              {preview.cashDelta} ฿
+            </p>
+          )}
+          {preview.requiresApproval && !user?.admin && (
+            <p>ต้องให้ Admin อนุมัติ ยอดเดิมจะยังไม่เปลี่ยน</p>
+          )}
+        </section>
+      )}
       <div className="addTransaction__actions">
         <ActionButton
-          text="ยืนยันการแก้ไข"
+          text={
+            !preview
+              ? "ตรวจสอบการแก้ไข"
+              : preview.requiresApproval && !user?.admin
+                ? "ส่งคำขอให้ Admin อนุมัติ"
+                : "ยืนยันการแก้ไข"
+          }
           icon="bx-save"
           highlight
           disabled={submitting}
           onClick={() =>
             toast.promise(submit(), {
               loading: "กำลังแก้ไขรายการ...",
-              success: "แก้ไขรายการสำเร็จ และเก็บข้อมูลเดิมไว้แล้ว",
+              success: !preview
+                ? "ตรวจสอบข้อมูลแล้ว กรุณายืนยัน"
+                : preview.requiresApproval && !user?.admin
+                  ? "ส่งคำขอแล้ว"
+                  : "แก้ไขรายการสำเร็จ และเก็บข้อมูลเดิมไว้แล้ว",
               error: (error) =>
-                error instanceof Error
-                  ? error.message
-                  : "ไม่สามารถแก้ไขรายการได้",
+                error instanceof Error ? error.message : "ไม่สามารถแก้ไขรายการได้",
             })
           }
         />

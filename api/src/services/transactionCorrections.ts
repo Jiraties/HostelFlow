@@ -85,6 +85,7 @@ const correctionId = (correction: TransactionCorrection) =>
 export const projectEffectiveTransactions = (
   transactions: transcation[] = [],
   corrections: TransactionCorrection[] = [],
+  foldLegacyAdjustments = true,
 ): EffectiveTransaction[] => {
   const correctionsByTarget = new Map<string, TransactionCorrection[]>();
 
@@ -104,7 +105,7 @@ export const projectEffectiveTransactions = (
   const legacyCountByTarget = new Map<string, number>();
 
   plainTransactions.forEach((transaction) => {
-    if (transaction.type !== "adjustment" || !transaction.relatedTransactionId) {
+    if (!foldLegacyAdjustments || transaction.type !== "adjustment" || !transaction.relatedTransactionId) {
       return;
     }
     const target = plainTransactions.find(
@@ -176,6 +177,7 @@ export const effectiveBookingTransactions = (
   projectEffectiveTransactions(
     currentBooking.transactions || [],
     currentBooking.transactionCorrections || [],
+    !("saleId" in currentBooking),
   );
 
 export const withEffectiveTransactions = <
@@ -188,6 +190,7 @@ export const withEffectiveTransactions = <
   transactions: projectEffectiveTransactions(
     record.transactions || [],
     record.transactionCorrections || [],
+    !("saleId" in record),
   ),
 });
 

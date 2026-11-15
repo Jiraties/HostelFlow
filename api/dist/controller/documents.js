@@ -474,6 +474,23 @@ const createFilteredBookingWorkbook = (rows, filters, month, staffName) => {
     });
     return workbook;
 };
+const appendCorrectionWorksheet = (workbook, bookings) => {
+    if (!bookings.some((booking) => booking.transactionCorrections?.length))
+        return;
+    const correctionSheet = workbook.addWorksheet("Corrections");
+    correctionSheet.columns = [
+        { header: "Booking", key: "bookingId", width: 24 }, { header: "Original date", key: "originalBusinessDate", width: 18 },
+        { header: "Applied at", key: "appliedAt", width: 26 }, { header: "Original amount", key: "before", width: 18 },
+        { header: "Corrected amount", key: "after", width: 18 }, { header: "Original method", key: "beforeMethod", width: 18 },
+        { header: "Corrected method", key: "afterMethod", width: 18 }, { header: "Applied by", key: "actor", width: 24 },
+        { header: "Reason", key: "reason", width: 40 }, { header: "Request", key: "requestId", width: 28 },
+    ];
+    bookings.forEach((booking) => (booking.transactionCorrections || []).forEach((c) => correctionSheet.addRow({
+        bookingId: booking.bookingId, originalBusinessDate: c.originalBusinessDate, appliedAt: new Date(c.correctedAt).toISOString(),
+        before: c.before.amount, after: c.after.amount, beforeMethod: c.before.paymentMethod, afterMethod: c.after.paymentMethod,
+        actor: c.correctedBy, reason: c.note, requestId: c.requestId,
+    })));
+};
 const getFilteredBookingsReport = async (req, res) => {
     const month = req.query.month;
     if (typeof month !== "string")
@@ -503,6 +520,7 @@ const getFilteredBookingsReport = async (req, res) => {
     const staff = await user_1.default.find({ username: { $in: staffUsernames } }).select("username name").lean();
     const staffNames = new Map(staff.map((member) => [member.username, member.name]));
     const workbook = createFilteredBookingWorkbook(rows, filters, month, (username) => (username && staffNames.get(username)) || "ไม่ทราบชื่อพนักงาน");
+    appendCorrectionWorksheet(workbook, records.filter((record) => rows.some((row) => row.booking.bookingId === record.bookingId)));
     setSensitiveDownloadHeaders(res);
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename=bookings-${month}.xlsx`);
@@ -561,6 +579,7 @@ const getBookingsReport = async (req, res) => {
         const displayStaffName = (username) => (username && staffNames.get(username)) || "ไม่ทราบชื่อพนักงาน";
         const workbook = new exceljs_1.default.Workbook();
         const sheet = workbook.addWorksheet("Bookings");
+        appendCorrectionWorksheet(workbook, bookings);
         sheet.columns = bookingReportColumns;
         sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
         sheet.getRow(1).fill = {

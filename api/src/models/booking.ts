@@ -206,6 +206,9 @@ export interface TransactionCorrectionSnapshot {
 
 export interface TransactionCorrection {
   _id?: string;
+  reconciliation?: { note: string; reviewedBy: string; reviewedAt: Date };
+  requestId?: string;
+  historical?: boolean;
   targetTransactionId: string;
   before: TransactionCorrectionSnapshot;
   after: TransactionCorrectionSnapshot;
@@ -490,7 +493,10 @@ const transactionCorrectionSnapshotSchema = new mongoose.Schema(
   { _id: false },
 );
 
-const transactionCorrectionSchema = new mongoose.Schema({
+export const transactionCorrectionSchema = new mongoose.Schema({
+  reconciliation: { type: new mongoose.Schema({ note: String, reviewedBy: String, reviewedAt: Date }, { _id: false }), default: undefined },
+  requestId: { type: String },
+  historical: { type: Boolean, default: false },
   targetTransactionId: { type: String, required: true },
   before: { type: transactionCorrectionSnapshotSchema, required: true },
   after: { type: transactionCorrectionSnapshotSchema, required: true },

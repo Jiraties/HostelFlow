@@ -57,7 +57,7 @@ const snapshotTransaction = (transaction) => ({
 });
 exports.snapshotTransaction = snapshotTransaction;
 const correctionId = (correction) => correction._id ? String(correction._id) : undefined;
-const projectEffectiveTransactions = (transactions = [], corrections = []) => {
+const projectEffectiveTransactions = (transactions = [], corrections = [], foldLegacyAdjustments = true) => {
     const correctionsByTarget = new Map();
     corrections.forEach((correction) => {
         const existing = correctionsByTarget.get(correction.targetTransactionId) || [];
@@ -71,7 +71,7 @@ const projectEffectiveTransactions = (transactions = [], corrections = []) => {
     const legacyAdjustmentIds = new Set();
     const legacyCountByTarget = new Map();
     plainTransactions.forEach((transaction) => {
-        if (transaction.type !== "adjustment" || !transaction.relatedTransactionId) {
+        if (!foldLegacyAdjustments || transaction.type !== "adjustment" || !transaction.relatedTransactionId) {
             return;
         }
         const target = plainTransactions.find((candidate) => String(candidate._id || "") === transaction.relatedTransactionId);
@@ -114,11 +114,11 @@ const projectEffectiveTransactions = (transactions = [], corrections = []) => {
     });
 };
 exports.projectEffectiveTransactions = projectEffectiveTransactions;
-const effectiveBookingTransactions = (currentBooking) => (0, exports.projectEffectiveTransactions)(currentBooking.transactions || [], currentBooking.transactionCorrections || []);
+const effectiveBookingTransactions = (currentBooking) => (0, exports.projectEffectiveTransactions)(currentBooking.transactions || [], currentBooking.transactionCorrections || [], !("saleId" in currentBooking));
 exports.effectiveBookingTransactions = effectiveBookingTransactions;
 const withEffectiveTransactions = (record) => ({
     ...record,
-    transactions: (0, exports.projectEffectiveTransactions)(record.transactions || [], record.transactionCorrections || []),
+    transactions: (0, exports.projectEffectiveTransactions)(record.transactions || [], record.transactionCorrections || [], !("saleId" in record)),
 });
 exports.withEffectiveTransactions = withEffectiveTransactions;
 const signedChargeAmount = (transaction) => {

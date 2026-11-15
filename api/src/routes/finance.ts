@@ -1,3 +1,5 @@
+import { runTransactionCorrection } from "../controller/transactionCorrections";
+import { reconcileHistoricalCorrection, correctionRequestsEnabled, previewCorrectionRequest, submitCorrectionRequest, listCorrectionRequests, decideCorrectionRequest } from "../controller/financialCorrectionRequests";
 import express from "express";
 import {
   approveReviewEvent,
@@ -20,12 +22,21 @@ import {
   adjustStandaloneSale,
   createStandaloneSale,
   getStandaloneSales,
+  getStandaloneSale,
 } from "../controller/standaloneSales";
 
 const financeRouter = express.Router();
 
+financeRouter.post("/standalone-sales/:bookingId/transactions/:transactionId/corrections", correctionRequestsEnabled, (req, res) => runTransactionCorrection(req as Parameters<typeof runTransactionCorrection>[0], res, { sourceType: "standaloneSale" }));
+financeRouter.post("/corrections/:sourceType/:sourceId/:correctionId/reconcile", reconcileHistoricalCorrection);
+financeRouter.get("/correction-requests", listCorrectionRequests);
+financeRouter.post("/correction-requests/preview", previewCorrectionRequest);
+financeRouter.post("/correction-requests", correctionRequestsEnabled, submitCorrectionRequest);
+financeRouter.post("/correction-requests/:requestId/:action", correctionRequestsEnabled, decideCorrectionRequest);
+
 financeRouter.post("/standalone-sales", createStandaloneSale);
 financeRouter.get("/standalone-sales", getStandaloneSales);
+financeRouter.get("/standalone-sales/:saleId", getStandaloneSale);
 financeRouter.post("/standalone-sales/:saleId/adjustments", adjustStandaloneSale);
 
 financeRouter.get("/reconciliation", getReconciliation);

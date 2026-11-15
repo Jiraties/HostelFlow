@@ -75,6 +75,8 @@ const TransactionCorrectionHistory = ({
                       : "ปรับยอดเรียกเก็บ"}
                   </strong>
                   <span>{reasonLabels[correction.reasonCode]}</span>
+                  {correction.historical && <p>แก้ไขหลังปิดรอบ · ไม่ใช่เงินรับหรือจ่ายใหม่</p>}
+                  {correction.requestId && <p>คำขอ: {correction.requestId}</p>}
                 </div>
                 <span className="correctionHistory__badge">
                   ครั้งที่ {history.length - index}

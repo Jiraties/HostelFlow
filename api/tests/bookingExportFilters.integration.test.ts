@@ -290,6 +290,10 @@ test("effective transaction corrections drive both selected payment method and E
   const cash = await report({ categories: "services", paymentMethods: "Cash" });
   assert.equal(cash.rows.length, 1);
   assert.equal(sum(cash.rows), 40);
+  const history = cash.workbook!.getWorksheet("Corrections")!;
+  assert.equal(history.rowCount, 2);
+  assert.equal(history.getRow(2).getCell(4).value, 100);
+  assert.equal(history.getRow(2).getCell(5).value, 40);
   const card = await report({ categories: "services", paymentMethods: "Card" });
   assert.equal(card.rows.length, 0);
 });

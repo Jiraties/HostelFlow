@@ -1,3 +1,5 @@
+import UnassignedCorrectionAudits, { type UnassignedCorrection } from "../features/finance/UnassignedCorrectionAudits";
+import CorrectionRequests from "../features/finance/CorrectionRequests";
 import "./Manage.css";
 
 import axios from "axios";
@@ -71,6 +73,10 @@ type CashAuditShift = {
   _id: string;
   shiftNumber: number;
   status: "open" | "closed";
+  subsequentCorrections?: Array<{ _id?: string; before: { amount: number; paymentMethod: string }; after: { amount: number; paymentMethod: string }; note: string; correctedBy: string; correctedAt: string }>;
+  correctionCashDelta?: number;
+  adjustedExpectedCash?: number;
+  adjustedVariance?: number;
   auditStatus: "operating" | "needs_review" | "complete";
   openingMode: "counted" | "accepted_handoff";
   operatingOpeningCash: number;
@@ -120,6 +126,7 @@ type CashAuditShift = {
 };
 
 type CashShiftAudit = {
+  unassignedCorrections?: UnassignedCorrection[];
   businessDate: string;
   threshold: number;
   shifts: CashAuditShift[];
@@ -601,6 +608,7 @@ const CashCloseAudit = ({
                         {formatMoney(shift.handoff.expectedOperatingOpening)} ฿
                       </p>
                     )}
+                    {Boolean(shift.subsequentCorrections?.length) && <div className="manage__auditEquations"><p>ผลต่างหลังแก้ไข {formatMoney(shift.correctionCashDelta || 0)} ฿</p><p>ยอดคาดไว้ที่ปรับแล้ว {formatMoney(shift.adjustedExpectedCash || 0)} ฿ · ยอดต่าง {formatMoney(shift.adjustedVariance || 0)} ฿</p><p>ยอดนับและยอดส่งมอบเดิมไม่เปลี่ยน</p>{shift.subsequentCorrections?.map((c) => <p key={c._id}>{c.before.amount} {c.before.paymentMethod} → {c.after.amount} {c.after.paymentMethod} · {c.note} · {resolveStaffName(c.correctedBy)}</p>)}</div>}
                     {shift.reopenCorrections.map((correction) => (
                       <div
                         className="manage__reopenCorrection"
@@ -746,6 +754,7 @@ const CashCloseAudit = ({
         </div>
       ) : null}
 
+      <UnassignedCorrectionAudits items={audit?.unassignedCorrections || []} />
       <div className="manage__financePanel">
         <div className="manage__financePanelHeader">
           <h3>คิวอนุมัติรายการ</h3>
@@ -1184,9 +1193,23 @@ const Manage = () => {
       </Modal>
 
       <PageHeader
-        title="จัดการ Staff"
+        title="จัดการระบบ"
         onRefresh={fetchManageData}
         lastUpdated={lastUpdated}
+      />
+
+      <CorrectionRequests admin />
+
+      <CashCloseAudit
+        audit={cashShiftAudit}
+        reviewEvents={reviewEvents}
+        financeDate={financeDate}
+        onDateChange={setFinanceDate}
+        onApproveTransaction={approveTransactionHandler}
+        onResolveShift={resolveCashShiftAuditHandler}
+        approvingTransactionId={approvingTransactionId}
+        loading={loading}
+        dateFormat={dateFormat}
       />
 
       <section className="main__actions">
@@ -1207,18 +1230,6 @@ const Manage = () => {
           </div>
         ))}
       </section>
-
-      <CashCloseAudit
-        audit={cashShiftAudit}
-        reviewEvents={reviewEvents}
-        financeDate={financeDate}
-        onDateChange={setFinanceDate}
-        onApproveTransaction={approveTransactionHandler}
-        onResolveShift={resolveCashShiftAuditHandler}
-        approvingTransactionId={approvingTransactionId}
-        loading={loading}
-        dateFormat={dateFormat}
-      />
 
       <section className="manage__staffSection">
         <div className="manage__sectionHeader">

@@ -1,3 +1,4 @@
+import { withEffectiveTransactions } from "../services/transactionCorrections";
 import crypto from "crypto";
 import { Request, Response } from "express";
 import mongoose from "mongoose";
@@ -92,12 +93,13 @@ const cardSurcharge = (
 
 const serializeSale = (sale: any) => {
   const value = typeof sale.toObject === "function" ? sale.toObject() : sale;
+  const effective = withEffectiveTransactions(value);
   return {
-    ...value,
+    ...effective,
     sourceType: "standaloneSale" as const,
     customerName: value.customerName || "ลูกค้าทั่วไป",
     total: Number(
-      (value.transactions || [])
+      (effective.transactions || [])
         .reduce(
           (sum: number, transaction: transcation) =>
             sum + transactionSignedAmount(transaction),
@@ -258,7 +260,7 @@ export const adjustStandaloneSale = async (req: Request, res: Response) => {
       (transaction) => transaction.sourceAction === "ADD_STANDALONE_SALE",
     );
     if (!original) return res.status(409).json({ message: "รายการเดิมไม่สมบูรณ์" });
-    const remainingBase = current.transactions
+    const remainingBase = withEffectiveTransactions(current).transactions
       .filter((transaction) => transaction.type !== "cardSurcharge")
       .reduce((sum, transaction) => sum + transactionSignedAmount(transaction), 0);
     if (direction === "out" && amount > remainingBase) {
@@ -327,3 +329,9 @@ export const adjustStandaloneSale = async (req: Request, res: Response) => {
 };
 
 export { serializeSale };
+
+export const getStandaloneSale = async (req: Request, res: Response) => {
+  const sale = await StandaloneSale.findOne({ saleId: req.params.saleId });
+  if (!sale) return res.status(404).json({ error: "SALE_NOT_FOUND" });
+  return res.json({ sale: serializeSale(sale) });
+};

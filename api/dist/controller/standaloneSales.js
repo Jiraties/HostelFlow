@@ -3,7 +3,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.serializeSale = exports.adjustStandaloneSale = exports.getStandaloneSales = exports.createStandaloneSale = void 0;
+exports.getStandaloneSale = exports.serializeSale = exports.adjustStandaloneSale = exports.getStandaloneSales = exports.createStandaloneSale = void 0;
+const transactionCorrections_1 = require("../services/transactionCorrections");
 const crypto_1 = __importDefault(require("crypto"));
 const mongoose_1 = __importDefault(require("mongoose"));
 const standaloneSale_1 = __importDefault(require("../models/standaloneSale"));
@@ -65,11 +66,12 @@ const cardSurcharge = (transaction, createdBy, sourceAction) => {
 };
 const serializeSale = (sale) => {
     const value = typeof sale.toObject === "function" ? sale.toObject() : sale;
+    const effective = (0, transactionCorrections_1.withEffectiveTransactions)(value);
     return {
-        ...value,
+        ...effective,
         sourceType: "standaloneSale",
         customerName: value.customerName || "ลูกค้าทั่วไป",
-        total: Number((value.transactions || [])
+        total: Number((effective.transactions || [])
             .reduce((sum, transaction) => sum + (0, financeHelpers_1.transactionSignedAmount)(transaction), 0)
             .toFixed(2)),
     };
@@ -211,7 +213,7 @@ const adjustStandaloneSale = async (req, res) => {
         const original = current.transactions.find((transaction) => transaction.sourceAction === "ADD_STANDALONE_SALE");
         if (!original)
             return res.status(409).json({ message: "รายการเดิมไม่สมบูรณ์" });
-        const remainingBase = current.transactions
+        const remainingBase = (0, transactionCorrections_1.withEffectiveTransactions)(current).transactions
             .filter((transaction) => transaction.type !== "cardSurcharge")
             .reduce((sum, transaction) => sum + (0, financeHelpers_1.transactionSignedAmount)(transaction), 0);
         if (direction === "out" && amount > remainingBase) {
@@ -262,4 +264,11 @@ const adjustStandaloneSale = async (req, res) => {
     }
 };
 exports.adjustStandaloneSale = adjustStandaloneSale;
+const getStandaloneSale = async (req, res) => {
+    const sale = await standaloneSale_1.default.findOne({ saleId: req.params.saleId });
+    if (!sale)
+        return res.status(404).json({ error: "SALE_NOT_FOUND" });
+    return res.json({ sale: serializeSale(sale) });
+};
+exports.getStandaloneSale = getStandaloneSale;
 //# sourceMappingURL=standaloneSales.js.map

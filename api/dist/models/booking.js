@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.transactionSchema = exports.ADDITIONAL_GUEST_SENSITIVE_SELECT = exports.PASSPORT_SENSITIVE_SELECT = void 0;
+exports.transactionCorrectionSchema = exports.transactionSchema = exports.ADDITIONAL_GUEST_SENSITIVE_SELECT = exports.PASSPORT_SENSITIVE_SELECT = void 0;
 const mongoose_1 = __importDefault(require("mongoose"));
 const bookingSearchHelpers_1 = require("../helpers/bookingSearchHelpers");
 exports.PASSPORT_SENSITIVE_SELECT = [
@@ -189,7 +189,10 @@ const transactionCorrectionSnapshotSchema = new mongoose_1.default.Schema({
     reference: { type: String },
     cashShiftId: { type: String },
 }, { _id: false });
-const transactionCorrectionSchema = new mongoose_1.default.Schema({
+exports.transactionCorrectionSchema = new mongoose_1.default.Schema({
+    reconciliation: { type: new mongoose_1.default.Schema({ note: String, reviewedBy: String, reviewedAt: Date }, { _id: false }), default: undefined },
+    requestId: { type: String },
+    historical: { type: Boolean, default: false },
     targetTransactionId: { type: String, required: true },
     before: { type: transactionCorrectionSnapshotSchema, required: true },
     after: { type: transactionCorrectionSnapshotSchema, required: true },
@@ -375,7 +378,7 @@ const bookingSchema = new mongoose_1.default.Schema({
     },
     transactions: [exports.transactionSchema],
     transactionCorrections: {
-        type: [transactionCorrectionSchema],
+        type: [exports.transactionCorrectionSchema],
         default: [],
     },
     passport: {
