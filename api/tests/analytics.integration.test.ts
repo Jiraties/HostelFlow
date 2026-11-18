@@ -132,3 +132,14 @@ test("previous-month comparisons and month switching come from database records"
   assert.equal(august.dailyTrend.length, 31);
   assert.equal(september.dailyTrend.length, 30);
 });
+
+test("approved standalone corrections reconcile analytics with operational drilldown", async () => {
+  const id = new mongoose.Types.ObjectId();
+  const before = { type: "slowBoat", paymentMethod: "Transfer", amount: 250 };
+  const after = { ...before, amount: 350 };
+  await StandaloneSale.collection.insertOne({ saleId: "SYNTHETIC-CORRECTED-SALE", createdBy: "synthetic-staff", transactions: [{ _id: id, ...before, createdAt: date("2026-09-08") }], transactionCorrections: [{ targetTransactionId: String(id), before, after, correctionType: "recorded_mistake", reasonCode: "incorrect_amount", note: "Synthetic correction", correctedBy: "synthetic-admin", correctedAt: date("2026-10-01"), financialChange: true, historical: true, originalBusinessDate: "2026-09-08" }] });
+  const analytics = await (await get("/bookings/analytics?month=2026-09")).json() as any;
+  const detail = await (await get("/finance/expected-stay-revenue-breakdown?startDate=2026-09-01&endDate=2026-09-30")).json() as any;
+  assert.equal(analytics.stats.stayRevenue, 350);
+  assert.equal(detail.totals.expectedStayRevenue, 350);
+});

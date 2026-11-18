@@ -709,6 +709,78 @@
   bottom: -0.65rem;
 }
 
+.viewBooking__priceChild--request {
+  appearance: none;
+  align-items: center;
+  min-height: 2.75rem;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.viewBooking__priceChild--request:hover {
+  background: var(--light-background);
+}
+
+.viewBooking__priceChild--request:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: -2px;
+}
+
+.viewBooking__priceChild--request > i {
+  flex: 0 0 auto;
+  color: var(--text);
+  font-size: 1.2rem;
+}
+
+.viewBooking__requestSummary {
+  --request-marker-width: 0.9rem;
+  --request-marker-gap: 0.4rem;
+  display: grid;
+  grid-template-columns: var(--request-marker-width) minmax(0, 1fr);
+  min-width: 0;
+  gap: 0.1rem var(--request-marker-gap);
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+
+.viewBooking__requestTitle {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.viewBooking__requestChange {
+  grid-column: 2;
+}
+
+.viewBooking__requestTitle {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: var(--request-marker-width) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--request-marker-gap);
+}
+
+.viewBooking__requestTitle::before {
+  justify-self: center;
+  background-color: #777;
+}
+
+.viewBooking__requestTitle[data-status="pending"]::before {
+  background-color: #f4a900;
+}
+
+.viewBooking__requestTitle[data-status="approved"]::before {
+  background-color: var(--green);
+}
+
+.viewBooking__requestError {
+  padding: 0.65rem 1rem;
+  font-size: 0.9rem;
+}
+
 .viewBooking__priceChildAmount {
   color: var(--text);
   font-weight: 500;
@@ -728,6 +800,10 @@
 
 .viewBooking__priceChildAmount--payment::before {
   background-color: var(--green);
+}
+
+.viewBooking__priceChildAmount--payment::before,
+.viewBooking__requestTitle::before {
   border-radius: 50%;
   content: "";
   flex: 0 0 auto;
@@ -756,7 +832,7 @@
   overflow: hidden;
 }
 
-.viewBooking__priceChildText span:last-child {
+.viewBooking__priceChildText > span:last-child {
   display: block;
   width: 100%;
   min-width: 0;
@@ -790,35 +866,76 @@
   white-space: nowrap;
 }
 
+.viewBooking__amountWithStatus {
+  display: flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.viewBooking__pendingCorrectionMark {
+  flex: 0 0 auto;
+  color: #f4a900;
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+:is(
+  .viewBooking__priceMain,
+  .viewBooking__priceDetails,
+  .viewBooking__priceSummaryText
+):has(.viewBooking__receiveRoomPayment) {
+  overflow: visible;
+}
+
 .viewBooking__receiveRoomPayment {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.35rem;
   width: fit-content;
+  max-width: 100%;
+  min-height: 1.75rem;
   margin-top: 0.4rem;
-  padding: 0.4rem 0.55rem;
+  padding: 0.25rem 0.55rem;
   border-radius: 999rem;
-  border: 1px solid #f3f3f3;
-  background: transparent;
-  color: #373737;
+  border: 0;
+  background: var(--background);
+  box-shadow: var(--light-shadow);
+  color: var(--text);
   font: inherit;
-  font-size: 0.74rem;
+  font-size: 0.8rem;
   line-height: 1.2;
+  text-align: left;
   cursor: pointer;
-  transition-duration: 0.2s;
 }
 
 .viewBooking__receiveRoomPayment i {
+  flex: none;
   color: var(--primary-color);
-  font-size: 0.9rem;
+  font-size: 1rem;
 }
 
-.viewBooking__receiveRoomPayment:hover,
+@media (hover: hover) and (pointer: fine) {
+  .viewBooking__receiveRoomPayment:hover {
+    background-color: #4f4f4f05;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .viewBooking__receiveRoomPayment {
+    transition: background-color var(--motion-duration) var(--motion-easing);
+  }
+}
+
+@media (pointer: coarse) {
+  .viewBooking__receiveRoomPayment {
+    min-height: 2.75rem;
+  }
+}
+
 .viewBooking__receiveRoomPayment:focus-visible {
-  border-color: var(--primary-color);
-  background: color-mix(in srgb, var(--primary-color) 7%, transparent);
-  color: var(--text);
-  outline: none;
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 .viewBooking__transactionMeta {

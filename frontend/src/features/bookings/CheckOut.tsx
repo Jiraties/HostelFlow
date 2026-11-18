@@ -1,3 +1,4 @@
+import PaymentMethodChip from "../../components/PaymentMethodChip";
 import { useEffect, useState } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
@@ -252,11 +253,7 @@ const CheckOut = ({
               <div className="checkIn__paymentRow">
                 <p>
                   ค่ามัดจำ{" "}
-                  <span
-                    className={`checkIn__paymentTag ${depositPaymentMethod.toLowerCase()}`}
-                  >
-                    {depositPaymentMethod}
-                  </span>
+                  <PaymentMethodChip method={depositPaymentMethod} />
                 </p>
                 <p>{formatCurrency(depositAmount)}</p>
               </div>

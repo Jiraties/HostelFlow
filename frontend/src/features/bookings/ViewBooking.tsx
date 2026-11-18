@@ -1,3 +1,9 @@
+import { CorrectionRequestDialog } from "../finance/CorrectionRequests";
+import {
+  correctionRequestLabels,
+  useCorrectionRequests,
+  type RequestItem,
+} from "../finance/useCorrectionRequests";
 import ActionButton from "../../components/ActionButton";
 import ModalCloseButton from "../../components/ModalCloseButton";
 import UnsavedChangesModal from "../../components/UnsavedChangesModal";
@@ -20,7 +26,7 @@ import CorrectBookingStatus from "./CorrectBookingStatus.tsx";
 import ClosedRoomAvailability from "./ClosedRoomAvailability.tsx";
 import ReceiveRoomPayment from "./ReceiveRoomPayment.tsx";
 
-import { useCallback, useState, useEffect, useRef } from "react";
+import { Fragment, useCallback, useState, useEffect, useRef } from "react";
 import { API_URL } from "../../config/api.ts";
 import { platformMap } from "../../helpers/maps.ts";
 import { getApiErrorMessage } from "../../helpers/apiErrorMessage";
@@ -251,6 +257,14 @@ const ViewBooking = ({
   const { user, resolveStaffName } = useAuth();
   const isMobileView = useMediaQuery("(max-width:760px)");
   const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
+  const {
+    items: correctionRequests,
+    selected: selectedCorrectionRequest,
+    setSelected: setSelectedCorrectionRequest,
+    error: correctionRequestError,
+    reload: reloadCorrectionRequests,
+    decide: decideCorrectionRequest,
+  } = useCorrectionRequests(data?.bookingId ?? null, data?.revision);
   const statusCorrectionType = data?.voided
     ? null
     : statusCorrectionForStatus(data?.status || "");
@@ -497,7 +511,12 @@ const ViewBooking = ({
     );
 
     return () => cancelAnimationFrame(animationFrame);
-  }, [data?.transactions.length, updateTransactionOverflowAlert]);
+  }, [
+    data?.transactions.length,
+    correctionRequests,
+    correctionRequestError,
+    updateTransactionOverflowAlert,
+  ]);
 
   useEffect(() => {
     if (!data) return;
@@ -909,7 +928,6 @@ const ViewBooking = ({
     : 0;
   const hasRecordedPayments = bookingHasRecordedPayments(data);
   const hasCorrectableTransactions =
-    (!data.voided || Boolean(user?.admin)) &&
     data.transactions.some((transaction) =>
       correctableTransactionTypes.has(transaction.type),
     );
@@ -1087,6 +1105,41 @@ const ViewBooking = ({
     return groups;
   }, []);
 
+  const requestsByTransactionId = new Map<string, RequestItem[]>();
+  for (const request of correctionRequests) {
+    const requests = requestsByTransactionId.get(request.transactionId);
+    if (requests) requests.push(request);
+    else requestsByTransactionId.set(request.transactionId, [request]);
+  }
+  const getCorrectionRequests = (transaction: booking["transactions"][number]) =>
+    requestsByTransactionId.get(
+      transaction.originalTransactionId || transaction._id || "",
+    ) ?? [];
+  const renderPendingCorrectionMark = (requests: RequestItem[]) =>
+    requests.some(({ status }) => status === "pending") && (
+      <span
+        className="viewBooking__pendingCorrectionMark"
+        title="รออนุมัติการแก้ไข"
+      >
+        <i className="bx bx-pencil" aria-hidden="true" />
+        <span className="viewBooking__searchAnnouncement">
+          รออนุมัติการแก้ไข
+        </span>
+      </span>
+    );
+  const groupsWithRequests = groupedTransactions.map((group) => ({
+    ...group,
+    requests: getCorrectionRequests(group.transaction),
+  }));
+  const visibleTransactionIds = new Set(
+    data.transactions.map(
+      ({ originalTransactionId, _id }) => originalTransactionId || _id,
+    ),
+  );
+  const unmatchedRequests = correctionRequests.filter(
+    ({ transactionId }) => !visibleTransactionIds.has(transactionId),
+  );
+
   const renderPaymentMethod = (
     transaction: booking["transactions"][number],
     compact = false,
@@ -1246,7 +1299,6 @@ const ViewBooking = ({
     compact = false,
   ) => {
     const canEditTransaction =
-      (!data.voided || Boolean(user?.admin)) &&
       correctableTransactionTypes.has(transaction.type);
 
     return (
@@ -1285,7 +1337,7 @@ const ViewBooking = ({
   const renderChildTransaction = (
     transaction: booking["transactions"][number],
     index: number,
-    siblings: booking["transactions"] = [],
+    continues = false,
   ) => {
     const linkedTransaction = transaction.relatedTransactionId
       ? data.transactions.find(
@@ -1327,7 +1379,7 @@ const ViewBooking = ({
       <div
         className={
           "viewBooking__priceChild" +
-          (index < siblings.length - 1
+          (continues
             ? " viewBooking__priceChild--continues"
             : "") +
           (transaction.type === "roomCharge" &&
@@ -1352,15 +1404,20 @@ const ViewBooking = ({
           <div className="viewBooking__priceChildDetails">
             <div className="viewBooking__priceChildSummary">
               <p className="viewBooking__priceChildText">
-                <span
-                  className={
-                    "viewBooking__priceChildAmount" +
-                    (isFolioPaymentPosting(transaction)
-                      ? " viewBooking__priceChildAmount--payment"
-                      : "")
-                  }
-                >
-                  {formatTransactionAmount(transaction)}
+                <span className="viewBooking__amountWithStatus">
+                  <span
+                    className={
+                      "viewBooking__priceChildAmount" +
+                      (isFolioPaymentPosting(transaction)
+                        ? " viewBooking__priceChildAmount--payment"
+                        : "")
+                    }
+                  >
+                    {formatTransactionAmount(transaction)}
+                  </span>
+                  {renderPendingCorrectionMark(
+                    getCorrectionRequests(transaction),
+                  )}
                 </span>
                 <span>{transactionName(transaction)}</span>
               </p>
@@ -1385,6 +1442,55 @@ const ViewBooking = ({
         </div>
         {renderTransactionEndActions(transaction, true)}
       </div>
+    );
+  };
+
+  const renderCorrectionRequest = (
+    request: RequestItem,
+    continues: boolean,
+    showTransactionName = false,
+  ) => {
+    const { before, after } = request.proposal;
+    const changes = [
+      before.amount !== after.amount
+        ? `${formatTransactionAmount(before)} → ${formatTransactionAmount(after)}`
+        : "",
+      before.paymentMethod !== after.paymentMethod
+        ? `${before.paymentMethod} → ${after.paymentMethod}`
+        : "",
+      before.type !== after.type
+        ? `${transactionName(before)} → ${transactionName(after)}`
+        : "",
+    ].filter(Boolean);
+
+    return (
+      <button
+        key={request._id}
+        type="button"
+        className={`viewBooking__priceChild viewBooking__priceChild--request${
+          continues ? " viewBooking__priceChild--continues" : ""
+        }`}
+        onClick={() => setSelectedCorrectionRequest(request)}
+      >
+        <span className="viewBooking__priceChildMarker" aria-hidden="true" />
+        <span className="viewBooking__requestSummary">
+          <span className="viewBooking__requestTitle" data-status={request.status}>
+            <span>
+              คำขอแก้ไขรายการ
+              {showTransactionName && ` · ${transactionName(before)}`}
+            </span>
+          </span>
+          {changes.map((change) => (
+            <span className="viewBooking__requestChange" key={change}>
+              {change}
+            </span>
+          ))}
+          <span className="viewBooking__requestChange">
+            {correctionRequestLabels[request.status]}
+          </span>
+        </span>
+        <i className="bx bx-chevron-right" aria-hidden="true" />
+      </button>
     );
   };
 
@@ -1473,6 +1579,14 @@ const ViewBooking = ({
 
   return (
     <>
+      <CorrectionRequestDialog
+        selected={selectedCorrectionRequest}
+        admin={Boolean(user?.admin)}
+        onClose={() => setSelectedCorrectionRequest(null)}
+        onDecide={(action, reason) =>
+          decideCorrectionRequest(action, reason, updateBooking)
+        }
+      />
       <Modal
         open={Boolean(roomPaymentTransaction)}
         className="home__modalCenter"
@@ -2186,8 +2300,8 @@ const ViewBooking = ({
                   ref={priceListRef}
                   onScroll={handleTransactionListScroll}
                 >
-                  {groupedTransactions.map(
-                    ({ transaction, children }, index) => (
+                  {groupsWithRequests.map(
+                    ({ transaction, children, requests }, index) => (
                       <div
                         className={`viewBooking__transactionGroup${
                           transaction._id === highlightedTransactionId
@@ -2211,7 +2325,11 @@ const ViewBooking = ({
                         }
                       >
                         {isChildTransaction(transaction) ? (
-                          renderChildTransaction(transaction, index)
+                          renderChildTransaction(
+                            transaction,
+                            index,
+                            children.length > 0 || requests.length > 0,
+                          )
                         ) : (
                           <div className="viewBooking__price">
                             <div className="viewBooking__priceMain">
@@ -2225,9 +2343,12 @@ const ViewBooking = ({
                               <div className="viewBooking__priceDetails">
                                 <div className="viewBooking__priceSummary">
                                   <div className="viewBooking__priceSummaryText">
-                                    <p className="viewBooking__infoText viewBooking__priceAmount">
-                                      {formatTransactionAmount(transaction)}
-                                    </p>
+                                    <div className="viewBooking__amountWithStatus">
+                                      <p className="viewBooking__infoText viewBooking__priceAmount">
+                                        {formatTransactionAmount(transaction)}
+                                      </p>
+                                      {renderPendingCorrectionMark(requests)}
+                                    </div>
                                     <p className="viewBooking__transactionName">
                                       {transactionName(transaction)}
                                     </p>
@@ -2267,9 +2388,58 @@ const ViewBooking = ({
                             {renderTransactionEndActions(transaction)}
                           </div>
                         )}
-                        {children.map(renderChildTransaction)}
+                        {children.map((child, childIndex) => {
+                          const childRequests = getCorrectionRequests(child);
+                          const continues =
+                            childIndex < children.length - 1 ||
+                            requests.length > 0;
+                          return (
+                            <Fragment
+                              key={child._id || `${child.type}-${child.amount}-${childIndex}`}
+                            >
+                              {renderChildTransaction(
+                                child,
+                                childIndex,
+                                continues || childRequests.length > 0,
+                              )}
+                              {childRequests.map((request, requestIndex) =>
+                                renderCorrectionRequest(
+                                  request,
+                                  continues ||
+                                    requestIndex < childRequests.length - 1,
+                                  true,
+                                ),
+                              )}
+                            </Fragment>
+                          );
+                        })}
+                        {requests.map((request, requestIndex) =>
+                          renderCorrectionRequest(
+                            request,
+                            requestIndex < requests.length - 1,
+                          ),
+                        )}
                       </div>
                     ),
+                  )}
+                  {unmatchedRequests.length > 0 && (
+                    <div className="viewBooking__transactionGroup">
+                      {unmatchedRequests.map((request, index) =>
+                        renderCorrectionRequest(
+                          request,
+                          index < unmatchedRequests.length - 1,
+                          true,
+                        ),
+                      )}
+                    </div>
+                  )}
+                  {correctionRequestError && (
+                    <div className="viewBooking__requestError" role="alert">
+                      {correctionRequestError}{" "}
+                      <button type="button" onClick={reloadCorrectionRequests}>
+                        ลองอีกครั้ง
+                      </button>
+                    </div>
                   )}
                 </div>
                 {showTransactionOverflowAlert && (

@@ -1,3 +1,4 @@
+import { withEffectiveTransactions } from "../services/transactionCorrections";
 import type { Request, Response } from "express";
 import Booking, { type booking } from "../models/booking";
 import StandaloneSale from "../models/standaloneSale";
@@ -23,11 +24,11 @@ export const getAnalytics = async (req: Request, res: Response) => {
         .select("bookingId platformId status voided checkIn checkOut roomStays commercialSegments transactions transactionCorrections checkout")
         .maxTimeMS(10000).lean<booking[]>(),
       StandaloneSale.find({ transactions: { $elemMatch: { type: { $in: EXPECTED_STAY_REVENUE_SERVICE_TYPES }, createdAt: { $gte: start, $lt: end } } } })
-        .select("saleId transactions").maxTimeMS(10000).lean(),
+        .select("saleId transactions transactionCorrections").maxTimeMS(10000).lean(),
       RoomBlock.find({ from: { $lt: outlookEnd }, to: { $gt: start } })
         .select("roomId roomIds from to reason reasonType releasedAt").maxTimeMS(10000).lean(),
     ]);
-    const standaloneRecords = sales.map((sale) => ({ bookingId: sale.saleId, platformId: "WALK", checkIn: new Date(0), checkOut: new Date(0), transactions: sale.transactions, roomStays: [], commercialSegments: [], status: "checkedOut" } as unknown as booking));
+    const standaloneRecords = sales.map((sale) => ({ bookingId: sale.saleId, platformId: "WALK", checkIn: new Date(0), checkOut: new Date(0), transactions: withEffectiveTransactions(sale).transactions, saleId: sale.saleId, roomStays: [], commercialSegments: [], status: "checkedOut" } as unknown as booking));
     res.setHeader("Cache-Control", "no-store");
     return res.json(buildAnalytics([...bookings, ...standaloneRecords], blocks, month));
   } catch {

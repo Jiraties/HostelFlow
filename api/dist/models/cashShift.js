@@ -73,6 +73,7 @@ const cashShiftSchema = new mongoose_1.default.Schema({
     endedAt: { type: Date },
     createdBy: { type: String, required: true },
     closedBy: { type: String },
+    auditResolutionHistory: [{ note: String, reviewedBy: String, reviewedAt: Date }],
     auditResolution: {
         note: { type: String },
         reviewedBy: { type: String },

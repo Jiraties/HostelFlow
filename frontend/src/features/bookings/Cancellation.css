@@ -69,60 +69,8 @@
   white-space: nowrap;
 }
 
-.cancellation__paymentTag {
-  border-radius: 1rem;
-  display: inline-flex;
-  align-items: center;
-  font-size: 0.75rem;
-  font-weight: 600;
-  margin-left: 0.5rem;
-  padding: 0.15rem 0.5rem;
-  text-transform: uppercase;
-}
-
-.cancellation__paymentTag.cash {
-  background-color: color-mix(
-    in srgb,
-    var(--payment-method-cash) 16%,
-    #ffffff
-  );
-  color: var(--payment-method-cash);
-}
-
-.cancellation__paymentTag.card {
-  background-color: color-mix(
-    in srgb,
-    var(--payment-method-card) 16%,
-    #ffffff
-  );
-  color: var(--payment-method-card);
-}
-
-.cancellation__paymentTag.transfer {
-  background-color: color-mix(
-    in srgb,
-    var(--payment-method-transfer) 16%,
-    #ffffff
-  );
-  color: var(--payment-method-transfer);
-}
-
-.cancellation__paymentTag.ota {
-  background-color: color-mix(
-    in srgb,
-    var(--payment-method-ota) 16%,
-    #ffffff
-  );
-  color: var(--payment-method-ota);
-}
-
-.cancellation__paymentTag.unpaid {
-  background-color: color-mix(
-    in srgb,
-    var(--payment-method-unpaid) 16%,
-    #ffffff
-  );
-  color: var(--payment-method-unpaid);
+.cancellation__paymentRow .paymentMethodChip {
+  margin-inline-start: 0.5rem;
 }
 
 .cancellation__paymentConfirmationTotal {

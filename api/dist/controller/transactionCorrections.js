@@ -3,13 +3,16 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.correctTransaction = void 0;
+exports.correctTransaction = exports.runTransactionCorrection = void 0;
 const crypto_1 = __importDefault(require("crypto"));
 const mongoose_1 = __importDefault(require("mongoose"));
 const booking_1 = __importDefault(require("../models/booking"));
+const standaloneSale_1 = __importDefault(require("../models/standaloneSale"));
+const financialCorrectionRequest_1 = __importDefault(require("../models/financialCorrectionRequest"));
+const cashShiftMutationLock_1 = require("../services/cashShiftMutationLock");
+const activityServices_1 = require("../services/activityServices");
 const cashShift_1 = __importDefault(require("../models/cashShift"));
 const dailyClose_1 = __importDefault(require("../models/dailyClose"));
-const activityServices_1 = require("../services/activityServices");
 const bookingConcurrency_1 = require("../services/bookingConcurrency");
 const cashLedgerTransaction_1 = require("../services/cashLedgerTransaction");
 const mutationIdempotency_1 = require("../services/mutationIdempotency");
@@ -172,7 +175,15 @@ const correctionRecord = ({ targetTransactionId, before, after, correctionType, 
     reviewFlags,
     reviewStatus: reviewFlags.length ? "needs_review" : "none",
 });
-const correctTransaction = async (req, res) => {
+const isCorrectionPeriodClosed = async (businessDate, cashShiftId) => {
+    const [cashShift, dailyClose, finalDayClose] = await Promise.all([
+        cashShiftId ? cashShift_1.default.findById(cashShiftId).lean() : null,
+        dailyClose_1.default.findOne({ businessDate }).lean(),
+        cashShift_1.default.findOne({ businessDate, isFinalDayClose: true }).lean(),
+    ]);
+    return Boolean(cashShift?.status === "closed" || dailyClose || finalDayClose);
+};
+const runTransactionCorrection = async (req, res, context = {}) => {
     try {
         const { bookingId, transactionId } = req.params;
         const correctedByName = typeof req.user?.name === "string" && req.user.name.trim()
@@ -187,6 +198,74 @@ const correctTransaction = async (req, res) => {
                 error: "EXPECTED_REVISION_REQUIRED",
                 message: "กรุณารีเฟรชข้อมูลการจองก่อนแก้ไขรายการ",
             });
+        }
+        const standalone = context.sourceType === "standaloneSale";
+        const sale = standalone
+            ? await standaloneSale_1.default.findOne({ saleId: bookingId }).lean()
+            : null;
+        const booking = standalone
+            ? sale
+                ? {
+                    ...sale,
+                    bookingId: sale.saleId,
+                    name: sale.customerName || "ลูกค้าทั่วไป",
+                    status: "checkedOut",
+                    checkIn: sale.createdAt,
+                    voided: false,
+                }
+                : null
+            : await booking_1.default.findOne({ bookingId }).lean();
+        if (!booking) {
+            return res.status(404).json({
+                error: "BOOKING_NOT_FOUND",
+                message: "ไม่พบ booking นี้",
+            });
+        }
+        if (!context.mode &&
+            booking.voided &&
+            (!req.user?.admin || correctionType !== "recorded_mistake")) {
+            return res.status(409).json({
+                error: "BOOKING_VOIDED",
+                message: !req.user?.admin
+                    ? "Booking ที่ถูก void แล้วต้องให้ Admin เป็นผู้แก้ไขรายการที่บันทึกผิด"
+                    : "Booking ที่ถูก void แล้วสามารถแก้ไขได้เฉพาะรายการที่บันทึกผิด (recorded_mistake)",
+            });
+        }
+        if (Number(booking.revision || 0) !== expectedRevision) {
+            return (0, bookingConcurrency_1.sendBookingRevisionConflict)(res, bookingId);
+        }
+        const effectiveTransactions = (0, transactionCorrections_1.effectiveBookingTransactions)(booking);
+        const current = effectiveTransactions.find((transaction) => transaction.originalTransactionId === transactionId);
+        if (!current) {
+            return res.status(404).json({
+                error: "TRANSACTION_NOT_FOUND",
+                message: "ไม่พบรายการที่ต้องการแก้ไข",
+            });
+        }
+        if (!transactionCorrections_1.editableTransactionTypes.has(current.type)) {
+            return res.status(400).json({
+                error: "TRANSACTION_NOT_EDITABLE",
+                message: "รายการประเภทนี้ต้องใช้ขั้นตอนเฉพาะ ไม่สามารถแก้ไขโดยตรงได้",
+            });
+        }
+        const before = (0, transactionCorrections_1.snapshotTransaction)(current);
+        const originalBusinessDate = businessDateKey(new Date(current.createdAt || booking.checkIn));
+        const affectedCashShiftId = before.cashShiftId ||
+            booking.transactions.find((t) => String(t._id) === transactionId)
+                ?.cashShiftId ||
+            [...(booking.transactionCorrections || [])]
+                .reverse()
+                .find((c) => c.targetTransactionId === transactionId && c.affectedCashShiftId)?.affectedCashShiftId;
+        const isPendingFutureRoomCharge = booking.status === "booked" &&
+            current.type === "roomCharge" &&
+            ["OTA", "Unpaid"].includes(current.paymentMethod) &&
+            businessDateKey(new Date(booking.checkIn)) >= businessDateKey(new Date());
+        const canBeHistorical = current.type !== "deposit";
+        if (context.mode === "initial") {
+            const historical = canBeHistorical &&
+                !isPendingFutureRoomCharge &&
+                await isCorrectionPeriodClosed(originalBusinessDate, affectedCashShiftId);
+            return res.json({ historical });
         }
         if (!correctionType || !CORRECTION_TYPES.includes(correctionType)) {
             return res.status(400).json({
@@ -213,40 +292,10 @@ const correctTransaction = async (req, res) => {
                 message: "เหตุผลนี้ไม่ตรงกับการปรับยอดเรียกเก็บ",
             });
         }
-        const booking = await booking_1.default.findOne({ bookingId }).lean();
-        if (!booking) {
-            return res.status(404).json({
-                error: "BOOKING_NOT_FOUND",
-                message: "ไม่พบ booking นี้",
-            });
-        }
-        if (booking.voided &&
-            (!req.user?.admin || correctionType !== "recorded_mistake")) {
-            return res.status(409).json({
-                error: "BOOKING_VOIDED",
-                message: !req.user?.admin
-                    ? "Booking ที่ถูก void แล้วต้องให้ Admin เป็นผู้แก้ไขรายการที่บันทึกผิด"
-                    : "Booking ที่ถูก void แล้วสามารถแก้ไขได้เฉพาะรายการที่บันทึกผิด (recorded_mistake)",
-            });
-        }
-        if (Number(booking.revision || 0) !== expectedRevision) {
-            return (0, bookingConcurrency_1.sendBookingRevisionConflict)(res, bookingId);
-        }
-        const effectiveTransactions = (0, transactionCorrections_1.effectiveBookingTransactions)(booking);
-        const current = effectiveTransactions.find((transaction) => transaction.originalTransactionId === transactionId);
-        if (!current) {
-            return res.status(404).json({
-                error: "TRANSACTION_NOT_FOUND",
-                message: "ไม่พบรายการที่ต้องการแก้ไข",
-            });
-        }
-        if (!transactionCorrections_1.editableTransactionTypes.has(current.type)) {
-            return res.status(400).json({
-                error: "TRANSACTION_NOT_EDITABLE",
-                message: "รายการประเภทนี้ต้องใช้ขั้นตอนเฉพาะ ไม่สามารถแก้ไขโดยตรงได้",
-            });
-        }
-        const correctedAmount = Number(req.body.correctedAmount);
+        const correctedAmount = req.body.correctedAmount === undefined ||
+            String(req.body.correctedAmount).trim() === ""
+            ? NaN
+            : Number(req.body.correctedAmount);
         const correctedPaymentMethod = req.body.correctedPaymentMethod;
         const correctedCategory = req.body.correctedCategory;
         if (!Number.isFinite(correctedAmount) || correctedAmount < 0) {
@@ -290,7 +339,6 @@ const correctTransaction = async (req, res) => {
                 message: "การปรับยอดเรียกเก็บใช้ได้เฉพาะรายการค่าห้องหรือค่าบริการ",
             });
         }
-        const before = (0, transactionCorrections_1.snapshotTransaction)(current);
         const requestedAmount = Number(correctedAmount.toFixed(2));
         const after = {
             ...before,
@@ -302,6 +350,17 @@ const correctTransaction = async (req, res) => {
         if (correctedPaymentMethod !== "Cash")
             delete after.cashShiftId;
         const linkedRounding = findLinkedCheckInRoundingAdjustment(effectiveTransactions, transactionId);
+        if (context.legacyRequestedAmount &&
+            context.requestId &&
+            linkedRounding &&
+            correctedPaymentMethod === "Cash" &&
+            correctedCategory === current.type &&
+            requestedAmount === resolveSettlementPrincipalAmount(effectiveTransactions, current, transactionId, linkedRounding.originalTransactionId || String(linkedRounding._id || ""))) {
+            // A legacy proposal may have stored only the principal, losing the intended rounding.
+            const message = "คำขอเดิมไม่มีข้อมูลยอดปัดเศษ กรุณาส่งคำขอใหม่";
+            await financialCorrectionRequest_1.default.updateOne({ _id: context.requestId, status: "pending" }, { $set: { status: "stale", decidedAt: new Date(), decidedBy: req.user?.username, decisionReason: message } });
+            return res.status(409).json({ error: "CORRECTION_REQUEST_STALE", message });
+        }
         const roundingBefore = linkedRounding
             ? (0, transactionCorrections_1.snapshotTransaction)(linkedRounding)
             : undefined;
@@ -320,7 +379,8 @@ const correctTransaction = async (req, res) => {
                     message: `ยอดรับเงินสดรวมปัดเศษเป็น ${requestedAmount.toLocaleString("th-TH")} บาทอยู่แล้ว (${before.amount.toLocaleString("th-TH")} + ปัดเศษ ${roundingBefore.amount.toLocaleString("th-TH")} บาท) ไม่ต้องแก้ซ้ำ`,
                 });
             }
-            const linkedRoundingIdForPrincipal = linkedRounding.originalTransactionId || String(linkedRounding._id || "");
+            const linkedRoundingIdForPrincipal = linkedRounding.originalTransactionId ||
+                String(linkedRounding._id || "");
             const settlementPrincipalAmount = resolveSettlementPrincipalAmount(effectiveTransactions, current, transactionId, linkedRoundingIdForPrincipal);
             const roundingDeltaAbovePrincipal = settlementPrincipalAmount !== undefined
                 ? Number((requestedAmount - settlementPrincipalAmount).toFixed(2))
@@ -346,15 +406,12 @@ const correctTransaction = async (req, res) => {
                 delete roundingAfter.cashShiftId;
             }
         }
-        const isPendingFutureRoomCharge = booking.status === "booked" &&
-            current.type === "roomCharge" &&
-            ["OTA", "Unpaid"].includes(current.paymentMethod) &&
-            businessDateKey(new Date(booking.checkIn)) >= businessDateKey(new Date());
         const isStaffEditablePendingRoomCharge = isPendingFutureRoomCharge &&
             correctedCategory === current.type &&
             correctedPaymentMethod === current.paymentMethod;
         if (correctionType === "charge_change" &&
             !req.user?.admin &&
+            !context.mode &&
             !isStaffEditablePendingRoomCharge) {
             return res.status(403).json({
                 error: "ADMIN_APPROVAL_REQUIRED",
@@ -364,7 +421,11 @@ const correctTransaction = async (req, res) => {
         const roundingFinancialChange = Boolean(roundingBefore &&
             roundingAfter &&
             (0, transactionCorrections_1.correctionChangesFinancialFields)(roundingBefore, roundingAfter));
-        const financialChange = (0, transactionCorrections_1.correctionChangesFinancialFields)(before, after) || roundingFinancialChange;
+        const roundingChange = roundingFinancialChange && roundingBefore && roundingAfter
+            ? { before: roundingBefore.amount, after: roundingAfter.amount }
+            : undefined;
+        const financialChange = (0, transactionCorrections_1.correctionChangesFinancialFields)(before, after) ||
+            roundingFinancialChange;
         const linkedRoundingId = linkedRounding
             ? linkedRounding.originalTransactionId || String(linkedRounding._id)
             : undefined;
@@ -424,42 +485,90 @@ const correctTransaction = async (req, res) => {
                 message: "ยอดที่แก้ไขทำให้ยอดคืนหรือยอดเก็บมัดจำเกินมัดจำที่รับไว้",
             });
         }
-        const originalBusinessDate = businessDateKey(new Date(current.createdAt || booking.checkIn));
         const correctionReviewFlags = (0, financeHelpers_1.transactionCorrectionNeedsReview)(before, after, current.correctionCount || 0);
-        if (financialChange) {
-            if (current.type !== "deposit") {
-                const [cashShift, dailyClose, finalDayClose] = await Promise.all([
-                    before.cashShiftId
-                        ? cashShift_1.default.findById(before.cashShiftId).lean()
-                        : null,
-                    dailyClose_1.default.findOne({ businessDate: originalBusinessDate }).lean(),
-                    cashShift_1.default.findOne({
-                        businessDate: originalBusinessDate,
-                        isFinalDayClose: true,
-                    }).lean(),
-                ]);
-                if ((cashShift?.status === "closed" || dailyClose || finalDayClose) &&
-                    !isStaffEditablePendingRoomCharge) {
-                    return res.status(409).json({
-                        error: "FINANCIAL_PERIOD_CLOSED",
-                        message: "รอบการเงินของรายการนี้ปิดแล้ว ระบบจึงไม่แก้ยอดย้อนหลัง กรุณาติดต่อ Admin เพื่อบันทึกรายการแก้ไขในรอบปัจจุบัน",
-                    });
-                }
-            }
-            if (["checkedOut", "cancelled", "noShow"].includes(booking.status) &&
-                !req.user?.admin) {
-                return res.status(403).json({
-                    error: "ADMIN_APPROVAL_REQUIRED",
-                    message: "การแก้ยอดของ Booking ที่ปิดแล้วต้องให้ Admin ดำเนินการ",
-                });
-            }
+        const historical = financialChange &&
+            canBeHistorical &&
+            !isStaffEditablePendingRoomCharge &&
+            await isCorrectionPeriodClosed(originalBusinessDate, affectedCashShiftId);
+        if (historical && after.paymentMethod === "Cash" && affectedCashShiftId)
+            after.cashShiftId = affectedCashShiftId;
+        const requiresApproval = financialChange &&
+            (historical ||
+                booking.voided ||
+                ["checkedOut", "cancelled", "noShow"].includes(booking.status) ||
+                (correctionType === "charge_change" &&
+                    !isStaffEditablePendingRoomCharge));
+        if (historical && correctionType !== "recorded_mistake") {
+            return res.status(409).json({
+                error: "USE_FINANCIAL_ACTION",
+                message: "การเปลี่ยนราคาใหม่ไม่ใช่การแก้ข้อมูลเดิม กรุณาใช้รายการปรับยอด รับชำระ หรือคืนเงิน",
+            });
+        }
+        const proposal = correctionRecord({
+            targetTransactionId: transactionId,
+            before,
+            after,
+            correctionType,
+            reasonCode,
+            note: auditNote,
+            correctedBy: req.user?.username || "system",
+            originalBusinessDate,
+            reviewFlags: correctionReviewFlags,
+        });
+        if (context.mode === "preview") {
+            return res.json({
+                requiresApproval,
+                historical,
+                before,
+                after,
+                roundingChange,
+                cashDelta: (after.paymentMethod === "Cash" ? after.amount : 0) -
+                    (before.paymentMethod === "Cash" ? before.amount : 0) +
+                    (roundingChange ? roundingChange.after - roundingChange.before : 0),
+                cashMovementToday: historical ? 0 : undefined,
+                financialSummary: (0, transactionCorrections_1.summarizeBookingFinancialPosition)(previewTransactions),
+            });
+        }
+        if (context.mode === "request") {
+            if (correctionType !== "recorded_mistake")
+                return res.status(409).json({ error: "USE_FINANCIAL_ACTION" });
+            if (!req.get("Idempotency-Key"))
+                return res.status(400).json({ error: "IDEMPOTENCY_KEY_REQUIRED" });
+            proposal.historical = historical;
+            proposal.financialChange = financialChange;
+            const request = await (0, mutationIdempotency_1.withMutationIdempotency)(req, () => financialCorrectionRequest_1.default.create({
+                sourceType: standalone ? "standaloneSale" : "booking",
+                sourceId: bookingId,
+                transactionId,
+                sourceLabel: booking.name,
+                expectedRevision,
+                requestedAmount,
+                roundingChange,
+                proposal,
+                requestedBy: req.user.username,
+            }));
+            return res.status(201).json({ request });
+        }
+        if (historical && process.env.FINANCIAL_CORRECTIONS_ENABLED === "false")
+            return res.status(409).json({ error: "FINANCIAL_PERIOD_CLOSED" });
+        if (requiresApproval && !req.user?.admin) {
+            return res.status(403).json({
+                error: "ADMIN_APPROVAL_REQUIRED",
+                message: "กรุณาส่งคำขอให้ Admin อนุมัติ",
+            });
         }
         const linkedSurcharge = findLinkedCardSurcharge(effectiveTransactions, transactionId);
         const needsGeneratedSurcharge = financialChange &&
             correctedPaymentMethod === "Card" &&
             !linkedSurcharge &&
-            !["depositRefund", "cancellationRefund", "roomRefund", "compensation"].includes(current.type);
-        const requiresCashLedgerLock = financialChange &&
+            ![
+                "depositRefund",
+                "cancellationRefund",
+                "roomRefund",
+                "compensation",
+            ].includes(current.type);
+        const requiresCashLedgerLock = !historical &&
+            financialChange &&
             (before.paymentMethod === "Cash" || correctedPaymentMethod === "Cash") &&
             current.type !== "deposit" &&
             current.type !== "depositRefund";
@@ -476,7 +585,7 @@ const correctTransaction = async (req, res) => {
                 },
             ]
             : [];
-        const updatedBooking = await (0, mutationIdempotency_1.withMutationIdempotency)(req, () => (0, cashLedgerTransaction_1.withCashLedgerTransaction)(cashProbe, async (assigned, session) => {
+        const execute = async (assigned, session) => {
             if (requiresCashLedgerLock &&
                 before.cashShiftId &&
                 assigned[0]?.cashShiftId !== before.cashShiftId) {
@@ -485,8 +594,7 @@ const correctTransaction = async (req, res) => {
             if (requiresNewCashShift)
                 after.cashShiftId = assigned[0]?.cashShiftId;
             if (roundingAfter) {
-                if (correctedPaymentMethod === "Cash" &&
-                    roundingAfter.amount > 0) {
+                if (correctedPaymentMethod === "Cash" && roundingAfter.amount > 0) {
                     roundingAfter.paymentMethod = "Cash";
                     roundingAfter.cashShiftId =
                         after.cashShiftId ||
@@ -531,7 +639,9 @@ const correctTransaction = async (req, res) => {
                         note: `ปรับค่าธรรมเนียมบัตรตามรายการที่แก้ไข: ${auditNote}`,
                         correctedBy: req.user?.username || "system",
                         correctedByName,
-                        originalBusinessDate: businessDateKey(new Date(linkedSurcharge.createdAt || current.createdAt || booking.checkIn)),
+                        originalBusinessDate: businessDateKey(new Date(linkedSurcharge.createdAt ||
+                            current.createdAt ||
+                            booking.checkIn)),
                     }));
                 }
             }
@@ -545,7 +655,9 @@ const correctTransaction = async (req, res) => {
                     relatedTransactionId: transactionId,
                     direction: "in",
                     createdBy: req.user?.username || "system",
-                    createdAt: new Date(),
+                    createdAt: historical
+                        ? new Date(current.createdAt || booking.checkIn)
+                        : new Date(),
                     sourceAction: "CORRECT_TRANSACTION",
                     note: `สร้างค่าธรรมเนียมบัตรจากการแก้ไขรายการ: ${auditNote}`,
                 });
@@ -578,37 +690,98 @@ const correctTransaction = async (req, res) => {
                 },
                 $inc: { revision: 1 },
             };
-            const result = await booking_1.default.findOneAndUpdate({ bookingId, ...(0, bookingConcurrency_1.bookingRevisionPredicate)(expectedRevision) }, update, { returnDocument: "after", runValidators: true, session });
+            corrections.forEach((correction) => {
+                correction.historical = historical;
+                correction.requestId = context.requestId;
+                correction.affectedCashShiftId || (correction.affectedCashShiftId = booking.transactions.find((t) => String(t._id) === correction.targetTransactionId)?.cashShiftId);
+                correction.affectedCashShiftId || (correction.affectedCashShiftId = affectedCashShiftId);
+                if (context.requestId) {
+                    correction.reviewStatus = "reviewed";
+                    correction.reviewedBy = req.user.username;
+                    correction.reviewedAt = new Date();
+                }
+            });
+            const result = standalone
+                ? await standaloneSale_1.default.findOneAndUpdate({ saleId: bookingId, revision: expectedRevision }, update, { returnDocument: "after", runValidators: true, session })
+                : await booking_1.default.findOneAndUpdate({ bookingId, ...(0, bookingConcurrency_1.bookingRevisionPredicate)(expectedRevision) }, update, { returnDocument: "after", runValidators: true, session });
             if (!result)
                 throw new TransactionCorrectionConflictError();
+            if (context.requestId) {
+                const decision = await financialCorrectionRequest_1.default.updateOne({ _id: context.requestId, status: "pending" }, {
+                    $set: {
+                        status: "approved",
+                        decidedBy: req.user.username,
+                        decidedAt: new Date(),
+                        appliedCorrectionId: corrections[0]._id,
+                    },
+                }, { session });
+                if (decision.modifiedCount !== 1)
+                    throw new TransactionCorrectionConflictError();
+            }
+            await financialCorrectionRequest_1.default.updateMany({
+                sourceType: standalone ? "standaloneSale" : "booking",
+                sourceId: bookingId,
+                status: "pending",
+            }, {
+                $set: {
+                    status: "stale",
+                    decidedBy: req.user.username,
+                    decidedAt: new Date(),
+                    decisionReason: "รายการมีการเปลี่ยนแปลง กรุณาตรวจสอบและส่งคำขอใหม่",
+                },
+            }, { session });
+            await (0, activityServices_1.logActivityStrict)(req.user?.username, "CORRECT_TRANSACTION", {
+                changes: { transaction: { before, after } },
+                summary: {
+                    sourceType: standalone ? "standaloneSale" : "booking",
+                    transactionId,
+                    requestId: context.requestId,
+                    historical,
+                    correctionId: corrections[0]._id,
+                },
+            }, bookingId, session);
             return result;
+        };
+        const updatedBooking = await (0, mutationIdempotency_1.withMutationIdempotency)(req, () => (0, cashShiftMutationLock_1.withCashShiftMutationLock)(originalBusinessDate, async () => {
+            const stillHistorical = financialChange &&
+                canBeHistorical &&
+                !isStaffEditablePendingRoomCharge &&
+                await isCorrectionPeriodClosed(originalBusinessDate, affectedCashShiftId);
+            if (historical !== stillHistorical)
+                throw new cashLedgerTransaction_1.CashShiftLedgerConflictError("รอบการเงินเปลี่ยนแล้ว กรุณารีเฟรชและตรวจสอบอีกครั้ง");
+            if (requiresCashLedgerLock)
+                return (0, cashLedgerTransaction_1.withCashLedgerTransaction)(cashProbe, execute);
+            const session = await mongoose_1.default.startSession();
+            try {
+                return (await session.withTransaction(() => execute([], session)));
+            }
+            finally {
+                await session.endSession();
+            }
         }));
-        const projectedTransactions = (0, transactionCorrections_1.projectEffectiveTransactions)(updatedBooking.transactions, updatedBooking.transactionCorrections);
+        const projectedTransactions = (0, transactionCorrections_1.projectEffectiveTransactions)(updatedBooking.transactions, updatedBooking.transactionCorrections, !standalone);
         const effectiveTransaction = projectedTransactions.find((transaction) => transaction.originalTransactionId === transactionId);
         const correction = [...updatedBooking.transactionCorrections]
             .reverse()
             .find((item) => item.targetTransactionId === transactionId) ||
             updatedBooking.transactionCorrections[updatedBooking.transactionCorrections.length - 1];
-        await (0, activityServices_1.logActivity)(req.user?.username, "CORRECT_TRANSACTION", {
-            changes: {
-                transaction: { before, after },
-            },
-            summary: {
-                transactionId,
-                correctionType,
-                reasonCode,
-                correctionId: correction?._id,
-            },
-        }, bookingId);
         return res.status(200).json({
             message: "แก้ไขรายการสำเร็จ โดยเก็บข้อมูลเดิมไว้ในประวัติ",
-            booking: updatedBooking,
+            booking: standalone ? undefined : updatedBooking,
+            sale: standalone ? updatedBooking : undefined,
             effectiveTransaction,
             correction,
             financialSummary: (0, transactionCorrections_1.summarizeBookingFinancialPosition)(projectedTransactions),
         });
     }
     catch (err) {
+        if (err.code === 11000)
+            return res.status(409).json({
+                error: "PENDING_CORRECTION_EXISTS",
+                message: "มีคำขอรออนุมัติสำหรับรายการนี้แล้ว",
+            });
+        if (err instanceof Error && err.message === "CASH_SHIFT_MUTATION_CONFLICT")
+            return res.status(409).json({ error: err.message });
         if (err instanceof TransactionCorrectionConflictError) {
             return (0, bookingConcurrency_1.sendBookingRevisionConflict)(res, req.params.bookingId);
         }
@@ -633,5 +806,7 @@ const correctTransaction = async (req, res) => {
         });
     }
 };
+exports.runTransactionCorrection = runTransactionCorrection;
+const correctTransaction = (req, res) => (0, exports.runTransactionCorrection)(req, res);
 exports.correctTransaction = correctTransaction;
 //# sourceMappingURL=transactionCorrections.js.map

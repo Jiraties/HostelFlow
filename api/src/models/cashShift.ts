@@ -68,6 +68,7 @@ export interface cashShift extends Document {
   createdBy: string;
   closedBy?: string;
   auditResolution?: CashShiftAuditResolution;
+  auditResolutionHistory?: CashShiftAuditResolution[];
   isFinalDayClose?: boolean;
   depositPreparation?: DepositPreparation;
   depositReturnReminder?: DepositReturnReminderAcknowledgement;
@@ -158,6 +159,7 @@ const cashShiftSchema = new mongoose.Schema({
   endedAt: { type: Date },
   createdBy: { type: String, required: true },
   closedBy: { type: String },
+  auditResolutionHistory: [{ note: String, reviewedBy: String, reviewedAt: Date }],
   auditResolution: {
     note: { type: String },
     reviewedBy: { type: String },

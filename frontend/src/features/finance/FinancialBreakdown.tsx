@@ -1,3 +1,5 @@
+import StandaloneSaleCorrection from "./StandaloneSaleCorrection";
+import Modal from "../../components/MotionModal";
 import "./FinancialBreakdown.css";
 
 import axios from "axios";
@@ -289,6 +291,7 @@ const BreakdownSection = ({
   showCashBasisNote?: boolean;
 }) => {
   const navigate = useNavigate();
+  const [saleToCorrect, setSaleToCorrect] = useState<{ saleId: string; transactionId?: string } | null>(null);
   const [openGroupKey, setOpenGroupKey] = useState<string | null | undefined>(
     undefined,
   );
@@ -301,6 +304,7 @@ const BreakdownSection = ({
 
   return (
     <section className="financialBreakdown__section">
+      <Modal open={!!saleToCorrect} className="home__modalCenter" onClose={() => setSaleToCorrect(null)}><>{saleToCorrect && <StandaloneSaleCorrection {...saleToCorrect} onClose={() => setSaleToCorrect(null)} />}</></Modal>
       <div className="financialBreakdown__sectionHeader">
         <h2>{title}</h2>
         <span>
@@ -418,6 +422,7 @@ const BreakdownSection = ({
                           );
                         }}
                       >
+                        {transaction.saleId && <button type="button" className="manage__approveAction" onClick={(event) => { event.stopPropagation(); setSaleToCorrect({ saleId: transaction.saleId!, transactionId: transaction.transactionId }); }}>แก้ไขรายการ</button>}
                         <div className="financialBreakdown__transactionMain">
                           <strong>
                             {transaction.sourceType === "standaloneSale" && (

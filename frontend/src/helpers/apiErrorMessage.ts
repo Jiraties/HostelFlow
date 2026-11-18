@@ -9,6 +9,11 @@ const apiErrorCodeMessages: Record<string, string> = {
   TOO_MANY_LOGIN_ATTEMPTS:
     "เข้าสู่ระบบไม่สำเร็จหลายครั้ง กรุณารอสักครู่แล้วลองใหม่",
   LOGIN_UNAVAILABLE: "ยังไม่สามารถเข้าสู่ระบบได้ กรุณาลองใหม่อีกครั้ง",
+  PENDING_CORRECTION_EXISTS: "รายการนี้มีคำขอรออนุมัติอยู่แล้ว",
+  REQUEST_ALREADY_DECIDED: "คำขอนี้ดำเนินการแล้ว กรุณารีเฟรช",
+  CORRECTION_REQUEST_STALE: "ข้อมูลเปลี่ยนแล้ว กรุณาตรวจสอบและส่งคำขอใหม่",
+  CORRECTIONS_DISABLED: "ขณะนี้ปิดรับคำขอแก้ไขชั่วคราว",
+  USE_FINANCIAL_ACTION: "กรุณาใช้ขั้นตอนปรับยอด รับชำระ หรือคืนเงินสำหรับรายการใหม่",
   ADMIN_REQUIRED: "รายการนี้ต้องใช้สิทธิ์ผู้ดูแลระบบ",
   ADMIN_APPROVAL_REQUIRED: "รายการนี้ต้องได้รับการอนุมัติจากผู้ดูแลระบบ",
   NOT_AUTHORIZED: "คุณไม่มีสิทธิ์ดำเนินการนี้",

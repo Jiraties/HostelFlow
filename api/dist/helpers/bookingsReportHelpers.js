@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.bookingsReportUnpaidCancellationAdjustments = exports.bookingsReportTransactionAmount = exports.bookingsReportDepositCollectedTotal = exports.bookingsReportRoomChargeTotal = exports.bookingsReportCheckInMonthBounds = void 0;
+exports.bookingsReportUnpaidCancellationAdjustments = exports.bookingsReportTransactionAmount = exports.bookingsReportDepositCollectedTotal = exports.isBookingsReportCollectedDeposit = exports.bookingsReportRoomChargeTotal = exports.bookingsReportCheckInMonthBounds = void 0;
 const financeHelpers_1 = require("./financeHelpers");
 const BANGKOK_UTC_OFFSET_MS = 7 * 60 * 60 * 1000;
 const bookingsReportCheckInMonthBounds = (month) => {
@@ -19,10 +19,12 @@ const bookingsReportRoomChargeTotal = (transactions) => transactions
     .filter((transaction) => transaction.type === "roomCharge")
     .reduce((sum, transaction) => sum + (0, financeHelpers_1.transactionDashboardGrossRevenueAmount)(transaction), 0);
 exports.bookingsReportRoomChargeTotal = bookingsReportRoomChargeTotal;
-const bookingsReportDepositCollectedTotal = (transactions) => transactions
-    .filter((transaction) => transaction.type === "deposit" &&
+const isBookingsReportCollectedDeposit = (transaction) => transaction.type === "deposit" &&
     transaction.paymentMethod !== "Unpaid" &&
-    (0, financeHelpers_1.transactionDirection)(transaction) === "in")
+    (0, financeHelpers_1.transactionDirection)(transaction) === "in";
+exports.isBookingsReportCollectedDeposit = isBookingsReportCollectedDeposit;
+const bookingsReportDepositCollectedTotal = (transactions) => transactions
+    .filter(exports.isBookingsReportCollectedDeposit)
     .reduce((sum, transaction) => sum + Math.abs(transaction.amount || 0), 0);
 exports.bookingsReportDepositCollectedTotal = bookingsReportDepositCollectedTotal;
 const bookingsReportTransactionAmount = (transaction) => transaction.type === "roomCharge"

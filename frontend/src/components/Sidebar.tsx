@@ -120,8 +120,9 @@ const Sidebar = () => {
           `${API_URL}/finance/review-events/count`,
           { withCredentials: true },
         );
+        const requests = await axios.get(`${API_URL}/finance/correction-requests`, { params: { status: "pending" }, withCredentials: true });
         if (active && Number.isFinite(response.data.count)) {
-          setReviewQueueCount(Math.max(0, response.data.count));
+          setReviewQueueCount(Math.max(0, response.data.count) + requests.data.pendingCount);
         }
       } catch {
         // The badge is supplementary; keep the last known count on failure.

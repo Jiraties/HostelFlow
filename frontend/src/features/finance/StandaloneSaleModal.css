@@ -6,7 +6,7 @@
 .standaloneSale strong,
 .standaloneSale .nonGuestBadge,
 .standaloneSale .cashShiftNudge button,
-.standaloneSale .addTransaction__paymentTag {
+.standaloneSale .paymentMethodChip {
   font-weight: 500;
 }
 

@@ -1,5 +1,5 @@
 import mongoose, { type Document } from "mongoose";
-import { transactionSchema, type transcation } from "./booking";
+import { transactionSchema, transactionCorrectionSchema, type TransactionCorrection, type transcation } from "./booking";
 
 export interface standaloneSale extends Document {
   saleId: string;
@@ -7,6 +7,7 @@ export interface standaloneSale extends Document {
   reference?: string;
   revision: number;
   transactions: transcation[];
+  transactionCorrections: TransactionCorrection[];
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;
@@ -19,6 +20,7 @@ const standaloneSaleSchema = new mongoose.Schema(
     reference: { type: String, trim: true, maxlength: 200 },
     revision: { type: Number, default: 0, required: true },
     transactions: { type: [transactionSchema], default: [] },
+    transactionCorrections: { type: [transactionCorrectionSchema], default: [] },
     createdBy: { type: String, required: true },
   },
   { timestamps: true },

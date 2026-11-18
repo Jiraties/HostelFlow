@@ -28,16 +28,14 @@ export const bookingsReportRoomChargeTotal = (transactions: transcation[]) =>
       0,
     );
 
-export const bookingsReportDepositCollectedTotal = (
-  transactions: transcation[],
-) =>
+export const isBookingsReportCollectedDeposit = (transaction: transcation) =>
+  transaction.type === "deposit" &&
+  transaction.paymentMethod !== "Unpaid" &&
+  transactionDirection(transaction) === "in";
+
+export const bookingsReportDepositCollectedTotal = (transactions: transcation[]) =>
   transactions
-    .filter(
-      (transaction) =>
-        transaction.type === "deposit" &&
-        transaction.paymentMethod !== "Unpaid" &&
-        transactionDirection(transaction) === "in",
-    )
+    .filter(isBookingsReportCollectedDeposit)
     .reduce((sum, transaction) => sum + Math.abs(transaction.amount || 0), 0);
 
 export const bookingsReportTransactionAmount = (transaction: transcation) =>

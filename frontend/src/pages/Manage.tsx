@@ -1,3 +1,5 @@
+import UnassignedCorrectionAudits, { type UnassignedCorrection } from "../features/finance/UnassignedCorrectionAudits";
+import CorrectionRequests from "../features/finance/CorrectionRequests";
 import "./Manage.css";
 
 import axios from "axios";
@@ -6,6 +8,7 @@ import ActionButton from "../components/ActionButton";
 import PageHeader from "../components/PageHeader";
 
 import { useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router";
 import { API_URL } from "../config/api";
 import { profilePictureUrl } from "../helpers/profilePictureUrl";
 import Modal from "../components/MotionModal";
@@ -24,6 +27,13 @@ import type { LegacyDepositAudit } from "../types/cashShiftTypes";
 import { notifyReviewQueueUpdated } from "../helpers/reviewQueue";
 
 type StaffUser = ManagedStaffUser;
+
+const manageSections = [
+  { id: "cash", label: "ตรวจสอบเงินสด", icon: "bx-wallet" },
+  { id: "reviews", label: "รอตรวจสอบ", icon: "bx-check-shield" },
+  { id: "staff", label: "Staff", icon: "bx-group" },
+] as const;
+type ManageSection = (typeof manageSections)[number]["id"];
 
 type ActivityStats = {
   totalActions: number;
@@ -71,6 +81,10 @@ type CashAuditShift = {
   _id: string;
   shiftNumber: number;
   status: "open" | "closed";
+  subsequentCorrections?: Array<{ _id?: string; before: { amount: number; paymentMethod: string }; after: { amount: number; paymentMethod: string }; note: string; correctedBy: string; correctedAt: string }>;
+  correctionCashDelta?: number;
+  adjustedExpectedCash?: number;
+  adjustedVariance?: number;
   auditStatus: "operating" | "needs_review" | "complete";
   openingMode: "counted" | "accepted_handoff";
   operatingOpeningCash: number;
@@ -120,6 +134,7 @@ type CashAuditShift = {
 };
 
 type CashShiftAudit = {
+  unassignedCorrections?: UnassignedCorrection[];
   businessDate: string;
   threshold: number;
   shifts: CashAuditShift[];
@@ -295,6 +310,7 @@ const hasCashMismatch = (shift: CashAuditShift) =>
   );
 
 const CashCloseAudit = ({
+  section,
   audit,
   reviewEvents,
   financeDate,
@@ -305,6 +321,7 @@ const CashCloseAudit = ({
   loading,
   dateFormat,
 }: {
+  section: ManageSection;
   audit: CashShiftAudit | null;
   reviewEvents: ReviewTransaction[];
   financeDate: string;
@@ -365,8 +382,8 @@ const CashCloseAudit = ({
     }
   };
 
-  return (
-    <section className="manage__finance">
+  const cashAudit = (
+    <section className="manage__finance manage__workspace" hidden={section !== "cash"}>
       <div className="manage__cashAuditHero">
         <div className="manage__cashAuditHeroIcon">
           <i
@@ -601,6 +618,7 @@ const CashCloseAudit = ({
                         {formatMoney(shift.handoff.expectedOperatingOpening)} ฿
                       </p>
                     )}
+                    {Boolean(shift.subsequentCorrections?.length) && <div className="manage__auditEquations"><p>ผลต่างหลังแก้ไข {formatMoney(shift.correctionCashDelta || 0)} ฿</p><p>ยอดคาดไว้ที่ปรับแล้ว {formatMoney(shift.adjustedExpectedCash || 0)} ฿ · ยอดต่าง {formatMoney(shift.adjustedVariance || 0)} ฿</p><p>ยอดนับและยอดส่งมอบเดิมไม่เปลี่ยน</p>{shift.subsequentCorrections?.map((c) => <p key={c._id}>{c.before.amount} {c.before.paymentMethod} → {c.after.amount} {c.after.paymentMethod} · {c.note} · {resolveStaffName(c.correctedBy)}</p>)}</div>}
                     {shift.reopenCorrections.map((correction) => (
                       <div
                         className="manage__reopenCorrection"
@@ -703,6 +721,7 @@ const CashCloseAudit = ({
                 <button
                   type="button"
                   className="manage__auditDetailsButton"
+                  aria-expanded={expandedShiftId === shift._id}
                   onClick={() =>
                     setExpandedShiftId(
                       expandedShiftId === shift._id ? null : shift._id,
@@ -746,120 +765,146 @@ const CashCloseAudit = ({
         </div>
       ) : null}
 
-      <div className="manage__financePanel">
-        <div className="manage__financePanelHeader">
-          <h3>คิวอนุมัติรายการ</h3>
-          <span>{reviewEvents.length}</span>
-        </div>
-        <div className="manage__reviewList">
-          {loading ? (
-            <div className="manage__emptyState">
-            <i className="bx bx-loader-lines" />
-              <p>กำลังโหลดรายการตรวจสอบ</p>
+      <UnassignedCorrectionAudits items={audit?.unassignedCorrections || []} />
+    </section>
+  );
+
+  return (
+    <>
+      {cashAudit}
+      <section
+        className="manage__financePanel manage__reviewQueues manage__workspace"
+        aria-label="คิวอนุมัติ"
+        hidden={section !== "reviews"}
+      >
+        <CorrectionRequests />
+        <section className="manage__reviewQueueSection manage__datedReviewQueue" aria-labelledby="manage-transaction-review-title">
+          <div className="manage__financePanelHeader">
+            <div>
+              <h3 id="manage-transaction-review-title">รายการรอตรวจสอบ</h3>
+              <p className="manage__correctionMeta">{reviewEvents.length} รายการในวันที่เลือก</p>
             </div>
-          ) : reviewEvents.length === 0 ? (
-            <div className="manage__emptyState">
-              <i className="bx bx-check-shield" />
-              <p>ไม่มีรายการที่ต้องตรวจ</p>
-            </div>
-          ) : (
-            reviewEvents.map((transaction, index) => (
-              <div
-                className="manage__reviewItem"
-                key={transactionKey(transaction, index)}
-              >
-                <div className="manage__reviewMain">
-                  <div className="manage__reviewTitleRow">
-                    <strong>
-                      {transaction.sourceType === "standaloneSale" && (
-                        <span className="manage__nonGuestBadge">แขกนอก</span>
-                      )}
-                      {transaction.guestName || transaction.bookingId || "-"}
-                    </strong>
-                    <span
-                      className={
-                        "manage__reviewAmount" +
-                        (signedTransactionAmount(transaction) < 0
-                          ? " manage__reviewAmount--out"
-                          : "")
-                      }
-                    >
-                      {formatMoney(signedTransactionAmount(transaction))} ฿
-                    </span>
-                  </div>
-                  <p>
-                    {transactionLabel(transaction.type)} ·{" "}
-                    {transaction.paymentMethod} ·{" "}
-                    {transaction.staffUsername
-                      ? resolveStaffName(transaction.staffUsername)
-                      : "-"}
-                  </p>
-                  <div className="manage__reviewMeta">
-                    {transaction.bookingId && (
-                      <span>{transaction.bookingId}</span>
-                    )}
-                    {transaction.saleId && <span>{transaction.saleId}</span>}
-                    {transaction.createdAt && (
-                      <span>
-                        {formatDateTime(transaction.createdAt, dateFormat)}
+            <PreferredDateInput
+              className="boxInput manage__dateInput"
+              value={financeDate}
+              onChange={onDateChange}
+              aria-label="วันที่ของรายการรอตรวจสอบ"
+            />
+          </div>
+          <div className="manage__reviewList">
+            {loading ? (
+              <div className="manage__emptyState manage__correctionEmpty">
+              <i className="bx bx-loader-lines" />
+                <p>กำลังโหลดรายการตรวจสอบ</p>
+              </div>
+            ) : reviewEvents.length === 0 ? (
+              <div className="manage__emptyState manage__correctionEmpty">
+                <i className="bx bx-check-shield" />
+                <p>ไม่มีรายการที่ต้องตรวจ</p>
+              </div>
+            ) : (
+              reviewEvents.map((transaction, index) => (
+                <div
+                  className="manage__reviewItem"
+                  key={transactionKey(transaction, index)}
+                >
+                  <div className="manage__reviewMain">
+                    <div className="manage__reviewTitleRow">
+                      <strong>
+                        {transaction.sourceType === "standaloneSale" && (
+                          <span className="manage__nonGuestBadge">แขกนอก</span>
+                        )}
+                        {transaction.guestName || transaction.bookingId || "-"}
+                      </strong>
+                      <span
+                        className={
+                          "manage__reviewAmount" +
+                          (signedTransactionAmount(transaction) < 0
+                            ? " manage__reviewAmount--out"
+                            : "")
+                        }
+                      >
+                        {formatMoney(signedTransactionAmount(transaction))} ฿
                       </span>
-                    )}
-                    {transaction.reference && (
-                      <span>Ref: {transaction.reference}</span>
-                    )}
-                    {transaction.reviewEventKind ===
-                      "transactionCorrection" &&
-                      transaction.correctionBeforeAmount !== undefined && (
+                    </div>
+                    <p>
+                      {transactionLabel(transaction.type)} ·{" "}
+                      {transaction.paymentMethod} ·{" "}
+                      {transaction.staffUsername
+                        ? resolveStaffName(transaction.staffUsername)
+                        : "-"}
+                    </p>
+                    <div className="manage__reviewMeta">
+                      {transaction.bookingId && (
+                        <span>{transaction.bookingId}</span>
+                      )}
+                      {transaction.saleId && <span>{transaction.saleId}</span>}
+                      {transaction.createdAt && (
                         <span>
-                          เดิม {formatMoney(transaction.correctionBeforeAmount)}
-                          ฿ → ใหม่ {formatMoney(transaction.amount)} ฿
+                          {formatDateTime(transaction.createdAt, dateFormat)}
                         </span>
                       )}
-                  </div>
-                  {(transaction.reviewFlags || []).length > 0 && (
-                    <div className="manage__reviewFlags">
-                      {transaction.reviewFlags?.map((flag) => (
-                        <span key={flag}>{reviewFlagLabel(flag)}</span>
-                      ))}
+                      {transaction.reference && (
+                        <span>Ref: {transaction.reference}</span>
+                      )}
+                      {transaction.reviewEventKind ===
+                        "transactionCorrection" &&
+                        transaction.correctionBeforeAmount !== undefined && (
+                          <span>
+                            เดิม {formatMoney(transaction.correctionBeforeAmount)}
+                            ฿ → ใหม่ {formatMoney(transaction.amount)} ฿
+                          </span>
+                        )}
                     </div>
-                  )}
-                  {transaction.note && (
-                    <p className="manage__reviewNote">{transaction.note}</p>
-                  )}
+                    {(transaction.reviewFlags || []).length > 0 && (
+                      <div className="manage__reviewFlags">
+                        {transaction.reviewFlags?.map((flag) => (
+                          <span key={flag}>{reviewFlagLabel(flag)}</span>
+                        ))}
+                      </div>
+                    )}
+                    {transaction.note && (
+                      <p className="manage__reviewNote">{transaction.note}</p>
+                    )}
+                  </div>
+                  <div className="manage__reviewActions">
+                    <button
+                      type="button"
+                      aria-label="อนุมัติรายการ"
+                      disabled={
+                        !transaction._id ||
+                        (!transaction.bookingId && !transaction.saleId) ||
+                        approvingTransactionId === transaction._id
+                      }
+                      className="manage__approveAction"
+                      onClick={() => onApproveTransaction(transaction)}
+                    >
+                      <i
+                        className={`bx ${approvingTransactionId === transaction._id ? "bx-loader-lines" : "bx-check"}`}
+                      />
+                      <span className="manage__approveActionLabel">
+                        {approvingTransactionId === transaction._id
+                          ? "กำลังอนุมัติ"
+                          : "อนุมัติรายการ"}
+                      </span>
+                    </button>
+                  </div>
                 </div>
-                <div className="manage__reviewActions">
-                  <button
-                    type="button"
-                    aria-label="อนุมัติรายการ"
-                    disabled={
-                      !transaction._id ||
-                      (!transaction.bookingId && !transaction.saleId) ||
-                      approvingTransactionId === transaction._id
-                    }
-                    className="manage__approveAction"
-                    onClick={() => onApproveTransaction(transaction)}
-                  >
-                    <i
-                      className={`bx ${approvingTransactionId === transaction._id ? "bx-loader-lines" : "bx-check"}`}
-                    />
-                    <span className="manage__approveActionLabel">
-                      {approvingTransactionId === transaction._id
-                        ? "กำลังอนุมัติ"
-                        : "อนุมัติรายการ"}
-                    </span>
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    </section>
+              ))
+            )}
+          </div>
+        </section>
+      </section>
+    </>
   );
 };
 
 const Manage = () => {
   usePageTitle("HostelFlow · จัดการระบบ");
+  const [searchParams] = useSearchParams();
+  const section =
+    manageSections.find(({ id }) => id === searchParams.get("section"))?.id ??
+    "cash";
   const { user: currentUser, resolveStaffName } = useAuth();
   const dateFormat = currentUser?.settings.dateFormat || "dd/MM/yyyy";
   const [users, setUsers] = useState<StaffUser[]>([]);
@@ -1184,31 +1229,34 @@ const Manage = () => {
       </Modal>
 
       <PageHeader
-        title="จัดการ Staff"
-        onRefresh={fetchManageData}
+        title="จัดการระบบ"
+        onRefresh={async () => {
+          notifyReviewQueueUpdated();
+          await fetchManageData();
+        }}
         lastUpdated={lastUpdated}
       />
 
-      <section className="main__actions">
-        <ActionButton
-          text="สร้างบัญชีผู้ใช้ใหม่"
-          icon="bx-user-plus"
-          onClick={() => {
-            setCreateNewUserIsOpen(true);
-          }}
-        />
-      </section>
-
-      <section className="manage__overview">
-        {statCards.map((card) => (
-          <div className="manage__overviewCard" key={card.label}>
-            <p>{card.label}</p>
-            <strong>{card.value}</strong>
-          </div>
-        ))}
-      </section>
+      <nav className="manage__navigation" aria-label="ส่วนจัดการระบบ">
+        {manageSections.map(({ id, label, icon }) => {
+          const nextParams = new URLSearchParams(searchParams);
+          nextParams.set("section", id);
+          return (
+            <Link
+              key={id}
+              to={{ search: nextParams.toString() }}
+              aria-current={section === id ? "page" : undefined}
+              preventScrollReset
+            >
+              <i className={`bx ${icon}`} aria-hidden="true" />
+              {label}
+            </Link>
+          );
+        })}
+      </nav>
 
       <CashCloseAudit
+        section={section}
         audit={cashShiftAudit}
         reviewEvents={reviewEvents}
         financeDate={financeDate}
@@ -1220,52 +1268,67 @@ const Manage = () => {
         dateFormat={dateFormat}
       />
 
-      <section className="manage__staffSection">
-        <div className="manage__sectionHeader">
-          <div>
-            <i className="bx bx-group" />
-            <div>
-              <h2>Staff</h2>
-              <p>จัดการบัญชีและดูประวัติการทำงาน</p>
+      <div className="manage__staffWorkspace manage__workspace" hidden={section !== "staff"}>
+        <section className="manage__overview">
+          {statCards.map((card) => (
+            <div className="manage__overviewCard" key={card.label}>
+              <p>{card.label}</p>
+              <strong>{card.value}</strong>
             </div>
-          </div>
-          <span>{users.length} คน</span>
-        </div>
-        <div className="manage__users">
-          {users.map((staffUser) => (
-            <button
-              type="button"
-              className={
-                "manage__user" +
-                (!staffUser.active ? " manage__user--inactive" : "")
-              }
-              key={staffUser.userId}
-              onClick={() => setManagedUser(staffUser)}
-              aria-label={`ดูข้อมูลและประวัติของ ${staffUser.name}`}
-            >
-              <img src={profilePictureUrl(staffUser.profilePictureUrl)} alt="" />
-              <div className="manage__userInfo">
-                <div>
-                  <h3>
-                    <span className="manage__userName">{staffUser.name}</span>
-                    {staffUser.admin && (
-                      <span className="manageUser__chip manageUser__chip--admin">
-                        Admin
-                      </span>
-                    )}
-                    {!staffUser.active && (
-                      <span className="manageUser__chip manageUser__chip--inactive">
-                        Inactive
-                      </span>
-                    )}
-                  </h3>
-                  <p>@{staffUser.username}</p>
-                </div>
-              </div>
-            </button>
           ))}
-        </div>
-      </section>
+        </section>
+
+        <section className="manage__staffSection">
+          <div className="manage__sectionHeader">
+            <div>
+              <i className="bx bx-group" />
+              <div>
+                <h2>Staff</h2>
+                <p>จัดการบัญชีและดูประวัติการทำงาน</p>
+              </div>
+            </div>
+            <ActionButton
+              text="สร้างบัญชีผู้ใช้ใหม่"
+              icon="bx-user-plus"
+              onClick={() => setCreateNewUserIsOpen(true)}
+            />
+          </div>
+          <div className="manage__users">
+            {users.map((staffUser) => (
+              <button
+                type="button"
+                className={
+                  "manage__user" +
+                  (!staffUser.active ? " manage__user--inactive" : "")
+                }
+                key={staffUser.userId}
+                onClick={() => setManagedUser(staffUser)}
+                aria-label={`ดูข้อมูลและประวัติของ ${staffUser.name}`}
+              >
+                <img src={profilePictureUrl(staffUser.profilePictureUrl)} alt="" />
+                <div className="manage__userInfo">
+                  <div>
+                    <h3>
+                      <span className="manage__userName">{staffUser.name}</span>
+                      {staffUser.admin && (
+                        <span className="manageUser__chip manageUser__chip--admin">
+                          Admin
+                        </span>
+                      )}
+                      {!staffUser.active && (
+                        <span className="manageUser__chip manageUser__chip--inactive">
+                          Inactive
+                        </span>
+                      )}
+                    </h3>
+                    <p>@{staffUser.username}</p>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </section>
+      </div>
     </main>
   );
 };

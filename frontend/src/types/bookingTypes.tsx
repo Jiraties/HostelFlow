@@ -191,6 +191,8 @@ export interface TransactionCorrectionSnapshot {
 }
 
 export interface TransactionCorrection {
+  requestId?: string;
+  historical?: boolean;
   _id?: string;
   targetTransactionId: string;
   before: TransactionCorrectionSnapshot;

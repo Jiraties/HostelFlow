@@ -40,9 +40,7 @@ const TransactionCorrectionHistory = ({
         new Date(first.correctedAt).getTime(),
     );
   const legacyAdjustments = (currentBooking.legacyTransactionAdjustments || [])
-    .filter(
-      (transaction) => transaction.relatedTransactionId === transactionId,
-    )
+    .filter((transaction) => transaction.relatedTransactionId === transactionId)
     .sort(
       (first, second) =>
         new Date(second.createdAt || 0).getTime() -
@@ -75,6 +73,10 @@ const TransactionCorrectionHistory = ({
                       : "ปรับยอดเรียกเก็บ"}
                   </strong>
                   <span>{reasonLabels[correction.reasonCode]}</span>
+                  {correction.historical && (
+                    <p>แก้ไขหลังปิดกะ · ไม่ใช่เงินรับหรือจ่ายใหม่</p>
+                  )}
+                  {correction.requestId && <p>คำขอ: {correction.requestId}</p>}
                 </div>
                 <span className="correctionHistory__badge">
                   ครั้งที่ {history.length - index}

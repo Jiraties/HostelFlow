@@ -139,60 +139,8 @@
   white-space: nowrap;
 }
 
-.checkIn__paymentTag {
-  display: inline-flex;
-  align-items: center;
-  font-size: 0.75rem;
-  padding: 0.15rem 0.5rem;
-  border-radius: 1rem;
-  margin-left: 0.5rem;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-.checkIn__paymentTag.cash {
-  background-color: color-mix(
-    in srgb,
-    var(--payment-method-cash) 16%,
-    #ffffff
-  );
-  color: var(--payment-method-cash);
-}
-
-.checkIn__paymentTag.transfer {
-  background-color: color-mix(
-    in srgb,
-    var(--payment-method-transfer) 16%,
-    #ffffff
-  );
-  color: var(--payment-method-transfer);
-}
-
-.checkIn__paymentTag.card {
-  background-color: color-mix(
-    in srgb,
-    var(--payment-method-card) 16%,
-    #ffffff
-  );
-  color: var(--payment-method-card);
-}
-
-.checkIn__paymentTag.ota {
-  background-color: color-mix(
-    in srgb,
-    var(--payment-method-ota) 16%,
-    #ffffff
-  );
-  color: var(--payment-method-ota);
-}
-
-.checkIn__paymentTag.unpaid {
-  background-color: color-mix(
-    in srgb,
-    var(--payment-method-unpaid) 16%,
-    #ffffff
-  );
-  color: var(--payment-method-unpaid);
+.checkIn__paymentRow .paymentMethodChip {
+  margin-inline-start: 0.5rem;
 }
 
 .checkIn__paymentConfirmationTotal {

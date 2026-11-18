@@ -1,3 +1,4 @@
+import PaymentMethodChip from "../../components/PaymentMethodChip";
 import { useEffect, useMemo, useState } from "react";
 import Select from "../../components/MotionSelect";
 import { type SingleValue } from "react-select";
@@ -264,11 +265,7 @@ const Cancellation = ({
                   <p>
                     {cancellationType === "refundable" ? "คืน" : "เก็บ"}
                     ยอดที่รับแล้ว{" "}
-                    <span
-                      className={`cancellation__paymentTag ${method.toLowerCase()}`}
-                    >
-                      {method}
-                    </span>
+                    <PaymentMethodChip method={method} />
                   </p>
                   <p>{formatCurrency(amount)}</p>
                 </div>

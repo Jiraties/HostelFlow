@@ -14,6 +14,7 @@ import type {
   PlatformId,
   transcation,
   TransactionType,
+  TransactionCorrection,
 } from "../models/booking";
 import { logActivity, logActivityStrict } from "../services/activityServices";
 import {
@@ -212,13 +213,13 @@ const standaloneSaleBookingView = (sale: any): booking =>
     checkIn: new Date(0),
     checkOut: new Date(0),
     status: "checkedOut",
-    transactions: sale.transactions || [],
+    transactions: withEffectiveTransactions(sale).transactions || [],
     staffUsername: sale.createdBy,
     sourceType: "standaloneSale",
     saleId: sale.saleId,
   }) as unknown as booking;
 
-const standaloneTransactionMeta = (source: booking) => {
+const standaloneTransactionMeta = (source: Pick<booking, "bookingId">) => {
   const value = source as unknown as {
     sourceType?: "standaloneSale";
     saleId?: string;
@@ -554,7 +555,7 @@ const attachDailyCloseStaffProfiles = async (
 };
 
 const getShiftTransactions = async (
-  shift: { _id?: unknown },
+  shift: { _id?: unknown; status?: string; endedAt?: Date },
   session?: ClientSession,
 ) => {
   const shiftId = String(shift._id);
@@ -567,14 +568,27 @@ const getShiftTransactions = async (
     })
       .session(session || null)
       .lean<booking[]>(),
-    StandaloneSale.find({ "transactions.cashShiftId": shiftId })
+    StandaloneSale.find({
+      $or: [
+        { "transactions.cashShiftId": shiftId },
+        { "transactionCorrections.after.cashShiftId": shiftId },
+      ],
+    })
       .session(session || null)
       .lean(),
   ]);
 
+  const visibleAtClose = (correction: import("../models/booking").TransactionCorrection) =>
+    shift.status !== "closed" || !shift.endedAt || new Date(correction.correctedAt) <= new Date(shift.endedAt);
   return [
-    ...bookings.map((booking) => withEffectiveTransactions(booking)),
-    ...standaloneSales.map(standaloneSaleBookingView),
+    ...bookings.map((booking) => withEffectiveTransactions({
+      ...booking,
+      transactionCorrections: (booking.transactionCorrections || []).filter(visibleAtClose),
+    })),
+    ...standaloneSales.map((sale) => standaloneSaleBookingView({
+      ...sale,
+      transactionCorrections: (sale.transactionCorrections || []).filter(visibleAtClose),
+    })),
   ].flatMap((booking) =>
     (booking.transactions || [])
       .filter((transaction) => transaction.cashShiftId === shiftId)
@@ -584,6 +598,20 @@ const getShiftTransactions = async (
         guestName: booking.name,
         staffUsername: transaction.createdBy || booking.staffUsername,
       })),
+  );
+};
+
+const correctionsForPhysicalCash = (corrections: TransactionCorrection[] = []) => {
+  const firstHistoricalChange = new Map<string, number>();
+  corrections.forEach((correction, index) => {
+    if (correction.historical && !firstHistoricalChange.has(correction.targetTransactionId)) {
+      firstHistoricalChange.set(correction.targetTransactionId, index);
+    }
+  });
+
+  // Later snapshots can carry amounts and payment methods from a historical correction.
+  return corrections.filter((correction, index) =>
+    index < (firstHistoricalChange.get(correction.targetTransactionId) ?? Infinity),
   );
 };
 
@@ -606,8 +634,14 @@ const getUnassignedCashTransactionsBetween = async (
   ]);
 
   return [
-    ...bookings.map((booking) => withEffectiveTransactions(booking)),
-    ...standaloneSales.map(standaloneSaleBookingView),
+    ...bookings.map((booking) => withEffectiveTransactions({
+      ...booking,
+      transactionCorrections: correctionsForPhysicalCash(booking.transactionCorrections),
+    })),
+    ...standaloneSales.map((sale) => standaloneSaleBookingView({
+      ...sale,
+      transactionCorrections: correctionsForPhysicalCash(sale.transactionCorrections),
+    })),
   ].flatMap((booking) =>
     (booking.transactions || [])
       .filter((transaction) => {
@@ -629,6 +663,7 @@ const enrichCashShift = async <T extends { _id?: unknown; toObject?: () => T }>(
 ) => {
   const shiftObject =
     typeof cashShift.toObject === "function" ? cashShift.toObject() : cashShift;
+  if ((shiftObject as any).status === "closed") return shiftObject;
   const movements = summarizeCashStashes(
     await getShiftTransactions(shiftObject as T & { startedAt: Date }),
   );
@@ -871,6 +906,7 @@ const getCashPositionForDate = async (
 
 type CashAuditWarning = {
   code:
+    | "historical_correction"
     | "operating_variance"
     | "handoff_mismatch"
     | "open_shift"
@@ -920,6 +956,9 @@ const getCashShiftAuditForDate = async (businessDate?: string) => {
   }).sort({
     shiftNumber: 1,
   });
+  const correctedBookings = await Booking.find({ "transactionCorrections.originalBusinessDate": bounds.businessDate }).select("bookingId transactionCorrections").lean();
+  const correctedSales = await StandaloneSale.find({ "transactionCorrections.originalBusinessDate": bounds.businessDate }).select("saleId transactionCorrections").lean();
+  const historicalCorrections = [...correctedBookings, ...correctedSales].flatMap((source) => (source.transactionCorrections || []).filter((c) => c.historical && c.originalBusinessDate === bounds.businessDate).map((c) => ({ ...c, sourceId: "bookingId" in source ? source.bookingId : source.saleId, sourceType: "bookingId" in source ? "booking" : "standaloneSale" })));
   const reopenCorrections = await CashShiftReopenCorrection.find({
     businessDate: bounds.businessDate,
   })
@@ -973,6 +1012,9 @@ const getCashShiftAuditForDate = async (businessDate?: string) => {
 
   const auditShifts = await Promise.all(
     enrichedShifts.map(async (shift, index) => {
+      const subsequentCorrections = historicalCorrections.filter((c) => c.affectedCashShiftId === String(shift._id) && (!shift.endedAt || new Date(c.correctedAt) > new Date(shift.endedAt)));
+      const signedCash = (snapshot: { paymentMethod: string; amount: number; type: TransactionType }) => snapshot.paymentMethod === "Cash" ? snapshot.amount * (["depositRefund", "roomRefund", "cancellationRefund", "compensation"].includes(snapshot.type) ? -1 : 1) : 0;
+      const correctionCashDelta = subsequentCorrections.reduce((sum, c) => sum + signedCash(c.after) - signedCash(c.before), 0);
       const shiftTransactions = await getShiftTransactions(
         shift as { _id?: unknown; startedAt: Date; endedAt?: Date },
       );
@@ -980,6 +1022,7 @@ const getCashShiftAuditForDate = async (businessDate?: string) => {
         transactionRequiresReview,
       );
       const warnings: CashAuditWarning[] = [];
+      if (subsequentCorrections.length) warnings.push({ code: "historical_correction", severity: "warning", message: "มีรายการแก้ไขหลังปิดกะ กรุณาตรวจสอบยอดต่างที่ปรับแล้ว" });
       const operatingVariance = Number(shift.operatingVariance || 0);
       if (
         shift.status === "closed" &&
@@ -1058,6 +1101,9 @@ const getCashShiftAuditForDate = async (businessDate?: string) => {
 
       return {
         ...cashShiftAuditView(shift),
+        subsequentCorrections, correctionCashDelta,
+        adjustedExpectedCash: shift.operatingExpectedCash + correctionCashDelta,
+        adjustedVariance: Number(shift.operatingActualCash || 0) - (shift.operatingExpectedCash + correctionCashDelta),
         reopenCorrections: reopenCorrections
           .filter((correction) => correction.shiftId === String(shift._id))
           .map(cashShiftReopenCorrectionView),
@@ -1067,7 +1113,7 @@ const getCashShiftAuditForDate = async (businessDate?: string) => {
             ? "operating"
             : "complete",
         warnings,
-        auditResolution: shift.auditResolution,
+        auditResolution: subsequentCorrections.some((c) => !shift.auditResolution || new Date(c.correctedAt) > new Date(shift.auditResolution.reviewedAt)) ? undefined : shift.auditResolution,
         flaggedTransactions,
         handoff,
       };
@@ -1078,6 +1124,7 @@ const getCashShiftAuditForDate = async (businessDate?: string) => {
     businessDate: bounds.businessDate,
     threshold: CASH_VARIANCE_THRESHOLD,
     shifts: auditShifts,
+    unassignedCorrections: historicalCorrections.filter((c) => !c.affectedCashShiftId),
     gaps,
   };
 };
@@ -2265,6 +2312,7 @@ export const resolveCashShiftAudit = async (req: Request, res: Response) => {
       });
     }
 
+    if (cashShift.auditResolution) (cashShift.auditResolutionHistory ||= []).push(cashShift.auditResolution);
     cashShift.auditResolution = {
       note,
       reviewedBy: req.user.username,

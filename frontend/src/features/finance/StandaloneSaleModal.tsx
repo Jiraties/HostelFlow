@@ -1,3 +1,4 @@
+import PaymentMethodChip from "../../components/PaymentMethodChip";
 import axios from "axios";
 import { useId, useState } from "react";
 import Select from "../../components/MotionSelect";
@@ -283,7 +284,7 @@ const StandaloneSaleModal = ({
               <div className="addTransaction__cardPreviewRow">
                 <p>
                   ค่าธรรมเนียมบัตร 3%
-                  <span className="addTransaction__paymentTag card">Card</span>
+                  <PaymentMethodChip method="Card" />
                 </p>
                 <p>{formatCurrency(cardSurcharge)} บาท</p>
               </div>

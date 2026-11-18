@@ -277,21 +277,35 @@ test("invalid filter and month parameters are rejected before producing Excel", 
 
 test("effective transaction corrections drive both selected payment method and Excel amounts", async () => {
   const serviceId = new mongoose.Types.ObjectId();
+  const roomId = new mongoose.Types.ObjectId();
   const before = { type: "towel", paymentMethod: "Card", amount: 100 };
   const after = { type: "towel", paymentMethod: "Cash", amount: 40 };
+  const room = { type: "roomCharge", paymentMethod: "Cash", amount: 1000 };
   await Booking.create(fixture("CORRECTED", {
-    transactions: [{ _id: serviceId, ...before }],
+    transactions: [{ _id: serviceId, ...before }, { _id: roomId, ...room }],
     transactionCorrections: [{
       targetTransactionId: String(serviceId), before, after,
       correctionType: "recorded_mistake", reasonCode: "other", note: "Synthetic correction",
+      correctedBy: "synthetic-admin", correctedAt: from, financialChange: true, originalBusinessDate: "2026-08-02",
+    }, {
+      targetTransactionId: String(roomId), before: room, after: { ...room, amount: 900 },
+      correctionType: "recorded_mistake", reasonCode: "incorrect_amount", note: "Synthetic room correction",
       correctedBy: "synthetic-admin", correctedAt: from, financialChange: true, originalBusinessDate: "2026-08-02",
     }],
   }));
   const cash = await report({ categories: "services", paymentMethods: "Cash" });
   assert.equal(cash.rows.length, 1);
   assert.equal(sum(cash.rows), 40);
+  const history = cash.workbook!.getWorksheet("Corrections")!;
+  assert.equal(history.rowCount, 2);
+  assert.equal(history.getRow(2).getCell(4).value, 100);
+  assert.equal(history.getRow(2).getCell(5).value, 40);
   const card = await report({ categories: "services", paymentMethods: "Card" });
   assert.equal(card.rows.length, 0);
+  const privateRooms = await report({ categories: "private", paymentMethods: "Cash" });
+  const privateHistory = privateRooms.workbook!.getWorksheet("Corrections")!;
+  assert.equal(privateHistory.rowCount, 2);
+  assert.equal(privateHistory.getRow(2).getCell(5).value, 900);
 });
 
 test("new filter path keeps the inclusive Bangkok check-in month and exclusive next-month boundary", async () => {

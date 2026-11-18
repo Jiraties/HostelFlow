@@ -1,3 +1,4 @@
+import PaymentMethodChip from "../../components/PaymentMethodChip";
 import { useEffect, useId, useState } from "react";
 import Select from "../../components/MotionSelect";
 import { type SingleValue } from "react-select";
@@ -160,7 +161,9 @@ const AddTransaction = ({
     if (submitting) return;
 
     const type = value as TransactionType | "";
-    const preset = type ? transactionPresets[type] : undefined;
+    const preset = type === "slowBoat"
+      ? { amount: 350 }
+      : type ? transactionPresets[type] : undefined;
     setFormData((prev) => ({
       ...prev,
       type,
@@ -753,7 +756,7 @@ const AddTransaction = ({
               <div className="addTransaction__cardPreviewRow">
                 <p>
                   ค่าธรรมเนียมบัตร 3%{" "}
-                  <span className="addTransaction__paymentTag card">Card</span>
+                  <PaymentMethodChip method="Card" />
                 </p>
                 <p>{formatCurrency(cardSurcharge)} บาท</p>
               </div>
