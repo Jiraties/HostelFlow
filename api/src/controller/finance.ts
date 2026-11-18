@@ -14,6 +14,7 @@ import type {
   PlatformId,
   transcation,
   TransactionType,
+  TransactionCorrection,
 } from "../models/booking";
 import { logActivity, logActivityStrict } from "../services/activityServices";
 import {
@@ -567,7 +568,12 @@ const getShiftTransactions = async (
     })
       .session(session || null)
       .lean<booking[]>(),
-    StandaloneSale.find({ "transactions.cashShiftId": shiftId })
+    StandaloneSale.find({
+      $or: [
+        { "transactions.cashShiftId": shiftId },
+        { "transactionCorrections.after.cashShiftId": shiftId },
+      ],
+    })
       .session(session || null)
       .lean(),
   ]);
@@ -595,6 +601,20 @@ const getShiftTransactions = async (
   );
 };
 
+const correctionsForPhysicalCash = (corrections: TransactionCorrection[] = []) => {
+  const firstHistoricalChange = new Map<string, number>();
+  corrections.forEach((correction, index) => {
+    if (correction.historical && !firstHistoricalChange.has(correction.targetTransactionId)) {
+      firstHistoricalChange.set(correction.targetTransactionId, index);
+    }
+  });
+
+  // Later snapshots can carry amounts and payment methods from a historical correction.
+  return corrections.filter((correction, index) =>
+    index < (firstHistoricalChange.get(correction.targetTransactionId) ?? Infinity),
+  );
+};
+
 const getUnassignedCashTransactionsBetween = async (
   start: Date,
   end: Date,
@@ -614,8 +634,14 @@ const getUnassignedCashTransactionsBetween = async (
   ]);
 
   return [
-    ...bookings.map((booking) => withEffectiveTransactions(booking)),
-    ...standaloneSales.map(standaloneSaleBookingView),
+    ...bookings.map((booking) => withEffectiveTransactions({
+      ...booking,
+      transactionCorrections: correctionsForPhysicalCash(booking.transactionCorrections),
+    })),
+    ...standaloneSales.map((sale) => standaloneSaleBookingView({
+      ...sale,
+      transactionCorrections: correctionsForPhysicalCash(sale.transactionCorrections),
+    })),
   ].flatMap((booking) =>
     (booking.transactions || [])
       .filter((transaction) => {

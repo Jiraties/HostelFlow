@@ -1086,6 +1086,137 @@ test("standalone sale uses the same proposal and approval validation", async () 
   assert.equal(stored?.transactionCorrections[0].after.amount, 350);
 });
 
+test("approval preserves the requested rounded cash total", async () => {
+  const booking = await createBooking({ status: "checkedOut", amount: 486.54 });
+  const chargeId = String(booking.transactions[0]._id);
+  const settlementId = new mongoose.Types.ObjectId().toString();
+  const roundingId = new mongoose.Types.ObjectId().toString();
+  const now = new Date();
+  const shift = await CashShift.create({
+    businessDate: businessDateKey(now), shiftNumber: 1, staffUsername: "staff",
+    createdBy: "staff", status: "closed", openingMode: "counted",
+    startedAt: now, endedAt: now, operatingOpeningCash: 0,
+    operatingActualCash: 491, operatingExpectedCash: 490,
+  });
+  booking.transactions.push(
+    {
+      _id: roundingId, type: "adjustment", paymentMethod: "Cash", amount: 3.46,
+      reasonOfAdjustment: "rounding", direction: "in", sourceAction: "CHECK_IN",
+      cashShiftId: String(shift._id), createdAt: now,
+    },
+    {
+      _id: settlementId, type: "settlementCharge", paymentMethod: "Cash",
+      amount: 486.54, direction: "in", sourceAction: "CHECK_IN",
+      relatedTransactionId: chargeId, relatedTransactionType: "roomCharge",
+      cashShiftId: String(shift._id), createdAt: now,
+    },
+  );
+  await booking.save();
+  const input = {
+    sourceType: "booking", sourceId: booking.bookingId, transactionId: settlementId,
+    expectedRevision: 0, correctedAmount: 491, correctedPaymentMethod: "Cash",
+    correctedCategory: "settlementCharge", correctionType: "recorded_mistake",
+    reasonCode: "incorrect_amount", note: "Synthetic rounding correction",
+  };
+  const legacy = await requestCall(submitCorrectionRequest, input);
+  assert.equal(legacy.statusCode, 201, JSON.stringify(legacy.body));
+  const legacyId = legacy.body.request._id;
+  await FinancialCorrectionRequest.collection.updateOne(
+    { _id: legacyId },
+    { $unset: { requestedAmount: "", roundingChange: "" } },
+  );
+  const stale = await requestCall(decideCorrectionRequest, {}, {
+    requestId: String(legacyId), action: "approve",
+  }, true);
+  assert.equal(stale.body.error, "CORRECTION_REQUEST_STALE");
+  assert.equal((await FinancialCorrectionRequest.findById(legacyId))?.status, "stale");
+  assert.equal((await Booking.findById(booking._id))?.transactionCorrections.length, 0);
+
+  const submitted = await requestCall(submitCorrectionRequest, input);
+  assert.equal(submitted.statusCode, 201, JSON.stringify(submitted.body));
+  assert.equal(submitted.body.request.proposal.after.amount, 486.54);
+  assert.equal(submitted.body.request.roundingChange.after, 4.46);
+
+  const approved = await requestCall(decideCorrectionRequest, {}, {
+    requestId: String(submitted.body.request._id), action: "approve",
+  }, true);
+  assert.equal(approved.statusCode, 200, JSON.stringify(approved.body));
+  const stored = await Booking.findById(booking._id);
+  const rounding = stored?.transactionCorrections.find((entry) =>
+    entry.targetTransactionId === roundingId,
+  );
+  assert.equal(rounding?.after.amount, 4.46);
+});
+
+test("a standalone sale corrected to Cash counts when the open shift closes", async () => {
+  const now = new Date();
+  const shift = await CashShift.create({
+    businessDate: businessDateKey(now), shiftNumber: 1, staffUsername: "admin",
+    createdBy: "admin", status: "open", openingMode: "counted",
+    startedAt: now, operatingOpeningCash: 0, operatingExpectedCash: 0,
+  });
+  const sale = await StandaloneSale.create({
+    saleId: "SYNTHETIC-CASH-SALE", createdBy: "staff", transactions: [{
+      type: "slowBoat", paymentMethod: "Transfer", amount: 250, createdAt: now,
+    }],
+  });
+  const submitted = await requestCall(submitCorrectionRequest, {
+    sourceType: "standaloneSale", sourceId: sale.saleId,
+    transactionId: String(sale.transactions[0]._id), expectedRevision: 0,
+    correctedAmount: 250, correctedPaymentMethod: "Cash", correctedCategory: "slowBoat",
+    correctionType: "recorded_mistake", reasonCode: "incorrect_payment_method",
+    note: "Synthetic payment method correction",
+  });
+  assert.equal(submitted.statusCode, 201, JSON.stringify(submitted.body));
+  const approved = await requestCall(decideCorrectionRequest, {}, {
+    requestId: String(submitted.body.request._id), action: "approve",
+  }, true);
+  assert.equal(approved.statusCode, 200, JSON.stringify(approved.body));
+  const closed = await requestCall(closeCashShift, {
+    operatingActualCash: 250, closeDay: false,
+  }, { shiftId: String(shift._id) }, true);
+  assert.equal(closed.statusCode, 200, JSON.stringify(closed.body));
+  const stored = await CashShift.findById(shift._id);
+  assert.equal(stored?.operatingExpectedCash, 250);
+  assert.equal(stored?.operatingVariance, 0);
+});
+
+test("historical Cash corrections and later note edits do not change a physical handoff", async () => {
+  const day = businessDateKey(new Date(Date.now() - 86400000));
+  const at = (time: string) => new Date(`${day}T${time}:00+07:00`);
+  for (const [index, start, end] of [[1, "08:00", "09:00"], [2, "10:00", "11:00"]] as const) {
+    await CashShift.create({
+      businessDate: day, shiftNumber: index, staffUsername: "staff", createdBy: "staff",
+      status: "closed", openingMode: "counted", startedAt: at(start), endedAt: at(end),
+      operatingOpeningCash: 100, operatingActualCash: 100, operatingExpectedCash: 100,
+      isFinalDayClose: index === 2,
+    });
+  }
+  const { booking, body } = await requestFixture();
+  booking.transactions[0].createdAt = at("09:30");
+  await booking.save();
+  const submitted = await requestCall(submitCorrectionRequest, {
+    ...body, correctedAmount: 250, correctedPaymentMethod: "Cash",
+  });
+  assert.equal(submitted.statusCode, 201, JSON.stringify(submitted.body));
+  const approved = await requestCall(decideCorrectionRequest, {}, {
+    requestId: String(submitted.body.request._id), action: "approve",
+  }, true);
+  assert.equal(approved.statusCode, 200, JSON.stringify(approved.body));
+  const note = await callCorrection({
+    bookingId: booking.bookingId, transactionId: body.transactionId, expectedRevision: 1,
+    overrides: { correctedAmount: 250, correctedPaymentMethod: "Cash", correctedNote: "Updated synthetic note" },
+  });
+  assert.equal(note.statusCode, 200, JSON.stringify(note.body));
+
+  const audit = response();
+  await getCashShiftAudit({ query: { date: day }, user: { admin: true } } as any, audit as any);
+  assert.equal(audit.body.shifts[1].handoff.expectedOperatingOpening, 100);
+  assert.equal(audit.body.shifts[1].handoff.mismatch, false);
+  assert.equal(audit.body.gaps.length, 0);
+  assert.equal(audit.body.unassignedCorrections.length, 1);
+});
+
 test("historical service correction reconciles yesterday without changing today's shift", async () => {
   const yesterday = new Date(Date.now() - 86400000);
   const original = await CashShift.create({ businessDate: businessDateKey(yesterday), shiftNumber: 1, staffUsername: "staff", status: "closed", openingMode: "counted", operatingOpeningCash: 0, operatingCashIn: 250, operatingCashOut: 0, operatingExpectedCash: 250, operatingActualCash: 350, operatingVariance: 100, createdBy: "staff", closedBy: "staff", startedAt: yesterday, endedAt: yesterday, isFinalDayClose: true });

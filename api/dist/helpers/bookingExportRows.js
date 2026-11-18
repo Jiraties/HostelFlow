@@ -82,11 +82,17 @@ const buildBookingExportRows = (bookings, bounds, filters) => {
             const category = (0, exports.classifyExportRooms)(rooms);
             if (!matchesRoomCategory(category, filters) || !filters.bookingChannels.includes(segment.platformId) || !matchesPayment(transaction?.paymentMethod))
                 return;
+            const deposits = segment.kind === "original"
+                ? transactions.filter((entry) => (0, bookingsReportHelpers_1.isBookingsReportCollectedDeposit)(entry) &&
+                    filters.paymentMethods.includes(entry.paymentMethod) &&
+                    filters.bookingChannels.includes((0, commercialSegmentHelpers_1.transactionPlatformId)(financialBooking, entry)))
+                : [];
             rows.push({
                 booking,
                 category,
                 kind: "accommodation",
                 sourceId: String(segment._id || segment.transactionId),
+                transactionIds: [transaction, ...deposits].flatMap((entry) => entry?._id ? [String(entry._id)] : []),
                 channelBookingId: segment.channelBookingId || booking.bookingId,
                 from: new Date(segment.from),
                 to: new Date(segment.to),
@@ -95,7 +101,7 @@ const buildBookingExportRows = (bookings, bounds, filters) => {
                 paymentMethod: transaction?.paymentMethod || "",
                 amount: transaction?.amount ?? segment.amount,
                 depositCollected: segment.kind === "original"
-                    ? (0, bookingsReportHelpers_1.bookingsReportDepositCollectedTotal)(transactions.filter((entry) => filters.paymentMethods.includes(entry.paymentMethod) && filters.bookingChannels.includes((0, commercialSegmentHelpers_1.transactionPlatformId)(financialBooking, entry))))
+                    ? (0, bookingsReportHelpers_1.bookingsReportDepositCollectedTotal)(deposits)
                     : "",
                 createdBy: segment.createdBy || booking.staffUsername,
                 note: [segment.note || booking.note || "", cancellationNeedsReview ? "ตรวจสอบยอดยกเลิก: รายการชำระหรือปิดยอดไม่ระบุค่าห้องที่เกี่ยวข้อง" : ""].filter(Boolean).join(" · "),
@@ -105,6 +111,7 @@ const buildBookingExportRows = (bookings, bounds, filters) => {
                 rows.push({
                     booking, category, kind: "adjustment",
                     sourceId: `cancel-unpaid:${segment.transactionId}`,
+                    transactionIds: [],
                     channelBookingId: segment.channelBookingId || booking.bookingId,
                     from: new Date(segment.from), to: new Date(segment.to), rooms,
                     platformId: segment.platformId, paymentMethod: "Unpaid", amount: adjustment,
@@ -132,6 +139,7 @@ const buildBookingExportRows = (bookings, bounds, filters) => {
                 category,
                 kind: serviceTypes.has(transaction.type) ? "service" : "adjustment",
                 sourceId: String(transaction._id || ""),
+                transactionIds: transaction._id ? [String(transaction._id)] : [],
                 channelBookingId: booking.bookingId,
                 from: new Date(booking.checkIn),
                 to: new Date(booking.checkOut),

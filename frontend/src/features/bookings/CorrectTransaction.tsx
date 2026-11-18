@@ -142,6 +142,7 @@ const CorrectTransaction = ({
     note: string;
     status: string;
     historical?: boolean;
+    roundingChange?: { before: number; after: number };
     requestedBy?: string;
     requestedAt?: string;
     decisionReason?: string;
@@ -175,6 +176,7 @@ const CorrectTransaction = ({
     requiresApproval: boolean;
     historical: boolean;
     cashDelta: number;
+    roundingChange?: { before: number; after: number };
     before: Pick<Transaction, "type" | "amount" | "paymentMethod">;
     after: Pick<Transaction, "type" | "amount" | "paymentMethod">;
   } | null>(null);
@@ -370,6 +372,12 @@ const CorrectTransaction = ({
         after: formatAmount(after.amount),
         changed: amountChanged,
       },
+      ...(review.roundingChange ? [{
+        label: "ยอดปัดเศษเงินสด",
+        before: formatAmount(review.roundingChange.before),
+        after: formatAmount(review.roundingChange.after),
+        changed: true,
+      }] : []),
       {
         label: "ประเภทรายการ",
         before: categoryLabel,
@@ -844,7 +852,11 @@ const CorrectTransaction = ({
               {transactionLabels[preview.after.type]}
             </p>
           )}
-          {preview.before.amount === preview.after.amount &&
+          {preview.roundingChange && (
+            <p>ยอดปัดเศษเงินสด {preview.roundingChange.before} → {preview.roundingChange.after} ฿</p>
+          )}
+          {!preview.roundingChange &&
+            preview.before.amount === preview.after.amount &&
             preview.before.paymentMethod === preview.after.paymentMethod &&
             preview.before.type === preview.after.type && (
               <p>ยอด ช่องทางชำระ และประเภทรายการคงเดิม</p>

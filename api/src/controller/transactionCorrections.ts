@@ -340,6 +340,7 @@ export const runTransactionCorrection = async (
     mode?: "initial" | "preview" | "request";
     sourceType?: "booking" | "standaloneSale";
     requestId?: string;
+    legacyRequestedAmount?: boolean;
   } = {},
 ) => {
   try {
@@ -545,6 +546,27 @@ export const runTransactionCorrection = async (
       effectiveTransactions,
       transactionId,
     );
+    if (
+      context.legacyRequestedAmount &&
+      context.requestId &&
+      linkedRounding &&
+      correctedPaymentMethod === "Cash" &&
+      correctedCategory === current.type &&
+      requestedAmount === resolveSettlementPrincipalAmount(
+        effectiveTransactions,
+        current,
+        transactionId,
+        linkedRounding.originalTransactionId || String(linkedRounding._id || ""),
+      )
+    ) {
+      // A legacy proposal may have stored only the principal, losing the intended rounding.
+      const message = "คำขอเดิมไม่มีข้อมูลยอดปัดเศษ กรุณาส่งคำขอใหม่";
+      await FinancialCorrectionRequest.updateOne(
+        { _id: context.requestId, status: "pending" },
+        { $set: { status: "stale", decidedAt: new Date(), decidedBy: req.user?.username, decisionReason: message } },
+      );
+      return res.status(409).json({ error: "CORRECTION_REQUEST_STALE", message });
+    }
     const roundingBefore = linkedRounding
       ? snapshotTransaction(linkedRounding)
       : undefined;
@@ -630,6 +652,9 @@ export const runTransactionCorrection = async (
       roundingAfter &&
       correctionChangesFinancialFields(roundingBefore, roundingAfter),
     );
+    const roundingChange = roundingFinancialChange && roundingBefore && roundingAfter
+      ? { before: roundingBefore.amount, after: roundingAfter.amount }
+      : undefined;
     const financialChange =
       correctionChangesFinancialFields(before, after) ||
       roundingFinancialChange;
@@ -770,9 +795,11 @@ export const runTransactionCorrection = async (
         historical,
         before,
         after,
+        roundingChange,
         cashDelta:
           (after.paymentMethod === "Cash" ? after.amount : 0) -
-          (before.paymentMethod === "Cash" ? before.amount : 0),
+          (before.paymentMethod === "Cash" ? before.amount : 0) +
+          (roundingChange ? roundingChange.after - roundingChange.before : 0),
         cashMovementToday: historical ? 0 : undefined,
         financialSummary:
           summarizeBookingFinancialPosition(previewTransactions),
@@ -784,6 +811,7 @@ export const runTransactionCorrection = async (
       if (!req.get("Idempotency-Key"))
         return res.status(400).json({ error: "IDEMPOTENCY_KEY_REQUIRED" });
       proposal.historical = historical;
+      proposal.financialChange = financialChange;
       const request = await withMutationIdempotency(req, () =>
         FinancialCorrectionRequest.create({
           sourceType: standalone ? "standaloneSale" : "booking",
@@ -791,6 +819,8 @@ export const runTransactionCorrection = async (
           transactionId,
           sourceLabel: booking.name,
           expectedRevision,
+          requestedAmount,
+          roundingChange,
           proposal,
           requestedBy: req.user!.username,
         }),

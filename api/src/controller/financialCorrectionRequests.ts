@@ -116,7 +116,7 @@ export const decideCorrectionRequest = async (req: Request, res: Response) => {
     };
     req.body = {
       expectedRevision: request.expectedRevision,
-      correctedAmount: proposal.after.amount,
+      correctedAmount: request.requestedAmount ?? proposal.after.amount,
       correctedPaymentMethod: proposal.after.paymentMethod,
       correctedCategory: proposal.after.type,
       correctedNote: proposal.after.note,
@@ -130,6 +130,7 @@ export const decideCorrectionRequest = async (req: Request, res: Response) => {
       {
         sourceType: request.sourceType as "booking" | "standaloneSale",
         requestId: String(request._id),
+        legacyRequestedAmount: request.requestedAmount === undefined,
       },
     );
   }

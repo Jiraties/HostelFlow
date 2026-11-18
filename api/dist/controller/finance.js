@@ -373,7 +373,12 @@ const getShiftTransactions = async (shift, session) => {
         })
             .session(session || null)
             .lean(),
-        standaloneSale_1.default.find({ "transactions.cashShiftId": shiftId })
+        standaloneSale_1.default.find({
+            $or: [
+                { "transactions.cashShiftId": shiftId },
+                { "transactionCorrections.after.cashShiftId": shiftId },
+            ],
+        })
             .session(session || null)
             .lean(),
     ]);
@@ -396,6 +401,16 @@ const getShiftTransactions = async (shift, session) => {
         staffUsername: transaction.createdBy || booking.staffUsername,
     })));
 };
+const correctionsForPhysicalCash = (corrections = []) => {
+    const firstHistoricalChange = new Map();
+    corrections.forEach((correction, index) => {
+        if (correction.historical && !firstHistoricalChange.has(correction.targetTransactionId)) {
+            firstHistoricalChange.set(correction.targetTransactionId, index);
+        }
+    });
+    // Later snapshots can carry amounts and payment methods from a historical correction.
+    return corrections.filter((correction, index) => index < (firstHistoricalChange.get(correction.targetTransactionId) ?? Infinity));
+};
 const getUnassignedCashTransactionsBetween = async (start, end, session) => {
     const [bookings, standaloneSales] = await Promise.all([
         booking_1.default.find({
@@ -410,8 +425,14 @@ const getUnassignedCashTransactionsBetween = async (start, end, session) => {
             .lean(),
     ]);
     return [
-        ...bookings.map((booking) => (0, transactionCorrections_1.withEffectiveTransactions)(booking)),
-        ...standaloneSales.map(standaloneSaleBookingView),
+        ...bookings.map((booking) => (0, transactionCorrections_1.withEffectiveTransactions)({
+            ...booking,
+            transactionCorrections: correctionsForPhysicalCash(booking.transactionCorrections),
+        })),
+        ...standaloneSales.map((sale) => standaloneSaleBookingView({
+            ...sale,
+            transactionCorrections: correctionsForPhysicalCash(sale.transactionCorrections),
+        })),
     ].flatMap((booking) => (booking.transactions || [])
         .filter((transaction) => {
         if (transaction.cashShiftId)

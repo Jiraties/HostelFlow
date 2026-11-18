@@ -2,7 +2,7 @@ import type { booking, commercialSegment, transcation } from "../models/booking"
 import { ROOM_INVENTORY } from "../config/roomInventory";
 import { commercialRoomSlices, effectiveCommercialSegments, transactionPlatformId } from "./commercialSegmentHelpers";
 import { effectiveBookingTransactions } from "../services/transactionCorrections";
-import { bookingsReportDepositCollectedTotal, bookingsReportTransactionAmount, bookingsReportUnpaidCancellationAdjustments } from "./bookingsReportHelpers";
+import { bookingsReportDepositCollectedTotal, bookingsReportTransactionAmount, bookingsReportUnpaidCancellationAdjustments, isBookingsReportCollectedDeposit } from "./bookingsReportHelpers";
 import { EXPECTED_STAY_REVENUE_SERVICE_TYPES } from "./expectedStayRevenueHelpers";
 import { exportFilterValues, hasEmptyExportDimension, matchesExportStatus, type ExportFilters } from "./exportFilters";
 
@@ -12,6 +12,7 @@ export type BookingExportRow = {
   category: RoomExportCategory | "services";
   kind: "accommodation" | "service" | "adjustment";
   sourceId: string;
+  transactionIds: string[];
   channelBookingId: string;
   from: Date;
   to: Date;
@@ -109,11 +110,21 @@ export const buildBookingExportRows = (
         const rooms = roomsForSegment(financialBooking, segment);
         const category = classifyExportRooms(rooms);
         if (!matchesRoomCategory(category, filters) || !filters.bookingChannels.includes(segment.platformId) || !matchesPayment(transaction?.paymentMethod)) return;
+        const deposits = segment.kind === "original"
+          ? transactions.filter((entry) =>
+              isBookingsReportCollectedDeposit(entry) &&
+              filters.paymentMethods.includes(entry.paymentMethod) &&
+              filters.bookingChannels.includes(transactionPlatformId(financialBooking, entry)),
+            )
+          : [];
         rows.push({
           booking,
           category,
           kind: "accommodation",
           sourceId: String(segment._id || segment.transactionId),
+          transactionIds: [transaction, ...deposits].flatMap((entry) =>
+            entry?._id ? [String(entry._id)] : [],
+          ),
           channelBookingId: segment.channelBookingId || booking.bookingId,
           from: new Date(segment.from),
           to: new Date(segment.to),
@@ -122,7 +133,7 @@ export const buildBookingExportRows = (
           paymentMethod: transaction?.paymentMethod || "",
           amount: transaction?.amount ?? segment.amount,
           depositCollected: segment.kind === "original"
-            ? bookingsReportDepositCollectedTotal(transactions.filter((entry) => filters.paymentMethods.includes(entry.paymentMethod) && filters.bookingChannels.includes(transactionPlatformId(financialBooking, entry))))
+            ? bookingsReportDepositCollectedTotal(deposits)
             : "",
           createdBy: segment.createdBy || booking.staffUsername,
           note: [segment.note || booking.note || "", cancellationNeedsReview ? "ตรวจสอบยอดยกเลิก: รายการชำระหรือปิดยอดไม่ระบุค่าห้องที่เกี่ยวข้อง" : ""].filter(Boolean).join(" · "),
@@ -131,6 +142,7 @@ export const buildBookingExportRows = (
         if (adjustment !== undefined) rows.push({
           booking, category, kind: "adjustment",
           sourceId: `cancel-unpaid:${segment.transactionId}`,
+          transactionIds: [],
           channelBookingId: segment.channelBookingId || booking.bookingId,
           from: new Date(segment.from), to: new Date(segment.to), rooms,
           platformId: segment.platformId, paymentMethod: "Unpaid", amount: adjustment,
@@ -156,6 +168,7 @@ export const buildBookingExportRows = (
         category,
         kind: serviceTypes.has(transaction.type) ? "service" : "adjustment",
         sourceId: String(transaction._id || ""),
+        transactionIds: transaction._id ? [String(transaction._id)] : [],
         channelBookingId: booking.bookingId,
         from: new Date(booking.checkIn),
         to: new Date(booking.checkOut),

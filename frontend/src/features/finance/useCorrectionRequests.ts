@@ -15,6 +15,7 @@ export type RequestItem = {
   requestedAt: string;
   status: string;
   decisionReason?: string;
+  roundingChange?: { before: number; after: number };
   proposal: {
     before: booking["transactions"][number];
     after: booking["transactions"][number];

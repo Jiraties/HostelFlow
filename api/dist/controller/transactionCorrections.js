@@ -350,6 +350,17 @@ const runTransactionCorrection = async (req, res, context = {}) => {
         if (correctedPaymentMethod !== "Cash")
             delete after.cashShiftId;
         const linkedRounding = findLinkedCheckInRoundingAdjustment(effectiveTransactions, transactionId);
+        if (context.legacyRequestedAmount &&
+            context.requestId &&
+            linkedRounding &&
+            correctedPaymentMethod === "Cash" &&
+            correctedCategory === current.type &&
+            requestedAmount === resolveSettlementPrincipalAmount(effectiveTransactions, current, transactionId, linkedRounding.originalTransactionId || String(linkedRounding._id || ""))) {
+            // A legacy proposal may have stored only the principal, losing the intended rounding.
+            const message = "คำขอเดิมไม่มีข้อมูลยอดปัดเศษ กรุณาส่งคำขอใหม่";
+            await financialCorrectionRequest_1.default.updateOne({ _id: context.requestId, status: "pending" }, { $set: { status: "stale", decidedAt: new Date(), decidedBy: req.user?.username, decisionReason: message } });
+            return res.status(409).json({ error: "CORRECTION_REQUEST_STALE", message });
+        }
         const roundingBefore = linkedRounding
             ? (0, transactionCorrections_1.snapshotTransaction)(linkedRounding)
             : undefined;
@@ -410,6 +421,9 @@ const runTransactionCorrection = async (req, res, context = {}) => {
         const roundingFinancialChange = Boolean(roundingBefore &&
             roundingAfter &&
             (0, transactionCorrections_1.correctionChangesFinancialFields)(roundingBefore, roundingAfter));
+        const roundingChange = roundingFinancialChange && roundingBefore && roundingAfter
+            ? { before: roundingBefore.amount, after: roundingAfter.amount }
+            : undefined;
         const financialChange = (0, transactionCorrections_1.correctionChangesFinancialFields)(before, after) ||
             roundingFinancialChange;
         const linkedRoundingId = linkedRounding
@@ -507,8 +521,10 @@ const runTransactionCorrection = async (req, res, context = {}) => {
                 historical,
                 before,
                 after,
+                roundingChange,
                 cashDelta: (after.paymentMethod === "Cash" ? after.amount : 0) -
-                    (before.paymentMethod === "Cash" ? before.amount : 0),
+                    (before.paymentMethod === "Cash" ? before.amount : 0) +
+                    (roundingChange ? roundingChange.after - roundingChange.before : 0),
                 cashMovementToday: historical ? 0 : undefined,
                 financialSummary: (0, transactionCorrections_1.summarizeBookingFinancialPosition)(previewTransactions),
             });
@@ -519,12 +535,15 @@ const runTransactionCorrection = async (req, res, context = {}) => {
             if (!req.get("Idempotency-Key"))
                 return res.status(400).json({ error: "IDEMPOTENCY_KEY_REQUIRED" });
             proposal.historical = historical;
+            proposal.financialChange = financialChange;
             const request = await (0, mutationIdempotency_1.withMutationIdempotency)(req, () => financialCorrectionRequest_1.default.create({
                 sourceType: standalone ? "standaloneSale" : "booking",
                 sourceId: bookingId,
                 transactionId,
                 sourceLabel: booking.name,
                 expectedRevision,
+                requestedAmount,
+                roundingChange,
                 proposal,
                 requestedBy: req.user.username,
             }));

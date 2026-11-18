@@ -53,6 +53,7 @@ export const CorrectionRequestDialog = ({
             note: selected.proposal.note,
             status: selected.status,
             historical: selected.proposal.historical,
+            roundingChange: selected.roundingChange,
             requestedBy: selected.requestedBy,
             requestedAt: selected.requestedAt,
             decisionReason: selected.decisionReason,

@@ -100,7 +100,7 @@ const decideCorrectionRequest = async (req, res) => {
         };
         req.body = {
             expectedRevision: request.expectedRevision,
-            correctedAmount: proposal.after.amount,
+            correctedAmount: request.requestedAmount ?? proposal.after.amount,
             correctedPaymentMethod: proposal.after.paymentMethod,
             correctedCategory: proposal.after.type,
             correctedNote: proposal.after.note,
@@ -111,6 +111,7 @@ const decideCorrectionRequest = async (req, res) => {
         return (0, transactionCorrections_1.runTransactionCorrection)(req, res, {
             sourceType: request.sourceType,
             requestId: String(request._id),
+            legacyRequestedAmount: request.requestedAmount === undefined,
         });
     }
     const reason = typeof req.body.reason === "string" ? req.body.reason.trim() : "";

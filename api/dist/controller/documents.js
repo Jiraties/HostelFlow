@@ -520,7 +520,17 @@ const getFilteredBookingsReport = async (req, res) => {
     const staff = await user_1.default.find({ username: { $in: staffUsernames } }).select("username name").lean();
     const staffNames = new Map(staff.map((member) => [member.username, member.name]));
     const workbook = createFilteredBookingWorkbook(rows, filters, month, (username) => (username && staffNames.get(username)) || "ไม่ทราบชื่อพนักงาน");
-    appendCorrectionWorksheet(workbook, records.filter((record) => rows.some((row) => row.booking.bookingId === record.bookingId)));
+    const exportedTransactions = new Map();
+    for (const row of rows) {
+        const bookingId = row.booking.bookingId;
+        const ids = exportedTransactions.get(bookingId) ?? new Set();
+        row.transactionIds.forEach((id) => ids.add(id));
+        exportedTransactions.set(bookingId, ids);
+    }
+    appendCorrectionWorksheet(workbook, records.map(({ bookingId, transactionCorrections }) => ({
+        bookingId,
+        transactionCorrections: transactionCorrections?.filter((correction) => exportedTransactions.get(bookingId)?.has(correction.targetTransactionId)),
+    })));
     setSensitiveDownloadHeaders(res);
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename=bookings-${month}.xlsx`);

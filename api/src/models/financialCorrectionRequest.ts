@@ -11,6 +11,11 @@ const schema = new mongoose.Schema({
   transactionId: { type: String, required: true },
   sourceLabel: { type: String, required: true },
   expectedRevision: { type: Number, required: true },
+  requestedAmount: { type: Number, immutable: true },
+  roundingChange: {
+    type: new mongoose.Schema({ before: Number, after: Number }, { _id: false }),
+    immutable: true,
+  },
   proposal: {
     type: transactionCorrectionSchema,
     required: true,
