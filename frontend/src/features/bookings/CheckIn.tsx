@@ -1,3 +1,4 @@
+import PaymentMethodChip from "../../components/PaymentMethodChip";
 import { useState, useEffect, useId } from "react";
 import type { booking } from "../../types/bookingTypes";
 import "./BookingCheckbox.css";
@@ -602,13 +603,7 @@ const CheckIn = ({
                 <div className="checkIn__paymentRow">
                   <p>
                     ค่ามัดจำ{" "}
-                    <span
-                      className={`checkIn__paymentTag ${(
-                        existingDepositTransactions[0]?.paymentMethod || "Cash"
-                      ).toLowerCase()}`}
-                    >
-                      {existingDepositTransactions[0]?.paymentMethod || "Cash"}
-                    </span>
+                    <PaymentMethodChip method={existingDepositTransactions[0]?.paymentMethod || "Cash"} />
                     {hasExistingDeposit && " · รับแล้ว"}
                   </p>
                   <p>{formatCurrency(Number(deposit))}</p>
@@ -619,11 +614,7 @@ const CheckIn = ({
                   <div className="checkIn__paymentRow">
                     <p>
                       ค่าห้อง{" "}
-                      <span
-                        className={`checkIn__paymentTag ${unpaidPaymentPaymentMethod.toLowerCase()}`}
-                      >
-                        {unpaidPaymentPaymentMethod}
-                      </span>
+                      <PaymentMethodChip method={unpaidPaymentPaymentMethod} />
                     </p>
                     <p>
                       {formatCurrency(outstandingRoomChargeAmount)}
@@ -640,7 +631,7 @@ const CheckIn = ({
                   <div className="checkIn__paymentRow">
                     <p>
                       ค่าธรรมเนียมบัตร 3%{" "}
-                      <span className="checkIn__paymentTag card">Card</span>
+                      <PaymentMethodChip method="Card" />
                     </p>
                     <p>{formatCurrency(cardSurcharge)}</p>
                   </div>

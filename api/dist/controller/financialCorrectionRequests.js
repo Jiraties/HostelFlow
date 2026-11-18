@@ -16,7 +16,7 @@ const correctionRequestsEnabled = (_req, res, next) => {
     next();
 };
 exports.correctionRequestsEnabled = correctionRequestsEnabled;
-const previewCorrectionRequest = (req, res) => dispatch(req, res, "preview");
+const previewCorrectionRequest = (req, res) => dispatch(req, res, req.body?.initial === true ? "initial" : "preview");
 exports.previewCorrectionRequest = previewCorrectionRequest;
 const submitCorrectionRequest = (req, res) => dispatch(req, res, "request");
 exports.submitCorrectionRequest = submitCorrectionRequest;

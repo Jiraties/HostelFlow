@@ -17,10 +17,10 @@ export const correctionRequestsEnabled = (
 };
 
 export const previewCorrectionRequest = (req: Request, res: Response) =>
-  dispatch(req, res, "preview");
+  dispatch(req, res, req.body?.initial === true ? "initial" : "preview");
 export const submitCorrectionRequest = (req: Request, res: Response) =>
   dispatch(req, res, "request");
-const dispatch = (req: Request, res: Response, mode: "preview" | "request") => {
+const dispatch = (req: Request, res: Response, mode: "initial" | "preview" | "request") => {
   const { sourceType, sourceId, transactionId } = req.body;
   if (
     !["booking", "standaloneSale"].includes(sourceType) ||

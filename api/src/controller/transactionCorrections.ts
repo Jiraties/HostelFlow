@@ -321,11 +321,23 @@ const correctionRecord = ({
   reviewStatus: reviewFlags.length ? "needs_review" : "none",
 });
 
+const isCorrectionPeriodClosed = async (
+  businessDate: string,
+  cashShiftId?: string,
+) => {
+  const [cashShift, dailyClose, finalDayClose] = await Promise.all([
+    cashShiftId ? CashShift.findById(cashShiftId).lean() : null,
+    DailyClose.findOne({ businessDate }).lean(),
+    CashShift.findOne({ businessDate, isFinalDayClose: true }).lean(),
+  ]);
+  return Boolean(cashShift?.status === "closed" || dailyClose || finalDayClose);
+};
+
 export const runTransactionCorrection = async (
   req: Request<CorrectionParams, {}, CorrectionBody>,
   res: Response,
   context: {
-    mode?: "preview" | "request";
+    mode?: "initial" | "preview" | "request";
     sourceType?: "booking" | "standaloneSale";
     requestId?: string;
   } = {},
@@ -345,33 +357,6 @@ export const runTransactionCorrection = async (
       return res.status(400).json({
         error: "EXPECTED_REVISION_REQUIRED",
         message: "กรุณารีเฟรชข้อมูลการจองก่อนแก้ไขรายการ",
-      });
-    }
-    if (!correctionType || !CORRECTION_TYPES.includes(correctionType)) {
-      return res.status(400).json({
-        error: "INVALID_CORRECTION_TYPE",
-        message: "กรุณาเลือกประเภทการแก้ไข",
-      });
-    }
-    if (!reasonCode || !CORRECTION_REASONS.includes(reasonCode)) {
-      return res.status(400).json({
-        error: "INVALID_CORRECTION_REASON",
-        message: "กรุณาเลือกเหตุผลที่แก้ไข",
-      });
-    }
-    if (!auditNote) {
-      return res.status(400).json({
-        error: "CORRECTION_NOTE_REQUIRED",
-        message: "กรุณาระบุหมายเหตุเพื่อเก็บในประวัติ",
-      });
-    }
-    if (
-      correctionType === "charge_change" &&
-      !CHARGE_CHANGE_REASONS.has(reasonCode)
-    ) {
-      return res.status(400).json({
-        error: "INVALID_CHARGE_CHANGE_REASON",
-        message: "เหตุผลนี้ไม่ตรงกับการปรับยอดเรียกเก็บ",
       });
     }
 
@@ -427,6 +412,62 @@ export const runTransactionCorrection = async (
       return res.status(400).json({
         error: "TRANSACTION_NOT_EDITABLE",
         message: "รายการประเภทนี้ต้องใช้ขั้นตอนเฉพาะ ไม่สามารถแก้ไขโดยตรงได้",
+      });
+    }
+
+    const before = snapshotTransaction(current);
+    const originalBusinessDate = businessDateKey(
+      new Date(current.createdAt || booking.checkIn),
+    );
+    const affectedCashShiftId =
+      before.cashShiftId ||
+      booking.transactions.find((t) => String(t._id) === transactionId)
+        ?.cashShiftId ||
+      [...(booking.transactionCorrections || [])]
+        .reverse()
+        .find(
+          (c) =>
+            c.targetTransactionId === transactionId && c.affectedCashShiftId,
+        )?.affectedCashShiftId;
+    const isPendingFutureRoomCharge =
+      booking.status === "booked" &&
+      current.type === "roomCharge" &&
+      ["OTA", "Unpaid"].includes(current.paymentMethod) &&
+      businessDateKey(new Date(booking.checkIn)) >= businessDateKey(new Date());
+    const canBeHistorical = current.type !== "deposit";
+    if (context.mode === "initial") {
+      const historical =
+        canBeHistorical &&
+        !isPendingFutureRoomCharge &&
+        await isCorrectionPeriodClosed(originalBusinessDate, affectedCashShiftId);
+      return res.json({ historical });
+    }
+
+    if (!correctionType || !CORRECTION_TYPES.includes(correctionType)) {
+      return res.status(400).json({
+        error: "INVALID_CORRECTION_TYPE",
+        message: "กรุณาเลือกประเภทการแก้ไข",
+      });
+    }
+    if (!reasonCode || !CORRECTION_REASONS.includes(reasonCode)) {
+      return res.status(400).json({
+        error: "INVALID_CORRECTION_REASON",
+        message: "กรุณาเลือกเหตุผลที่แก้ไข",
+      });
+    }
+    if (!auditNote) {
+      return res.status(400).json({
+        error: "CORRECTION_NOTE_REQUIRED",
+        message: "กรุณาระบุหมายเหตุเพื่อเก็บในประวัติ",
+      });
+    }
+    if (
+      correctionType === "charge_change" &&
+      !CHARGE_CHANGE_REASONS.has(reasonCode)
+    ) {
+      return res.status(400).json({
+        error: "INVALID_CHARGE_CHANGE_REASON",
+        message: "เหตุผลนี้ไม่ตรงกับการปรับยอดเรียกเก็บ",
       });
     }
 
@@ -490,7 +531,6 @@ export const runTransactionCorrection = async (
       });
     }
 
-    const before = snapshotTransaction(current);
     const requestedAmount = Number(correctedAmount.toFixed(2));
     const after = {
       ...before,
@@ -568,11 +608,6 @@ export const runTransactionCorrection = async (
       }
     }
 
-    const isPendingFutureRoomCharge =
-      booking.status === "booked" &&
-      current.type === "roomCharge" &&
-      ["OTA", "Unpaid"].includes(current.paymentMethod) &&
-      businessDateKey(new Date(booking.checkIn)) >= businessDateKey(new Date());
     const isStaffEditablePendingRoomCharge =
       isPendingFutureRoomCharge &&
       correctedCategory === current.type &&
@@ -691,40 +726,17 @@ export const runTransactionCorrection = async (
         message: "ยอดที่แก้ไขทำให้ยอดคืนหรือยอดเก็บมัดจำเกินมัดจำที่รับไว้",
       });
     }
-    const originalBusinessDate = businessDateKey(
-      new Date(current.createdAt || booking.checkIn),
-    );
     const correctionReviewFlags = transactionCorrectionNeedsReview(
       before,
       after,
       current.correctionCount || 0,
     );
 
-    const affectedCashShiftId =
-      before.cashShiftId ||
-      booking.transactions.find((t) => String(t._id) === transactionId)
-        ?.cashShiftId ||
-      [...(booking.transactionCorrections || [])]
-        .reverse()
-        .find(
-          (c) =>
-            c.targetTransactionId === transactionId && c.affectedCashShiftId,
-        )?.affectedCashShiftId;
-    const [cashShift, dailyClose, finalDayClose] = await Promise.all([
-      affectedCashShiftId
-        ? CashShift.findById(affectedCashShiftId).lean()
-        : null,
-      DailyClose.findOne({ businessDate: originalBusinessDate }).lean(),
-      CashShift.findOne({
-        businessDate: originalBusinessDate,
-        isFinalDayClose: true,
-      }).lean(),
-    ]);
     const historical =
       financialChange &&
-      current.type !== "deposit" &&
+      canBeHistorical &&
       !isStaffEditablePendingRoomCharge &&
-      Boolean(cashShift?.status === "closed" || dailyClose || finalDayClose);
+      await isCorrectionPeriodClosed(originalBusinessDate, affectedCashShiftId);
     if (historical && after.paymentMethod === "Cash" && affectedCashShiftId)
       after.cashShiftId = affectedCashShiftId;
     const requiresApproval =
@@ -1037,28 +1049,12 @@ export const runTransactionCorrection = async (
     };
     const updatedBooking = await withMutationIdempotency(req, () =>
       withCashShiftMutationLock(originalBusinessDate, async () => {
-        const [latestShift, latestDailyClose, latestFinalClose] =
-          await Promise.all([
-            affectedCashShiftId
-              ? CashShift.findById(affectedCashShiftId).lean()
-              : null,
-            DailyClose.findOne({ businessDate: originalBusinessDate }).lean(),
-            CashShift.findOne({
-              businessDate: originalBusinessDate,
-              isFinalDayClose: true,
-            }).lean(),
-          ]);
-        if (
-          historical !==
-          (financialChange &&
-            current.type !== "deposit" &&
-            !isStaffEditablePendingRoomCharge &&
-            Boolean(
-              latestShift?.status === "closed" ||
-              latestDailyClose ||
-              latestFinalClose,
-            ))
-        )
+        const stillHistorical =
+          financialChange &&
+          canBeHistorical &&
+          !isStaffEditablePendingRoomCharge &&
+          await isCorrectionPeriodClosed(originalBusinessDate, affectedCashShiftId);
+        if (historical !== stillHistorical)
           throw new CashShiftLedgerConflictError(
             "รอบการเงินเปลี่ยนแล้ว กรุณารีเฟรชและตรวจสอบอีกครั้ง",
           );

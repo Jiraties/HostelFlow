@@ -67,24 +67,8 @@
   white-space: nowrap;
 }
 
-.addTransaction__paymentTag {
-  display: inline-flex;
-  align-items: center;
-  font-size: 0.75rem;
-  padding: 0.15rem 0.5rem;
-  border-radius: 1rem;
-  margin-left: 0.5rem;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-.addTransaction__paymentTag.card {
-  background-color: color-mix(
-    in srgb,
-    var(--payment-method-card) 16%,
-    #ffffff
-  );
-  color: var(--payment-method-card);
+.addTransaction__cardPreviewRow .paymentMethodChip {
+  margin-inline-start: 0.5rem;
 }
 
 .addTransaction__cardPreview p {

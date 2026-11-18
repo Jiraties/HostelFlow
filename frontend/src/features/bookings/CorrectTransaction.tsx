@@ -1,3 +1,4 @@
+import PaymentMethodChip from "../../components/PaymentMethodChip";
 import { useEffect, useId, useState } from "react";
 import axios from "axios";
 import Select from "../../components/MotionSelect";
@@ -14,6 +15,8 @@ import { paymentMethodOptions } from "../../helpers/options";
 import { customStyles, type OptionType } from "../../helpers/selectStyling";
 import { transactionTypeOptions } from "../../helpers/transactionFormOptions";
 import { getApiErrorMessage } from "../../helpers/apiErrorMessage";
+import { formatDisplayDateTime } from "../../helpers/displayDate";
+import { correctionRequestLabels } from "../finance/useCorrectionRequests";
 import type {
   booking,
   TransactionCorrectionReason,
@@ -22,6 +25,8 @@ import type {
 } from "../../types/bookingTypes";
 import "./AddTransaction.css";
 import "./Cancellation.css";
+import "./CheckIn.css";
+import "./CheckOut.css";
 import "./CorrectTransaction.css";
 
 type Transaction = booking["transactions"][number];
@@ -136,6 +141,10 @@ const CorrectTransaction = ({
     after: Transaction;
     note: string;
     status: string;
+    historical?: boolean;
+    requestedBy?: string;
+    requestedAt?: string;
+    decisionReason?: string;
     admin: boolean;
     onDecide: (action: string, reason?: string) => Promise<void>;
   };
@@ -144,7 +153,7 @@ const CorrectTransaction = ({
   onUpdated?: (booking: booking) => void;
   onDirtyChange?: (dirty: boolean) => void;
 }) => {
-  const { user } = useAuth();
+  const { user, resolveStaffName } = useAuth();
   const [correctionType, setCorrectionType] =
     useState<TransactionCorrectionType>("recorded_mistake");
   const [correctedCategory, setCorrectedCategory] = useState<TransactionType>(
@@ -166,10 +175,47 @@ const CorrectTransaction = ({
     requiresApproval: boolean;
     historical: boolean;
     cashDelta: number;
+    before: Pick<Transaction, "type" | "amount" | "paymentMethod">;
+    after: Pick<Transaction, "type" | "amount" | "paymentMethod">;
   } | null>(null);
+  const [closedPeriod, setClosedPeriod] = useState(false);
   const [decisionReason, setDecisionReason] = useState("");
+  const [isRejecting, setIsRejecting] = useState(false);
   const fieldId = useId();
   const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const sourceId = currentBooking.bookingId;
+  const revision = currentBooking.revision;
+  const transactionId = transaction.originalTransactionId || transaction._id;
+  const isReview = Boolean(review);
+  useEffect(() => {
+    if (isReview || !transactionId) return;
+
+    const controller = new AbortController();
+    void axios
+      .post<{ historical: boolean }>(
+        `${API_URL}/finance/correction-requests/preview`,
+        {
+          initial: true,
+          sourceType,
+          sourceId,
+          transactionId,
+          expectedRevision: revision,
+        },
+        { withCredentials: true, signal: controller.signal },
+      )
+      .then(({ data }) => {
+        if (!controller.signal.aborted)
+          setClosedPeriod(data.historical === true);
+      })
+      .catch(() => {
+        // The full preview still validates the correction before confirming.
+      });
+    return () => controller.abort();
+  }, [isReview, revision, sourceId, sourceType, transactionId]);
+
+  const historical = preview?.historical ?? closedPeriod;
+  const showClosedPeriod = closedPeriod || historical;
+  const isRequest = !user?.admin && (preview?.requiresApproval ?? closedPeriod);
   const numericAmount = Number(correctedAmount);
   const isCharge = chargeTypes.has(transaction.type);
   const isStaffEditablePendingRoomCharge =
@@ -302,6 +348,47 @@ const CorrectTransaction = ({
   };
 
   if (review) {
+    const { after } = review;
+    const pending = review.status === "pending";
+    const amountChanged = transaction.amount !== after.amount;
+    const sameCategory = transaction.type === after.type;
+    const samePaymentMethod = transaction.paymentMethod === after.paymentMethod;
+    const noteChanged = (transaction.note || "") !== (after.note || "");
+    const showNoteComparison =
+      noteChanged &&
+      (Boolean(transaction.note) ||
+        after.note !== review.note ||
+        (!amountChanged && sameCategory && samePaymentMethod));
+    const showReason = !showNoteComparison || review.note !== after.note;
+    const categoryLabel = transactionLabels[transaction.type];
+    const formatAmount = (amount: number) =>
+      `${amount.toLocaleString("th-TH")} THB`;
+    const changes = [
+      {
+        label: "จำนวนเงิน",
+        before: formatAmount(transaction.amount),
+        after: formatAmount(after.amount),
+        changed: amountChanged,
+      },
+      {
+        label: "ประเภทรายการ",
+        before: categoryLabel,
+        after: transactionLabels[after.type],
+        changed: !sameCategory,
+      },
+      {
+        label: "ช่องทางชำระ",
+        before: <PaymentMethodChip method={transaction.paymentMethod} />,
+        after: <PaymentMethodChip method={after.paymentMethod} />,
+        changed: !samePaymentMethod,
+      },
+      {
+        label: "หมายเหตุรายการ",
+        before: transaction.note || "—",
+        after: after.note || "—",
+        changed: showNoteComparison,
+      },
+    ].filter(({ changed }) => changed);
     const decide = async (action: string) => {
       if (submitting) return;
       if (action === "reject" && !decisionReason.trim()) {
@@ -310,58 +397,145 @@ const CorrectTransaction = ({
       }
       setSubmitting(true);
       try {
-        await review.onDecide(action, decisionReason);
+        await review.onDecide(
+          action,
+          action === "reject" ? decisionReason.trim() : undefined,
+        );
       } catch (error) {
-        toast.error(getApiErrorMessage(error, "ดำเนินการไม่สำเร็จ กรุณารีเฟรช"));
+        toast.error(
+          getApiErrorMessage(error, "ดำเนินการไม่สำเร็จ กรุณารีเฟรช"),
+        );
       } finally {
         setSubmitting(false);
       }
     };
     return (
-      <div className="addBooking__wrapper correctTransaction__wrapper">
+      <div className="addBooking__wrapper correctTransaction__wrapper correctionReview">
         <ModalCloseButton onClick={onClose} />
         <header className="correctTransaction__header">
-          <h1 className="addBooking__title">ตรวจสอบคำขอแก้ไข</h1>
+          <h1 className="checkIn__title">ตรวจสอบคำขอแก้ไข</h1>
           <p>
             {currentBooking.name} · {currentBooking.bookingId}
           </p>
         </header>
-        <div className="correctTransaction__form">
-          <p>
-            รายการ: {transactionLabels[transaction.type]} →{" "}
-            {transactionLabels[review.after.type]}
-          </p>
-          <p>
-            จำนวนเงิน: {transaction.amount} → {review.after.amount} ฿
-          </p>
-          <p>
-            ช่องทาง: {transaction.paymentMethod} → {review.after.paymentMethod}
-          </p>
-          <p>เหตุผล: {review.note}</p>
-          <p>สถานะ: {review.status}</p>
-          <p>
-            แก้ไขประวัติเดิม โดยไม่รับหรือจ่ายเงินใหม่ การปิดยอดและเงินที่นับไว้จะยังอยู่ในประวัติ
-          </p>
-          {review.status === "pending" && review.admin && (
-            <label>
-              <span className="addBooking__label">เหตุผลที่ไม่อนุมัติ</span>
-              <textarea
-                className="boxInput"
-                value={decisionReason}
-                onChange={(event) => setDecisionReason(event.target.value)}
-              />
+        {pending && (
+          <div className="checkIn__reminder checkOut__earlyReminder">
+            <i
+              className="bx bx-message-bubble-exclamation"
+              aria-hidden="true"
+            />
+            <p>
+              {review.historical
+                ? "คำขอนี้เป็นการแก้ไขหลังปิดกะ เมื่ออนุมัติ ยอดปิดกะจะคงเดิม"
+                : "เมื่ออนุมัติ ระบบจะแก้ไขรายการเดิมโดยไม่มีเงินเข้าออกเพิ่ม"}
+            </p>
+          </div>
+        )}
+        <section
+          className="correctionReview__summary"
+          aria-labelledby={`${fieldId}-review-transaction`}
+        >
+          <div className="correctionReview__summaryHeader">
+            <div className="correctionReview__transactionContext">
+              <h2 id={`${fieldId}-review-transaction`}>
+                {sameCategory ? categoryLabel : "เปลี่ยนประเภทรายการ"}
+              </h2>
+              {!amountChanged && <p>{formatAmount(transaction.amount)}</p>}
+              {samePaymentMethod && (
+                <PaymentMethodChip method={transaction.paymentMethod} />
+              )}
+            </div>
+            <span
+              className={`correctionReview__status correctionReview__status--${review.status}`}
+            >
+              {correctionRequestLabels[review.status] ?? review.status}
+            </span>
+          </div>
+          {changes.map((change) => (
+            <div className="correctionReview__change" key={change.label}>
+              <div>
+                <span>{change.label}เดิม</span>
+                <strong>{change.before}</strong>
+              </div>
+              <span className="correctionReview__arrow" aria-hidden="true">
+                →
+              </span>
+              <div>
+                <span>ที่ขอแก้ไข</span>
+                <strong>{change.after}</strong>
+              </div>
+            </div>
+          ))}
+          <div className="correctionReview__details">
+            {(showReason || review.decisionReason) && (
+              <dl>
+                {showReason && (
+                  <div>
+                    <dt>เหตุผล</dt>
+                    <dd>{review.note}</dd>
+                  </div>
+                )}
+                {review.decisionReason && (
+                  <div>
+                    <dt>เหตุผลการพิจารณา</dt>
+                    <dd>{review.decisionReason}</dd>
+                  </div>
+                )}
+              </dl>
+            )}
+            {review.requestedBy && (
+              <p className="correctionReview__byline">
+                ส่งโดย {resolveStaffName(review.requestedBy)}
+                {review.requestedAt &&
+                  ` · ${formatDisplayDateTime(review.requestedAt, user?.settings.dateFormat)}`}
+              </p>
+            )}
+          </div>
+        </section>
+        {pending && review.admin && isRejecting && (
+          <div className="correctTransaction__section">
+            <label
+              className="addBooking__label"
+              htmlFor={`${fieldId}-rejection`}
+            >
+              เหตุผลที่ไม่อนุมัติ
             </label>
-          )}
-        </div>
-        {review.status === "pending" && (
-          <div className="addTransaction__actions">
-            {review.admin ? (
+            <textarea
+              id={`${fieldId}-rejection`}
+              className="boxInput correctTransaction__note"
+              value={decisionReason}
+              disabled={submitting}
+              required
+              autoFocus
+              onChange={(event) => setDecisionReason(event.target.value)}
+            />
+          </div>
+        )}
+        {pending && (
+          <div className="addTransaction__actions correctionReview__actions">
+            {review.admin && isRejecting ? (
+              <>
+                <ActionButton
+                  icon="bx-arrow-back"
+                  text="กลับ"
+                  disabled={submitting}
+                  onClick={() => setIsRejecting(false)}
+                />
+                <ActionButton
+                  icon="bx-x"
+                  text="ยืนยันไม่อนุมัติ"
+                  disabled={submitting || !decisionReason.trim()}
+                  highlight
+                  onClick={() => void decide("reject")}
+                />
+              </>
+            ) : review.admin ? (
               <>
                 <ActionButton
                   icon="bx-x"
                   text="ไม่อนุมัติ"
                   disabled={submitting}
-                  onClick={() => void decide("reject")}
+                  onClick={() => setIsRejecting(true)}
                 />
                 <ActionButton
                   icon="bx-check"
@@ -389,13 +563,27 @@ const CorrectTransaction = ({
     <div className="addBooking__wrapper correctTransaction__wrapper">
       <ModalCloseButton onClick={onClose} />
       <header className="correctTransaction__header">
-        <h1 className="addBooking__title">แก้ไขรายการ</h1>
-        <p>แก้ไขข้อมูลที่บันทึกผิด โดยระบบจะเก็บประวัติเดิมไว้</p>
+        <h1 className="checkIn__title">
+          {showClosedPeriod
+            ? isRequest ? "ขอแก้ไขรายการหลังปิดกะ" : "แก้ไขรายการหลังปิดกะ"
+            : "แก้ไขรายการ"}
+        </h1>
       </header>
+
+      {showClosedPeriod && (
+        <div className="checkIn__reminder checkOut__earlyReminder">
+          <i className="bx bx-message-bubble-exclamation" aria-hidden="true" />
+          <p>
+            {isRequest
+              ? "คุณกำลังส่งคำขอแก้ไขหลังปิดกะ ยอดรายการจะคงเดิมจนกว่า Admin จะอนุมัติ"
+              : "คุณกำลังแก้ไขรายการหลังปิดกะ ยอดปิดกะจะคงเดิมและไม่มีเงินเข้าออกเพิ่ม"}
+          </p>
+        </div>
+      )}
 
       <div className="correctTransaction__form">
         {financialChanged &&
-          !preview?.historical &&
+          !historical &&
           correctedPaymentMethod === "Cash" && <CashShiftNudge />}
         {canSelectChargeChange && (
           <section className="correctTransaction__section">
@@ -638,17 +826,33 @@ const CorrectTransaction = ({
 
       {preview && (
         <section className="resolveBooking__summary" aria-live="polite">
-          <p>
-            เดิม {transaction.amount} → ใหม่ {numericAmount} ฿ ·{" "}
-            {transaction.paymentMethod} → {correctedPaymentMethod}
-          </p>
-          {preview.historical && (
+          {preview.before.amount !== preview.after.amount && (
             <p>
-              รายการนี้ปิดรอบแล้ว การแก้ไขไม่เปลี่ยนเงินสดวันนี้ · ผลต่างเงินสดเดิม{" "}
-              {preview.cashDelta} ฿
+              จำนวนเงิน {preview.before.amount} → {preview.after.amount} ฿
             </p>
           )}
-          {preview.requiresApproval && !user?.admin && (
+          {preview.before.paymentMethod !== preview.after.paymentMethod && (
+            <p>
+              ช่องทางชำระ{" "}
+              <PaymentMethodChip method={preview.before.paymentMethod} /> →{" "}
+              <PaymentMethodChip method={preview.after.paymentMethod} />
+            </p>
+          )}
+          {preview.before.type !== preview.after.type && (
+            <p>
+              ประเภทรายการ {transactionLabels[preview.before.type]} →{" "}
+              {transactionLabels[preview.after.type]}
+            </p>
+          )}
+          {preview.before.amount === preview.after.amount &&
+            preview.before.paymentMethod === preview.after.paymentMethod &&
+            preview.before.type === preview.after.type && (
+              <p>ยอด ช่องทางชำระ และประเภทรายการคงเดิม</p>
+            )}
+          {preview.historical && preview.cashDelta !== 0 && (
+            <p>ผลต่างเงินสดในรอบเดิม {preview.cashDelta} ฿</p>
+          )}
+          {isRequest && !showClosedPeriod && (
             <p>ต้องให้ Admin อนุมัติ ยอดเดิมจะยังไม่เปลี่ยน</p>
           )}
         </section>
@@ -657,24 +861,36 @@ const CorrectTransaction = ({
         <ActionButton
           text={
             !preview
-              ? "ตรวจสอบการแก้ไข"
-              : preview.requiresApproval && !user?.admin
-                ? "ส่งคำขอให้ Admin อนุมัติ"
-                : "ยืนยันการแก้ไข"
+              ? isRequest
+                ? showClosedPeriod ? "ตรวจสอบคำขอแก้ไขหลังปิดกะ" : "ตรวจสอบคำขอแก้ไข"
+                : showClosedPeriod
+                  ? "ตรวจสอบการแก้ไขหลังปิดกะ"
+                  : "ตรวจสอบการแก้ไข"
+              : isRequest
+                ? showClosedPeriod ? "ส่งคำขอแก้ไขหลังปิดกะ" : "ส่งคำขอแก้ไข"
+                : showClosedPeriod
+                  ? "ยืนยันการแก้ไขหลังปิดกะ"
+                  : "ยืนยันการแก้ไข"
           }
-          icon="bx-save"
+          icon={isRequest ? "bx-send" : "bx-save"}
           highlight
           disabled={submitting}
           onClick={() =>
             toast.promise(submit(), {
-              loading: "กำลังแก้ไขรายการ...",
+              loading: !preview
+                ? "กำลังตรวจสอบข้อมูล..."
+                : isRequest
+                  ? "กำลังส่งคำขอ..."
+                  : "กำลังแก้ไขรายการ...",
               success: !preview
                 ? "ตรวจสอบข้อมูลแล้ว กรุณายืนยัน"
                 : preview.requiresApproval && !user?.admin
                   ? "ส่งคำขอแล้ว"
                   : "แก้ไขรายการสำเร็จ และเก็บข้อมูลเดิมไว้แล้ว",
               error: (error) =>
-                error instanceof Error ? error.message : "ไม่สามารถแก้ไขรายการได้",
+                error instanceof Error
+                  ? error.message
+                  : "ไม่สามารถแก้ไขรายการได้",
             })
           }
         />

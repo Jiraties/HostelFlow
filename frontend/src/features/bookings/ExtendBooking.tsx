@@ -1,3 +1,4 @@
+import PaymentMethodChip from "../../components/PaymentMethodChip";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import Select from "../../components/MotionSelect";
@@ -661,11 +662,7 @@ const ExtendBooking = ({
               <p>
                 ค่าห้อง
                 {paymentMethod && (
-                  <span
-                    className={`checkIn__paymentTag ${paymentMethod.toLowerCase()}`}
-                  >
-                    {paymentMethodLabel}
-                  </span>
+                  <PaymentMethodChip method={paymentMethod} label={paymentMethodLabel} />
                 )}
               </p>
               <p>{currency(numericAmount)}</p>
@@ -674,7 +671,7 @@ const ExtendBooking = ({
               <div className="addTransaction__cardPreviewRow">
                 <p>
                   ค่าธรรมเนียมบัตร 3%{" "}
-                  <span className="addTransaction__paymentTag card">Card</span>
+                  <PaymentMethodChip method="Card" />
                 </p>
                 <p>{currency(cardSurcharge)}</p>
               </div>

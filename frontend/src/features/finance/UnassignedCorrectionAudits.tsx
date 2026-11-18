@@ -3,6 +3,7 @@ import axios from "axios";
 import toast from "react-hot-toast";
 import { API_URL } from "../../config/api";
 import { getApiErrorMessage } from "../../helpers/apiErrorMessage";
+import ActionButton from "../../components/ActionButton";
 export type UnassignedCorrection = {
   _id: string;
   sourceType: string;
@@ -42,11 +43,11 @@ export default function UnassignedCorrectionAudits({
   };
   if (!items.length) return null;
   return (
-    <section className="manage__financePanel">
+    <section className="manage__financePanel manage__unassignedAudit">
       <h3>รายการแก้ไขหลังปิดวันที่ไม่มีการผูกกะเงินสด</h3>
       <p>ตรวจสอบรายการและอธิบายยอดต่าง การรับทราบไม่เพิ่มหรือลดเงินสด</p>
       {items.map((item) => (
-        <article key={item._id} className="manage__auditDetails">
+        <article key={item._id} className="manage__unassignedAuditItem">
           <strong>{item.sourceId}</strong>
           <p>
             {item.before.amount} {item.before.paymentMethod} →{" "}
@@ -73,14 +74,13 @@ export default function UnassignedCorrectionAudits({
                   }
                 />
               </label>
-              <button
-                type="button"
+              <ActionButton
+                text={busy === item._id ? "กำลังบันทึก" : "บันทึกผลตรวจสอบ"}
+                icon="bx-check"
                 disabled={busy !== null}
-                className="manage__approveAction"
+                className="manage__unassignedAuditAction"
                 onClick={() => void resolve(item)}
-              >
-                บันทึกผลตรวจสอบ
-              </button>
+              />
             </>
           )}
         </article>

@@ -115,15 +115,11 @@ const ReceiveRoomPayment = ({
     <div className="addBooking__wrapper receiveRoomPayment__wrapper">
       <ModalCloseButton onClick={onClose} />
       <header className="receiveRoomPayment__header">
-        <div className="receiveRoomPayment__titleRow">
-          <h1 className="addBooking__title">รับชำระค่าห้อง</h1>
-          <span className="receiveRoomPayment__eyebrow">
-            <i className="bx bx-wallet" aria-hidden="true" />{" "}
-            {currentBooking.status === "checkedIn"
-              ? "ระหว่างเข้าพัก / ก่อน Check-Out"
-              : "ก่อน Check-In"}
-          </span>
-        </div>
+        <h1 className="addBooking__title">
+          {currentBooking.status === "checkedIn"
+            ? "รับชำระค่าห้องระหว่างเข้าพัก"
+            : "รับชำระค่าห้องก่อน Check-In"}
+        </h1>
         <p>Booking ยังอยู่สถานะเดิม และรายการจะลงวันที่รับเงินจริงวันนี้</p>
       </header>
 

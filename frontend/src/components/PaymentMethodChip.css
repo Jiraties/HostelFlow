@@ -1,0 +1,38 @@
+.paymentMethodChip {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.15rem 0.5rem;
+  border-radius: 1rem;
+  background-color: color-mix(
+    in srgb,
+    var(--payment-chip-color, #666) 16%,
+    #fff
+  );
+  color: var(--payment-chip-color, #666);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.5;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.paymentMethodChip[data-method="cash"] {
+  --payment-chip-color: var(--payment-method-cash);
+}
+
+.paymentMethodChip[data-method="card"] {
+  --payment-chip-color: var(--payment-method-card);
+}
+
+.paymentMethodChip[data-method="transfer"] {
+  --payment-chip-color: var(--payment-method-transfer);
+}
+
+.paymentMethodChip[data-method="ota"] {
+  --payment-chip-color: var(--payment-method-ota);
+}
+
+.paymentMethodChip[data-method="unpaid"] {
+  --payment-chip-color: var(--payment-method-unpaid);
+}

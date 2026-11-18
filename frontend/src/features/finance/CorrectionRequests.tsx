@@ -1,176 +1,173 @@
 import { Link } from "react-router";
-import { useCallback, useEffect, useState } from "react";
-import axios from "axios";
-import { API_URL } from "../../config/api";
-import { notifyReviewQueueUpdated } from "../../helpers/reviewQueue";
+import { Fragment } from "react";
+import ActionButton from "../../components/ActionButton";
+import PaymentMethodChip from "../../components/PaymentMethodChip";
+import { useAuth } from "../../context/AuthContext";
+import { formatDisplayDateTime } from "../../helpers/displayDate";
+import { transactionMap } from "../../helpers/transactionDisplay";
 import type { booking } from "../../types/bookingTypes";
 import CorrectTransaction from "../bookings/CorrectTransaction";
 import Modal from "../../components/MotionModal";
+import {
+  useCorrectionRequests,
+  type RequestItem,
+} from "./useCorrectionRequests";
 
-type RequestItem = {
-  _id: string;
-  sourceType: "booking" | "standaloneSale";
-  sourceId: string;
-  transactionId: string;
-  sourceLabel: string;
-  expectedRevision: number;
-  requestedBy: string;
-  requestedAt: string;
-  status: string;
-  decisionReason?: string;
-  proposal: {
-    before: booking["transactions"][number];
-    after: booking["transactions"][number];
-    note: string;
-    correctionType: "recorded_mistake" | "charge_change";
-    reasonCode: string;
-    historical?: boolean;
-  };
-};
-const labels: Record<string, string> = {
-  pending: "รออนุมัติ",
-  approved: "อนุมัติแล้ว",
-  rejected: "ไม่อนุมัติ",
-  withdrawn: "ถอนคำขอแล้ว",
-  stale: "ข้อมูลเปลี่ยน กรุณาส่งใหม่",
-};
-export default function CorrectionRequests({
-  sourceId,
-  admin = false,
+export const CorrectionRequestDialog = ({
+  selected,
+  admin,
+  onClose,
+  onDecide,
 }: {
-  sourceId?: string;
-  admin?: boolean;
-}) {
-  const [items, setItems] = useState<RequestItem[]>([]);
-  const [selected, setSelected] = useState<RequestItem | null>(null);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
-  const load = useCallback(async () => {
-    try {
-      const { data } = await axios.get(
-        `${API_URL}/finance/correction-requests`,
-        {
-          params: { sourceId, status: sourceId ? undefined : "pending" },
-          withCredentials: true,
-        },
-      );
-      setItems(data.requests);
-      setError("");
-    } catch {
-      setError("โหลดคำขอไม่สำเร็จ กรุณาลองอีกครั้ง");
-    } finally {
-      setLoading(false);
-    }
-  }, [sourceId]);
-  useEffect(() => {
-    const refresh = () => {
-      void load();
-    };
-    const timer = window.setTimeout(refresh, 0);
-    window.addEventListener("hostelflow:review-queue-updated", refresh);
-    window.addEventListener("focus", refresh);
-    return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("hostelflow:review-queue-updated", refresh);
-      window.removeEventListener("focus", refresh);
-    };
-  }, [load]);
-  const decide = async (action: string, reason?: string) => {
-    if (!selected) return;
-    await axios.post(
-      `${API_URL}/finance/correction-requests/${selected._id}/${action}`,
-      { reason },
-      {
-        withCredentials: true,
-        headers: { "Idempotency-Key": crypto.randomUUID() },
-      },
-    );
-    setSelected(null);
-    await load();
-    notifyReviewQueueUpdated();
-  };
+  selected: RequestItem | null;
+  admin: boolean;
+  onClose: () => void;
+  onDecide: (action: string, reason?: string) => Promise<void>;
+}) => (
+  <Modal
+    open={!!selected}
+    className="home__modalCenter"
+    aria-label="ตรวจสอบคำขอแก้ไข"
+    onClose={onClose}
+  >
+    <>
+      {selected && (
+        <CorrectTransaction
+          key={selected._id}
+          booking={
+            {
+              bookingId: selected.sourceId,
+              name: selected.sourceLabel,
+              revision: selected.expectedRevision,
+              status: "checkedOut",
+              checkIn: selected.requestedAt,
+            } as unknown as booking
+          }
+          transaction={{
+            ...selected.proposal.before,
+            _id: selected.transactionId,
+          }}
+          sourceType={selected.sourceType}
+          review={{
+            after: selected.proposal.after,
+            note: selected.proposal.note,
+            status: selected.status,
+            historical: selected.proposal.historical,
+            requestedBy: selected.requestedBy,
+            requestedAt: selected.requestedAt,
+            decisionReason: selected.decisionReason,
+            admin,
+            onDecide,
+          }}
+          onClose={onClose}
+        />
+      )}
+    </>
+  </Modal>
+);
+
+const CorrectionRequests = () => {
+  const { user, resolveStaffName } = useAuth();
+  const { items, selected, setSelected, error, loading, reload, decide } =
+    useCorrectionRequests();
+
   return (
-    <section className="manage__financePanel" aria-label="คำขอแก้ไขรายการ">
+    <section className="manage__reviewQueueSection" aria-labelledby="manage-correction-requests-title">
       <div className="manage__financePanelHeader">
-        <h3>{sourceId ? "คำขอแก้ไขรายการ" : "คำขอรออนุมัติ · ทุกวันที่"}</h3>
-        <span>{items.length}</span>
+        <div>
+          <h3 id="manage-correction-requests-title">คำขอแก้ไขที่รออนุมัติ</h3>
+          <p className="manage__correctionMeta">รวมทุกวันที่</p>
+        </div>
+        {items.length > 0 && (
+          <span className="manage__correctionCount" aria-label={`${items.length} คำขอ`}>
+            {items.length}
+          </span>
+        )}
       </div>
       {error && (
         <p role="alert">
-          {error} <button onClick={() => void load()}>ลองอีกครั้ง</button>
+          {error} <button type="button" onClick={reload}>ลองอีกครั้ง</button>
         </p>
       )}
       {loading && <p role="status">กำลังโหลดคำขอ...</p>}
-      {!loading && !items.length && !error && <p>ไม่มีคำขอ</p>}
-      {items.map((item) => (
-        <div key={item._id} className="manage__reviewItem">
-          <div className="manage__reviewMain">
-            <strong>
-              {item.sourceLabel} · {item.sourceId}
-            </strong>
-            <p>
-              {item.proposal.before.type} · {item.proposal.before.amount} →{" "}
-              {item.proposal.after.amount} ฿ · {labels[item.status]}
-            </p>
-            <p>
-              {item.requestedBy} ·{" "}
-              {new Date(item.requestedAt).toLocaleString("th-TH", {
-                timeZone: "Asia/Bangkok",
-              })}
-            </p>
-            {item.sourceType === "booking" && (
-              <Link
-                to={`/master?bookingId=${encodeURIComponent(item.sourceId)}`}
-              >
-                เปิด Booking
-              </Link>
-            )}
-            <p>{item.proposal.note}</p>
-            {item.decisionReason && <p>{item.decisionReason}</p>}
-          </div>
-          <button
-            type="button"
-            className="manage__approveAction"
-            onClick={() => setSelected(item)}
-          >
-            ดูคำขอ
-          </button>
+      {!loading && !items.length && !error && (
+        <div className="manage__emptyState manage__correctionEmpty">
+          <i className="bx bx-check-shield" aria-hidden="true" />
+          <p>ไม่มีคำขอรออนุมัติ</p>
         </div>
-      ))}
-      <Modal
-        open={!!selected}
-        className="home__modalCenter"
+      )}
+      <div className="manage__reviewList">
+        {items.map((item) => {
+          const { before, after, historical } = item.proposal;
+          const amountChanged = before.amount !== after.amount;
+          const methodChanged = before.paymentMethod !== after.paymentMethod;
+          const categoryChanged = before.type !== after.type;
+          return (
+            <article key={item._id} className="manage__correctionRow">
+              <div className="manage__correctionIdentity">
+                <h4>{item.sourceLabel}</h4>
+                <div className="manage__correctionContext">
+                  <span>{transactionMap[before.type]?.name ?? before.type}</span>
+                  {!methodChanged && <PaymentMethodChip method={before.paymentMethod} />}
+                  {historical && <span className="manage__correctionHistorical">หลังปิดกะ</span>}
+                </div>
+                <p className="manage__correctionMeta">
+                  {resolveStaffName(item.requestedBy)} ·{" "}
+                  {formatDisplayDateTime(item.requestedAt, user?.settings.dateFormat)}
+                </p>
+                {item.sourceType === "booking" && (
+                  <Link
+                    className="manage__correctionBookingLink"
+                    to={`/master?bookingId=${encodeURIComponent(item.sourceId)}`}
+                  >
+                    Booking {item.sourceId}
+                    <i className="bx bx-link-external" aria-hidden="true" />
+                  </Link>
+                )}
+              </div>
+              {amountChanged || methodChanged || categoryChanged ? (
+                <div className="correctionReview__change">
+                  {[before, after].map((transaction, index) => (
+                    <Fragment key={index === 0 ? "before" : "after"}>
+                      {index === 1 && (
+                        <span className="correctionReview__arrow" aria-hidden="true">→</span>
+                      )}
+                      <div>
+                        <span>{index === 0 ? "เดิม" : "ที่ขอแก้ไข"}</span>
+                        {amountChanged && (
+                          <strong>{transaction.amount.toLocaleString("th-TH")} THB</strong>
+                        )}
+                        {categoryChanged && (
+                          <strong>{transactionMap[transaction.type]?.name ?? transaction.type}</strong>
+                        )}
+                        {methodChanged && (
+                          <div><PaymentMethodChip method={transaction.paymentMethod} /></div>
+                        )}
+                      </div>
+                    </Fragment>
+                  ))}
+                </div>
+              ) : (
+                <p className="manage__correctionMeta">แก้ไขรายละเอียดรายการ</p>
+              )}
+              <ActionButton
+                className="manage__correctionAction"
+                text="ดูคำขอ"
+                icon="bx-chevron-right"
+                onClick={() => setSelected(item)}
+              />
+            </article>
+          );
+        })}
+      </div>
+      <CorrectionRequestDialog
+        selected={selected}
+        admin={Boolean(user?.admin)}
         onClose={() => setSelected(null)}
-      >
-        <>
-          {selected && (
-            <CorrectTransaction
-              booking={
-                {
-                  bookingId: selected.sourceId,
-                  name: selected.sourceLabel,
-                  revision: selected.expectedRevision,
-                  status: "checkedOut",
-                  checkIn: selected.requestedAt,
-                } as unknown as booking
-              }
-              transaction={{
-                ...selected.proposal.before,
-                _id: selected.transactionId,
-              }}
-              sourceType={selected.sourceType}
-              review={{
-                after: selected.proposal.after,
-                note: selected.proposal.note,
-                status: selected.status,
-                admin,
-                onDecide: decide,
-              }}
-              onClose={() => setSelected(null)}
-            />
-          )}
-        </>
-      </Modal>
+        onDecide={decide}
+      />
     </section>
   );
-}
+};
+
+export default CorrectionRequests;

@@ -1002,6 +1002,35 @@ const requestFixture = async () => {
     correctionType: "recorded_mistake", reasonCode: "incorrect_amount", note: "Synthetic recording mistake" };
   return { booking, body };
 };
+test("the initial correction preview detects a closed day without a draft", async () => {
+  const booking = await createBooking({ status: "checkedIn", paymentMethod: "Card", amount: 250 });
+  const input = {
+    initial: true,
+    sourceType: "booking",
+    sourceId: booking.bookingId,
+    transactionId: String(booking.transactions[0]._id),
+    expectedRevision: 0,
+  };
+  const open = await requestCall(previewCorrectionRequest, input);
+  assert.equal(open.statusCode, 200);
+  assert.equal(open.body.historical, false);
+
+  await DailyClose.create({
+    businessDate: businessDateKey(new Date(booking.transactions[0].createdAt || booking.checkIn)),
+    staffUsername: "synthetic-cashier",
+    createdBy: "synthetic-cashier",
+    openingCash: 0,
+    expectedCash: 0,
+    actualCash: 0,
+    variance: 0,
+    cashIn: 0,
+    cashOut: 0,
+  });
+  const closed = await requestCall(previewCorrectionRequest, input);
+  assert.equal(closed.statusCode, 200);
+  assert.equal(closed.body.historical, true);
+  assert.equal(await FinancialCorrectionRequest.countDocuments(), 0);
+});
 test("preview and submission never change source balances; admin approval applies once", async () => {
   const { booking, body } = await requestFixture();
   const preview = await requestCall(previewCorrectionRequest, body);
