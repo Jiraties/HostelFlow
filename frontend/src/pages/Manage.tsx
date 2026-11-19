@@ -1054,11 +1054,32 @@ const Manage = () => {
 
     setCreatingUser(true);
     try {
-      await axios.post(`${API_URL}/auth/admin/createUser`, newUserForm, {
-        withCredentials: true,
-      });
+      const { data } = await axios.post<{ user: StaffUser }>(
+        `${API_URL}/auth/admin/createUser`,
+        newUserForm,
+        { withCredentials: true },
+      );
+      setUsers((previous) =>
+        [
+          ...previous.filter(({ userId }) => userId !== data.user.userId),
+          data.user,
+        ].sort((a, b) => a.username.localeCompare(b.username)),
+      );
       setNewUserForm(emptyNewUserForm);
-      await fetchManageData();
+
+      void Promise.all([
+        axios.get(`${API_URL}/activities/admin`, { withCredentials: true }),
+        axios.get<ActivityStats>(`${API_URL}/activities/admin/stats`, {
+          withCredentials: true,
+        }),
+      ])
+        .then(([activitiesResponse, statsResponse]) => {
+          setActivities(activitiesResponse.data.activities);
+          setStats(statsResponse.data);
+        })
+        .catch(() => {
+          toast.error("อัปเดตกิจกรรมล่าสุดไม่สำเร็จ กรุณารีเฟรชหน้า");
+        });
     } finally {
       setCreatingUser(false);
     }
