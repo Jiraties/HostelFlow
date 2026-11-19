@@ -273,6 +273,7 @@ const checkoutSchema = new mongoose_1.default.Schema({
     depositRefundAmount: { type: Number, default: 0 },
     checkedOutAt: { type: Date, required: true },
     checkedOutByStaffUsername: { type: String, required: true },
+    reservationEndDate: { type: String, match: /^\d{4}-\d{2}-\d{2}$/ },
     earlyCheckOut: { type: Boolean, default: false },
     nightsEarly: { type: Number, default: 0 },
     depositDisposition: {

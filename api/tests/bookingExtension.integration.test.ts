@@ -940,6 +940,11 @@ test("calendar and daily revenue split the extension without a false arrival", a
   );
   assert.equal(extensionResponse.statusCode, 200);
   const stored = (await Booking.findOne({ bookingId: "EXT-REPORT" }).lean())!;
+  const nightlyCapacity = [0, 1, 2, 3].map((offset) =>
+    controller.occupiedCapacityOnDate([stored], new Date(localDate(offset) + "T00:00:00+07:00"),
+      new Date(localDate(offset + 1) + "T00:00:00+07:00")),
+  );
+  assert.deepEqual(nightlyCapacity, [2, 2, 2, 0]);
   const start = new Date(`${localDate()}T00:00:00`);
   const end = new Date(`${localDate(1)}T00:00:00`);
   const summary = calculateTodayRevenueSummary([stored as any], start, end);

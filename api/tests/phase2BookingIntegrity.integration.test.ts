@@ -752,6 +752,56 @@ test("an additional deposit must be paid in Cash", async () => {
   );
 });
 
+test("early checkout persists only the explicit shortening and rejects invalid dates before settlement", async () => {
+  const today = businessDateKey();
+  for (const [id, release] of [["SYNTHETIC-KEEP", false], ["SYNTHETIC-SHORTEN", true]] as const) {
+    const record = await bookingFixture(id);
+    record.status = "checkedIn";
+    record.checkIn = new Date(today + "T00:00:00+07:00");
+    record.checkOut = new Date(record.checkIn.getTime() + 3 * 86400000);
+    record.roomStays[0].from = record.checkIn;
+    record.roomStays[0].to = record.checkOut;
+    await record.save();
+    const body = { expectedRevision: 0, releaseRemainingNights: release };
+    const params = { bookingId: id };
+    const invalid = response();
+    await controller.checkOut(request({ params, body: { ...body, reservationEndDate: "2026-02-30" } }), invalid as any);
+    assert.equal(invalid.body.error, "INVALID_RESERVATION_END_DATE");
+    const result = response();
+    await controller.checkOut(request({ params, body, key: id }), result as any);
+    assert.equal(result.statusCode, 200, JSON.stringify(result.body));
+    const saved = await Booking.findOne({ bookingId: id }).lean();
+    assert.equal(saved?.checkout?.reservationEndDate, release ? today : undefined);
+    assert.equal(saved?.checkout?.roomReleaseStatus, release ? "released" : "blocked");
+    assert.ok(saved?.checkout?.checkedOutAt);
+  }
+});
+
+test("historical dashboard buckets use the saved coverage end and ignore a reversed checkout", async () => {
+  const record = await bookingFixture("SYNTHETIC-HISTORICAL-COVERAGE");
+  record.checkIn = new Date("2024-02-05T00:00:00Z");
+  record.checkOut = new Date("2024-02-09T00:00:00Z");
+  record.roomStays[0].from = record.checkIn;
+  record.roomStays[0].to = record.checkOut;
+  record.status = "checkedOut";
+  record.checkout = {
+    checkedOutAt: new Date("2024-02-05T12:00:00Z"), earlyCheckOut: true,
+    roomReleaseStatus: "released", reservationEndDate: "2024-02-07",
+    checkedOutByStaffUsername: "synthetic-staff", depositRefundAmount: 0, nightsEarly: 4,
+  };
+  await record.save();
+  for (const [status, nights] of [["checkedOut", 2], ["checkedIn", 4]] as const) {
+    await Booking.updateOne({ bookingId: record.bookingId }, { $set: { status } });
+    const dashboard = response();
+    await controller.getAdminDashboardStats(request({ query: { month: "2024-02", revenueRange: "mtd" } }), dashboard as any);
+    assert.equal(dashboard.statusCode, 200);
+    assert.equal(dashboard.body.occupancyRate, 2 * nights / (52 * 29));
+    const sold = dashboard.body.revenueSeries.filter((day: { occupiedCapacity: number }) => day.occupiedCapacity > 0);
+    assert.equal(sold.length, nights);
+    assert.equal(sold[0].date, "2024-02-05");
+  }
+});
+
 test("checkout requires full deposit return confirmation and bypasses cash shifts", async () => {
   const booking = await bookingFixture("STRICT-DEPOSIT-CHECKOUT");
   booking.status = "checkedIn";

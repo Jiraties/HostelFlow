@@ -314,7 +314,7 @@ const CheckOut = ({
                   onClick={() => setReleaseRemainingNights(true)}
                 >
                   <i className="bx bx-door-open" />
-                  เปิดให้จอง
+                  ลดคืนจองและเปิดให้จองตั้งแต่คืนนี้
                 </button>
                 <button
                   type="button"

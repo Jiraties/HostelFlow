@@ -2,7 +2,6 @@ import { withEffectiveTransactions } from "../services/transactionCorrections";
 import type { Request, Response } from "express";
 import Booking, { type booking } from "../models/booking";
 import StandaloneSale from "../models/standaloneSale";
-import RoomBlock from "../models/roomBlock";
 import { businessDateKey, businessMonthBounds, BUSINESS_DAY_MS, shiftBusinessMonth } from "../helpers/businessDateHelpers";
 import { expectedStayRevenueBookingQuery, EXPECTED_STAY_REVENUE_SERVICE_TYPES } from "../helpers/expectedStayRevenueHelpers";
 import { buildAnalytics } from "../services/analytics";
@@ -19,18 +18,16 @@ export const getAnalytics = async (req: Request, res: Response) => {
   const nextMonthEnd = businessMonthBounds(shiftBusinessMonth(month, 1))!.end;
   const outlookEnd = new Date(Math.max(end.getTime() + 90 * BUSINESS_DAY_MS, nextMonthEnd.getTime()));
   try {
-    const [bookings, sales, blocks] = await Promise.all([
+    const [bookings, sales] = await Promise.all([
       Booking.find({ $or: [expectedStayRevenueBookingQuery(start, end), { roomStays: { $elemMatch: { from: { $lt: outlookEnd }, to: { $gt: start } } } }] })
         .select("bookingId platformId status voided checkIn checkOut roomStays commercialSegments transactions transactionCorrections checkout")
         .maxTimeMS(10000).lean<booking[]>(),
       StandaloneSale.find({ transactions: { $elemMatch: { type: { $in: EXPECTED_STAY_REVENUE_SERVICE_TYPES }, createdAt: { $gte: start, $lt: end } } } })
         .select("saleId transactions transactionCorrections").maxTimeMS(10000).lean(),
-      RoomBlock.find({ from: { $lt: outlookEnd }, to: { $gt: start } })
-        .select("roomId roomIds from to reason reasonType releasedAt").maxTimeMS(10000).lean(),
     ]);
     const standaloneRecords = sales.map((sale) => ({ bookingId: sale.saleId, platformId: "WALK", checkIn: new Date(0), checkOut: new Date(0), transactions: withEffectiveTransactions(sale).transactions, saleId: sale.saleId, roomStays: [], commercialSegments: [], status: "checkedOut" } as unknown as booking));
     res.setHeader("Cache-Control", "no-store");
-    return res.json(buildAnalytics([...bookings, ...standaloneRecords], blocks, month));
+    return res.json(buildAnalytics([...bookings, ...standaloneRecords], [], month));
   } catch {
     return res.status(500).json({ message: "ไม่สามารถโหลดข้อมูล Analytics ได้ กรุณาลองใหม่อีกครั้ง" });
   }

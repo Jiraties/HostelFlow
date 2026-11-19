@@ -69,7 +69,47 @@ const occupancyBlock = (overrides: Partial<roomBlock> = {}) => ({
   ...overrides,
 });
 
-test("internal-use blocks count full room capacity without duplicating bookings or blocks", () => {
+test("a UTC-midnight departure cannot fill the night released by the next booking", () => {
+  const departing = occupancyBooking(["Balcony"], {
+    status: "checkedOut",
+    roomStays: [{
+      roomIds: ["Balcony"],
+      from: new Date("2026-07-18T00:00:00Z"),
+      to: new Date("2026-07-19T00:00:00Z"),
+    }],
+  });
+  const next = occupancyBooking(["Balcony"], {
+    status: "checkedOut",
+    roomStays: [{ roomIds: ["Balcony"], from: dayEnd, to: secondDayEnd }],
+    checkout: {
+      earlyCheckOut: true,
+      checkedOutAt: new Date("2026-07-19T06:00:00Z"),
+      roomReleaseStatus: "released",
+      depositRefundAmount: 0, checkedOutByStaffUsername: "synthetic-staff", nightsEarly: 1,
+      reservationEndDate: "2026-07-19",
+    } as booking["checkout"],
+  });
+  const summary = createOccupancySummaryCalculator([departing, next]);
+  assert.equal(summary(dayStart, dayEnd).occupiedBedNights, 2);
+  assert.equal(summary(dayEnd, secondDayEnd).occupiedBedNights, 0);
+  assert.equal(summary(dayStart, secondDayEnd).occupancyRate, 2 / 104);
+});
+
+test("a room move stored at UTC midnight counts only the new assignment on the move date", () => {
+  const move = new Date("2026-07-19T00:00:00Z");
+  const record = occupancyBooking([], {
+    roomStays: [
+      { roomIds: ["Window"], from: dayStart, to: move },
+      { roomIds: ["Wicker 3"], from: move, to: secondDayEnd },
+    ],
+  });
+  const summary = createOccupancySummaryCalculator([record]);
+  assert.equal(summary(dayStart, dayEnd).occupiedBedNights, 2);
+  assert.equal(summary(dayEnd, secondDayEnd).occupiedBedNights, 1);
+  assert.equal(summary(secondDayEnd, thirdDayEnd).occupiedBedNights, 0);
+});
+
+test("house-use blocks add no sold capacity, including when they overlap bookings", () => {
   const blocks = [
     occupancyBlock(),
     occupancyBlock({ roomId: "Balcony", roomIds: undefined }),
@@ -77,7 +117,7 @@ test("internal-use blocks count full room capacity without duplicating bookings 
   ];
   assert.equal(
     occupiedCapacityOnDate([occupancyBooking(["Balcony"])], dayStart, dayEnd, blocks),
-    3,
+    2,
   );
 });
 
@@ -90,45 +130,17 @@ test("other block types change neither occupied nor available bed-nights", () =>
   assert.equal(summary.occupancyRate, 0);
 });
 
-test("legacy internal-use blocks require the exact saved label and no explicit category", () => {
-  assert.equal(occupiedCapacityOnDate([], dayStart, dayEnd, [
-    occupancyBlock({ reasonType: undefined }),
-  ]), 2);
-  assert.equal(occupiedCapacityOnDate([], dayStart, dayEnd, [
-    occupancyBlock({ reasonType: undefined, reason: "ใช้ภายใน" }),
-    occupancyBlock({ reasonType: "other" }),
-  ]), 0);
+test("legacy and released house-use blocks contribute no sold nights", () => {
+  const blocks = [occupancyBlock({ reasonType: undefined }), occupancyBlock({ releasedAt: dayEnd })];
+  assert.equal(occupancySummaryForRange([], dayStart, thirdDayEnd, blocks).occupiedBedNights, 0);
 });
 
-test("internal-use stays are half-open and retain past nights after early release", () => {
-  const blocks = [occupancyBlock({
-    releasedAt: new Date("2026-07-19T05:00:00.000Z"),
-  })];
-  assert.equal(occupiedCapacityOnDate([], dayStart, dayEnd, blocks), 2);
-  assert.equal(occupiedCapacityOnDate([], dayEnd, secondDayEnd, blocks), 0);
-  const summary = occupancySummaryForRange([], dayStart, thirdDayEnd, blocks);
-  assert.equal(summary.occupiedBedNights, 2);
-  assert.equal(summary.availableBedNights, 156);
-});
-
-test("release uses Bangkok's date and a block cancelled before its start never counts", () => {
-  // This UTC timestamp is already 19 July in Bangkok.
-  const blocks = [occupancyBlock({
-    releasedAt: new Date("2026-07-18T18:00:00.000Z"),
-  })];
-  assert.equal(occupiedCapacityOnDate([], dayStart, dayEnd, blocks), 2);
-  assert.equal(occupiedCapacityOnDate([], dayEnd, secondDayEnd, blocks), 0);
-  assert.equal(occupancySummaryForRange([], dayStart, thirdDayEnd, [
-    occupancyBlock({ releasedAt: new Date("2026-07-17T05:00:00.000Z") }),
-  ]).occupiedBedNights, 0);
-});
-
-test("release after a block's planned end does not extend its occupancy", () => {
-  const blocks = [occupancyBlock({
-    to: dayEnd,
-    releasedAt: new Date("2026-07-21T05:00:00.000Z"),
-  })];
-  assert.equal(occupancySummaryForRange([], dayStart, thirdDayEnd, blocks).occupiedBedNights, 2);
+test("a legacy release without a recorded coverage end uses documented room stays", () => {
+  const record = occupancyBooking(["Window"], {
+    status: "checkedOut",
+    checkout: { earlyCheckOut: true, checkedOutAt: dayStart, roomReleaseStatus: "released" } as booking["checkout"],
+  });
+  assert.equal(occupiedCapacityOnDate([record], dayStart, dayEnd), 2);
 });
 
 test("occupancy counts each active sellable bed only once", () => {
@@ -195,34 +207,33 @@ test("cancelled, no-show, and voided bookings never count as occupied", () => {
   assert.equal(occupiedCapacityOnDate(bookings, dayStart, dayEnd), 0);
 });
 
-test("early checkout ends occupancy even when remaining nights stay blocked", () => {
-  for (const roomReleaseStatus of ["released", "blocked"] as const) {
-    const currentBooking = occupancyBooking(["Siesta 1"], {
+// Synthetic acceptance cases for booked accommodation, independent of deposit timing.
+for (const scenario of [
+  { name: "evening deposit checkout retains the final sold night", plannedEnd: secondDayEnd, release: "blocked", nights: [1, 1, 0] },
+  { name: "an early departure retains all nights still reserved", plannedEnd: thirdDayEnd, release: "blocked", nights: [1, 1, 1] },
+  { name: "shortening ends coverage on the explicit first released night", plannedEnd: thirdDayEnd, release: "released", reservationEndDate: "2026-07-20", nights: [1, 1, 0] },
+]) {
+  test(scenario.name, () => {
+    const record = occupancyBooking(["Siesta 1"], {
       status: "checkedOut",
-      roomStays: [
-        {
-          roomIds: ["Siesta 1"],
-          from: dayStart,
-          to: secondDayEnd,
-        },
-      ],
+      roomStays: [{ roomIds: ["Siesta 1"], from: dayStart, to: scenario.plannedEnd }],
       checkout: {
         earlyCheckOut: true,
-        checkedOutAt: new Date("2026-07-19T05:00:00.000Z"),
-        roomReleaseStatus,
+        checkedOutAt: new Date("2026-07-19T20:00:00+07:00"),
+        roomReleaseStatus: scenario.release,
+        depositRefundAmount: 0, checkedOutByStaffUsername: "synthetic-staff",
+        nightsEarly: scenario.plannedEnd === secondDayEnd ? 1 : 2,
+        reservationEndDate: scenario.reservationEndDate,
       } as booking["checkout"],
     });
-
-    assert.equal(
-      occupiedCapacityOnDate([currentBooking], dayStart, dayEnd),
-      1,
+    const summary = createOccupancySummaryCalculator([record]);
+    const boundaries = [dayStart, dayEnd, secondDayEnd, thirdDayEnd];
+    assert.deepEqual(
+      scenario.nights.map((_, i) => summary(boundaries[i], boundaries[i + 1]).occupiedBedNights),
+      scenario.nights,
     );
-    assert.equal(
-      occupiedCapacityOnDate([currentBooking], dayEnd, secondDayEnd),
-      0,
-    );
-  }
-});
+  });
+}
 
 test("range occupancy is weighted by total occupied and available bed-nights", () => {
   const fullRangeBooking = occupancyBooking(["Siesta 1"], {

@@ -66,7 +66,7 @@ const AnalyticsDetails = ({ data, onOpenRevenueBreakdown }: { data: AnalyticsRes
 
     <section className="analytics__detailPanel" aria-labelledby="analytics-inventory-title">
       <div className="analytics__detailHeader">
-        <h2 className="analytics__title" id="analytics-inventory-title">Inventory Performance <AnalyticsInfo description="Occupancy คิดตามความจุและรวมการใช้ภายใน · รายได้ค่าห้องสุทธิใช้ฐานเดียวกับ Stay Revenue · การจองที่มีหลายประเภทห้องแบ่งรายได้ตามความจุ × จำนวนคืน เนื่องจากไม่มีราคาต่อห้อง · RevPAB / RevPAR ใช้รายได้ค่าห้องสุทธิ ÷ เตียง / ห้องพร้อมขาย ÷ จำนวนวัน" /></h2>
+        <h2 className="analytics__title" id="analytics-inventory-title">Inventory Performance <AnalyticsInfo description="Occupancy คิดตามความจุที่จองไว้ต่อคืน · รายได้ค่าห้องสุทธิใช้ฐานเดียวกับ Stay Revenue · การจองที่มีหลายประเภทห้องแบ่งรายได้ตามความจุ × จำนวนคืน เนื่องจากไม่มีราคาต่อห้อง · RevPAB / RevPAR ใช้รายได้ค่าห้องสุทธิ ÷ เตียง / ห้องพร้อมขาย ÷ จำนวนวัน" /></h2>
         <span className="analytics__periodLabel">vs {analyticsMonthLabel(data.previousMonth)}</span>
       </div>
       <div className="analytics__inventoryGrid">
@@ -148,7 +148,7 @@ const AnalyticsDetails = ({ data, onOpenRevenueBreakdown }: { data: AnalyticsRes
 
       <section className="analytics__detailPanel" aria-labelledby="analytics-outlook-title">
         <div className="analytics__detailHeader"><h2 className="analytics__title" id="analytics-outlook-title">Forward Outlook <AnalyticsInfo description="คำนวณจากการจองและการใช้ภายในที่มีอยู่ขณะนี้ เริ่มหลังสิ้นเดือนที่เลือก · ไม่ใช่ภาพย้อนหลัง ณ เดือนนั้น และยังไม่มีประวัติ snapshot สำหรับเปรียบเทียบ · แท่งย่อยแบ่งช่วงเวลาเป็น 7 ส่วน" /></h2></div>
-        <p className="analytics__basisNote">จากข้อมูลที่มีอยู่ขณะนี้ รวมการใช้ภายใน</p>
+        <p className="analytics__basisNote">จากข้อมูลที่มีอยู่ขณะนี้</p>
         <div className="analytics__outlookGrid">
           {outlook.map((item) => (
             <article className="analytics__outlookCard" key={item.title}>

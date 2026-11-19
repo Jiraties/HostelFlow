@@ -101,7 +101,7 @@ test("database analytics, chart and revenue drilldown reconcile including standa
   for (const excluded of [record.name, record.bookingId, record.staffUsername, "synthetic-charge", "transactions", "passport"]) assert.equal(json.includes(excluded), false);
 });
 
-test("queries include released historical house use and full 90-day forward reservations", async () => {
+test("queries exclude historical house use and include full 90-day forward reservations", async () => {
   await RoomBlock.collection.insertMany([
     { roomIds: ["Balcony"], from: date("2026-09-01"), to: date("2026-09-10"), reason: "Synthetic house use", reasonType: "house_use", releasedAt: new Date("2026-09-03T18:00:00Z") },
     { roomIds: ["Window"], from: date("2026-09-01"), to: date("2026-09-30"), reason: "Synthetic maintenance", reasonType: "maintenance" },
@@ -113,7 +113,7 @@ test("queries include released historical house use and full 90-day forward rese
   const response = await get("/bookings/analytics?month=2026-09");
   const body = await response.json() as any;
   assert.equal(body.stats.stayRevenue, 0);
-  assert.equal(body.dailyTrend[2].occupancy, 3.85);
+  assert.equal(body.dailyTrend[2].occupancy, 0);
   assert.equal(body.dailyTrend[3].occupancy, 0);
   assert.equal(body.outlook[3].occupancy, 0.04); // Both 28 and 29 December included; 30 December excluded.
 });

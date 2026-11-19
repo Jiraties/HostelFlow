@@ -249,6 +249,8 @@ interface Checkout {
   depositRefundAmount: number;
   checkedOutAt: Date;
   checkedOutByStaffUsername: string;
+  /** Exclusive Bangkok stay date when accommodation was explicitly shortened. */
+  reservationEndDate?: string;
   earlyCheckOut: boolean;
   nightsEarly: number;
   depositDisposition?: "returned" | "kept";
@@ -587,6 +589,7 @@ const checkoutSchema = new mongoose.Schema(
     depositRefundAmount: { type: Number, default: 0 },
     checkedOutAt: { type: Date, required: true },
     checkedOutByStaffUsername: { type: String, required: true },
+    reservationEndDate: { type: String, match: /^\d{4}-\d{2}-\d{2}$/ },
     earlyCheckOut: { type: Boolean, default: false },
     nightsEarly: { type: Number, default: 0 },
     depositDisposition: {
