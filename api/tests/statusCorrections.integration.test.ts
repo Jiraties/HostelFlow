@@ -1,3 +1,5 @@
+import { checkOut } from "../src/controller/booking";
+import { occupiedCapacityOnDate } from "../src/helpers/occupancyHelpers";
 import assert from "node:assert/strict";
 import { after, before, beforeEach, test } from "node:test";
 import mongoose from "mongoose";
@@ -94,8 +96,8 @@ const checkoutFixture = (
     revision: 1,
     name: "Wrong Checkout",
     bookingId: "STATUS-1",
-    status: "checkedOut",
-    platformId: "WALK",
+    status: "checkedOut" as const,
+    platformId: "WALK" as const,
     staffUsername: "frontdesk",
     checkInByStaffUsername: "frontdesk",
     checkedInAt: new Date(Date.now() - 2 * 60 * 60_000),
@@ -105,9 +107,9 @@ const checkoutFixture = (
     roomStays: [{ roomIds: ["Balcony"], ...range }],
     transactions: [],
     checkout: {
-      roomReleaseStatus: "released",
+      roomReleaseStatus: "released" as const,
       depositRefundAmount: 0,
-      depositDisposition: "returned",
+      depositDisposition: "returned" as const,
       checkedOutAt: terminalAt,
       checkedOutByStaffUsername: "frontdesk",
       earlyCheckOut: false,
@@ -126,8 +128,8 @@ const cancellationFixture = (
     revision: 1,
     name: "Wrong Cancellation",
     bookingId: "STATUS-1",
-    status: "cancelled",
-    platformId: "WALK",
+    status: "cancelled" as const,
+    platformId: "WALK" as const,
     staffUsername: "frontdesk",
     checkIn: range.from,
     checkOut: range.to,
@@ -135,8 +137,8 @@ const cancellationFixture = (
     roomStays: [{ roomIds: ["Balcony"], ...range }],
     transactions: [],
     cancellation: {
-      cancellationType: "no_payment_received",
-      roomReleaseStatus: "released",
+      cancellationType: "no_payment_received" as const,
+      roomReleaseStatus: "released" as const,
       refundAmount: 0,
       keptAmount: 0,
       cancelledAt: terminalAt,
@@ -155,8 +157,8 @@ const noShowFixture = (
     revision: 1,
     name: "Wrong No Show",
     bookingId: "STATUS-1",
-    status: "noShow",
-    platformId: "WALK",
+    status: "noShow" as const,
+    platformId: "WALK" as const,
     staffUsername: "frontdesk",
     checkIn: range.from,
     checkOut: range.to,
@@ -164,13 +166,13 @@ const noShowFixture = (
     roomStays: [{ roomIds: ["Balcony"], ...range }],
     transactions: [],
     resolution: {
-      outcome: "no_show",
-      roomReleaseStatus: "released",
+      outcome: "no_show" as const,
+      roomReleaseStatus: "released" as const,
       reasonCode: "guest_not_arrived",
       note: "Marked in error",
       resolvedAt: terminalAt,
       resolvedByStaffUsername: "frontdesk",
-      finalStatus: "noShow",
+      finalStatus: "noShow" as const,
     },
     ...overrides,
   };
@@ -1002,4 +1004,61 @@ test("failure after compensating booking write rolls back status and compensatio
   assert.equal(stored?.status, "checkedOut");
   assert.equal(stored?.transactionCorrections.length, 0);
   assert.equal(await StatusCorrection.countDocuments(), 0);
+});
+
+test("early release, staff undo in the originating shift, and repeated checkout preserve coverage and audit", async () => {
+  const start = new Date(bangkokBusinessDate() + "T00:00:00+07:00");
+  const end = new Date(start.getTime() + 2 * 86400000);
+  const roomStays = [{ roomIds: ["Balcony"], from: start, to: end }];
+  await Booking.updateOne({bookingId: "STATUS-1"}, { $set: {status: "checkedIn", roomStays, checkIn: start, checkOut: end, transactions: [{type: "deposit", paymentMethod: "Cash", amount: 100, sourceAction: "CHECK_IN", createdAt: start}]} });
+  await CashShift.create({ businessDate: bangkokBusinessDate(), shiftNumber: 1, staffUsername: "frontdesk",
+    status: "open", openingMode: "counted", operatingOpeningCash: 0, operatingExpectedCash: 0,
+    startedAt: new Date(Date.now() - 60000), createdBy: "frontdesk" });
+  const first = response();
+  await checkOut(request({expectedRevision: 1, releaseRemainingNights: true, depositReturned: true}, {key: "first-checkout"}), first);
+  assert.equal(first.statusCode, 200);
+  assert.equal(occupiedCapacityOnDate([first.body.booking], start, end), 0);
+  const replacement = await Booking.create({...checkoutFixture(), bookingId: "SYNTHETIC-REPLACEMENT",
+    status: "booked", checkout: undefined, checkIn: start, checkOut: end, roomStays});
+  const blocked = response();
+  await correctStatus(request(body("UNDO_CHECKOUT", {expectedRevision: 2, depositDecision: "not_actually_returned"}), {key: "conflicting-undo"}), blocked);
+  assert.equal(blocked.statusCode, 409);
+  assert.equal(await StatusCorrection.countDocuments(), 0);
+  const stillClosed = await Booking.findOne({bookingId: "STATUS-1"}).lean();
+  assert.equal(stillClosed?.status, "checkedOut");
+  assert.equal(stillClosed?.transactionCorrections.length, 0);
+  await Booking.updateOne({_id: replacement._id}, {$set: {voided: true}});
+  const undo = response();
+  await correctStatus(request(body("UNDO_CHECKOUT", {expectedRevision: 2, depositDecision: "not_actually_returned"})), undo);
+  assert.equal(undo.statusCode, 200, JSON.stringify(undo.body));
+  assert.equal(occupiedCapacityOnDate([undo.body.booking], start, end), 2);
+  const second = response();
+  await checkOut(request({expectedRevision: 3, releaseRemainingNights: false, depositReturned: true}, {key: "second-checkout"}), second);
+  assert.equal(second.statusCode, 200);
+  assert.equal(second.body.booking.checkout.reservationEndDate, undefined);
+  assert.equal(occupiedCapacityOnDate([second.body.booking], start, end), 2);
+  const refunds = second.body.booking.transactions.filter((entry: {type: string}) => entry.type === "depositRefund");
+  assert.equal(refunds.length, 2);
+  assert.deepEqual([...second.body.booking.checkout.transactionIds], [String(refunds[1]._id)]);
+  assert.equal(second.body.booking.transactionCorrections.length, 1);
+  assert.equal(second.body.booking.transactionCorrections[0].targetTransactionId, String(refunds[0]._id));
+  assert.equal(await StatusCorrection.countDocuments(), 1);
+  assert.ok(await Activity.exists({action: "CORRECT_BOOKING_STATUS", "details.summary.originalCheckout.reservationEndDate": bangkokBusinessDate()}));
+});
+
+test("staff cannot undo an early checkout after the originating shift closed even with no ledger transactions", async () => {
+  const at = new Date(Date.now() - 30000);
+  await Booking.updateOne({ bookingId: "STATUS-1" }, {$set: {"checkout.earlyCheckOut": true, "checkout.checkedOutAt": at}});
+  await CashShift.create({businessDate: bangkokBusinessDate(), shiftNumber: 1, staffUsername: "frontdesk", status: "closed",
+    openingMode: "counted", operatingOpeningCash: 0, operatingExpectedCash: 0, startedAt: new Date(at.getTime() - 60000), endedAt: new Date(), createdBy: "frontdesk"});
+  await CashShift.create({businessDate: bangkokBusinessDate(), shiftNumber: 2, staffUsername: "frontdesk", status: "open",
+    openingMode: "counted", operatingOpeningCash: 0, operatingExpectedCash: 0, startedAt: new Date(), createdBy: "frontdesk"});
+  const denied = response();
+  await correctStatus(request(body("UNDO_CHECKOUT")), denied);
+  assert.equal(denied.statusCode, 403);
+  assert.equal(await StatusCorrection.countDocuments(), 0);
+  const admin = response();
+  await correctStatus(request(body("UNDO_CHECKOUT"), {admin: true, username: "owner", key: "reviewed"}), admin);
+  assert.equal(admin.statusCode, 200);
+  assert.equal(await StatusCorrection.countDocuments({correctedBy: "owner"}), 1);
 });

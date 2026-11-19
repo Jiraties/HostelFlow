@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createOccupancySummaryCalculator = exports.occupancySummaryForRange = exports.occupiedCapacityOnDate = exports.bookingOccupiedRoomIdsOnDate = exports.effectiveRoomStayEnd = exports.bookingKeepsRoomForOccupancy = void 0;
+exports.createOccupancySummaryCalculator = exports.occupancySummaryForRange = exports.occupiedCapacityOnDate = exports.bookingOccupiedRoomIdsOnDate = exports.assignmentBoundary = exports.effectiveRoomStayEnd = exports.bookingKeepsRoomForOccupancy = void 0;
 const roomInventory_1 = require("../config/roomInventory");
 const roomStayHelpers_1 = require("./roomStayHelpers");
 const businessDateHelpers_1 = require("./businessDateHelpers");
@@ -25,12 +25,13 @@ const assignmentBoundary = (value) => {
     const date = new Date(value);
     return date.getTime() % businessDateHelpers_1.BUSINESS_DAY_MS === 0 ? (0, businessDateHelpers_1.businessDateStart)(date) : date;
 };
+exports.assignmentBoundary = assignmentBoundary;
 const bookingOccupiedRoomIdsOnDate = (currentBooking, start, end) => {
     if (!(0, exports.bookingKeepsRoomForOccupancy)(currentBooking))
         return [];
     return (currentBooking.roomStays || []).flatMap((roomStay) => {
-        const stayStart = assignmentBoundary(roomStay.from);
-        const plannedEnd = assignmentBoundary(roomStay.to);
+        const stayStart = (0, exports.assignmentBoundary)(roomStay.from);
+        const plannedEnd = (0, exports.assignmentBoundary)(roomStay.to);
         // Undo-checkout retains the old checkout document for audit.
         const endDate = currentBooking.status === "checkedOut" ? currentBooking.checkout?.reservationEndDate : undefined;
         const stayEnd = endDate

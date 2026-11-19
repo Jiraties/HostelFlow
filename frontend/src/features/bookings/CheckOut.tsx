@@ -22,9 +22,10 @@ import "./CheckIn.css";
 import "./Cancellation.css";
 import "./CheckOut.css";
 
+import { bangkokStayDate, remainingStayNights } from "../../helpers/checkoutNights";
+
 type CheckOutProps = {
   booking: booking;
-  isEarlyCheckOut: boolean;
   onClose?: () => void;
   onDirtyChange?: (isDirty: boolean) => void;
   handleCheckOutSuccess?: (booking: booking) => void;
@@ -34,36 +35,26 @@ type CheckOutProps = {
 const CheckOut = ({
   onClose,
   booking,
-  isEarlyCheckOut,
   onDirtyChange,
   handleCheckOutSuccess,
   onRecordPayment,
 }: CheckOutProps) => {
   const { user } = useAuth();
   const dateFormat = user?.settings.dateFormat || "dd/MM/yyyy";
-  const [releaseRemainingNights, setReleaseRemainingNights] = useState(!isEarlyCheckOut);
+  const [today, setToday] = useState(() => bangkokStayDate(new Date()));
+  const departure = bangkokStayDate(booking.checkOut);
+  const isEarlyCheckOut = today < departure;
+  const [releaseRemainingNights, setReleaseRemainingNights] = useState(false);
+  useEffect(() => {
+    const midnight = Date.parse(today + "T00:00:00+07:00") + 86400000;
+    const timer = window.setTimeout(() => setToday(bangkokStayDate(new Date())), Math.max(1, midnight - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [today]);
   const [confirmedDepositReturn, setConfirmedDepositReturn] = useState(false);
   const [confirmedStillUnpaid, setConfirmedStillUnpaid] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [validationAttempted, setValidationAttempted] = useState(false);
-  const today = new Date();
-  const todayDateOnly = new Date(
-    today.getFullYear(),
-    today.getMonth(),
-    today.getDate(),
-  );
-  const checkOutDate = new Date(booking.checkOut);
-  const checkOutDateOnly = new Date(
-    checkOutDate.getFullYear(),
-    checkOutDate.getMonth(),
-    checkOutDate.getDate(),
-  );
-  const nightsEarly = Math.max(
-    Math.round(
-      (checkOutDateOnly.getTime() - todayDateOnly.getTime()) / 86400000,
-    ),
-    0,
-  );
+  const nights = remainingStayNights(booking.roomStays, today, departure);
 
   const formatCurrency = (num: number) =>
     new Intl.NumberFormat("en-US", {
@@ -131,6 +122,7 @@ const CheckOut = ({
           expectedRevision: booking.revision,
           depositReturned: confirmedDepositReturn,
           releaseRemainingNights,
+          ...(isEarlyCheckOut && { previewBusinessDate: today }),
           confirmedStillUnpaid,
         },
         { withCredentials: true },
@@ -151,19 +143,7 @@ const CheckOut = ({
       {onClose && <ModalCloseButton onClick={onClose} />}
       <div className="checkIn__header">
         <h1 className="checkIn__title">เช็คเอาท์ {booking.name}</h1>
-        {isEarlyCheckOut && (
-          <div className="bookingNoticeStack">
-            {isEarlyCheckOut && (
-              <div className="checkIn__reminder checkOut__earlyReminder">
-                <i className="bx bx-message-bubble-exclamation" />
-                <p>
-                  ลูกค้าดังกล่าวเช็คเอาท์ก่อนกำหนด{" "}
-                  <strong>{nightsEarly} คืน</strong>
-                </p>
-              </div>
-            )}
-          </div>
-        )}
+
       </div>
 
       <div className="checkOut__grid">
@@ -314,7 +294,7 @@ const CheckOut = ({
                   onClick={() => setReleaseRemainingNights(true)}
                 >
                   <i className="bx bx-door-open" />
-                  ลดคืนจองและเปิดให้จองตั้งแต่คืนนี้
+                  เปิดให้จองใหม่
                 </button>
                 <button
                   type="button"
@@ -331,6 +311,18 @@ const CheckOut = ({
                   <i className="bx bx-lock-keyhole" />
                   ไม่เปิดให้จอง
                 </button>
+              </div>
+              <div className="checkoutNights" aria-live="polite">
+                <ul>
+                  {nights.map((night) => <li key={night}>
+                    <time dateTime={night}>{formatDisplayDate(night, dateFormat)}</time>
+                    <span>{releaseRemainingNights ? "ยกเลิกคืนจอง" : "ยังจองไว้"}</span>
+                  </li>)}
+                  <li><time dateTime={departure}>{formatDisplayDate(departure, dateFormat)}</time><span>วันออกเดิม</span></li>
+                </ul>
+                <p>{releaseRemainingNights
+                  ? "คืนที่ยกเลิกจะไม่นับในอัตราเข้าพัก จองใหม่ได้เมื่อไม่มีรายการอื่นกันห้องไว้"
+                  : "ยังกันห้องและนับคืนที่จองไว้ในอัตราเข้าพักจนถึงวันออกเดิม"}</p>
               </div>
             </section>
           )}

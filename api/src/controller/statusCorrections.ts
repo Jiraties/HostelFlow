@@ -1,3 +1,5 @@
+import { restoredReservationConflicts } from "../services/restoredReservationConflicts";
+import CashShiftReopenCorrection from "../models/cashShiftReopenCorrection";
 import crypto from "crypto";
 import mongoose from "mongoose";
 import type { Request, Response } from "express";
@@ -75,6 +77,7 @@ type TerminalAction = {
   at: Date;
   expectedActivities: string[];
   sourceActions: string[];
+  transactionIds?: string[];
 };
 
 type ValidatedRequest =
@@ -248,6 +251,7 @@ const terminalAction = (
       at: new Date(currentBooking.checkout.checkedOutAt),
       expectedActivities: ["CHECK_OUT", "RESOLVE_STAY"],
       sourceActions: ["CHECK_OUT", "RESOLVE_STAY"],
+      transactionIds: currentBooking.checkout.transactionIds,
     };
   }
   if (correctionType === "UNDO_CANCELLATION" && currentBooking.cancellation) {
@@ -337,16 +341,13 @@ const terminalTransactions = (
   currentBooking: booking,
   action: TerminalAction,
 ) =>
-  (currentBooking.transactions || []).filter(
-    (transaction) =>
-      Boolean(transaction.sourceAction) &&
-      action.sourceActions.includes(transaction.sourceAction!) &&
-      (!transaction.createdAt ||
-        Math.abs(
-          new Date(transaction.createdAt).getTime() - action.at.getTime(),
-        ) <=
-          5 * 60_000),
-  );
+  (currentBooking.transactions || []).filter((transaction) => {
+    if (!transaction.sourceAction || !action.sourceActions.includes(transaction.sourceAction)) return false;
+    if (action.transactionIds) return action.transactionIds.includes(String(transaction._id));
+    // Older terminal actions did not persist the generated transaction IDs.
+    return !transaction.createdAt ||
+      Math.abs(new Date(transaction.createdAt).getTime() - action.at.getTime()) <= 5 * 60_000;
+  });
 
 const correctionTypeForStatus = (
   status: Status,
@@ -356,6 +357,23 @@ const correctionTypeForStatus = (
   if (status === "noShow") return "UNDO_NO_SHOW";
   return null;
 };
+
+// Checkout deposits do not necessarily have a cashShiftId. A later shift
+// (including a reopened shift) cannot authorize staff to undo the prior stay.
+const earlyUndoShift = async (record: booking, type: StatusCorrectionType, isAdmin: boolean) => {
+  if (isAdmin || type !== "UNDO_CHECKOUT" || !record.checkout?.earlyCheckOut) return undefined;
+  const checkout = record.checkout;
+  const shift = await CashShift.findOne({
+    businessDate: businessDateKey(new Date(checkout.checkedOutAt)), status: "open", endedAt: { $exists: false },
+    startedAt: { $lte: checkout.checkedOutAt },
+  }).select("_id ledgerRevision").lean();
+  if (!shift || await CashShiftReopenCorrection.exists({
+    shiftId: String(shift._id), reopenedAt: { $gt: checkout.checkedOutAt },
+  })) return null;
+  return shift;
+};
+
+const earlyShiftMessage = "กะเดิมที่บันทึกเช็คเอาท์ไม่ได้เปิดอยู่ กรุณาให้ Admin ตรวจสอบและย้อนสถานะ";
 
 const statusCorrectionPermission = async ({
   currentBooking,
@@ -399,8 +417,9 @@ const statusCorrectionPermission = async ({
   const affectedShiftsOpen = affectedShifts.every(
     (shift) => shift.status === "open",
   );
+  const origin = await earlyUndoShift(currentBooking, correctionType, isAdmin);
   const requiresAdmin =
-    !sameBusinessDate || !originalActor || !affectedShiftsOpen;
+    origin === null || !sameBusinessDate || !originalActor || !affectedShiftsOpen;
   const allowed =
     bookingEligible &&
     !hasMissingCashShift &&
@@ -410,6 +429,7 @@ const statusCorrectionPermission = async ({
     ? "แก้ไขได้เฉพาะ Booking ที่อยู่ในสถานะปลายทางและมีประวัติครบถ้วน"
     : hasMissingCashShift
       ? "ไม่พบกะเงินสดที่อ้างอิงโดยรายการทางการเงิน ต้องให้ Admin ตรวจสอบ"
+      : origin === null ? earlyShiftMessage
       : !allowed
         ? !sameBusinessDate
           ? "พ้นวันทำการกรุงเทพฯ แล้ว ต้องให้ Admin ดำเนินการ"
@@ -495,6 +515,9 @@ const buildPreview = async ({
     });
   }
 
+  const origin = await earlyUndoShift(currentBooking, body.correctionType, isAdmin);
+  if (origin === null) blockers.push({ code: "ADMIN_APPROVAL_REQUIRED", message: earlyShiftMessage });
+
   const terminalTx = action ? terminalTransactions(currentBooking, action) : [];
   const terminalTransactionIds = terminalTx.map(transactionId).filter(Boolean);
   const reversibleTx = reversibleTransactions(
@@ -558,6 +581,11 @@ const buildPreview = async ({
     });
   }
 
+  if (currentBooking.checkout?.earlyCheckOut && body.correctionType === "UNDO_CHECKOUT" &&
+      closedAffectedCashShiftIds.length && body.depositDecision === "not_actually_returned") {
+    blockers.push({ code: "CLOSED_SHIFT_FINANCIAL_CORRECTION_REQUIRED",
+      message: "รายการอยู่ในกะที่ปิดแล้ว กรุณาใช้ขั้นตอนแก้ไขรายการทางการเงิน" });
+  }
   if (action) {
     const laterTransactions = (currentBooking.transactions || []).filter(
       (transaction) =>
@@ -619,13 +647,14 @@ const buildPreview = async ({
   const roomBlockConflict = await findActiveRoomBlockConflict(
     currentBooking.roomStays || [],
   );
-  if (conflicts.length || roomBlockConflict) {
+  const historicalConflicts = body.correctionType === "UNDO_CHECKOUT" ? await restoredReservationConflicts(currentBooking) : [];
+  if (conflicts.length || historicalConflicts.length || roomBlockConflict) {
     blockers.push({
       code: "ROOM_ASSIGNMENT_CONFLICT",
       message: roomBlockConflict
         ? "ห้องหรือเตียงเดิมมีรายการบล็อกอยู่ ต้องเปิดห้องหรือแก้การจัดห้องก่อน"
         : "ห้องหรือเตียงเดิมถูกจัดให้ Booking อื่นแล้ว ต้องแก้การจัดห้องก่อน",
-      bookingIds: conflicts.map((conflict) => conflict.bookingId),
+      bookingIds: [...new Set([...conflicts.map((conflict) => conflict.bookingId), ...historicalConflicts])],
     });
   }
 
@@ -719,7 +748,7 @@ const buildPreview = async ({
     eligible: blockers.length === 0,
     requiresAdmin:
       Boolean(action) &&
-      (!sameBusinessDate ||
+      (origin === null || !sameBusinessDate ||
         !originalActor ||
         closedAffectedCashShiftIds.length > 0),
     correctionType: body.correctionType,
@@ -765,6 +794,7 @@ const buildPreview = async ({
         : "ไม่ต้องติดตามแก้สถานะกับ OTA",
     },
     affectedCashShiftIds,
+    origin,
     openAffectedCashShiftIds,
     terminalActionKey,
     reversibleTransactions: reversibleTx,
@@ -867,7 +897,8 @@ export const previewStatusCorrection = async (
       username: req.user?.username || "",
       isAdmin: req.user?.admin === true,
     });
-    return res.status(200).json(preview);
+    const { origin: _guard, ...publicPreview } = preview;
+    return res.status(200).json(publicPreview);
   } catch (err) {
     console.error("Status correction preview failed", {
       bookingId: req.params.bookingId,
@@ -958,7 +989,14 @@ export const correctStatus = async (
       const session = await mongoose.startSession();
       try {
         return await session.withTransaction(async () => {
+          if (preview.origin) {
+            const guarded = await CashShift.updateOne({
+              _id: preview.origin._id, status: "open", ledgerRevision: preview.origin.ledgerRevision,
+            }, { $inc: { ledgerRevision: 1 } }, { session });
+            if (!guarded.modifiedCount) throw new StatusCorrectionShiftRaceError();
+          }
           for (const cashShiftId of preview.openAffectedCashShiftIds) {
+            if (cashShiftId === String(preview.origin?._id)) continue;
             const shiftGuard = await CashShift.updateOne(
               { _id: cashShiftId, status: "open" },
               { $inc: { ledgerRevision: 1 } },
@@ -1061,6 +1099,7 @@ export const correctStatus = async (
                 },
               },
               summary: {
+                ...(validated.correctionType === "UNDO_CHECKOUT" && { originalCheckout: currentBooking.checkout }),
                 correctionId,
                 correctionType: validated.correctionType,
                 reason: validated.reason,

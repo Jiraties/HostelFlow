@@ -2540,6 +2540,9 @@ export const checkOut = async (req: Request, res: Response) => {
     // The release command reopens all remaining nights immediately. Older
     // callers omitting the choice keep their existing availability behavior.
     const requestedEnd = req.body.reservationEndDate;
+    if (req.body.previewBusinessDate !== undefined && req.body.previewBusinessDate !== formatLocalDateKey(todayStart)) {
+      return res.status(409).json({ error: "PREVIEW_DATE_CHANGED", message: "เปลี่ยนวันทำการแล้ว กรุณาตรวจสอบคืนที่จองอีกครั้ง" });
+    }
     const releaseToday = earlyCheckOut && req.body.releaseRemainingNights === true;
     const reservationEndDate = requestedEnd !== undefined ? requestedEnd : (releaseToday
       ? formatLocalDateKey(todayStart) : undefined);
@@ -2552,6 +2555,7 @@ export const checkOut = async (req: Request, res: Response) => {
         ? [
             normalizeTransaction(
               {
+                _id: String(new mongoose.Types.ObjectId()),
                 type: "depositRefund",
                 paymentMethod: "Cash",
                 amount: remainingDepositAmount,
@@ -2582,6 +2586,7 @@ export const checkOut = async (req: Request, res: Response) => {
                   roomReleaseStatus,
                   depositRefundAmount: remainingDepositAmount,
                   depositDisposition: "returned",
+                  transactionIds: assignedTransactions.map((entry) => String(entry._id)),
                   checkedOutAt: new Date(),
                   checkedOutByStaffUsername,
                   ...(reservationEndDate && { reservationEndDate }),

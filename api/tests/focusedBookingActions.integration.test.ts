@@ -828,3 +828,36 @@ test("checked-in unpaid room charge can be settled before checkout", async () =>
   assert.equal(settlement.relatedTransactionType, "roomCharge");
   assert.equal(settlement.amount, 1200);
 });
+
+test("admin can restore the original sold nights without reopening checkout or changing payments", async () => {
+  const from = new Date("2024-02-03T00:00:00Z");
+  const to = new Date("2024-02-06T00:00:00Z");
+  const cutoff = "2024-02-04";
+  const checkout = { roomReleaseStatus: "released", reservationEndDate: cutoff, earlyCheckOut: true,
+    checkedOutAt: from, checkedOutByStaffUsername: "frontdesk", nightsEarly: 2, depositRefundAmount: 0 };
+  await Booking.updateOne({bookingId: "FOCUSED-1"}, {$set: {
+    status: "checkedOut", checkout, checkIn: from, checkOut: to, roomStays: [{roomIds: ["Balcony"], from, to}],
+  }});
+  const change = {expectedRevision: 1, roomReleaseStatus: "blocked", restoreOriginalCoverage: true, reason: "Synthetic room-history correction"};
+  const denied = response();
+  await correctClosedRoomAvailability(request(change), denied);
+  assert.equal(denied.statusCode, 403);
+  const other = await Booking.create(bookedFixture({bookingId: "SYNTHETIC-REPLACEMENT", status: "checkedOut",
+    checkIn: from, checkOut: to, checkout: {...checkout, reservationEndDate: undefined},
+    roomStays: [{roomIds: ["Balcony"], from: new Date(cutoff + "T00:00:00Z"), to}],
+  }));
+  const conflict = response();
+  await correctClosedRoomAvailability(request(change, {admin: true}), conflict);
+  assert.equal(conflict.statusCode, 409);
+  const unchanged = await Booking.findOne({bookingId: "FOCUSED-1"}).lean();
+  assert.equal(unchanged?.checkout?.reservationEndDate, cutoff);
+  await Booking.updateOne({_id: other._id}, {$set: {voided: true}});
+  const saved = response();
+  await correctClosedRoomAvailability(request(change, {admin: true, key: "verified-history"}), saved);
+  assert.equal(saved.statusCode, 200, JSON.stringify(saved.body));
+  assert.equal(saved.body.booking.checkout.reservationEndDate, undefined);
+  assert.equal(saved.body.booking.status, "checkedOut");
+  assert.deepEqual(saved.body.booking.transactions, unchanged!.transactions);
+  assert.ok(await Activity.exists({action: "CORRECT_CLOSED_ROOM_AVAILABILITY",
+    "details.changes.reservationEndDate.before": cutoff}));
+});

@@ -29,7 +29,7 @@ export const effectiveRoomStayEnd = (currentBooking: booking, roomStay: roomStay
 };
 
 // Assignment dates use both UTC-midnight and Bangkok-midnight storage.
-const assignmentBoundary = (value: Date) => {
+export const assignmentBoundary = (value: Date) => {
   const date = new Date(value);
   return date.getTime() % BUSINESS_DAY_MS === 0 ? getBookingBusinessDateStart(date) : date;
 };

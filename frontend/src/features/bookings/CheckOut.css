@@ -204,3 +204,19 @@
   display: grid;
   gap: 0.35rem;
 }
+
+.checkoutNights ul {
+  margin: 0.5rem 0;
+  padding: 0;
+  max-height: 10rem;
+  overflow-y: auto;
+  list-style: none;
+}
+.checkoutNights li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--light-background);
+}
+.checkoutNights p { margin: 0; font-size: 0.875rem; }
