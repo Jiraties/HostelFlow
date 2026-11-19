@@ -147,7 +147,7 @@ const AnalyticsDetails = ({ data, onOpenRevenueBreakdown }: { data: AnalyticsRes
       </section>
 
       <section className="analytics__detailPanel" aria-labelledby="analytics-outlook-title">
-        <div className="analytics__detailHeader"><h2 className="analytics__title" id="analytics-outlook-title">Forward Outlook <AnalyticsInfo description="คำนวณจากการจองและการใช้ภายในที่มีอยู่ขณะนี้ เริ่มหลังสิ้นเดือนที่เลือก · ไม่ใช่ภาพย้อนหลัง ณ เดือนนั้น และยังไม่มีประวัติ snapshot สำหรับเปรียบเทียบ · แท่งย่อยแบ่งช่วงเวลาเป็น 7 ส่วน" /></h2></div>
+        <div className="analytics__detailHeader"><h2 className="analytics__title" id="analytics-outlook-title">Forward Outlook <AnalyticsInfo description="คำนวณจากการจองที่มีอยู่ขณะนี้ เริ่มหลังสิ้นเดือนที่เลือก · ไม่ใช่ภาพย้อนหลัง ณ เดือนนั้น และยังไม่มีประวัติ snapshot สำหรับเปรียบเทียบ · แท่งย่อยแบ่งช่วงเวลาเป็น 7 ส่วน" /></h2></div>
         <p className="analytics__basisNote">จากข้อมูลที่มีอยู่ขณะนี้</p>
         <div className="analytics__outlookGrid">
           {outlook.map((item) => (

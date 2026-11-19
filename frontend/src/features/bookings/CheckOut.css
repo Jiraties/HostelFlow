@@ -229,20 +229,11 @@
   box-shadow: var(--main-shadow);
 }
 
-.checkoutNights__heading,
 .checkoutNights__status {
   display: flex;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 0.25rem 0.75rem;
-}
-
-.checkoutNights__heading {
-  color: #666;
-  font-size: 0.875rem;
-}
-
-.checkoutNights__status {
   margin-top: 0.35rem;
   font-weight: 500;
 }

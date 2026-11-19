@@ -76,13 +76,13 @@ const localDate = (offsetDays = 0) => {
   ).padStart(2, "0")}`;
 };
 
-const businessDateKey = () => {
+const businessDateKey = (date = new Date()) => {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Bangkok",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).formatToParts(new Date());
+  }).formatToParts(date);
   const value = (type: Intl.DateTimeFormatPartTypes) =>
     parts.find((part) => part.type === type)?.value;
   return `${value("year")}-${value("month")}-${value("day")}`;
@@ -767,6 +767,11 @@ test("early checkout persists only the explicit shortening and rejects invalid d
     const invalid = response();
     await controller.checkOut(request({ params, body: { ...body, reservationEndDate: "2026-02-30" } }), invalid as any);
     assert.equal(invalid.body.error, "INVALID_RESERVATION_END_DATE");
+    const incompatible = response();
+    const incompatibleDate = release ? businessDateKey(new Date(record.checkIn.getTime() + 86400000)) : today;
+    await controller.checkOut(request({ params, body: { ...body, reservationEndDate: incompatibleDate } }), incompatible as any);
+    assert.equal(incompatible.statusCode, 400);
+    assert.equal(incompatible.body.error, "INVALID_RESERVATION_END_DATE");
     const result = response();
     await controller.checkOut(request({ params, body, key: id }), result as any);
     assert.equal(result.statusCode, 200, JSON.stringify(result.body));
@@ -775,6 +780,31 @@ test("early checkout persists only the explicit shortening and rejects invalid d
     assert.equal(saved?.checkout?.roomReleaseStatus, release ? "released" : "blocked");
     assert.ok(saved?.checkout?.checkedOutAt);
   }
+});
+
+test("scheduled checkout cannot backdate the reservation end", async () => {
+  const record = await bookingFixture("SYNTHETIC-SCHEDULED-CHECKOUT");
+  record.status = "checkedIn";
+  record.checkOut = new Date(businessDateKey() + "T00:00:00+07:00");
+  record.checkIn = new Date(record.checkOut.getTime() - 86400000);
+  record.roomStays[0].from = record.checkIn;
+  record.roomStays[0].to = record.checkOut;
+  await record.save();
+
+  const result = response();
+  await controller.checkOut(request({
+    params: { bookingId: record.bookingId },
+    body: {
+      expectedRevision: 0,
+      releaseRemainingNights: true,
+      reservationEndDate: businessDateKey(record.checkIn),
+    },
+  }), result as any);
+
+  assert.equal(result.statusCode, 400);
+  assert.equal(result.body.error, "INVALID_RESERVATION_END_DATE");
+  const saved = await Booking.findOne({ bookingId: record.bookingId }).lean();
+  assert.equal(saved?.status, "checkedIn");
 });
 
 test("historical dashboard buckets use the saved coverage end and ignore a reversed checkout", async () => {

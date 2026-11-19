@@ -1821,13 +1821,19 @@ const checkOut = async (req, res) => {
         const roomReleaseStatus = earlyCheckOut && !releaseRemainingNights ? "blocked" : "released";
         // The release command reopens all remaining nights immediately. Older
         // callers omitting the choice keep their existing availability behavior.
-        const requestedEnd = req.body.reservationEndDate;
-        if (req.body.previewBusinessDate !== undefined && req.body.previewBusinessDate !== formatLocalDateKey(todayStart)) {
+        const businessDate = formatLocalDateKey(todayStart);
+        if (req.body.previewBusinessDate !== undefined && req.body.previewBusinessDate !== businessDate) {
             return res.status(409).json({ error: "PREVIEW_DATE_CHANGED", message: "เปลี่ยนวันทำการแล้ว กรุณาตรวจสอบคืนที่จองอีกครั้ง" });
         }
         const releaseToday = earlyCheckOut && req.body.releaseRemainingNights === true;
-        const reservationEndDate = requestedEnd !== undefined ? requestedEnd : (releaseToday
-            ? formatLocalDateKey(todayStart) : undefined);
+        const reservationEndDate = releaseToday ? businessDate : undefined;
+        const requestedEnd = req.body.reservationEndDate;
+        if (requestedEnd !== undefined && requestedEnd !== reservationEndDate) {
+            return res.status(400).json({
+                error: "INVALID_RESERVATION_END_DATE",
+                message: "วันที่สิ้นสุดการจองต้องตรงกับวันที่เปิดให้จองใหม่",
+            });
+        }
         if (reservationEndDate !== undefined &&
             !validShortenedEnd(reservationEndDate, existingBooking.checkIn, existingBooking.checkOut)) {
             return res.status(400).json({ error: "INVALID_RESERVATION_END_DATE", message: "วันที่สิ้นสุดการจองไม่อยู่ในช่วงเข้าพัก" });

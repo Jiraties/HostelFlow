@@ -70,26 +70,6 @@ const CheckOut = ({
     actualCheckIn > bookedCheckIn ? actualCheckIn : bookedCheckIn,
     today,
   );
-  const lastNight = nights.at(-1);
-  const rangeEnd = lastNight
-    ? new Date(Date.parse(lastNight) + 86400000).toISOString().slice(0, 10)
-    : undefined;
-  const rangeFormatter = new Intl.DateTimeFormat("th-TH", {
-    day: "numeric",
-    month: "short",
-    ...(rangeEnd && nights[0].slice(0, 4) !== rangeEnd.slice(0, 4)
-      ? { year: "numeric" }
-      : {}),
-    calendar: "gregory",
-    timeZone: "UTC",
-  });
-  const nightRange = rangeEnd
-    ? rangeFormatter.formatRange(
-        new Date(`${nights[0]}T00:00:00Z`),
-        new Date(`${rangeEnd}T00:00:00Z`),
-      )
-    : null;
-
   const formatCurrency = (num: number) =>
     new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -369,10 +349,6 @@ const CheckOut = ({
                 </button>
               </div>
               <div className="checkoutNights" aria-live="polite">
-                {/* <div className="checkoutNights__heading">
-                  <span>คืนที่เหลือ</span>
-                  {nightRange && <span>{nightRange}</span>}
-                </div> */}
                 <div className="checkoutNights__status">
                   <span>
                     {nights.length === 0
