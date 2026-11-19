@@ -22,7 +22,10 @@ import "./CheckIn.css";
 import "./Cancellation.css";
 import "./CheckOut.css";
 
-import { bangkokStayDate, remainingStayNights } from "../../helpers/checkoutNights";
+import {
+  bangkokStayDate,
+  remainingStayNights,
+} from "../../helpers/checkoutNights";
 
 type CheckOutProps = {
   booking: booking;
@@ -47,7 +50,10 @@ const CheckOut = ({
   const [releaseRemainingNights, setReleaseRemainingNights] = useState(false);
   useEffect(() => {
     const midnight = Date.parse(today + "T00:00:00+07:00") + 86400000;
-    const timer = window.setTimeout(() => setToday(bangkokStayDate(new Date())), Math.max(1, midnight - Date.now()));
+    const timer = window.setTimeout(
+      () => setToday(bangkokStayDate(new Date())),
+      Math.max(1, midnight - Date.now()),
+    );
     return () => window.clearTimeout(timer);
   }, [today]);
   const [confirmedDepositReturn, setConfirmedDepositReturn] = useState(false);
@@ -55,6 +61,34 @@ const CheckOut = ({
   const [submitting, setSubmitting] = useState(false);
   const [validationAttempted, setValidationAttempted] = useState(false);
   const nights = remainingStayNights(booking.roomStays, today, departure);
+  const bookedCheckIn = bangkokStayDate(booking.checkIn);
+  const actualCheckIn = booking.checkedInAt
+    ? bangkokStayDate(booking.checkedInAt)
+    : bookedCheckIn;
+  const stayedNights = remainingStayNights(
+    booking.roomStays,
+    actualCheckIn > bookedCheckIn ? actualCheckIn : bookedCheckIn,
+    today,
+  );
+  const lastNight = nights.at(-1);
+  const rangeEnd = lastNight
+    ? new Date(Date.parse(lastNight) + 86400000).toISOString().slice(0, 10)
+    : undefined;
+  const rangeFormatter = new Intl.DateTimeFormat("th-TH", {
+    day: "numeric",
+    month: "short",
+    ...(rangeEnd && nights[0].slice(0, 4) !== rangeEnd.slice(0, 4)
+      ? { year: "numeric" }
+      : {}),
+    calendar: "gregory",
+    timeZone: "UTC",
+  });
+  const nightRange = rangeEnd
+    ? rangeFormatter.formatRange(
+        new Date(`${nights[0]}T00:00:00Z`),
+        new Date(`${rangeEnd}T00:00:00Z`),
+      )
+    : null;
 
   const formatCurrency = (num: number) =>
     new Intl.NumberFormat("en-US", {
@@ -143,7 +177,6 @@ const CheckOut = ({
       {onClose && <ModalCloseButton onClick={onClose} />}
       <div className="checkIn__header">
         <h1 className="checkIn__title">เช็คเอาท์ {booking.name}</h1>
-
       </div>
 
       <div className="checkOut__grid">
@@ -186,7 +219,7 @@ const CheckOut = ({
           </div>
         </div>
 
-        <div>
+        <div className="checkOut__details">
           <p className="checkIn__label">สรุปยอดการคืนมัดจำ</p>
           {hasUnpaidBalance && (
             <section className="checkOut__unpaidWarning">
@@ -218,13 +251,21 @@ const CheckOut = ({
                     type="checkbox"
                     checked={confirmedStillUnpaid}
                     aria-invalid={validationAttempted && !confirmedStillUnpaid}
-                    aria-describedby={validationAttempted && !confirmedStillUnpaid ? "checkout-unpaid-error" : undefined}
+                    aria-describedby={
+                      validationAttempted && !confirmedStillUnpaid
+                        ? "checkout-unpaid-error"
+                        : undefined
+                    }
                     onChange={(e) => setConfirmedStillUnpaid(e.target.checked)}
                   />
                   <span className="box"></span>
                 </label>
               </div>
-              {validationAttempted && !confirmedStillUnpaid && <p id="checkout-unpaid-error" className="formField__error">กรุณายืนยันการเช็คเอาท์โดยยังค้างชำระ</p>}
+              {validationAttempted && !confirmedStillUnpaid && (
+                <p id="checkout-unpaid-error" className="formField__error">
+                  กรุณายืนยันการเช็คเอาท์โดยยังค้างชำระ
+                </p>
+              )}
             </section>
           )}
 
@@ -232,8 +273,7 @@ const CheckOut = ({
             <div className="checkIn__paymentConfirmationList">
               <div className="checkIn__paymentRow">
                 <p>
-                  ค่ามัดจำ{" "}
-                  <PaymentMethodChip method={depositPaymentMethod} />
+                  ค่ามัดจำ <PaymentMethodChip method={depositPaymentMethod} />
                 </p>
                 <p>{formatCurrency(depositAmount)}</p>
               </div>
@@ -264,8 +304,14 @@ const CheckOut = ({
                   <input
                     type="checkbox"
                     checked={confirmedDepositReturn}
-                    aria-invalid={validationAttempted && !confirmedDepositReturn}
-                    aria-describedby={validationAttempted && !confirmedDepositReturn ? "checkout-deposit-error" : undefined}
+                    aria-invalid={
+                      validationAttempted && !confirmedDepositReturn
+                    }
+                    aria-describedby={
+                      validationAttempted && !confirmedDepositReturn
+                        ? "checkout-deposit-error"
+                        : undefined
+                    }
                     onChange={(event) =>
                       setConfirmedDepositReturn(event.target.checked)
                     }
@@ -273,14 +319,24 @@ const CheckOut = ({
                   <span className="box" />
                 </label>
               )}
-              {remainingDepositAmount > 0 && validationAttempted && !confirmedDepositReturn && <p id="checkout-deposit-error" className="formField__error">กรุณายืนยันการคืนมัดจำ</p>}
+              {remainingDepositAmount > 0 &&
+                validationAttempted &&
+                !confirmedDepositReturn && (
+                  <p id="checkout-deposit-error" className="formField__error">
+                    กรุณายืนยันการคืนมัดจำ
+                  </p>
+                )}
             </div>
           </div>
 
           {isEarlyCheckOut && (
             <section className="checkOut__section">
               <p className="checkIn__label">สถานะห้องสำหรับคืนที่เหลือ</p>
-              <div className="cancellation__segmentedControl roomStatusSegmentedControl" role="group" aria-label="สถานะห้องสำหรับคืนที่เหลือ">
+              <div
+                className="cancellation__segmentedControl roomStatusSegmentedControl"
+                role="group"
+                aria-label="สถานะห้องสำหรับคืนที่เหลือ"
+              >
                 <button
                   type="button"
                   className={
@@ -313,16 +369,47 @@ const CheckOut = ({
                 </button>
               </div>
               <div className="checkoutNights" aria-live="polite">
-                <ul>
-                  {nights.map((night) => <li key={night}>
-                    <time dateTime={night}>{formatDisplayDate(night, dateFormat)}</time>
-                    <span>{releaseRemainingNights ? "ยกเลิกคืนจอง" : "ยังจองไว้"}</span>
-                  </li>)}
-                  <li><time dateTime={departure}>{formatDisplayDate(departure, dateFormat)}</time><span>วันออกเดิม</span></li>
-                </ul>
-                <p>{releaseRemainingNights
-                  ? "คืนที่ยกเลิกจะไม่นับในอัตราเข้าพัก จองใหม่ได้เมื่อไม่มีรายการอื่นกันห้องไว้"
-                  : "ยังกันห้องและนับคืนที่จองไว้ในอัตราเข้าพักจนถึงวันออกเดิม"}</p>
+                {/* <div className="checkoutNights__heading">
+                  <span>คืนที่เหลือ</span>
+                  {nightRange && <span>{nightRange}</span>}
+                </div> */}
+                <div className="checkoutNights__status">
+                  <span>
+                    {nights.length === 0
+                      ? "ไม่มีคืนที่เหลือ"
+                      : releaseRemainingNights
+                        ? "เปิดให้จองใหม่"
+                        : "ไม่เปิดให้จอง"}
+                  </span>
+                  <span>{nights.length} คืน</span>
+                </div>
+                <div className="checkoutNights__bar" aria-hidden="true">
+                  {stayedNights.length > 0 && (
+                    <span
+                      className="checkoutNights__barStayed"
+                      style={{ flexGrow: stayedNights.length }}
+                    />
+                  )}
+                  {nights.length > 0 && (
+                    <span
+                      className={
+                        releaseRemainingNights
+                          ? "checkoutNights__barReleased"
+                          : "checkoutNights__barBlocked"
+                      }
+                      style={{ flexGrow: nights.length }}
+                    />
+                  )}
+                </div>
+                <div className="checkoutNights__legend">
+                  <span>เข้าพักแล้ว {stayedNights.length} คืน</span>
+                  <span>
+                    {releaseRemainingNights
+                      ? "เปิดให้จองใหม่"
+                      : "ไม่เปิดให้จอง"}{" "}
+                    {nights.length} คืน
+                  </span>
+                </div>
               </div>
             </section>
           )}

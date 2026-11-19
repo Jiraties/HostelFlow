@@ -9,8 +9,23 @@
 
 .checkOut__grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(18rem, 1fr) minmax(0, 1fr);
   gap: 1.5rem;
+}
+
+.checkOut__summary,
+.checkOut__details {
+  min-width: 0;
+}
+
+.checkOut__summary .viewBooking__infoText {
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
+}
+
+.checkOut__summary .viewBooking__nights {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .checkOut__section {
@@ -205,18 +220,77 @@
   gap: 0.35rem;
 }
 
-.checkoutNights ul {
-  margin: 0.5rem 0;
-  padding: 0;
-  max-height: 10rem;
-  overflow-y: auto;
-  list-style: none;
+.checkoutNights {
+  margin-top: 0.75rem;
+  min-width: 0;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  background: var(--background);
+  box-shadow: var(--main-shadow);
 }
-.checkoutNights li {
+
+.checkoutNights__heading,
+.checkoutNights__status {
   display: flex;
   justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.25rem 0;
-  border-bottom: 1px solid var(--light-background);
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
 }
-.checkoutNights p { margin: 0; font-size: 0.875rem; }
+
+.checkoutNights__heading {
+  color: #666;
+  font-size: 0.875rem;
+}
+
+.checkoutNights__status {
+  margin-top: 0.35rem;
+  font-weight: 500;
+}
+
+.checkoutNights__status span:last-child {
+  white-space: nowrap;
+}
+
+.checkoutNights__bar {
+  display: flex;
+  height: 0.5rem;
+  margin: 0.4rem 0;
+  border-radius: 1rem;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px #e6e6e6;
+}
+
+.checkoutNights__bar span {
+  flex-basis: 0;
+}
+
+.checkoutNights__barStayed {
+  background: var(--green);
+}
+
+.checkoutNights__barBlocked {
+  background: var(--red);
+}
+
+.checkoutNights__barReleased {
+  background: transparent;
+}
+
+.checkoutNights__legend {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  color: #666;
+  font-size: 0.8rem;
+}
+
+.checkoutNights p {
+  margin: 0.35rem 0 0;
+  color: #666;
+  font-size: 0.875rem;
+}
+
+.checkoutNights p.checkoutNights__warning {
+  color: #8a6412;
+}
