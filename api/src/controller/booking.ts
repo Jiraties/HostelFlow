@@ -6,9 +6,7 @@ import Booking, {
   PaymentMethod,
 } from "../models/booking";
 import StandaloneSale from "../models/standaloneSale";
-import RoomBlock, {
-  HOUSE_USE_ROOM_BLOCK_REASON,
-} from "../models/roomBlock";
+import RoomBlock from "../models/roomBlock";
 import ExtraSaleAnnotation from "../models/extraSaleAnnotation";
 import dotenv from "dotenv";
 import crypto from "crypto";
@@ -1512,7 +1510,6 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
       monthStandaloneSales,
       esrBookings,
       occupancyBookings,
-      internalUseBlocks,
       monthBookingCount,
       channelMixBookings,
       unpaidBookings,
@@ -1533,20 +1530,7 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
               to: { $gt: occupancyQueryStart },
             },
           },
-        }).select("status voided roomStays checkout.earlyCheckOut checkout.checkedOutAt").lean<booking[]>(),
-        RoomBlock.find({
-          from: { $lt: occupancyQueryEnd },
-          to: { $gt: occupancyQueryStart },
-          $or: [
-            { reasonType: "house_use" },
-            {
-              reasonType: { $exists: false },
-              reason: HOUSE_USE_ROOM_BLOCK_REASON,
-            },
-          ],
-        })
-          .select("roomId roomIds from to reason reasonType releasedAt")
-          .lean(),
+        }).select("status voided roomStays checkout.reservationEndDate").lean<booking[]>(),
         Booking.countDocuments({
           checkIn: { $gte: startOfMonth, $lt: startOfNextMonth },
         }),
@@ -1703,7 +1687,7 @@ export const getAdminDashboardStats = async (req: Request, res: Response) => {
 
     // Month totals, selected range and chart buckets share the same daily work.
     // The cache lives only for this request, so booking edits stay immediately visible.
-    const occupancyForRange = createOccupancySummaryCalculator(occupancyBookings, internalUseBlocks);
+    const occupancyForRange = createOccupancySummaryCalculator(occupancyBookings);
     const wholeMonthOccupancy = occupancyForRange(
       startOfMonth,
       startOfNextMonth,
@@ -2468,6 +2452,13 @@ export const checkIn = async (req: Request, res: Response) => {
   }
 };
 
+const validShortenedEnd = (value: unknown, checkIn: Date, checkOut: Date): value is string => {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(value + "T00:00:00Z");
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value &&
+    value >= formatLocalDateKey(new Date(checkIn)) && value < formatLocalDateKey(new Date(checkOut));
+};
+
 export const checkOut = async (req: Request, res: Response) => {
   try {
     const { bookingId } = req.params;
@@ -2546,11 +2537,31 @@ export const checkOut = async (req: Request, res: Response) => {
     const earlyCheckOut = nightsEarly > 0;
     const roomReleaseStatus =
       earlyCheckOut && !releaseRemainingNights ? "blocked" : "released";
+    // The release command reopens all remaining nights immediately. Older
+    // callers omitting the choice keep their existing availability behavior.
+    const businessDate = formatLocalDateKey(todayStart);
+    if (req.body.previewBusinessDate !== undefined && req.body.previewBusinessDate !== businessDate) {
+      return res.status(409).json({ error: "PREVIEW_DATE_CHANGED", message: "เปลี่ยนวันทำการแล้ว กรุณาตรวจสอบคืนที่จองอีกครั้ง" });
+    }
+    const releaseToday = earlyCheckOut && req.body.releaseRemainingNights === true;
+    const reservationEndDate = releaseToday ? businessDate : undefined;
+    const requestedEnd = req.body.reservationEndDate;
+    if (requestedEnd !== undefined && requestedEnd !== reservationEndDate) {
+      return res.status(400).json({
+        error: "INVALID_RESERVATION_END_DATE",
+        message: "วันที่สิ้นสุดการจองต้องตรงกับวันที่เปิดให้จองใหม่",
+      });
+    }
+    if (reservationEndDate !== undefined &&
+        !validShortenedEnd(reservationEndDate, existingBooking.checkIn, existingBooking.checkOut)) {
+      return res.status(400).json({ error: "INVALID_RESERVATION_END_DATE", message: "วันที่สิ้นสุดการจองไม่อยู่ในช่วงเข้าพัก" });
+    }
     const depositTransactionsToRecord: transcation[] =
       remainingDepositAmount > 0
         ? [
             normalizeTransaction(
               {
+                _id: String(new mongoose.Types.ObjectId()),
                 type: "depositRefund",
                 paymentMethod: "Cash",
                 amount: remainingDepositAmount,
@@ -2581,8 +2592,10 @@ export const checkOut = async (req: Request, res: Response) => {
                   roomReleaseStatus,
                   depositRefundAmount: remainingDepositAmount,
                   depositDisposition: "returned",
+                  transactionIds: assignedTransactions.map((entry) => String(entry._id)),
                   checkedOutAt: new Date(),
                   checkedOutByStaffUsername,
+                  ...(reservationEndDate && { reservationEndDate }),
                   earlyCheckOut,
                   nightsEarly,
                 },
@@ -2632,6 +2645,7 @@ export const checkOut = async (req: Request, res: Response) => {
           depositRefundAmount: remainingDepositAmount,
           depositDisposition: "returned",
           roomReleaseStatus,
+          ...(reservationEndDate && { reservationEndDate }),
           earlyCheckOut,
           nightsEarly,
         },
@@ -3755,6 +3769,7 @@ type ResolveBookingTransactionInput = {
 };
 
 type ResolveBookingBody = {
+  reservationEndDate?: string;
   expectedRevision: number;
   outcome: ResolutionOutcome;
   finalStatus: Status;
@@ -4079,6 +4094,19 @@ export const resolveBooking = async (
       });
     }
     const now = new Date();
+    const shortensStay = !bookingIsClosed && finalStatus === "checkedOut" &&
+      ["early_checkout", "guest_left"].includes(outcome);
+    const releaseDate = formatLocalDateKey(now);
+    let reservationEndDate = bookingIsClosed ? booking.checkout?.reservationEndDate : undefined;
+    if (req.body.reservationEndDate !== undefined) {
+      if (!shortensStay || !validShortenedEnd(req.body.reservationEndDate, booking.checkIn, booking.checkOut)) {
+        return res.status(400).json({ error: "INVALID_RESERVATION_END_DATE", message: "วันที่สิ้นสุดการจองไม่อยู่ในช่วงเข้าพัก" });
+      }
+      reservationEndDate = req.body.reservationEndDate;
+    } else if (shortensStay && roomReleaseStatus === "released" &&
+        validShortenedEnd(releaseDate, booking.checkIn, booking.checkOut)) {
+      reservationEndDate = releaseDate;
+    }
     const updateSet: Record<string, unknown> = {
       status: finalStatus,
       resolution: {
@@ -4102,6 +4130,7 @@ export const resolveBooking = async (
         depositRefundAmount,
         checkedOutAt: now,
         checkedOutByStaffUsername: resolvedByStaffUsername,
+        ...(reservationEndDate && { reservationEndDate }),
         earlyCheckOut: ["early_checkout", "guest_left"].includes(outcome),
         nightsEarly:
           ["early_checkout", "guest_left"].includes(outcome) && booking.checkOut
@@ -4181,6 +4210,7 @@ export const resolveBooking = async (
         summary: {
           outcome,
           roomReleaseStatus,
+          ...(reservationEndDate && { reservationEndDate }),
           reasonCode,
           sensitiveOutTotal,
           amendedAfterClose: bookingIsClosed,

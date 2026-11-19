@@ -12,10 +12,7 @@ import "./ResolveBooking.css";
 type RoomReleaseStatus = "released" | "blocked";
 
 const currentRoomStatus = (booking: booking): RoomReleaseStatus =>
-  booking.resolution?.roomReleaseStatus ||
-  booking.checkout?.roomReleaseStatus ||
-  booking.cancellation?.roomReleaseStatus ||
-  "released";
+  (booking.status === "checkedOut" ? booking.checkout : booking.status === "cancelled" ? booking.cancellation : booking.resolution)?.roomReleaseStatus || "released";
 
 const ClosedRoomAvailability = ({
   booking,
@@ -32,15 +29,17 @@ const ClosedRoomAvailability = ({
   const [target, setTarget] = useState<RoomReleaseStatus>(
     current === "released" ? "blocked" : "released",
   );
+  const [restore, setRestore] = useState(false);
+  const restoreCoverage = restore && target === "blocked";
   const [reason, setReason] = useState("");
   const [validationAttempted, setValidationAttempted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [idempotencyKey] = useState(() => crypto.randomUUID());
 
   useEffect(() => {
-    onDirtyChange?.(Boolean(reason || target === current));
+    onDirtyChange?.(Boolean(reason || restoreCoverage || target === current));
     return () => onDirtyChange?.(false);
-  }, [current, onDirtyChange, reason, target]);
+  }, [current, onDirtyChange, reason, restoreCoverage, target]);
 
   const submit = async () => {
     setValidationAttempted(true);
@@ -52,6 +51,7 @@ const ClosedRoomAvailability = ({
         {
           expectedRevision: booking.revision,
           roomReleaseStatus: target,
+          ...(restoreCoverage && { restoreOriginalCoverage: true }),
           reason: reason.trim(),
         },
         {
@@ -101,6 +101,11 @@ const ClosedRoomAvailability = ({
             กันห้องไว้
           </button>
         </div>
+        {booking.status === "checkedOut" && booking.checkout?.reservationEndDate && target === "blocked" && (
+          <label><input type="checkbox" checked={restore} onChange={(e) => setRestore(e.target.checked)} />
+            คืนจำนวนคืนจองจนถึงวันออกเดิม (แก้ไขอัตราเข้าพัก)
+          </label>
+        )}
       </section>
       <section className="resolveBooking__section">
         <p className="addBooking__label">เหตุผล (จำเป็น)</p>
@@ -121,7 +126,7 @@ const ClosedRoomAvailability = ({
           text="บันทึก"
           icon="bx-save"
           highlight
-          disabled={submitting || target === current}
+          disabled={submitting || (target === current && !restoreCoverage)}
           onClick={() =>
             toast.promise(submit(), {
               loading: "กำลังบันทึก...",

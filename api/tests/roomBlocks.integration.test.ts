@@ -429,7 +429,7 @@ test("room-block creation saves its category and rejects unknown categories", as
   assert.equal((await RoomBlock.findById(created.body.block._id).lean())?.reasonType, "house_use");
 });
 
-test("dashboard occupancy includes internal-use history and ignores all other blocks", async () => {
+test("dashboard occupancy excludes every standalone block", async () => {
   const julyDate = (day: number) => new Date(`2026-07-${String(day).padStart(2, "0")}T00:00:00+07:00`);
   await RoomBlock.create([
     { roomIds: ["Balcony"], from: julyDate(1), to: julyDate(3), reasonType: "house_use", reason: "Synthetic internal stay", createdBy: "test-staff" },
@@ -445,12 +445,12 @@ test("dashboard occupancy includes internal-use history and ignores all other bl
     query: { month: "2026-07", revenueRange: "mtd" },
   } as any, dashboard);
   assert.equal(dashboard.statusCode, 200);
-  assert.equal(dashboard.body.occupancyRate, 11 / (52 * 31));
-  assert.equal(dashboard.body.rangeOccupancyRate, 11 / (52 * 31));
+  assert.equal(dashboard.body.occupancyRate, 0);
+  assert.equal(dashboard.body.rangeOccupancyRate, 0);
   const firstDay = dashboard.body.revenueSeries.find((point: any) => point.date === "2026-07-01");
   const releaseDay = dashboard.body.revenueSeries.find((point: any) => point.date === "2026-07-03");
-  assert.equal(firstDay.occupiedCapacity, 6);
-  assert.equal(firstDay.occupancyRate, 6 / 52);
+  assert.equal(firstDay.occupiedCapacity, 0);
+  assert.equal(firstDay.occupancyRate, 0);
   assert.equal(releaseDay.occupiedCapacity, 0);
   assert.equal(dashboard.body.monthlyGrossRevenue, 0);
   assert.equal(dashboard.body.monthlyCollectedRevenue, 0);

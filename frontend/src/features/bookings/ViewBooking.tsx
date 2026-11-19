@@ -1,3 +1,4 @@
+import { bangkokStayDate } from "../../helpers/checkoutNights";
 import { CorrectionRequestDialog } from "../finance/CorrectionRequests";
 import {
   correctionRequestLabels,
@@ -708,7 +709,7 @@ const ViewBooking = ({
     data.status === "booked" && checkInIsBeforeToday && !isPastCheckOutDate;
   const isNoShow = data.status === "booked" && isPastCheckOutDate;
   const isEarlyCheckOut =
-    data.status === "checkedIn" && todayDateOnly < checkOutDateOnly;
+    data.status === "checkedIn" && bangkokStayDate(new Date()) < bangkokStayDate(data.checkOut);
   const hasCheckedIn =
     Boolean(data.checkedInAt) ||
     data.status === "checkedIn" ||
@@ -1822,7 +1823,6 @@ const ViewBooking = ({
       >
         <CheckOut
           booking={data}
-          isEarlyCheckOut={isEarlyCheckOut}
           onClose={() => setCheckOutIsOpen(false)}
           onDirtyChange={setCheckOutIsDirty}
           onRecordPayment={() => {
@@ -2715,6 +2715,8 @@ const ViewBooking = ({
                         )}
                       </button>
                     )}
+                    {wasEarlyCheckOut && statusCorrectionType && !statusCorrectionEligibility.allowed &&
+                      statusCorrectionEligibility.message && <p className="formField__error">{statusCorrectionEligibility.message}</p>}
                     {!data.voided && data.status === "booked" && (
                       <button
                         type="button"

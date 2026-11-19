@@ -1,3 +1,4 @@
+import { restoredReservationConflicts } from "../services/restoredReservationConflicts";
 import crypto from "crypto";
 import mongoose from "mongoose";
 import type { Request, Response } from "express";
@@ -41,6 +42,7 @@ type NoShowBody = {
   note?: string;
 };
 type ClosedRoomBody = {
+  restoreOriginalCoverage?: boolean;
   expectedRevision?: number;
   roomReleaseStatus?: RoomReleaseStatus;
   reason?: string;
@@ -512,7 +514,12 @@ export const correctClosedRoomAvailability = async (
         message: "แก้ไขห้องได้เฉพาะ Booking ที่ปิดและมีข้อมูลการปิดครบถ้วน",
       });
     }
-    if (field.value === target) {
+    const restore = req.body.restoreOriginalCoverage === true;
+    if (req.body.restoreOriginalCoverage !== undefined && typeof req.body.restoreOriginalCoverage !== "boolean" ||
+        restore && (target !== "blocked" || initial.status !== "checkedOut" || !initial.checkout?.reservationEndDate)) {
+      return res.status(400).json({ message: "คืนช่วงจองได้เฉพาะรายการที่ลดคืนจองและกันห้องไว้" });
+    }
+    if (field.value === target && !restore) {
       return res.status(409).json({
         error: "ROOM_RELEASE_STATUS_UNCHANGED",
         message: "ห้องอยู่ในสถานะนี้แล้ว",
@@ -527,13 +534,14 @@ export const correctClosedRoomAvailability = async (
           const roomBlockConflict = await findActiveRoomBlockConflict(
             initial.roomStays || [],
           );
-          if (conflicts.length || roomBlockConflict) {
+          const historical = restore ? await restoredReservationConflicts(initial) : [];
+          if (conflicts.length || historical.length || roomBlockConflict) {
             return res.status(409).json({
               error: "ROOMS_ALREADY_ASSIGNED",
               message: roomBlockConflict
                 ? "ห้องมีรายการบล็อกอยู่แล้ว จึงไม่สามารถกันห้องจาก Booking นี้ได้"
                 : "ห้องถูกใช้โดย Booking อื่นแล้ว จึงไม่สามารถบล็อกได้",
-              bookingIds: conflicts.map((conflict) => conflict.bookingId),
+              bookingIds: [...new Set([...conflicts.map((conflict) => conflict.bookingId), ...historical])],
             });
           }
         }
@@ -549,6 +557,7 @@ export const correctClosedRoomAvailability = async (
               },
               {
                 $set: { [field.path]: target },
+                ...(restore && { $unset: { "checkout.reservationEndDate": 1 } }),
                 $inc: { revision: 1 },
               },
               { returnDocument: "after", runValidators: true, session },
@@ -559,6 +568,7 @@ export const correctClosedRoomAvailability = async (
               "CORRECT_CLOSED_ROOM_AVAILABILITY",
               {
                 changes: {
+                  ...(restore && { reservationEndDate: { before: initial.checkout?.reservationEndDate, after: null } }),
                   roomReleaseStatus: {
                     before: field.value,
                     after: target,

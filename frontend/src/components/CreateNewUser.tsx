@@ -56,6 +56,7 @@ const CreateNewUser = ({
     }
 
     await onSubmit();
+    setValidationAttempted(false);
     setConfirmPassword("");
     onClose();
   };

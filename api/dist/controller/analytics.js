@@ -7,7 +7,6 @@ exports.getAnalytics = void 0;
 const transactionCorrections_1 = require("../services/transactionCorrections");
 const booking_1 = __importDefault(require("../models/booking"));
 const standaloneSale_1 = __importDefault(require("../models/standaloneSale"));
-const roomBlock_1 = __importDefault(require("../models/roomBlock"));
 const businessDateHelpers_1 = require("../helpers/businessDateHelpers");
 const expectedStayRevenueHelpers_1 = require("../helpers/expectedStayRevenueHelpers");
 const analytics_1 = require("../services/analytics");
@@ -24,18 +23,16 @@ const getAnalytics = async (req, res) => {
     const nextMonthEnd = (0, businessDateHelpers_1.businessMonthBounds)((0, businessDateHelpers_1.shiftBusinessMonth)(month, 1)).end;
     const outlookEnd = new Date(Math.max(end.getTime() + 90 * businessDateHelpers_1.BUSINESS_DAY_MS, nextMonthEnd.getTime()));
     try {
-        const [bookings, sales, blocks] = await Promise.all([
+        const [bookings, sales] = await Promise.all([
             booking_1.default.find({ $or: [(0, expectedStayRevenueHelpers_1.expectedStayRevenueBookingQuery)(start, end), { roomStays: { $elemMatch: { from: { $lt: outlookEnd }, to: { $gt: start } } } }] })
                 .select("bookingId platformId status voided checkIn checkOut roomStays commercialSegments transactions transactionCorrections checkout")
                 .maxTimeMS(10000).lean(),
             standaloneSale_1.default.find({ transactions: { $elemMatch: { type: { $in: expectedStayRevenueHelpers_1.EXPECTED_STAY_REVENUE_SERVICE_TYPES }, createdAt: { $gte: start, $lt: end } } } })
                 .select("saleId transactions transactionCorrections").maxTimeMS(10000).lean(),
-            roomBlock_1.default.find({ from: { $lt: outlookEnd }, to: { $gt: start } })
-                .select("roomId roomIds from to reason reasonType releasedAt").maxTimeMS(10000).lean(),
         ]);
         const standaloneRecords = sales.map((sale) => ({ bookingId: sale.saleId, platformId: "WALK", checkIn: new Date(0), checkOut: new Date(0), transactions: (0, transactionCorrections_1.withEffectiveTransactions)(sale).transactions, saleId: sale.saleId, roomStays: [], commercialSegments: [], status: "checkedOut" }));
         res.setHeader("Cache-Control", "no-store");
-        return res.json((0, analytics_1.buildAnalytics)([...bookings, ...standaloneRecords], blocks, month));
+        return res.json((0, analytics_1.buildAnalytics)([...bookings, ...standaloneRecords], [], month));
     }
     catch {
         return res.status(500).json({ message: "ไม่สามารถโหลดข้อมูล Analytics ได้ กรุณาลองใหม่อีกครั้ง" });

@@ -1,8 +1,8 @@
 import type { booking, roomStay } from "../models/booking";
-import { HOUSE_USE_ROOM_BLOCK_REASON, type roomBlock } from "../models/roomBlock";
+import type { roomBlock } from "../models/roomBlock";
 import { activeRoomInventory } from "../config/roomInventory";
 import { getRoomStayRoomIds } from "./roomStayHelpers";
-import { businessDateStart as getBookingBusinessDateStart } from "./businessDateHelpers";
+import { BUSINESS_DAY_MS, businessDateStart as getBookingBusinessDateStart } from "./businessDateHelpers";
 
 export const bookingKeepsRoomForOccupancy = (booking: booking) => {
   return (
@@ -28,6 +28,12 @@ export const effectiveRoomStayEnd = (currentBooking: booking, roomStay: roomStay
   return stayEnd;
 };
 
+// Assignment dates use both UTC-midnight and Bangkok-midnight storage.
+export const assignmentBoundary = (value: Date) => {
+  const date = new Date(value);
+  return date.getTime() % BUSINESS_DAY_MS === 0 ? getBookingBusinessDateStart(date) : date;
+};
+
 export const bookingOccupiedRoomIdsOnDate = (
   currentBooking: booking,
   start: Date,
@@ -36,10 +42,15 @@ export const bookingOccupiedRoomIdsOnDate = (
   if (!bookingKeepsRoomForOccupancy(currentBooking)) return [];
 
   return (currentBooking.roomStays || []).flatMap((roomStay) => {
-    const stayStart = new Date(roomStay.from);
-    const stayEnd = effectiveRoomStayEnd(currentBooking, roomStay);
+    const stayStart = assignmentBoundary(roomStay.from);
+    const plannedEnd = assignmentBoundary(roomStay.to);
+    // Undo-checkout retains the old checkout document for audit.
+    const endDate = currentBooking.status === "checkedOut" ? currentBooking.checkout?.reservationEndDate : undefined;
+    const stayEnd = endDate
+      ? new Date(Math.min(plannedEnd.getTime(), Date.parse(endDate + "T00:00:00+07:00")))
+      : plannedEnd;
 
-    if (stayStart >= end || stayEnd <= start) return [];
+    if (stayEnd <= stayStart || stayStart >= end || stayEnd <= start) return [];
 
     return getRoomStayRoomIds(roomStay);
   });
@@ -50,42 +61,16 @@ export type OccupancyRoomBlock = Pick<
   "roomId" | "roomIds" | "from" | "to" | "reason" | "reasonType" | "releasedAt"
 >;
 
-const internalUseOccupiedRoomIdsOnDate = (
-  block: OccupancyRoomBlock,
-  start: Date,
-  end: Date,
-) => {
-  const isInternalUse = block.reasonType === "house_use" ||
-    (block.reasonType === undefined && block.reason === HOUSE_USE_ROOM_BLOCK_REASON);
-  if (!isInternalUse) return [];
-
-  const plannedEnd = new Date(block.to);
-  const releaseDate = block.releasedAt
-    ? getBookingBusinessDateStart(new Date(block.releasedAt))
-    : plannedEnd;
-  const effectiveEnd = releaseDate < plannedEnd ? releaseDate : plannedEnd;
-  if (new Date(block.from) >= end || effectiveEnd <= start) return [];
-
-  return getRoomStayRoomIds(block);
-};
-
 export const occupiedCapacityOnDate = (
   bookings: booking[],
   start: Date,
   end: Date,
-  roomBlocks: OccupancyRoomBlock[] = [],
+  _roomBlocks: OccupancyRoomBlock[] = [],
   inventory = activeRoomInventory(),
 ) => {
-  const occupiedRoomIds = new Set(
-    [
-      ...bookings.flatMap((currentBooking) =>
-        bookingOccupiedRoomIdsOnDate(currentBooking, start, end),
-      ),
-      ...roomBlocks.flatMap((block) =>
-        internalUseOccupiedRoomIdsOnDate(block, start, end),
-      ),
-    ],
-  );
+  const occupiedRoomIds = new Set(bookings.flatMap((record) =>
+    bookingOccupiedRoomIdsOnDate(record, start, end),
+  ));
 
   return Array.from(occupiedRoomIds).reduce(
     (total, roomId) =>

@@ -103,6 +103,8 @@ interface Checkout {
   depositRefundAmount: number;
   checkedOutAt: Date;
   checkedOutByStaffUsername: string;
+  /** Exclusive Bangkok stay date when accommodation was explicitly shortened. */
+  reservationEndDate?: string;
   earlyCheckOut: boolean;
   nightsEarly: number;
   depositDisposition?: "returned" | "kept";

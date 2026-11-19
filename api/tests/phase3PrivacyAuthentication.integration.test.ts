@@ -477,6 +477,45 @@ test("inactive users get generic failure and weak passwords are rejected", async
   assert.equal(weakCreate.body.error, "WEAK_PASSWORD");
 });
 
+test("a newly created staff account can sign in and load its session", async () => {
+  const username = "new-synthetic-staff";
+  const password = "synthetic-new-password";
+  const created = response();
+  await authController.adminCreateUser(
+    {
+      user: { username: "synthetic-admin", admin: true },
+      body: { username, name: "Synthetic New Staff", password },
+    } as any,
+    created as any,
+  );
+  assert.equal(created.statusCode, 201);
+  assert.equal(created.body.user.username, username);
+  assert.equal(created.body.user.password, undefined);
+
+  const signedIn = response();
+  await authController.login(
+    loginRequest(username, password),
+    signedIn as any,
+    (() => undefined) as any,
+  );
+  assert.equal(signedIn.statusCode, 200);
+  assert.ok(signedIn.cookieValue);
+
+  const sessionRequest = {
+    method: "GET",
+    cookies: { token: signedIn.cookieValue },
+  } as any;
+  const session = response();
+  let authenticated = false;
+  await authMiddleware(sessionRequest, session as any, () => {
+    authenticated = true;
+  });
+  assert.equal(authenticated, true);
+  await authController.me(sessionRequest, session as any, () => {});
+  assert.equal(session.statusCode, 200);
+  assert.equal(session.body.user.userId, created.body.user.userId);
+});
+
 test("authenticated staff directory returns display names without login secrets", async () => {
   await User.create({
     username: "frontdesk-login",

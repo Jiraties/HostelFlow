@@ -25,6 +25,7 @@
 
 .documents__bookingEntry {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 1.5rem;
   padding: 1.75rem;
@@ -46,7 +47,7 @@
 }
 
 .documents__entryCopy {
-  flex: 1;
+  flex: 1 1 18rem;
   min-width: 0;
 }
 
@@ -66,6 +67,8 @@
 }
 
 .documents__daily {
+  container: documents-daily / inline-size;
+  min-width: 0;
   background: var(--background);
   border-radius: 1.5rem;
   box-shadow: var(--light-shadow);
@@ -105,9 +108,8 @@
 
 .documents__report {
   display: grid;
-  grid-template-columns: 15rem minmax(10rem, 18rem) 15rem max-content;
-  justify-content: space-between;
-  gap: 1.5rem;
+  grid-template-columns: minmax(12rem, 1fr) minmax(9.5rem, 11rem) minmax(12rem, 1fr) max-content;
+  gap: 1rem;
   align-items: center;
   padding: 1.75rem;
   min-width: 0;
@@ -122,6 +124,12 @@
   align-items: center;
   gap: 0.9rem;
   min-width: 0;
+}
+
+.documents__reportIdentity > div,
+.documents__readiness > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .documents__reportIcon {
@@ -186,10 +194,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.documents__readiness--ready p {
-  white-space: nowrap;
-}
-
 .documents__readiness--ready > i {
   color: #16975e;
 }
@@ -225,6 +229,11 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
+}
+
+.documents__missingTrigger span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 @media (hover: hover) {
@@ -595,19 +604,19 @@
   }
 }
 
-@media (max-width: 1180px) {
+@container documents-daily (max-width: 53rem) {
   .documents__report {
-    grid-template-columns: minmax(12rem, 1fr) minmax(10rem, 0.8fr);
-    gap: 1.25rem 2rem;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0.75rem 1rem;
   }
+
   .documents__reportIdentity {
     grid-column: 1;
   }
+
   .documents__reportDate {
     grid-column: 2;
-  }
-  .documents__actions {
-    justify-content: flex-end;
+    justify-self: end;
   }
 }
 
@@ -642,6 +651,9 @@
   .documents__reportDate {
     grid-column: auto;
   }
+  .documents__reportDate {
+    justify-self: start;
+  }
   .documents__actions,
   .documents__download {
     width: 100%;
@@ -674,6 +686,31 @@
   }
   .documentExport__buttons > button {
     flex: 1;
+    justify-content: center;
+  }
+}
+
+@container documents-daily (max-width: 34rem) {
+  .documents__report {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.2rem;
+  }
+
+  .documents__reportIdentity,
+  .documents__reportDate {
+    grid-column: auto;
+  }
+
+  .documents__reportDate {
+    justify-self: start;
+  }
+
+  .documents__actions,
+  .documents__download {
+    width: 100%;
+  }
+
+  .documents__download {
     justify-content: center;
   }
 }

@@ -82,34 +82,34 @@ test("cancelled, voided and no-show rooms are excluded, services still follow ex
   assert.ok(result.channels.every((channel) => channel.bookings === 0));
 });
 
-test("KPI occupancy counts house-use once, retains past released nights, and ignores other blocks", () => {
+test("KPI occupancy excludes standalone blocks from sold capacity", () => {
   const blocks = [
     { roomIds: ["Balcony"], from: date("2026-09-01"), to: date("2026-09-05"), reason: HOUSE_USE_ROOM_BLOCK_REASON, reasonType: "house_use" as const, releasedAt: new Date("2026-09-03T18:00:00Z") },
     { roomIds: ["Window"], from: date("2026-09-01"), to: date("2026-09-30"), reason: "Synthetic maintenance", reasonType: "maintenance" as const },
   ];
   const result = buildAnalytics([fixture()], blocks, "2026-09");
-  assert.equal(result.dailyTrend[0].occupancy, 3.85); // Two capacity places.
+  assert.equal(result.dailyTrend[0].occupancy, 0);
   assert.equal(result.dailyTrend[1].occupancy, 5.77); // Balcony overlapping booking counted once.
   assert.equal(result.dailyTrend[3].occupancy, 0); // Stop on Bangkok release date.
-  assert.equal(result.stats.occupancy, 0.51); // Eight / (52 x 30).
-  assert.equal(result.inventory.find((item) => item.id === "private")!.occupancy, 2);
+  assert.equal(result.stats.occupancy, 0.38); // Six sold bed-nights / (52 x 30).
+  assert.equal(result.inventory.find((item) => item.id === "private")!.occupancy, 1.33);
 });
 
-test("early checkout caps booked occupancy and average nights even if the room stays blocked", () => {
+test("early settlement preserves booked occupancy and the existing average nights calculation", () => {
   const record = fixture({ status: "checkedOut", checkout: { earlyCheckOut: true, checkedOutAt: new Date("2026-09-03T05:00:00Z"), roomReleaseStatus: "blocked" } as any });
   const result = buildAnalytics([record], [], "2026-09");
   assert.equal(result.dailyTrend[1].occupancy, 5.77);
-  assert.equal(result.dailyTrend[2].occupancy, 0);
+  assert.equal(result.dailyTrend[2].occupancy, 5.77);
   assert.equal(result.channels.find((channel) => channel.id === "BOOK")!.averageNights, 1);
 });
 
-test("forward windows use unique booked capacity and internal use without invented comparisons", () => {
+test("forward windows use unique booked capacity and exclude internal use", () => {
   const record = fixture({ checkIn: date("2026-10-01"), checkOut: date("2026-10-31"), roomStays: [{ from: date("2026-10-01"), to: date("2026-10-31"), roomIds: ["Siesta 1"] }] });
   const blocks = [{ roomIds: ["Balcony"], from: date("2026-10-01"), to: date("2026-10-31"), reason: HOUSE_USE_ROOM_BLOCK_REASON, reasonType: "house_use" as const }];
   const result = buildAnalytics([record, record], blocks, "2026-09");
-  assert.equal(result.stats.forwardOccupancy, 5.58); // 90 occupied capacity-nights / 1612.
-  assert.equal(result.outlook[1].occupancy, 5.77);
-  assert.equal(result.outlook[3].occupancy, 1.92);
+  assert.equal(result.stats.forwardOccupancy, 1.86); // 30 sold bed-nights / 1612.
+  assert.equal(result.outlook[1].occupancy, 1.92);
+  assert.equal(result.outlook[3].occupancy, 0.64);
   assert.ok(result.outlook.every((item) => !("change" in item)));
 });
 

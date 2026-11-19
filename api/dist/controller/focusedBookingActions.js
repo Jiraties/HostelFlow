@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.recordFinancialAction = exports.recordPreArrivalRoomPayment = exports.correctClosedRoomAvailability = exports.markNoShow = void 0;
+const restoredReservationConflicts_1 = require("../services/restoredReservationConflicts");
 const crypto_1 = __importDefault(require("crypto"));
 const mongoose_1 = __importDefault(require("mongoose"));
 const booking_1 = __importDefault(require("../models/booking"));
@@ -378,7 +379,12 @@ const correctClosedRoomAvailability = async (req, res) => {
                 message: "แก้ไขห้องได้เฉพาะ Booking ที่ปิดและมีข้อมูลการปิดครบถ้วน",
             });
         }
-        if (field.value === target) {
+        const restore = req.body.restoreOriginalCoverage === true;
+        if (req.body.restoreOriginalCoverage !== undefined && typeof req.body.restoreOriginalCoverage !== "boolean" ||
+            restore && (target !== "blocked" || initial.status !== "checkedOut" || !initial.checkout?.reservationEndDate)) {
+            return res.status(400).json({ message: "คืนช่วงจองได้เฉพาะรายการที่ลดคืนจองและกันห้องไว้" });
+        }
+        if (field.value === target && !restore) {
             return res.status(409).json({
                 error: "ROOM_RELEASE_STATUS_UNCHANGED",
                 message: "ห้องอยู่ในสถานะนี้แล้ว",
@@ -388,13 +394,14 @@ const correctClosedRoomAvailability = async (req, res) => {
             if (target === "blocked") {
                 const conflicts = await conflictingBookings(initial);
                 const roomBlockConflict = await (0, roomBlockAvailability_1.findActiveRoomBlockConflict)(initial.roomStays || []);
-                if (conflicts.length || roomBlockConflict) {
+                const historical = restore ? await (0, restoredReservationConflicts_1.restoredReservationConflicts)(initial) : [];
+                if (conflicts.length || historical.length || roomBlockConflict) {
                     return res.status(409).json({
                         error: "ROOMS_ALREADY_ASSIGNED",
                         message: roomBlockConflict
                             ? "ห้องมีรายการบล็อกอยู่แล้ว จึงไม่สามารถกันห้องจาก Booking นี้ได้"
                             : "ห้องถูกใช้โดย Booking อื่นแล้ว จึงไม่สามารถบล็อกได้",
-                        bookingIds: conflicts.map((conflict) => conflict.bookingId),
+                        bookingIds: [...new Set([...conflicts.map((conflict) => conflict.bookingId), ...historical])],
                     });
                 }
             }
@@ -408,12 +415,14 @@ const correctClosedRoomAvailability = async (req, res) => {
                         ...(0, bookingConcurrency_1.bookingRevisionPredicate)(validated.expectedRevision),
                     }, {
                         $set: { [field.path]: target },
+                        ...(restore && { $unset: { "checkout.reservationEndDate": 1 } }),
                         $inc: { revision: 1 },
                     }, { returnDocument: "after", runValidators: true, session });
                     if (!updated)
                         return null;
                     await (0, activityServices_1.logActivityStrict)(validated.username, "CORRECT_CLOSED_ROOM_AVAILABILITY", {
                         changes: {
+                            ...(restore && { reservationEndDate: { before: initial.checkout?.reservationEndDate, after: null } }),
                             roomReleaseStatus: {
                                 before: field.value,
                                 after: target,

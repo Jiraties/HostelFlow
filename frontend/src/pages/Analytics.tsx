@@ -32,9 +32,9 @@ const Analytics = () => {
   const stats = data ? [
     { label: "Stay Revenue", value: analyticsMoney(data.stats.stayRevenue), change: data.stats.changes.stayRevenue, helper: "Expected Stay Revenue รวมค่าห้องและบริการ หลังปรับปรุง" },
     { label: "Outstanding Balance", value: analyticsMoney(data.stats.outstandingBalance), change: data.stats.changes.outstandingBalance, lowerIsBetter: true, helper: "ยอดที่ยังค้างชำระของรายการรายได้ในเดือนที่เลือก" },
-    { label: "Occupancy", value: `${data.stats.occupancy.toFixed(1)}%`, change: data.stats.changes.occupancy, unit: "pts" as const, helper: "อัตราเข้าพักตามความจุ รวมการใช้ภายใน" },
+    { label: "Occupancy", value: `${data.stats.occupancy.toFixed(1)}%`, change: data.stats.changes.occupancy, unit: "pts" as const, helper: "สัดส่วนความจุที่จองไว้ต่อคืน" },
     { label: "RevPAB", value: analyticsMoney(data.stats.revpab), change: data.stats.changes.revpab, helper: "รายได้ค่าห้องสุทธิ ÷ (จำนวนเตียงพร้อมขาย × จำนวนวัน)" },
-    { label: "Forward Occupancy", value: `${data.stats.forwardOccupancy.toFixed(1)}%`, change: null, comparison: analyticsMonthLabel(data.nextMonth), helper: "อัตราเข้าพักเดือนถัดไป จากข้อมูลที่มีอยู่ขณะนี้ รวมการใช้ภายใน" },
+    { label: "Forward Occupancy", value: `${data.stats.forwardOccupancy.toFixed(1)}%`, change: null, comparison: analyticsMonthLabel(data.nextMonth), helper: "อัตราเข้าพักเดือนถัดไป จากข้อมูลที่มีอยู่ขณะนี้" },
   ] : [];
   const selectMonth = (next: string) => {
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(next) || next < "1901-01" || next > "9997-12") return;
@@ -71,7 +71,7 @@ const Analytics = () => {
       {loading && <p className="analytics__state" role="status">กำลังโหลดข้อมูล Analytics…</p>}
       {data && <div className="analytics__content" aria-busy={loading}>
       {data.totalRevenue === 0 && data.channels.every((channel) => channel.bookings === 0) && data.dailyTrend.every((day) => day.occupancy === 0) && <p className="analytics__state" role="status">ยังไม่มีข้อมูลรายได้หรือการเข้าพักในเดือนนี้</p>}
-      <p className="analytics__basisNote">ข้อมูลรายเดือน · Expected Stay Revenue: ค่าห้องลงวันที่เริ่มเข้าพัก / เริ่มต่อคืน บริการลงวันที่ทำรายการ รวมยอดค้างชำระและหักรายการคืนเงินที่เกี่ยวข้อง · Occupancy คิดเต็มเดือนตามความจุ {data.capacity} เตียง รวมการใช้ภายใน</p>
+      <p className="analytics__basisNote">ข้อมูลรายเดือน · Expected Stay Revenue: ค่าห้องลงวันที่เริ่มเข้าพัก / เริ่มต่อคืน บริการลงวันที่ทำรายการ รวมยอดค้างชำระและหักรายการคืนเงินที่เกี่ยวข้อง · Occupancy คิดเต็มเดือนตามความจุ {data.capacity} เตียง</p>
       <section
         className="analytics__stats"
         aria-label="ข้อมูล Analytics รายเดือน"

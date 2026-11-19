@@ -4,6 +4,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.correctStatus = exports.previewStatusCorrection = exports.getStatusCorrectionEligibility = void 0;
+const restoredReservationConflicts_1 = require("../services/restoredReservationConflicts");
+const cashShiftReopenCorrection_1 = __importDefault(require("../models/cashShiftReopenCorrection"));
 const crypto_1 = __importDefault(require("crypto"));
 const mongoose_1 = __importDefault(require("mongoose"));
 const activity_1 = __importDefault(require("../models/activity"));
@@ -168,6 +170,7 @@ const terminalAction = (currentBooking, correctionType) => {
             at: new Date(currentBooking.checkout.checkedOutAt),
             expectedActivities: ["CHECK_OUT", "RESOLVE_STAY"],
             sourceActions: ["CHECK_OUT", "RESOLVE_STAY"],
+            transactionIds: currentBooking.checkout.transactionIds,
         };
     }
     if (correctionType === "UNDO_CANCELLATION" && currentBooking.cancellation) {
@@ -240,11 +243,15 @@ const conflictingRoomBookings = async (currentBooking) => {
         .lean();
     return candidates.filter((candidate) => candidate.roomStays.some((existing) => assignments.some((incoming) => roomStaysConflict(existing, incoming))));
 };
-const terminalTransactions = (currentBooking, action) => (currentBooking.transactions || []).filter((transaction) => Boolean(transaction.sourceAction) &&
-    action.sourceActions.includes(transaction.sourceAction) &&
-    (!transaction.createdAt ||
-        Math.abs(new Date(transaction.createdAt).getTime() - action.at.getTime()) <=
-            5 * 60000));
+const terminalTransactions = (currentBooking, action) => (currentBooking.transactions || []).filter((transaction) => {
+    if (!transaction.sourceAction || !action.sourceActions.includes(transaction.sourceAction))
+        return false;
+    if (action.transactionIds)
+        return action.transactionIds.includes(String(transaction._id));
+    // Older terminal actions did not persist the generated transaction IDs.
+    return !transaction.createdAt ||
+        Math.abs(new Date(transaction.createdAt).getTime() - action.at.getTime()) <= 5 * 60000;
+});
 const correctionTypeForStatus = (status) => {
     if (status === "checkedOut")
         return "UNDO_CHECKOUT";
@@ -254,6 +261,23 @@ const correctionTypeForStatus = (status) => {
         return "UNDO_NO_SHOW";
     return null;
 };
+// Checkout deposits do not necessarily have a cashShiftId. A later shift
+// (including a reopened shift) cannot authorize staff to undo the prior stay.
+const earlyUndoShift = async (record, type, isAdmin) => {
+    if (isAdmin || type !== "UNDO_CHECKOUT" || !record.checkout?.earlyCheckOut)
+        return undefined;
+    const checkout = record.checkout;
+    const shift = await cashShift_1.default.findOne({
+        businessDate: businessDateKey(new Date(checkout.checkedOutAt)), status: "open", endedAt: { $exists: false },
+        startedAt: { $lte: checkout.checkedOutAt },
+    }).select("_id ledgerRevision").lean();
+    if (!shift || await cashShiftReopenCorrection_1.default.exists({
+        shiftId: String(shift._id), reopenedAt: { $gt: checkout.checkedOutAt },
+    }))
+        return null;
+    return shift;
+};
+const earlyShiftMessage = "กะเดิมที่บันทึกเช็คเอาท์ไม่ได้เปิดอยู่ กรุณาให้ Admin ตรวจสอบและย้อนสถานะ";
 const statusCorrectionPermission = async ({ currentBooking, correctionType, username, isAdmin, }) => {
     const transition = CORRECTION_TRANSITIONS[correctionType];
     const action = terminalAction(currentBooking, correctionType);
@@ -276,7 +300,8 @@ const statusCorrectionPermission = async ({ currentBooking, correctionType, user
         : [];
     const hasMissingCashShift = terminalTx.some((transaction) => (0, cashLedgerTransaction_1.transactionRequiresCashShift)(transaction) && !transaction.cashShiftId) || affectedShifts.length !== affectedCashShiftIds.length;
     const affectedShiftsOpen = affectedShifts.every((shift) => shift.status === "open");
-    const requiresAdmin = !sameBusinessDate || !originalActor || !affectedShiftsOpen;
+    const origin = await earlyUndoShift(currentBooking, correctionType, isAdmin);
+    const requiresAdmin = origin === null || !sameBusinessDate || !originalActor || !affectedShiftsOpen;
     const allowed = bookingEligible &&
         !hasMissingCashShift &&
         (isAdmin || !requiresAdmin);
@@ -284,13 +309,14 @@ const statusCorrectionPermission = async ({ currentBooking, correctionType, user
         ? "แก้ไขได้เฉพาะ Booking ที่อยู่ในสถานะปลายทางและมีประวัติครบถ้วน"
         : hasMissingCashShift
             ? "ไม่พบกะเงินสดที่อ้างอิงโดยรายการทางการเงิน ต้องให้ Admin ตรวจสอบ"
-            : !allowed
-                ? !sameBusinessDate
-                    ? "พ้นวันทำการกรุงเทพฯ แล้ว ต้องให้ Admin ดำเนินการ"
-                    : !originalActor
-                        ? "คุณไม่ใช่ผู้บันทึกสถานะเดิม ต้องให้ Admin ดำเนินการ"
-                        : "กะเงินสดที่ได้รับผลกระทบปิดแล้ว ต้องให้ Admin ดำเนินการ"
-                : null;
+            : origin === null ? earlyShiftMessage
+                : !allowed
+                    ? !sameBusinessDate
+                        ? "พ้นวันทำการกรุงเทพฯ แล้ว ต้องให้ Admin ดำเนินการ"
+                        : !originalActor
+                            ? "คุณไม่ใช่ผู้บันทึกสถานะเดิม ต้องให้ Admin ดำเนินการ"
+                            : "กะเงินสดที่ได้รับผลกระทบปิดแล้ว ต้องให้ Admin ดำเนินการ"
+                    : null;
     return {
         allowed,
         bookingEligible,
@@ -340,6 +366,9 @@ const buildPreview = async ({ currentBooking, body, username, isAdmin, }) => {
             message: "เฉพาะผู้บันทึกสถานะเดิมหรือ Admin เท่านั้นที่แก้ไขได้",
         });
     }
+    const origin = await earlyUndoShift(currentBooking, body.correctionType, isAdmin);
+    if (origin === null)
+        blockers.push({ code: "ADMIN_APPROVAL_REQUIRED", message: earlyShiftMessage });
     const terminalTx = action ? terminalTransactions(currentBooking, action) : [];
     const terminalTransactionIds = terminalTx.map(transactionId).filter(Boolean);
     const reversibleTx = reversibleTransactions(body.correctionType, terminalTx);
@@ -385,6 +414,11 @@ const buildPreview = async ({ currentBooking, body, username, isAdmin, }) => {
             message: "กะเงินสดที่ได้รับผลกระทบปิดแล้ว ต้องให้ Admin ดำเนินการ",
             cashShiftIds: closedAffectedCashShiftIds,
         });
+    }
+    if (currentBooking.checkout?.earlyCheckOut && body.correctionType === "UNDO_CHECKOUT" &&
+        closedAffectedCashShiftIds.length && body.depositDecision === "not_actually_returned") {
+        blockers.push({ code: "CLOSED_SHIFT_FINANCIAL_CORRECTION_REQUIRED",
+            message: "รายการอยู่ในกะที่ปิดแล้ว กรุณาใช้ขั้นตอนแก้ไขรายการทางการเงิน" });
     }
     if (action) {
         const laterTransactions = (currentBooking.transactions || []).filter((transaction) => !terminalTransactionIds.includes(transactionId(transaction)) &&
@@ -432,13 +466,14 @@ const buildPreview = async ({ currentBooking, body, username, isAdmin, }) => {
     }
     const conflicts = await conflictingRoomBookings(currentBooking);
     const roomBlockConflict = await (0, roomBlockAvailability_1.findActiveRoomBlockConflict)(currentBooking.roomStays || []);
-    if (conflicts.length || roomBlockConflict) {
+    const historicalConflicts = body.correctionType === "UNDO_CHECKOUT" ? await (0, restoredReservationConflicts_1.restoredReservationConflicts)(currentBooking) : [];
+    if (conflicts.length || historicalConflicts.length || roomBlockConflict) {
         blockers.push({
             code: "ROOM_ASSIGNMENT_CONFLICT",
             message: roomBlockConflict
                 ? "ห้องหรือเตียงเดิมมีรายการบล็อกอยู่ ต้องเปิดห้องหรือแก้การจัดห้องก่อน"
                 : "ห้องหรือเตียงเดิมถูกจัดให้ Booking อื่นแล้ว ต้องแก้การจัดห้องก่อน",
-            bookingIds: conflicts.map((conflict) => conflict.bookingId),
+            bookingIds: [...new Set([...conflicts.map((conflict) => conflict.bookingId), ...historicalConflicts])],
         });
     }
     const depositReturnAmount = body.correctionType === "UNDO_CHECKOUT"
@@ -509,7 +544,7 @@ const buildPreview = async ({ currentBooking, body, username, isAdmin, }) => {
     return {
         eligible: blockers.length === 0,
         requiresAdmin: Boolean(action) &&
-            (!sameBusinessDate ||
+            (origin === null || !sameBusinessDate ||
                 !originalActor ||
                 closedAffectedCashShiftIds.length > 0),
         correctionType: body.correctionType,
@@ -554,6 +589,7 @@ const buildPreview = async ({ currentBooking, body, username, isAdmin, }) => {
                 : "ไม่ต้องติดตามแก้สถานะกับ OTA",
         },
         affectedCashShiftIds,
+        origin,
         openAffectedCashShiftIds,
         terminalActionKey,
         reversibleTransactions: reversibleTx,
@@ -645,7 +681,8 @@ const previewStatusCorrection = async (req, res) => {
             username: req.user?.username || "",
             isAdmin: req.user?.admin === true,
         });
-        return res.status(200).json(preview);
+        const { origin: _guard, ...publicPreview } = preview;
+        return res.status(200).json(publicPreview);
     }
     catch (err) {
         console.error("Status correction preview failed", {
@@ -718,7 +755,16 @@ const correctStatus = async (req, res) => {
             const session = await mongoose_1.default.startSession();
             try {
                 return await session.withTransaction(async () => {
+                    if (preview.origin) {
+                        const guarded = await cashShift_1.default.updateOne({
+                            _id: preview.origin._id, status: "open", ledgerRevision: preview.origin.ledgerRevision,
+                        }, { $inc: { ledgerRevision: 1 } }, { session });
+                        if (!guarded.modifiedCount)
+                            throw new StatusCorrectionShiftRaceError();
+                    }
                     for (const cashShiftId of preview.openAffectedCashShiftIds) {
+                        if (cashShiftId === String(preview.origin?._id))
+                            continue;
                         const shiftGuard = await cashShift_1.default.updateOne({ _id: cashShiftId, status: "open" }, { $inc: { ledgerRevision: 1 } }, { session });
                         if (shiftGuard.modifiedCount !== 1) {
                             throw new StatusCorrectionShiftRaceError();
@@ -792,6 +838,7 @@ const correctStatus = async (req, res) => {
                             },
                         },
                         summary: {
+                            ...(validated.correctionType === "UNDO_CHECKOUT" && { originalCheckout: currentBooking.checkout }),
                             correctionId,
                             correctionType: validated.correctionType,
                             reason: validated.reason,
